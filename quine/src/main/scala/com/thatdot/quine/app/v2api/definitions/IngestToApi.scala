@@ -80,7 +80,7 @@ object IngestToApi {
       Api.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis)
     case V1.WebsocketSimpleStartupIngest.NoKeepalive => Api.WebsocketSimpleStartupIngest.NoKeepalive
   }
-  def apply(ingest: Ingest.KCLIteratorType): Api.KCLIteratorType = ingest match {
+  def apply(ingest: Ingest.InitialPosition): Api.InitialPosition = ingest match {
     case Ingest.Latest => Api.Latest
     case Ingest.TrimHorizon => Api.TrimHorizon
     case Ingest.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
@@ -212,11 +212,12 @@ object IngestToApi {
 
     case Ingest.KinesisKclIngest(
           name,
+          applicationName,
           streamName,
           format,
+          initialPosition,
           credentialsOpt,
           regionOpt,
-          iteratorType,
           numRetries,
           maxBatchSize,
           backpressureTimeoutMillis,
@@ -225,11 +226,12 @@ object IngestToApi {
         ) =>
       Api.KinesisKclIngest(
         name,
+        applicationName,
         streamName,
         IngestToApi(format),
         credentialsOpt.map(IngestToApi.apply),
         regionOpt.map(IngestToApi.apply),
-        IngestToApi(iteratorType),
+        IngestToApi(initialPosition),
         numRetries,
         maxBatchSize,
         backpressureTimeoutMillis,

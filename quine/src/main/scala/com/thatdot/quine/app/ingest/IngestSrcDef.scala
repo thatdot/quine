@@ -228,7 +228,7 @@ abstract class IngestSrcDef(
 
 }
 
-/** Define an ingest from a the definition of a Source of InputType. */
+/** Define an ingest from the definition of a Source of InputType. */
 abstract class RawValuesIngestSrcDef[A](
   format: ImportFormat,
   initialSwitchMode: SwitchMode,
@@ -381,7 +381,6 @@ object IngestSrcDef extends LazySafeLogging {
           numRetries,
           maxPerSecond,
           recordEncodings,
-          None,
         ) =>
       KinesisSrcDef(
         name,
@@ -399,33 +398,38 @@ object IngestSrcDef extends LazySafeLogging {
         recordEncodings.map(ContentDecoder.apply),
       ).valid
 
-    case KinesisIngest(
+    case KinesisKCLIngest(
           format: StreamedRecordFormat,
-          streamName: String,
-          _,
+          applicationName,
+          kinesisStreamName: String,
           parallelism,
           creds,
           region,
-          iteratorType,
+          initialPosition,
           numRetries,
           maxPerSecond,
           recordEncodings,
-          Some(checkpointSettings),
+          schedulerSourceSettings,
+          checkpointSettings,
+          advancedSettings,
         ) =>
       KinesisKclSrcDef(
         name,
         intoNamespace,
-        streamName,
+        applicationName,
+        kinesisStreamName,
         importFormatFor(format),
         initialSwitchMode,
         parallelism,
         creds,
         region,
-        iteratorType,
+        initialPosition,
         numRetries,
         maxPerSecond,
         recordEncodings.map(ContentDecoder.apply),
+        schedulerSourceSettings,
         checkpointSettings,
+        advancedSettings,
       ).valid
 
     case ServerSentEventsIngest(format, url, parallelism, maxPerSecond, recordEncodings) =>

@@ -9,41 +9,13 @@ import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
-import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
-import com.thatdot.quine.routes.IngestRoutes.defaultNumberFormat
-import com.thatdot.quine.routes.StreamedRecordFormat.{CypherJson, CypherProtobuf, CypherRaw, Drop}
-import com.thatdot.quine.routes.{
-  AwsCredentials,
-  AwsRegion,
-  CsvCharacter,
-  FileIngest => V1FileIngest,
-  FileIngestFormat,
-  FileIngestMode,
-  IngestRoutes,
-  IngestStreamConfiguration,
-  IngestStreamStatus,
-  KafkaAutoOffsetReset,
-  KafkaIngest => V1KafkaIngest,
-  KafkaOffsetCommitting,
-  KafkaSecurityProtocol,
-  KinesisCheckpointSettings,
-  KinesisIngest => V1KinesisIngest,
-  NumberIteratorIngest => V1NumberIteratorIngest,
-  RecordDecodingType,
-  S3Ingest => V1S3Ingest,
-  SQSIngest => V1SQSIngest,
-  ServerSentEventsIngest,
-  StandardInputIngest,
-  StreamedRecordFormat,
-  WebsocketSimpleStartupIngest,
-}
 import com.thatdot.quine.{routes => V1}
 
 object V2IngestEntities {
 
   final case class QuineIngestStreamWithStatus(
     config: QuineIngestConfiguration,
-    status: Option[IngestStreamStatus],
+    status: Option[V1.IngestStreamStatus],
   )
 
   /** Ingest supports charset specification. */
@@ -59,7 +31,7 @@ object V2IngestEntities {
 
   /** Ingest supports decompression (e.g. Base64, gzip, zip) */
   trait IngestDecompressionSupport {
-    val recordDecoders: Seq[RecordDecodingType]
+    val recordDecoders: Seq[V1.RecordDecodingType]
   }
 
   @title("Ingest source")
@@ -81,7 +53,7 @@ object V2IngestEntities {
     format: FileFormat,
     @description("Local file path.")
     path: String,
-    fileIngestMode: Option[FileIngestMode],
+    fileIngestMode: Option[V1.FileIngestMode],
     @description("Maximum size (in bytes) of any line in the file.")
     maximumLineSize: Option[Int] = None,
     @description(
@@ -99,7 +71,7 @@ object V2IngestEntities {
     @description(
       "List of decodings to be applied to each input. The specified decodings are applied in declared array order.",
     )
-    recordDecoders: Seq[RecordDecodingType] = Seq(),
+    recordDecoders: Seq[V1.RecordDecodingType] = Seq(),
   ) extends FileIngestSource
       with IngestCharsetSupport
       with IngestBoundingSupport
@@ -119,7 +91,7 @@ object V2IngestEntities {
     @description("S3 file name")
     key: String,
     @description("AWS credentials to apply to this request")
-    credentials: Option[AwsCredentials],
+    credentials: Option[V1.AwsCredentials],
     @description("Maximum size (in bytes) of any line in the file.")
     maximumLineSize: Option[Int] = None,
     @description(
@@ -137,7 +109,7 @@ object V2IngestEntities {
     @description(
       "List of decodings to be applied to each input. The specified decodings are applied in declared array order.",
     )
-    recordDecoders: Seq[RecordDecodingType] = Seq(),
+    recordDecoders: Seq[V1.RecordDecodingType] = Seq(),
   ) extends FileIngestSource
       with IngestCharsetSupport
       with IngestBoundingSupport
@@ -188,7 +160,7 @@ object V2IngestEntities {
     @description("Initial messages to send to the server on connecting.")
     initMessages: Seq[String],
     @description("Strategy to use for sending keepalive messages, if any.")
-    keepAlive: WebsocketSimpleStartupIngest.KeepaliveProtocol = WebsocketSimpleStartupIngest.PingPongInterval(),
+    keepAlive: V1.WebsocketSimpleStartupIngest.KeepaliveProtocol = V1.WebsocketSimpleStartupIngest.PingPongInterval(),
     characterEncoding: Charset,
   ) extends StreamingIngestSource
       with IngestCharsetSupport
@@ -205,49 +177,54 @@ object V2IngestEntities {
     )
     shardIds: Option[Set[String]],
     @description("AWS credentials for this Kinesis stream")
-    credentials: Option[AwsCredentials],
+    credentials: Option[V1.AwsCredentials],
     @description("AWS region for this Kinesis stream")
-    region: Option[AwsRegion],
-    @description("Shard iterator type.") iteratorType: V1KinesisIngest.IteratorType =
-      V1KinesisIngest.IteratorType.Latest,
+    region: Option[V1.AwsRegion],
+    @description("Shard iterator type.") iteratorType: V1.KinesisIngest.IteratorType =
+      V1.KinesisIngest.IteratorType.Latest,
     @description("Number of retries to attempt on Kineses error.") numRetries: Int = 3,
     @description(
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
-    recordDecoders: Seq[RecordDecodingType] = Seq(),
+    recordDecoders: Seq[V1.RecordDecodingType] = Seq(),
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
 
-  sealed trait KCLIteratorType
+  sealed trait InitialPosition
 
   @title("Latest")
   @description("All records added to the shard since subscribing.")
-  case object Latest extends KCLIteratorType
+  case object Latest extends InitialPosition
 
   @title("TrimHorizon")
   @description("All records in the shard.")
-  case object TrimHorizon extends KCLIteratorType
+  case object TrimHorizon extends InitialPosition
 
   @title("AtTimestamp")
   @description("All records starting from the provided date-time.")
-  final case class AtTimestamp(year: Int, month: Int, date: Int, hourOfDay: Int, minute: Int, second: Int)
-      extends KCLIteratorType
+  final case class AtTimestamp(year: Int, month: Int, dayOfMonth: Int, hourOfDay: Int, minute: Int, second: Int)
+      extends InitialPosition
 
   @title("Kinesis Data Stream Using Kcl lib")
   @description("A stream of data being ingested from Kinesis")
   case class KinesisKclIngest(
     name: String,
-    streamName: String,
+    @description(
+      """Name of the application (irrelevant unless using KCL, where `applicationName` also becomes the default DynamoDB
+        |lease table name. Defaults to 'Quine' if needed and not provided).""".stripMargin,
+    )
+    applicationName: Option[String],
+    kinesisStreamName: String,
     @description("The format used to decode each Kinesis record.")
     format: StreamingFormat,
-    credentialsOpt: Option[AwsCredentials],
-    regionOpt: Option[AwsRegion],
-    iteratorType: KCLIteratorType,
+    initialPosition: InitialPosition,
+    credentialsOpt: Option[V1.AwsCredentials], // TODO V2 type
+    regionOpt: Option[V1.AwsRegion], // TODO V2 type
     numRetries: Int,
     bufferSize: Int,
     backpressureTimeoutMillis: Long,
-    recordDecoders: Seq[RecordDecodingType] = Seq(),
-    checkpointSettings: KinesisCheckpointSettings,
+    recordDecoders: Seq[V1.RecordDecodingType] = Seq(), // TODO V2 type
+    checkpointSettings: Option[V1.KinesisIngest.KinesisCheckpointSettings], // TODO V2 type
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
 
@@ -263,7 +240,7 @@ object V2IngestEntities {
     @description(
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
-    recordDecoders: Seq[RecordDecodingType] = Seq(),
+    recordDecoders: Seq[V1.RecordDecodingType] = Seq(),
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
 
@@ -273,14 +250,14 @@ object V2IngestEntities {
     format: StreamingFormat,
     @description("URL of the queue to ingest.") queueUrl: String,
     @description("Maximum number of records to read from the queue simultaneously.") readParallelism: Int = 1,
-    credentials: Option[AwsCredentials],
-    region: Option[AwsRegion],
+    credentials: Option[V1.AwsCredentials],
+    region: Option[V1.AwsRegion],
     @description("Whether the queue consumer should acknowledge receipt of in-flight messages.")
     deleteReadMessages: Boolean = true,
     @description(
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
-    recordDecoders: Seq[RecordDecodingType] = Seq(),
+    recordDecoders: Seq[V1.RecordDecodingType] = Seq(),
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
 
@@ -293,27 +270,27 @@ object V2IngestEntities {
         |whose values are partition indices.""".stripMargin
         .replace('\n', ' '),
     )
-    topics: Either[V1KafkaIngest.Topics, V1KafkaIngest.PartitionAssignments],
+    topics: Either[V1.KafkaIngest.Topics, V1.KafkaIngest.PartitionAssignments],
     @description("A comma-separated list of Kafka broker servers.")
     bootstrapServers: String,
     @description(
       "Consumer group ID that this ingest stream should report belonging to; defaults to the name of the ingest stream.",
     )
     groupId: Option[String],
-    securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
-    offsetCommitting: Option[KafkaOffsetCommitting],
-    autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
+    securityProtocol: V1.KafkaSecurityProtocol = V1.KafkaSecurityProtocol.PlainText,
+    offsetCommitting: Option[V1.KafkaOffsetCommitting],
+    autoOffsetReset: V1.KafkaAutoOffsetReset = V1.KafkaAutoOffsetReset.Latest,
     @description(
       "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>",
     )
-    kafkaProperties: V1KafkaIngest.KafkaProperties = Map.empty[String, String],
+    kafkaProperties: V1.KafkaIngest.KafkaProperties = Map.empty[String, String],
     @description(
       "The offset at which this stream should complete; offsets are sequential integers starting at 0.",
     ) endingOffset: Option[Long],
     @description(
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
-    recordDecoders: Seq[RecordDecodingType] = Seq(),
+    recordDecoders: Seq[V1.RecordDecodingType] = Seq(),
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
 
@@ -370,14 +347,14 @@ object V2IngestEntities {
     @description("Ignore the data without further processing.")
     case object DropFormat extends StreamingFormat
 
-    def apply(v1Format: StreamedRecordFormat): StreamingFormat =
+    def apply(v1Format: V1.StreamedRecordFormat): StreamingFormat =
       v1Format match {
-        case CypherJson(_, _) => JsonFormat
-        case CypherRaw(_, _) => RawFormat
-        case CypherProtobuf(_, _, schemaUrl, typeName) =>
+        case V1.StreamedRecordFormat.CypherJson(_, _) => JsonFormat
+        case V1.StreamedRecordFormat.CypherRaw(_, _) => RawFormat
+        case V1.StreamedRecordFormat.CypherProtobuf(_, _, schemaUrl, typeName) =>
           ProtobufFormat(schemaUrl, typeName)
         //note : Avro is not supported in v1
-        case StreamedRecordFormat.Drop => DropFormat
+        case V1.StreamedRecordFormat.Drop => DropFormat
         case _ => sys.error(s"Unsupported version 1 format: $v1Format")
       }
   }
@@ -421,22 +398,22 @@ object V2IngestEntities {
                      |Default: `false`.""".stripMargin)
       headers: Either[Boolean, List[String]] = Left(false),
       @description("CSV row delimiter character.")
-      delimiter: CsvCharacter = CsvCharacter.Comma,
+      delimiter: V1.CsvCharacter = V1.CsvCharacter.Comma,
       @description("""Character used to quote values in a field. Special characters (like new lines) inside of a quoted
                      |section will be a part of the CSV value.""".stripMargin)
-      quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
+      quoteChar: V1.CsvCharacter = V1.CsvCharacter.DoubleQuote,
       @description("Character used to escape special characters.")
-      escapeChar: CsvCharacter = CsvCharacter.Backslash,
+      escapeChar: V1.CsvCharacter = V1.CsvCharacter.Backslash,
     ) extends FileFormat {
       require(delimiter != quoteChar, "Different characters must be used for `delimiter` and `quoteChar`.")
       require(delimiter != escapeChar, "Different characters must be used for `delimiter` and `escapeChar`.")
       require(quoteChar != escapeChar, "Different characters must be used for `quoteChar` and `escapeChar`.")
     }
 
-    def apply(v1Format: FileIngestFormat): FileFormat = v1Format match {
-      case FileIngestFormat.CypherLine(_, _) => LineFormat
-      case FileIngestFormat.CypherJson(_, _) => JsonFormat
-      case FileIngestFormat.CypherCsv(_, _, headers, delimiter, quoteChar, escapeChar) =>
+    def apply(v1Format: V1.FileIngestFormat): FileFormat = v1Format match {
+      case V1.FileIngestFormat.CypherLine(_, _) => LineFormat
+      case V1.FileIngestFormat.CypherJson(_, _) => JsonFormat
+      case V1.FileIngestFormat.CypherCsv(_, _, headers, delimiter, quoteChar, escapeChar) =>
         CsvFormat(headers, delimiter, quoteChar, escapeChar)
       case _ => sys.error(s"Unsupported version 1 format: $v1Format")
     }
@@ -508,7 +485,7 @@ object V2IngestEntities {
     @description("Name of the Cypher parameter to populate with the JSON value.")
     parameter: String = "that",
     @description("Maximum number of records to process at once.")
-    parallelism: Int = IngestRoutes.defaultWriteParallelism,
+    parallelism: Int = V1.IngestRoutes.defaultWriteParallelism,
     @description("Maximum number of records to process per second.")
     maxPerSecond: Option[Int] = None,
     @description("Action to take on a single failed record")
@@ -517,33 +494,37 @@ object V2IngestEntities {
     onStreamError: OnStreamErrorHandler = LogStreamError,
   ) extends V2IngestConfiguration
       with LazySafeLogging {
-    def asV1IngestStreamConfiguration: IngestStreamConfiguration = {
+    def asV1IngestStreamConfiguration: V1.IngestStreamConfiguration = {
 
-      def asV1StreamedRecordFormat(format: StreamingFormat): Try[StreamedRecordFormat] = format match {
-        case StreamingFormat.JsonFormat => Success(CypherJson(query, parameter))
-        case StreamingFormat.RawFormat => Success(CypherRaw(query, parameter))
+      def asV1StreamedRecordFormat(format: StreamingFormat): Try[V1.StreamedRecordFormat] = format match {
+        case StreamingFormat.JsonFormat =>
+          Success(V1.StreamedRecordFormat.CypherJson(query, parameter))
+        case StreamingFormat.RawFormat =>
+          Success(V1.StreamedRecordFormat.CypherRaw(query, parameter))
         case StreamingFormat.ProtobufFormat(schemaUrl, typeName) =>
-          Success(CypherProtobuf(query, parameter, schemaUrl, typeName))
+          Success(V1.StreamedRecordFormat.CypherProtobuf(query, parameter, schemaUrl, typeName))
         case _: StreamingFormat.AvroFormat =>
           Failure(
             new UnsupportedOperationException(
               "Avro is not supported in Api V1",
             ),
           )
-        case _: StreamingFormat.DropFormat.type => Success(Drop)
+        case _: StreamingFormat.DropFormat.type => Success(V1.StreamedRecordFormat.Drop)
       }
 
-      def asV1FileIngestFormat(format: FileFormat): Try[FileIngestFormat] = format match {
-        case FileFormat.LineFormat => Success(FileIngestFormat.CypherLine(query, parameter))
-        case FileFormat.JsonFormat => Success(FileIngestFormat.CypherJson(query, parameter))
+      def asV1FileIngestFormat(format: FileFormat): Try[V1.FileIngestFormat] = format match {
+        case FileFormat.LineFormat =>
+          Success(V1.FileIngestFormat.CypherLine(query, parameter))
+        case FileFormat.JsonFormat =>
+          Success(V1.FileIngestFormat.CypherJson(query, parameter))
         case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
-          Success(CypherCsv(query, parameter, headers, delimiter, quoteChar, escapeChar))
+          Success(V1.FileIngestFormat.CypherCsv(query, parameter, headers, delimiter, quoteChar, escapeChar))
       }
 
-      val tryConfig: Try[IngestStreamConfiguration] = source match {
+      val tryConfig: Try[V1.IngestStreamConfiguration] = source match {
         case FileIngest(format, path, fileIngestMode, maximumLineSize, startOffset, limit, charset, _) =>
           asV1FileIngestFormat(format).map { fmt =>
-            V1FileIngest(
+            V1.FileIngest(
               fmt,
               path,
               charset.name(),
@@ -558,7 +539,7 @@ object V2IngestEntities {
         case S3Ingest(format, bucket, key, credentials, maximumLineSize, startOffset, limit, charset, _) =>
           // last param recordDecoders unsupported in V1
           asV1FileIngestFormat(format).map { fmt =>
-            V1S3Ingest(
+            V1.S3Ingest(
               fmt,
               bucket,
               key,
@@ -573,7 +554,7 @@ object V2IngestEntities {
           }
         case StdInputIngest(format, maximumLineSize, charset) =>
           asV1FileIngestFormat(format).map { fmt =>
-            StandardInputIngest(
+            V1.StandardInputIngest(
               fmt,
               charset.name(),
               parallelism,
@@ -582,11 +563,19 @@ object V2IngestEntities {
             )
           }
         case NumberIteratorIngest(_, startOffset, limit) =>
-          Success(V1NumberIteratorIngest(defaultNumberFormat, startOffset, limit, maxPerSecond, parallelism))
+          Success(
+            V1.NumberIteratorIngest(
+              V1.IngestRoutes.defaultNumberFormat,
+              startOffset,
+              limit,
+              maxPerSecond,
+              parallelism,
+            ),
+          )
 
         case WebsocketIngest(format, url, initMessages, keepAlive, charset) =>
           asV1StreamedRecordFormat(format).map { fmt =>
-            WebsocketSimpleStartupIngest(
+            V1.WebsocketSimpleStartupIngest(
               fmt,
               url,
               initMessages,
@@ -605,10 +594,8 @@ object V2IngestEntities {
               numRetries,
               recordDecoders,
             ) =>
-          //Note V1 checkpoint settings don't appear to be used.
           asV1StreamedRecordFormat(format).map { fmt =>
-            val optionKinesisCheckpointSettings = None
-            V1KinesisIngest(
+            V1.KinesisIngest(
               fmt,
               streamName,
               shardIds,
@@ -619,18 +606,17 @@ object V2IngestEntities {
               numRetries,
               maxPerSecond,
               recordDecoders,
-              optionKinesisCheckpointSettings,
             )
           }
 
         case ServerSentEventIngest(format, url, recordDecoders) =>
           asV1StreamedRecordFormat(format).map { fmt =>
-            ServerSentEventsIngest(fmt, url, parallelism, maxPerSecond, recordDecoders)
+            V1.ServerSentEventsIngest(fmt, url, parallelism, maxPerSecond, recordDecoders)
           }
 
         case SQSIngest(format, queueUrl, readParallelism, credentials, region, deleteReadMessages, recordDecoders) =>
           asV1StreamedRecordFormat(format).map { fmt =>
-            V1SQSIngest(
+            V1.SQSIngest(
               fmt,
               queueUrl,
               readParallelism,
@@ -655,7 +641,7 @@ object V2IngestEntities {
               recordDecoders,
             ) =>
           asV1StreamedRecordFormat(format).map { fmt =>
-            V1KafkaIngest(
+            V1.KafkaIngest(
               fmt,
               topics,
               parallelism,
@@ -686,8 +672,8 @@ object V2IngestEntities {
               Note that creating this situation is only possible by creating an ingest in the v2 api and then trying
               to view it via the v1 api.
            */
-          StandardInputIngest(
-            FileIngestFormat.CypherLine("Unrenderable", "Unrenderable"),
+          V1.StandardInputIngest(
+            V1.FileIngestFormat.CypherLine("Unrenderable", "Unrenderable"),
             "UTF-8",
             0,
             0,
@@ -717,7 +703,7 @@ object V2IngestEntities {
           ingest.endingOffset,
           ingest.recordDecoders,
         )
-      case ingest: V1KinesisIngest =>
+      case ingest: V1.KinesisIngest =>
         KinesisIngest(
           StreamingFormat(ingest.format),
           ingest.streamName,
@@ -728,13 +714,53 @@ object V2IngestEntities {
           ingest.numRetries,
           ingest.recordDecoders,
         )
-      case ingest: ServerSentEventsIngest =>
+      case V1.KinesisKCLIngest(
+            format,
+            applicationName,
+            kinesisStreamName,
+            _,
+            credentials,
+            region,
+            initialPosition,
+            numRetries,
+            _,
+            recordDecoders,
+            _,
+            checkpointSettings,
+            _,
+          ) =>
+        // Note: This will be refined more in a V2 WIP branch
+        KinesisKclIngest(
+          name = applicationName, // TODO Probably not this
+          applicationName = Some(applicationName),
+          kinesisStreamName = kinesisStreamName,
+          format = StreamingFormat(format),
+          initialPosition =
+            // TODO Probably extract this translation
+            initialPosition match {
+              case V1.KinesisIngest.InitialPosition.TrimHorizon =>
+                TrimHorizon
+              case V1.KinesisIngest.InitialPosition.Latest =>
+                Latest
+              case V1.KinesisIngest.InitialPosition.AtTimestamp(year, month, day, hour, minute, second) =>
+                AtTimestamp(year, month, day, hour, minute, second)
+            },
+          credentialsOpt = credentials,
+          regionOpt = region,
+          numRetries = numRetries,
+          bufferSize = 0, // TODO Not this
+          backpressureTimeoutMillis = 0, // TODO Not this
+          recordDecoders = recordDecoders,
+          checkpointSettings = checkpointSettings,
+        )
+
+      case ingest: V1.ServerSentEventsIngest =>
         ServerSentEventIngest(
           StreamingFormat(ingest.format),
           ingest.url,
           ingest.recordDecoders,
         )
-      case ingest: V1SQSIngest =>
+      case ingest: V1.SQSIngest =>
         SQSIngest(
           StreamingFormat(ingest.format),
           ingest.queueUrl,
@@ -744,7 +770,7 @@ object V2IngestEntities {
           ingest.deleteReadMessages,
           ingest.recordDecoders,
         )
-      case ingest: WebsocketSimpleStartupIngest =>
+      case ingest: V1.WebsocketSimpleStartupIngest =>
         WebsocketIngest(
           StreamingFormat(ingest.format),
           ingest.url,
@@ -752,7 +778,7 @@ object V2IngestEntities {
           ingest.keepAlive,
           Charset.forName(ingest.encoding),
         )
-      case ingest: V1FileIngest =>
+      case ingest: V1.FileIngest =>
         FileIngest(
           FileFormat(ingest.format),
           ingest.path,
@@ -762,7 +788,7 @@ object V2IngestEntities {
           ingest.ingestLimit,
           Charset.forName(ingest.encoding),
         )
-      case ingest: V1S3Ingest =>
+      case ingest: V1.S3Ingest =>
         S3Ingest(
           FileFormat(ingest.format),
           ingest.bucket,
@@ -773,13 +799,13 @@ object V2IngestEntities {
           ingest.ingestLimit,
           Charset.forName(ingest.encoding),
         )
-      case ingest: StandardInputIngest =>
+      case ingest: V1.StandardInputIngest =>
         StdInputIngest(
           FileFormat(ingest.format),
           Some(ingest.maximumLineSize),
           Charset.forName(ingest.encoding),
         )
-      case ingest: V1NumberIteratorIngest =>
+      case ingest: V1.NumberIteratorIngest =>
         NumberIteratorIngest(
           // Can't convert from a FileFormat to a StreamingFormat,
           // but a format doesn't make sense for NumberIteratorIngest anyway

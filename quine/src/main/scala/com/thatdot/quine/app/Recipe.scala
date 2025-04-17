@@ -18,10 +18,9 @@ import io.circe.generic.extras.semiauto._
 import io.circe.{Decoder, DecodingFailure, Json}
 import org.snakeyaml.engine.v2.api.YamlUnicodeReader
 
+import com.thatdot.quine.routes.StandingQueryResultOutputUserDef._
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.CirceJsonAnySchema
-
-import StandingQueryResultOutputUserDef._
 
 @docs("A specification of a Quine Recipe")
 final case class Recipe(
@@ -235,7 +234,6 @@ object Recipe {
               numRetries,
               maximumPerSecond,
               recordEncodingTypes,
-              _,
             ) =>
           (
             streamName.subs,
@@ -253,10 +251,44 @@ object Recipe {
               numRetries,
               maximumPerSecond,
               recordEncodingTypes,
-              None,
             ),
           )
-
+        case KinesisKCLIngest(
+              format,
+              applicationName,
+              kinesisStreamName,
+              parallelism,
+              credentials,
+              region,
+              initialPosition,
+              numRetries,
+              maximumPerSecond,
+              recordEncodingTypes,
+              schedulerSourceSettings,
+              checkpointSettings,
+              advancedSettings,
+            ) =>
+          (
+            kinesisStreamName.subs,
+            credentials.traverse(_.subs),
+            region.traverse(_.subs),
+          ).mapN(
+            KinesisKCLIngest(
+              format,
+              applicationName,
+              _,
+              parallelism,
+              _,
+              _,
+              initialPosition,
+              numRetries,
+              maximumPerSecond,
+              recordEncodingTypes,
+              schedulerSourceSettings,
+              checkpointSettings,
+              advancedSettings,
+            ),
+          )
         case ServerSentEventsIngest(format, url, parallelism, maximumPerSecond, recordEncodingTypes) =>
           (
             url.subs

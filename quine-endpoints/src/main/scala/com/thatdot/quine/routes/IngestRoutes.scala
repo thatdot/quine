@@ -52,10 +52,12 @@ object IngestStreamStatus {
   case object Paused extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
   @docs(
-    "The stream has been restored from a saved state, but is not yet running: For example, after restarting the application.",
+    """The stream has been restored from a saved state, but is not yet running: For example, after restarting the
+      |application.""".stripMargin,
   )
   @description(
-    "The stream has been restored from a saved state, but is not yet running: For example, after restarting the application.",
+    """The stream has been restored from a saved state, but is not yet running: For example, after restarting the
+      |application.""".stripMargin,
   )
   case object Restored extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
@@ -177,10 +179,14 @@ trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
 @title("AWS Credentials")
 @ttitle("AWS Credentials")
 @docs(
-  "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>.",
+  """Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the
+    |default AWS credential chain.
+    |See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>.""".stripMargin,
 )
 @description(
-  "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>.",
+  """Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the
+    |default AWS credential chain.
+    |See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>.""".stripMargin,
 )
 final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
 
@@ -188,10 +194,12 @@ final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
 @title("AWS Region")
 @ttitle("AWS Region")
 @docs(
-  "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.",
+  """AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain.
+    |See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.""".stripMargin,
 )
 @description(
-  "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.",
+  """AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain.
+    |See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.""".stripMargin,
 )
 final case class AwsRegion(region: String)
 
@@ -204,7 +212,7 @@ trait AwsConfigurationSchemas extends endpoints4s.generic.JsonSchemas {
 @title("Kafka Auto Offset Reset")
 @ttitle("Kafka Auto Offset Reset")
 @docs(
-  "See [`auto.offset.reset` in the Kafka documentation](https://docs.confluent.io/current/installation/configuration/consumer-configs.html#auto.offset.reset).",
+  """See [`auto.offset.reset` in the Kafka documentation](https://docs.confluent.io/current/installation/configuration/consumer-configs.html#auto.offset.reset).""",
 )
 @description(
   "See [`auto.offset.reset` in the Kafka documentation](https://docs.confluent.io/current/installation/configuration/consumer-configs.html#auto.offset.reset).",
@@ -274,21 +282,7 @@ object KafkaOffsetCommitting {
     waitForCommitConfirmation: Boolean = true,
   ) extends KafkaOffsetCommitting
 }
-@title("Scheduler Checkpoint Settings")
-@ttitle("Scheduler Checkpoint Settings")
-@docs("Settings for batch configuration for Kinesis stream checkpointing.")
-@description("Settings for batch configuration for Kinesis stream checkpointing.")
-@unnamed
-final case class KinesisCheckpointSettings(
-  @docs("App name ")
-  appName: String,
-  @docs("Maximum checkpoint batch size.")
-  @description("Maximum checkpoint batch size.")
-  maxBatchSize: Int,
-  @docs("Maximum checkpoint batch wait time in ms.")
-  @description("Maximum checkpoint batch wait time in ms.")
-  maxBatchWaitMillis: Long,
-)
+
 @title("Ingest Stream Configuration")
 @docs("A specification of a data source and rules for consuming data from that source.")
 sealed abstract class IngestStreamConfiguration {
@@ -358,7 +352,7 @@ final case class KafkaIngest(
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
   @docs(
     """Kafka topics from which to ingest: Either an array of topic names, or an object whose keys are topic names and
-                                  |whose values are partition indices.""".stripMargin
+      |whose values are partition indices.""".stripMargin
       .replace('\n', ' '),
   )
   topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments],
@@ -374,7 +368,8 @@ final case class KafkaIngest(
   offsetCommitting: Option[KafkaOffsetCommitting],
   autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
   @docs(
-    "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>",
+    """Map of Kafka client properties.
+      |See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>""".stripMargin,
   )
   kafkaProperties: KafkaIngest.KafkaProperties = Map.empty[String, String],
   @docs(
@@ -392,10 +387,18 @@ final case class KafkaIngest(
 
 object KinesisIngest {
 
+  /** ⚠️ [[IteratorType]] and [[InitialPosition]] are different!
+    *
+    * Provides all supported iterator types that are available for use by the non-KCL implementation of Kinesis ingests.
+    */
   @title("Kinesis Shard Iterator Type")
   @ttitle("Kinesis Shard Iterator Type")
-  @docs("See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_StartingPosition.html>.")
-  @description("See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_StartingPosition.html>.")
+  @docs(
+    "See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_GetShardIterator.html#Streams-GetShardIterator-request-ShardIteratorType>.",
+  )
+  @description(
+    "See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_Shttps://docs.aws.amazon.com/kinesis/latest/APIReference/API_StartingPosition.html>.",
+  )
   sealed abstract class IteratorType
 
   object IteratorType {
@@ -442,6 +445,292 @@ object KinesisIngest {
     @unnamed
     final case class AtTimestamp(millisSinceEpoch: Long) extends Parameterized
   }
+
+  /** ⚠️ [[InitialPosition]] and [[IteratorType]] are different!
+    *
+    * Provides all supported iterator types that are available for use by the non-KCL implementation of Kinesis ingests.
+    */
+  @title("Kinesis Initial Position Type")
+  @description(
+    "See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_StartingPosition.html>.",
+  )
+  sealed abstract class InitialPosition
+
+  object InitialPosition {
+
+    @unnamed
+    sealed abstract class Unparameterized extends InitialPosition
+
+    @unnamed
+    sealed abstract class Parameterized extends InitialPosition
+
+    @title("Latest")
+    @description("All records added to the shard since subscribing.")
+    @unnamed
+    case object Latest extends Unparameterized
+
+    @title("TrimHorizon")
+    @description("All records in the shard.")
+    @unnamed
+    case object TrimHorizon extends Unparameterized
+
+    @title("AtTimestamp")
+    @description("All records starting from the provided date-time. Month and day-of-month are indexed starting at 1.")
+    final case class AtTimestamp(year: Int, month: Int, dayOfMonth: Int, hourOfDay: Int, minute: Int, second: Int)
+        extends Parameterized
+  }
+
+  case class KCLSchedulerSourceSettings(
+    @docs(
+      """Sets the KinesisSchedulerSourceSettings buffer size. Buffer size must be greater than 0; use size 1 to disable
+        |stage buffering.""".stripMargin,
+    )
+    bufferSize: Option[Int],
+    @docs(
+      "Sets the KinesisSchedulerSourceSettings backpressureTimeout in milliseconds",
+    )
+    backpressureTimeoutMillis: Option[Long],
+  )
+
+  @title("Scheduler Checkpoint Settings")
+  @ttitle("Scheduler Checkpoint Settings")
+  @docs("Settings for batch configuration for Kinesis stream checkpointing.")
+  @description("Settings for batch configuration for Kinesis stream checkpointing.")
+  @unnamed
+  final case class KinesisCheckpointSettings(
+    @docs("Whether to disable checkpointing, which is enabled by default.")
+    @description("Whether to disable checkpointing, which is enabled by default.")
+    disableCheckpointing: Boolean = false,
+    @docs("Maximum checkpoint batch size. Appropriate only when checkpointing is not disabled.")
+    @description("Maximum checkpoint batch size. Appropriate only when checkpointing is not disabled.")
+    maxBatchSize: Option[Int],
+    @docs("Maximum checkpoint batch wait time in ms. Appropriate only when checkpointing is not disabled.")
+    @description("Maximum checkpoint batch wait time in ms. Appropriate only when checkpointing is not disabled.")
+    maxBatchWaitMillis: Option[Long],
+  )
+
+  @title("KCLConfiguration")
+  @docs("A complex object comprising abbreviated configuration objects used by the Kinesis Client Library (KCL).")
+  case class KCLConfiguration(
+    configsBuilder: Option[ConfigsBuilder],
+    leaseManagementConfig: Option[LeaseManagementConfig],
+    pollingConfig: Option[PollingConfig],
+    processorConfig: Option[ProcessorConfig],
+    coordinatorConfig: Option[CoordinatorConfig],
+    lifecycleConfig: Option[LifecycleConfig],
+    retrievalConfig: Option[RetrievalConfig],
+    metricsConfig: Option[MetricsConfig],
+  )
+
+  @title("ConfigsBuilder")
+  @docs("Abbreviated configuration for the KCL configurations builder.")
+  case class ConfigsBuilder(
+    @docs("""If the default, provided by `applicationName`, is unsuitable,
+            |this will be the table name used for the Amazon DynamoDB lease table.""".stripMargin)
+    tableName: Option[String],
+    @docs("A unique identifier that represents this instantiation of the application processor. This must be unique.")
+    workerIdentifier: Option[String],
+  )
+
+  sealed abstract class BillingMode extends Product with Serializable
+  object BillingMode {
+    @title("Provisioned")
+    @docs("Provisioned billing.")
+    case object PROVISIONED extends BillingMode
+    @title("Pay-Per-Request")
+    @docs("Pay-per-request billing.")
+    case object PAY_PER_REQUEST extends BillingMode
+    @title("Unknown")
+    @docs("The billing mode is not one of these provided options.")
+    case object UNKNOWN_TO_SDK_VERSION extends BillingMode
+  }
+
+  case class LeaseManagementConfig(
+    @docs(
+      """The number of milliseconds that must pass before you can consider a lease owner to have failed. For applications that have a large number of shards, this may be set to a higher number to reduce the number of DynamoDB IOPS required for tracking leases.""".stripMargin,
+    )
+    failoverTimeMillis: Option[Long],
+    @docs("The time between shard sync calls.")
+    shardSyncIntervalMillis: Option[Long],
+    @docs("When set, leases are removed as soon as the child leases have started processing.")
+    cleanupLeasesUponShardCompletion: Option[Boolean],
+    @docs("When set, child shards that have an open shard are ignored. This is primarily for DynamoDB Streams.")
+    ignoreUnexpectedChildShards: Option[Boolean],
+    @docs(
+      """The maximum number of leases a single worker should accept. Setting it too low may cause data loss if workers can't
+        |process all shards, and lead to a suboptimal lease assignment among workers. Consider total shard count, number
+        |of workers, and worker processing capacity when configuring it.""".stripMargin,
+    )
+    maxLeasesForWorker: Option[Int],
+    @docs(
+      """Controls the size of the lease renewer thread pool. The more leases that your application could take, the larger
+        |this pool should be.""".stripMargin,
+    )
+    maxLeaseRenewalThreads: Option[Int],
+    @docs(
+      """Determines the capacity mode of the lease table created in DynamoDB. There are two options: on-demand mode
+        |(PAY_PER_REQUEST) and provisioned mode. We recommend using the default setting of on-demand mode because it
+        |automatically scales to accommodate your workload without the need for capacity planning.""".stripMargin,
+    )
+    billingMode: Option[BillingMode],
+    @docs(
+      """The DynamoDB read capacity that is used if the Kinesis Client Library needs to create a new DynamoDB lease table
+        |with provisioned capacity mode. You can ignore this configuration if you are using the default on-demand capacity
+        |mode in `billingMode` configuration.""".stripMargin,
+    )
+    initialLeaseTableReadCapacity: Option[Int],
+    @docs(
+      """The DynamoDB read capacity that is used if the Kinesis Client Library needs to create a new DynamoDB lease table.
+        |You can ignore this configuration if you are using the default on-demand capacity mode in `billingMode`
+        |configuration.""".stripMargin,
+    )
+    initialLeaseTableWriteCapacity: Option[Int],
+    @docs(
+      """A percentage value that determines when the load balancing algorithm should consider reassigning shards among
+        |workers.
+        |This is a new configuration introduced in KCL 3.x.""".stripMargin,
+    )
+    reBalanceThresholdPercentage: Option[Int],
+    @docs(
+      """A percentage value that is used to dampen the amount of load that will be moved from the overloaded worker in a
+        |single rebalance operation.
+        |This is a new configuration introduced in KCL 3.x.""".stripMargin,
+    )
+    dampeningPercentage: Option[Int],
+    @docs(
+      """Determines whether additional lease still needs to be taken from the overloaded worker even if it causes total
+        |amount of lease throughput taken to exceed the desired throughput amount.
+        |This is a new configuration introduced in KCL 3.x.""".stripMargin,
+    )
+    allowThroughputOvershoot: Option[Boolean],
+    @docs(
+      """Determines if KCL should ignore resource metrics from workers (such as CPU utilization) when reassigning leases
+        |and load balancing. Set this to TRUE if you want to prevent KCL from load balancing based on CPU utilization.
+        |This is a new configuration introduced in KCL 3.x.""".stripMargin,
+    )
+    disableWorkerMetrics: Option[Boolean],
+    @docs("""Amount of the maximum throughput to assign to a worker during the lease assignment.
+            |This is a new configuration introduced in KCL 3.x.""".stripMargin)
+    maxThroughputPerHostKBps: Option[Double],
+    @docs(
+      """Controls the behavior of lease handoff between workers. When set to true, KCL will attempt to gracefully transfer
+        |leases by allowing the shard's RecordProcessor sufficient time to complete processing before handing off the
+        |lease to another worker. This can help ensure data integrity and smooth transitions but may increase handoff time.
+        |When set to false, the lease will be handed off immediately without waiting for the RecordProcessor to shut down
+        |gracefully. This can lead to faster handoffs but may risk incomplete processing.
+        |
+        |Note: Checkpointing must be implemented inside the shutdownRequested() method of the RecordProcessor to get
+        |benefited from the graceful lease handoff feature.
+        |This is a new configuration introduced in KCL 3.x.""".stripMargin,
+    )
+    isGracefulLeaseHandoffEnabled: Option[Boolean],
+    @docs("""Specifies the minimum time (in milliseconds) to wait for the current shard's RecordProcessor to gracefully
+            |shut down before forcefully transferring the lease to the next owner.
+            |If your processRecords method typically runs longer than the default value, consider increasing this setting.
+            |This ensures the RecordProcessor has sufficient time to complete its processing before the lease transfer occurs.
+            |This is a new configuration introduced in KCL 3.x.""".stripMargin)
+    gracefulLeaseHandoffTimeoutMillis: Option[Long],
+  )
+  case class PollingConfig(
+    @docs("Allows setting the maximum number of records that Kinesis returns.")
+    maxRecords: Option[Int],
+    @docs("Configures the delay between GetRecords attempts for failures.")
+    retryGetRecordsInSeconds: Option[Int],
+    @docs("The thread pool size used for GetRecords.")
+    maxGetRecordsThreadPool: Option[Int],
+    @docs("""Determines how long KCL waits between GetRecords calls to poll the data from data streams.
+            |The unit is milliseconds.""".stripMargin)
+    idleTimeBetweenReadsInMillis: Option[Long],
+  )
+  case class ProcessorConfig(
+    @docs("When set, the record processor is called even when no records were provided from Kinesis.")
+    callProcessRecordsEvenForEmptyRecordList: Option[Boolean],
+  )
+
+  sealed trait ShardPrioritization extends Product with Serializable
+  object ShardPrioritization {
+    @unnamed
+    sealed abstract class Unparameterized extends ShardPrioritization
+
+    @unnamed
+    sealed abstract class Parameterized extends ShardPrioritization
+
+    case object NoOpShardPrioritization extends Unparameterized
+
+    @docs("Processes shard parents first, limited by a 'max depth' argument.")
+    case class ParentsFirstShardPrioritization(maxDepth: Int) extends Parameterized
+  }
+
+  sealed trait ClientVersionConfig extends Product with Serializable
+  object ClientVersionConfig {
+    case object CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X extends ClientVersionConfig
+    case object CLIENT_VERSION_CONFIG_3X extends ClientVersionConfig
+  }
+
+  case class CoordinatorConfig(
+    @docs(
+      """How often a record processor should poll to see if the parent shard has been completed.
+        |The unit is milliseconds.""".stripMargin,
+    )
+    parentShardPollIntervalMillis: Option[Long],
+    @docs("Disable synchronizing shard data if the lease table contains existing leases.")
+    skipShardSyncAtWorkerInitializationIfLeasesExist: Option[Boolean],
+    @docs(
+      """Which shard prioritization to use.
+        |
+        |Options: NoOpShardPrioritization, ParentsFirstShardPrioritization(maxDepth: Int)""".stripMargin,
+    )
+    shardPrioritization: Option[ShardPrioritization],
+    @docs(
+      """Determines which KCL version compatibility mode the application will run in. This configuration is only for the
+        |migration from previous KCL versions. When migrating to 3.x, you need to set this configuration to `CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X`. You can remove this configuration when you complete the migration.""".stripMargin,
+    )
+    clientVersionConfig: Option[ClientVersionConfig],
+  )
+  case class LifecycleConfig(
+    @docs("The time to wait to retry failed KCL tasks. The unit is milliseconds.")
+    taskBackoffTimeMillis: Option[Long],
+    @docs("How long to wait before a warning is logged if a task hasn't completed.")
+    logWarningForTaskAfterMillis: Option[Long],
+  )
+  case class RetrievalConfig(
+    @docs(
+      "The number of milliseconds to wait between calls to `ListShards` when failures occur. The unit is milliseconds.",
+    )
+    listShardsBackoffTimeInMillis: Option[Long],
+    @docs("The maximum number of times that `ListShards` retries before giving up.")
+    maxListShardsRetryAttempts: Option[Int],
+  )
+  sealed trait MetricsLevel extends Product with Serializable
+  object MetricsLevel {
+    case object NONE extends MetricsLevel
+
+    /** SUMMARY metrics level can be used to emit only the most significant metrics. */
+    case object SUMMARY extends MetricsLevel
+
+    /** DETAILED metrics level can be used to emit all metrics. */
+    case object DETAILED extends MetricsLevel
+  }
+
+  sealed abstract class MetricsDimension(val value: String) extends Product with Serializable
+  object MetricsDimension {
+    case object OPERATION_DIMENSION_NAME extends MetricsDimension("Operation")
+    case object SHARD_ID_DIMENSION_NAME extends MetricsDimension("ShardId")
+    case object STREAM_IDENTIFIER extends MetricsDimension("StreamId")
+    case object WORKER_IDENTIFIER extends MetricsDimension("WorkerIdentifier")
+  }
+
+  case class MetricsConfig(
+    @docs("Specifies the maximum duration (in milliseconds) to buffer metrics before publishing them to CloudWatch.")
+    metricsBufferTimeMillis: Option[Long],
+    @docs("Specifies the maximum number of metrics to buffer before publishing to CloudWatch.")
+    metricsMaxQueueSize: Option[Int],
+    @docs("Specifies the granularity level of CloudWatch metrics to be enabled and published.")
+    metricsLevel: Option[MetricsLevel],
+    @docs("Controls allowed dimensions for CloudWatch Metrics.")
+    metricsEnabledDimensions: Option[Set[MetricsDimension]],
+  )
+
 }
 
 @title("Kinesis Data Stream")
@@ -450,7 +739,8 @@ object KinesisIngest {
 final case class KinesisIngest(
   @docs("The format used to decode each Kinesis record.")
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
-  @docs("Name of the Kinesis stream to ingest.") streamName: String,
+  @docs("Name of the Kinesis stream to ingest.")
+  streamName: String,
   @docs(
     "Shards IDs within the named kinesis stream to ingest; if empty or excluded, all shards on the stream are processed.",
   )
@@ -459,23 +749,69 @@ final case class KinesisIngest(
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
   credentials: Option[AwsCredentials],
   region: Option[AwsRegion],
-  @docs("Shard iterator type.") iteratorType: KinesisIngest.IteratorType = KinesisIngest.IteratorType.Latest,
-  @docs("Number of retries to attempt on Kineses error.") numRetries: Int = 3,
-  @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
+  @docs(
+    """Shard iterator type.
+      |
+      |Options: Latest, TrimHorizon, AtSequenceNumber(sequenceNumber: String), AfterSequenceNumber(sequenceNumber: String), AtTimestamp(millisSinceEpoch: Long)
+      |Default: Latest""".stripMargin,
+  )
+  iteratorType: KinesisIngest.IteratorType = KinesisIngest.IteratorType.Latest,
+  @docs("Number of retries to attempt on Kineses error.")
+  numRetries: Int = 3,
+  @docs("Maximum records to process per second.")
+  maximumPerSecond: Option[Int],
   @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
   recordDecoders: Seq[RecordDecodingType] = Seq.empty,
-  @docs(
-    "Optional stream checkpoint settings. If present, checkpointing will manage `iteratorType` and `shardIds`, ignoring those fields in the API request.",
-  )
-  checkpointSettings: Option[KinesisCheckpointSettings],
 ) extends IngestStreamConfiguration {
   override def slug: String = "kinesis"
+}
+
+@title("Kinesis Data Stream via Kinesis Client Library (KCL)")
+@unnamed
+@docs("A stream of data being ingested from Kinesis using KCL.")
+final case class KinesisKCLIngest(
+  @docs("The format used to decode each Kinesis record.")
+  format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
+  @docs("Name of the application (also used as the default DynamoDB lease table name unless overridden).")
+  applicationName: String,
+  @docs("Name of the Kinesis stream to ingest.")
+  kinesisStreamName: String,
+  @docs("Maximum number of records to write simultaneously.")
+  parallelism: Int = IngestRoutes.defaultWriteParallelism,
+  credentials: Option[AwsCredentials],
+  region: Option[AwsRegion],
+  @docs(
+    """The initial position value for lease configuration.
+      |
+      |Options: Latest, TrimHorizon, AtSequenceNumber(sequenceNumber: String)
+      |Default: Latest""".stripMargin,
+  )
+  initialPosition: KinesisIngest.InitialPosition = KinesisIngest.InitialPosition.Latest,
+  @docs("Number of retries to attempt on Kineses error.")
+  numRetries: Int = 3,
+  @docs("Maximum records to process per second.")
+  maximumPerSecond: Option[Int],
+  @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
+  recordDecoders: Seq[RecordDecodingType] = Seq.empty,
+  @docs("Optional additional settings for the KCL Scheduler.")
+  schedulerSourceSettings: Option[KinesisIngest.KCLSchedulerSourceSettings],
+  @docs("Stream checkpoint settings.")
+  checkpointSettings: Option[KinesisIngest.KinesisCheckpointSettings],
+  @docs(
+    """Optional advanced configuration, derived from the KCL 3.x documented configuration table
+      |(https://docs.aws.amazon.com/streams/latest/dev/kcl-configuration.html), but without fields that are available
+      |elsewhere in this API object schema.""".stripMargin,
+  )
+  advancedSettings: Option[KinesisIngest.KCLConfiguration],
+) extends IngestStreamConfiguration {
+  override def slug: String = "kinesisKCL"
 }
 
 @title("Server Sent Events Stream")
 @unnamed
 @docs(
-  "A server-issued event stream, as might be handled by the EventSource JavaScript API. Only consumes the `data` portion of an event.",
+  """A server-issued event stream, as might be handled by the EventSource JavaScript API. Only consumes the `data`
+    |portion of an event.""".stripMargin,
 )
 final case class ServerSentEventsIngest(
   @docs("Format used to decode each event's `data`.")
@@ -544,8 +880,8 @@ final case class WebsocketSimpleStartupIngest(
   @docs("Maximum number of records to ingest simultaneously.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
   @docs(s"""Text encoding used to read text messages in the stream. Only UTF-8, US-ASCII and ISO-8859-1 are directly
-                                                        |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).
-                                                        |""".stripMargin)
+           |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).
+           |""".stripMargin)
   encoding: String = "UTF-8",
 ) extends IngestStreamConfiguration {
   override def slug: String = "websocket"
@@ -633,8 +969,8 @@ final case class FileIngest(
   @docs("Local file path.")
   path: String,
   @docs(
-    "The text encoding scheme for the file. UTF-8, US-ASCII and ISO-8859-1 are " +
-    "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).",
+    """The text encoding scheme for the file. UTF-8, US-ASCII and ISO-8859-1 are supported -- other encodings will be
+      |transcoded to UTF-8 on the fly (and ingest may be slower).""".stripMargin,
   )
   encoding: String = "UTF-8",
   @docs("Maximum number of records to process at once.")
@@ -642,8 +978,8 @@ final case class FileIngest(
   @docs("Maximum size (in bytes) of any line in the file.")
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
   @docs(
-    s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
-                                  |resuming ingest from a partially consumed file.""".stripMargin,
+    s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers)
+       |or resuming ingest from a partially consumed file.""".stripMargin,
   )
   startAtOffset: Long = 0L,
   @docs(s"Optionally limit how many records are ingested from this file.")
@@ -683,7 +1019,7 @@ final case class S3Ingest(
   @docs("maximum size (in bytes) of any line in the file")
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
   @docs(s"""start at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
-                                    |resuming ingest from a partially consumed file""".stripMargin)
+           |resuming ingest from a partially consumed file""".stripMargin)
   startAtOffset: Long = 0L,
   @docs(s"optionally limit how many records are ingested from this file.")
   ingestLimit: Option[Long],
@@ -728,8 +1064,8 @@ case class NumberIteratorIngest(
   @docs("Optionally end the stream after consuming this many items.")
   ingestLimit: Option[Long],
   @docs(
-    "Limit the maximum rate of production to this many records per second. Note that this may be slowed by " +
-    "backpressure elsewhere in the system.",
+    """Limit the maximum rate of production to this many records per second.
+      |Note that this may be slowed by backpressure elsewhere in the system.""".stripMargin,
   )
   maximumPerSecond: Option[Int],
   @docs("Maximum number of records to process at once.")
@@ -752,8 +1088,7 @@ object FileIngestFormat {
   @unnamed()
   @docs("""For every line (LF/CRLF delimited) in the source, the given Cypher query will be
           |re-executed with the parameter in the query set equal to a string matching
-          |the new line value. The newline is not included in this string.
-  """.stripMargin.replace('\n', ' '))
+          |the new line value. The newline is not included in this string.""".stripMargin.replace('\n', ' '))
   final case class CypherLine(
     @docs("Cypher query to execute on each line") query: String,
     @docs("name of the Cypher parameter holding the string line value") parameter: String = "that",
@@ -830,18 +1165,18 @@ object FileIngestFormat {
     @docs("Name of the Cypher parameter holding the parsed CSV row.")
     parameter: String = "that",
     @docs("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`).
-                                      |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
-                                      |type available to the Cypher query will be a List of strings with values accessible by index. When
-                                      |headers are available (supplied or read from the file), the resulting type available to the Cypher
-                                      |query will be a Map[String, String], with values accessible using the corresponding header string.
-                                      |CSV rows containing more records than the `headers` will have items that don't match a header column
-                                      |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
-                                      |Default: `false`.""".stripMargin)
+            |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
+            |type available to the Cypher query will be a List of strings with values accessible by index. When
+            |headers are available (supplied or read from the file), the resulting type available to the Cypher
+            |query will be a Map[String, String], with values accessible using the corresponding header string.
+            |CSV rows containing more records than the `headers` will have items that don't match a header column
+            |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
+            |Default: `false`.""".stripMargin)
     headers: Either[Boolean, List[String]] = Left(false),
     @docs("CSV row delimiter character.")
     delimiter: CsvCharacter = CsvCharacter.Comma,
     @docs("""Character used to quote values in a field. Special characters (like new lines) inside of a quoted
-                                      |section will be a part of the CSV value.""".stripMargin)
+            |section will be a part of the CSV value.""".stripMargin)
     quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
     @docs("Character used to escape special characters.")
     escapeChar: CsvCharacter = CsvCharacter.Backslash,
@@ -900,6 +1235,7 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
     stringEnumeration(IngestStreamStatus.states)(_.toString)
       .withExample(IngestStreamStatus.Running)
 
+  // FIXME Right now, this doesn't seem to help. `iteratorType` in OpenAPI shows as "one of: string"
   implicit lazy val iteratorTypeSchema: JsonSchema[KinesisIngest.IteratorType] = {
     import KinesisIngest.IteratorType
     val unparameterizedKinesisIteratorSchema: Enum[IteratorType.Unparameterized] =
@@ -918,8 +1254,186 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
       }
   }
 
-  implicit val kinesisCheckpointSettingsSchema: Record[KinesisCheckpointSettings] =
-    genericRecord[KinesisCheckpointSettings].withExample(KinesisCheckpointSettings("myApp", 100, 1000))
+  implicit lazy val initialPositionSchema: JsonSchema[KinesisIngest.InitialPosition] = {
+    import KinesisIngest.InitialPosition
+    val unparameterizedKinesisIteratorSchema: Enum[InitialPosition.Unparameterized] =
+      stringEnumeration[InitialPosition.Unparameterized](
+        Seq(InitialPosition.TrimHorizon, InitialPosition.Latest),
+      )(_.toString)
+
+    val parameterizedKinesisIteratorSchema: Tagged[InitialPosition.Parameterized] =
+      genericTagged[InitialPosition.Parameterized]
+
+    // Try the string enumeration first, then try the parameterized versions.
+    orFallbackToJsonSchema(unparameterizedKinesisIteratorSchema, parameterizedKinesisIteratorSchema)
+      .xmap(_.merge) {
+        case unparameterized: InitialPosition.Unparameterized => Left(unparameterized)
+        case parameterized: InitialPosition.Parameterized => Right(parameterized)
+      }
+  }
+
+  private val exampleCheckpointSettings: KinesisIngest.KinesisCheckpointSettings =
+    KinesisIngest.KinesisCheckpointSettings(
+      maxBatchSize = Some(1000),
+      maxBatchWaitMillis = Some(10000),
+    )
+  implicit val kinesisCheckpointSettingsSchema: Record[KinesisIngest.KinesisCheckpointSettings] =
+    genericRecord[KinesisIngest.KinesisCheckpointSettings].withExample(exampleCheckpointSettings)
+
+  private val examplePollingConfig: KinesisIngest.PollingConfig = KinesisIngest.PollingConfig(
+    maxRecords = Some(1),
+    retryGetRecordsInSeconds = Some(1),
+    maxGetRecordsThreadPool = Some(1),
+    idleTimeBetweenReadsInMillis = Some(2222),
+  )
+  implicit val examplePollingConfigSchema: Record[KinesisIngest.PollingConfig] =
+    genericRecord[KinesisIngest.PollingConfig].withExample(examplePollingConfig)
+
+  private val exampleProcessorConfig: KinesisIngest.ProcessorConfig = KinesisIngest.ProcessorConfig(
+    callProcessRecordsEvenForEmptyRecordList = Some(true),
+  )
+  implicit val exampleProcessorConfigSchema: Record[KinesisIngest.ProcessorConfig] =
+    genericRecord[KinesisIngest.ProcessorConfig].withExample(exampleProcessorConfig)
+
+  // FIXME Right now, this doesn't seem to help. `shardPrioritization` in OpenAPI shows as "one of: string"
+  implicit val shardPrioritizationSchema: JsonSchema[KinesisIngest.ShardPrioritization] = {
+    val unparameterizedShardPrioritizationSchema: Enum[KinesisIngest.ShardPrioritization.Unparameterized] =
+      stringEnumeration[KinesisIngest.ShardPrioritization.Unparameterized](
+        Seq(KinesisIngest.ShardPrioritization.NoOpShardPrioritization),
+      )(_.toString)
+
+    val parameterizedShardPrioritizationSchema: Tagged[KinesisIngest.ShardPrioritization.Parameterized] =
+      genericTagged[KinesisIngest.ShardPrioritization.Parameterized]
+
+    // Try the string enumeration first, then try the parameterized versions.
+    orFallbackToJsonSchema(unparameterizedShardPrioritizationSchema, parameterizedShardPrioritizationSchema)
+      .xmap(_.merge) {
+        case unparameterized: KinesisIngest.ShardPrioritization.Unparameterized => Left(unparameterized)
+        case parameterized: KinesisIngest.ShardPrioritization.Parameterized => Right(parameterized)
+      }
+  }
+
+  implicit val clientVersionConfigSchema: Enum[KinesisIngest.ClientVersionConfig] =
+    stringEnumeration(
+      Seq(
+        KinesisIngest.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X,
+        KinesisIngest.ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X,
+      ),
+    )(_.toString).withExample(KinesisIngest.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X)
+
+  private val exampleCoordinatorConfig: KinesisIngest.CoordinatorConfig = KinesisIngest.CoordinatorConfig(
+    parentShardPollIntervalMillis = Some(2222),
+    skipShardSyncAtWorkerInitializationIfLeasesExist = Some(true),
+    shardPrioritization = Some(KinesisIngest.ShardPrioritization.NoOpShardPrioritization),
+    clientVersionConfig = Some(KinesisIngest.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X),
+  )
+  implicit val exampleCoordinatorConfigSchema: Record[KinesisIngest.CoordinatorConfig] =
+    genericRecord[KinesisIngest.CoordinatorConfig].withExample(exampleCoordinatorConfig)
+
+  private val exampleLifecycleConfig: KinesisIngest.LifecycleConfig = KinesisIngest.LifecycleConfig(
+    taskBackoffTimeMillis = Some(2222),
+    logWarningForTaskAfterMillis = Some(2222),
+  )
+  implicit val exampleLifecycleConfigSchema: Record[KinesisIngest.LifecycleConfig] =
+    genericRecord[KinesisIngest.LifecycleConfig].withExample(exampleLifecycleConfig)
+
+  private val exampleRetrievalConfig: KinesisIngest.RetrievalConfig = KinesisIngest.RetrievalConfig(
+    listShardsBackoffTimeInMillis = Some(2222),
+    maxListShardsRetryAttempts = Some(1),
+  )
+  implicit val exampleRetrievalConfigSchema: Record[KinesisIngest.RetrievalConfig] =
+    genericRecord[KinesisIngest.RetrievalConfig].withExample(exampleRetrievalConfig)
+
+  implicit val metricsLevelSchema: Enum[KinesisIngest.MetricsLevel] =
+    stringEnumeration(
+      Seq(KinesisIngest.MetricsLevel.DETAILED, KinesisIngest.MetricsLevel.SUMMARY, KinesisIngest.MetricsLevel.NONE),
+    )(_.toString)
+      .withExample(KinesisIngest.MetricsLevel.SUMMARY)
+
+  implicit val metricsDimensionSchema: Enum[KinesisIngest.MetricsDimension] =
+    stringEnumeration(
+      Seq(
+        KinesisIngest.MetricsDimension.SHARD_ID_DIMENSION_NAME,
+        KinesisIngest.MetricsDimension.OPERATION_DIMENSION_NAME,
+        KinesisIngest.MetricsDimension.STREAM_IDENTIFIER,
+        KinesisIngest.MetricsDimension.WORKER_IDENTIFIER,
+      ),
+    )(_.toString)
+      .withExample(KinesisIngest.MetricsDimension.STREAM_IDENTIFIER)
+
+  private val exampleMetricsConfig: KinesisIngest.MetricsConfig = KinesisIngest.MetricsConfig(
+    metricsBufferTimeMillis = Some(2222),
+    metricsMaxQueueSize = Some(1),
+    metricsLevel = Some(KinesisIngest.MetricsLevel.DETAILED),
+    metricsEnabledDimensions = Some(
+      Set(
+        KinesisIngest.MetricsDimension.SHARD_ID_DIMENSION_NAME,
+        KinesisIngest.MetricsDimension.OPERATION_DIMENSION_NAME,
+      ),
+    ),
+  )
+  implicit val exampleMetricsConfigSchema: Record[KinesisIngest.MetricsConfig] =
+    genericRecord[KinesisIngest.MetricsConfig].withExample(exampleMetricsConfig)
+
+  implicit val billingModeSchema: Enum[KinesisIngest.BillingMode] =
+    stringEnumeration(
+      Seq(
+        KinesisIngest.BillingMode.PROVISIONED,
+        KinesisIngest.BillingMode.PAY_PER_REQUEST,
+        KinesisIngest.BillingMode.UNKNOWN_TO_SDK_VERSION,
+      ),
+    )(
+      _.toString,
+    ).withExample(KinesisIngest.BillingMode.PAY_PER_REQUEST)
+
+  private val exampleLeaseManagementConfig: KinesisIngest.LeaseManagementConfig = KinesisIngest.LeaseManagementConfig(
+    failoverTimeMillis = Some(2222),
+    shardSyncIntervalMillis = Some(2222),
+    cleanupLeasesUponShardCompletion = Some(true),
+    ignoreUnexpectedChildShards = Some(true),
+    maxLeasesForWorker = Some(1),
+    maxLeaseRenewalThreads = Some(1),
+    billingMode = Some(KinesisIngest.BillingMode.PROVISIONED),
+    initialLeaseTableReadCapacity = Some(1),
+    initialLeaseTableWriteCapacity = Some(1),
+    reBalanceThresholdPercentage = Some(1),
+    dampeningPercentage = Some(1),
+    allowThroughputOvershoot = Some(true),
+    disableWorkerMetrics = Some(true),
+    maxThroughputPerHostKBps = Some(32.0),
+    isGracefulLeaseHandoffEnabled = Some(true),
+    gracefulLeaseHandoffTimeoutMillis = Some(2222),
+  )
+  implicit val exampleLeaseManagementConfigSchema: Record[KinesisIngest.LeaseManagementConfig] =
+    genericRecord[KinesisIngest.LeaseManagementConfig].withExample(exampleLeaseManagementConfig)
+
+  private val exampleConfigsBuilder: KinesisIngest.ConfigsBuilder = KinesisIngest.ConfigsBuilder(
+    tableName = Some("my-table"),
+    workerIdentifier = Some("worker-id-1"),
+  )
+  implicit val exampleConfigsBuilderSchema: Record[KinesisIngest.ConfigsBuilder] =
+    genericRecord[KinesisIngest.ConfigsBuilder].withExample(exampleConfigsBuilder)
+
+  private val exampleKinesisSchedulerSourceSettings: KinesisIngest.KCLSchedulerSourceSettings =
+    KinesisIngest.KCLSchedulerSourceSettings(
+      bufferSize = Some(1),
+      backpressureTimeoutMillis = Some(2222),
+    )
+  implicit val kinesisSchedulerSourceSettingsSchema: Record[KinesisIngest.KCLSchedulerSourceSettings] =
+    genericRecord[KinesisIngest.KCLSchedulerSourceSettings].withExample(exampleKinesisSchedulerSourceSettings)
+
+  private val exampleAdvancedKclConfiguration: KinesisIngest.KCLConfiguration = KinesisIngest.KCLConfiguration(
+    configsBuilder = Some(exampleConfigsBuilder),
+    leaseManagementConfig = Some(exampleLeaseManagementConfig),
+    pollingConfig = Some(examplePollingConfig),
+    processorConfig = Some(exampleProcessorConfig),
+    coordinatorConfig = Some(exampleCoordinatorConfig),
+    lifecycleConfig = Some(exampleLifecycleConfig),
+    retrievalConfig = Some(exampleRetrievalConfig),
+    metricsConfig = Some(exampleMetricsConfig),
+  )
+  implicit val kclConfigurationSchema: Record[KinesisIngest.KCLConfiguration] =
+    genericRecord[KinesisIngest.KCLConfiguration].withExample(exampleAdvancedKclConfiguration)
 
   val exampleIngestStreamInfo: IngestStreamInfo = IngestStreamInfo(
     status = IngestStreamStatus.Running,
@@ -991,7 +1505,7 @@ trait IngestRoutes
   val ingestStreamName: Path[String] =
     segment[String]("name", docs = Some("Ingest stream name"))
 
-  /** The use of Either[ClientErrors, Option[Unit]] was chosen to correspond to different HTTP codes. The outer Either
+  /** The use of `Either[ClientErrors, Option[Unit]]` was chosen to correspond to different HTTP codes. The outer Either
     * uses the Left for 400 errors, and the Right for everything else. Within the Right, the Option is used to represent
     * 404 with None and Some[Unit] to represent a success (200).
     * When adding the Option to allow returning 404, these implementations were considered:
@@ -1114,7 +1628,8 @@ trait IngestRoutes
         .withSummary(Some("List Ingest Streams"))
         .withDescription(
           Some(
-            """Return a JSON object containing the configured [ingest streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
+            """Return a JSON object containing the configured
+              |[ingest streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
               |and their associated stream metrics keyed by the stream name. """.stripMargin,
           ),
         )

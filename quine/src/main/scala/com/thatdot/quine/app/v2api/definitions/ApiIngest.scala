@@ -6,7 +6,7 @@ import java.time.Instant
 import com.typesafe.scalalogging.LazyLogging
 import sttp.tapir.Schema.annotations.{default, description, title}
 
-import com.thatdot.quine.routes.{IngestRoutes, KinesisCheckpointSettings}
+import com.thatdot.quine.{routes => V1}
 
 object ApiIngest {
 
@@ -348,7 +348,7 @@ object ApiIngest {
       parameter: String = "that",
       @description("Maximum number of records to process at once.")
       @default(16)
-      parallelism: Int = IngestRoutes.defaultWriteParallelism,
+      parallelism: Int = V1.IngestRoutes.defaultWriteParallelism,
       @description("Maximum number of records to process per second.")
       maxPerSecond: Option[Int] = None,
       @description("Action to take on a single failed record")
@@ -491,26 +491,31 @@ object ApiIngest {
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSource
 
-  sealed trait KCLIteratorType
+  sealed trait InitialPosition
 
   @title("Latest")
   @description("All records added to the shard since subscribing.")
-  case object Latest extends KCLIteratorType
+  case object Latest extends InitialPosition
 
   @title("TrimHorizon")
   @description("All records in the shard.")
-  case object TrimHorizon extends KCLIteratorType
+  case object TrimHorizon extends InitialPosition
 
   @title("AtTimestamp")
   @description("All records starting from the provided unix millisecond timestamp.")
   final case class AtTimestamp(year: Int, month: Int, date: Int, hourOfDay: Int, minute: Int, second: Int)
-      extends KCLIteratorType
+      extends InitialPosition
 
   @title("Kinesis Data Stream Using Kcl lib")
   @description("A stream of data being ingested from Kinesis")
   case class KinesisKclIngest(
     @description("The unique, human-facing name of the ingest stream")
     name: String,
+    @description(
+      """Name of the application (irrelevant unless using KCL, where `applicationName` also becomes the default DynamoDB
+        |lease table name. Defaults to 'Quine' if needed and not provided).""".stripMargin,
+    )
+    applicationName: Option[String],
     @description("Name of the Kinesis stream to ingest.")
     streamName: String,
     @description("The format used to decode each Kinesis record.")
@@ -523,7 +528,7 @@ object ApiIngest {
     regionOpt: Option[AwsRegion],
     @description("Where to start in the kinesis stream")
     @default(Latest)
-    iteratorType: KCLIteratorType = Latest,
+    initialPosition: InitialPosition = Latest,
     @description("Number of retries to attempt when communicating with aws services")
     @default(3)
     numRetries: Int = 3,
@@ -543,7 +548,7 @@ object ApiIngest {
     @default(Seq())
     recordDecoders: Seq[RecordDecodingType] = Seq(),
     @description("When should checkpoints occur for a stream")
-    checkpointSettings: KinesisCheckpointSettings,
+    checkpointSettings: Option[V1.KinesisIngest.KinesisCheckpointSettings], // TODO V2 type
   ) extends IngestSource
 
   @title("Server Sent Events Stream")

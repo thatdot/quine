@@ -78,7 +78,7 @@ object ApiToIngest {
   }
   def apply(cred: Api.AwsCredentials): V1.AwsCredentials = V1.AwsCredentials(cred.accessKeyId, cred.secretAccessKey)
   def apply(region: Api.AwsRegion): V1.AwsRegion = V1.AwsRegion(region.region)
-  def apply(ingest: Api.KCLIteratorType): V2IngestEntities.KCLIteratorType = ingest match {
+  def apply(ingest: Api.InitialPosition): V2IngestEntities.InitialPosition = ingest match {
     case Api.Latest => V2IngestEntities.Latest
     case Api.TrimHorizon => V2IngestEntities.TrimHorizon
     case Api.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
@@ -160,11 +160,12 @@ object ApiToIngest {
       )
     case Api.KinesisKclIngest(
           name,
+          applicationName,
           streamName,
           format,
           credentialsOpt,
           regionOpt,
-          iteratorType,
+          initialPosition,
           numRetries,
           maxBatchSize,
           backpressureTimeoutMillis,
@@ -173,11 +174,12 @@ object ApiToIngest {
         ) =>
       Ingest.KinesisKclIngest(
         name,
+        applicationName,
         streamName,
         ApiToIngest(format),
+        ApiToIngest(initialPosition),
         credentialsOpt.map(ApiToIngest.apply),
         regionOpt.map(ApiToIngest.apply),
-        ApiToIngest(iteratorType),
         numRetries,
         maxBatchSize,
         backpressureTimeoutMillis,

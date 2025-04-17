@@ -34,37 +34,39 @@ import software.amazon.kinesis.processor.{ShardRecordProcessorFactory, SingleStr
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
-import com.thatdot.quine.app.ingest2.V2IngestEntities.{AtTimestamp, KCLIteratorType, Latest, TrimHorizon}
+import com.thatdot.quine.app.ingest2.V2IngestEntities.{AtTimestamp, InitialPosition, Latest, TrimHorizon}
 import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisCheckpointSettings}
 import com.thatdot.quine.util.BaseError
+import com.thatdot.quine.{routes => V1}
 
 /** The definition of a source stream from Amazon Kinesis using KCL,
   * now translated to expose a framedSource.
   *
   * @param name               The unique, human-facing name of the ingest stream
-  * @param streamName         The Kinesis stream name
+  * @param applicationName    The name of the application as seen by KCL and its accompanying DynamoDB instance
+  * @param kinesisStreamName  The Kinesis stream name
   * @param meter              An instance of [[IngestMeter]] for metering the ingest flow
   * @param credentialsOpt     The AWS credentials to access the stream (optional)
   * @param regionOpt          The AWS region in which Kinesis resides (optional)
-  * @param iteratorType       The KCL iterator type describing where to begin reading records
+  * @param initialPosition    The KCL iterator type describing where to begin reading records
   * @param numRetries         The maximum number of retry attempts for AWS client calls
   * @param decoders           A sequence of [[ContentDecoder]] for handling inbound Kinesis records
   * @param checkpointSettings Kinesis checkpointing configuration
   */
 final case class KinesisKclSrc(
   name: String,
-  streamName: String,
+  applicationName: Option[String],
+  kinesisStreamName: String,
   meter: IngestMeter,
-  credentialsOpt: Option[AwsCredentials],
-  regionOpt: Option[AwsRegion],
-  iteratorType: KCLIteratorType,
+  credentialsOpt: Option[V1.AwsCredentials],
+  regionOpt: Option[V1.AwsRegion],
+  initialPosition: InitialPosition,
   numRetries: Int,
   decoders: Seq[ContentDecoder],
   bufferSize: Int,
   backpressureTimeoutMillis: Long,
-  checkpointSettings: KinesisCheckpointSettings,
+  checkpointSettings: Option[V1.KinesisIngest.KinesisCheckpointSettings],
 )(implicit val ec: ExecutionContext)
     extends FramedSourceProvider
     with LazyLogging {
@@ -106,7 +108,7 @@ final case class KinesisKclSrc(
         }
       }
 
-      val initialPosition: InitialPositionInStreamExtended = iteratorType match {
+      val initialPositionInStream: InitialPositionInStreamExtended = initialPosition match {
         case Latest =>
           InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.LATEST)
         case TrimHorizon =>
@@ -119,8 +121,8 @@ final case class KinesisKclSrc(
       }
 
       val configsBuilder = new ConfigsBuilder(
-        new SingleStreamTracker(streamName, initialPosition),
-        checkpointSettings.appName,
+        new SingleStreamTracker(kinesisStreamName, initialPositionInStream),
+        applicationName.getOrElse("Quine"),
         kinesisClient,
         dynamoClient,
         cloudWatchClient,
@@ -160,13 +162,24 @@ final case class KinesisKclSrc(
   }
 
   val ack: Flow[CommittableRecord, Done, NotUsed] = {
-    val settings = KinesisSchedulerCheckpointSettings(
-      checkpointSettings.maxBatchSize,
-      checkpointSettings.maxBatchWaitMillis.millis,
-    )
-    KinesisSchedulerSource
-      .checkpointRecordsFlow(settings)
-      .map(_ => Done)
+    val defaultSettings: KinesisSchedulerCheckpointSettings = KinesisSchedulerCheckpointSettings.defaults
+    checkpointSettings
+      .map {
+        case apiSettings if !apiSettings.disableCheckpointing =>
+          KinesisSchedulerCheckpointSettings
+            .apply(
+              apiSettings.maxBatchSize.getOrElse(defaultSettings.maxBatchSize),
+              apiSettings.maxBatchWaitMillis.map(Duration(_, MILLISECONDS)).getOrElse(defaultSettings.maxBatchWait),
+            )
+        case _ =>
+          defaultSettings
+      }
+      .map(
+        KinesisSchedulerSource
+          .checkpointRecordsFlow(_)
+          .map(_ => Done),
+      )
+      .getOrElse(Flow[CommittableRecord].map(_ => Done))
   }
 }
 
@@ -191,8 +204,8 @@ object KinesisKclSrc {
 
   def buildAsyncClient(
     httpClient: SdkAsyncHttpClient,
-    credentialsOpt: Option[AwsCredentials],
-    regionOpt: Option[AwsRegion],
+    credentialsOpt: Option[V1.AwsCredentials],
+    regionOpt: Option[V1.AwsRegion],
     numRetries: Int,
   ): KinesisAsyncClient = {
     val retryStrategy: StandardRetryStrategy = AwsRetryStrategy
