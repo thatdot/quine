@@ -16,10 +16,7 @@ object IngestToApi {
 
     implicit val quineIngestConfigurationToApi
       : ToApiMethod[Ingest.QuineIngestConfiguration, Api.Oss.QuineIngestConfiguration] =
-      new ToApiMethod[Ingest.QuineIngestConfiguration, Api.Oss.QuineIngestConfiguration] {
-        override def apply(a: Ingest.QuineIngestConfiguration): Api.Oss.QuineIngestConfiguration =
-          IngestToApi.apply(a)
-      }
+      (a: Ingest.QuineIngestConfiguration) => IngestToApi.apply(a)
   }
   def apply(status: V1.IngestStreamStatus): Api.IngestStreamStatus = status match {
     case V1.IngestStreamStatus.Completed => Api.IngestStreamStatus.Completed
@@ -80,12 +77,6 @@ object IngestToApi {
       Api.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis)
     case V1.WebsocketSimpleStartupIngest.NoKeepalive => Api.WebsocketSimpleStartupIngest.NoKeepalive
   }
-  def apply(ingest: Ingest.InitialPosition): Api.InitialPosition = ingest match {
-    case Ingest.Latest => Api.Latest
-    case Ingest.TrimHorizon => Api.TrimHorizon
-    case Ingest.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
-      Api.AtTimestamp(year, month, date, hourOfDay, minute, second)
-  }
   def apply(it: V1.KinesisIngest.IteratorType): Api.KinesisIngest.IteratorType = it match {
     case V1.KinesisIngest.IteratorType.Latest => Api.KinesisIngest.IteratorType.Latest
     case V1.KinesisIngest.IteratorType.TrimHorizon => Api.KinesisIngest.IteratorType.TrimHorizon
@@ -127,6 +118,121 @@ object IngestToApi {
     case V1.KafkaOffsetCommitting.ExplicitCommit(maxBatch, maxIntervalMillis, parallelism, waitForCommitConfirmation) =>
       Api.KafkaOffsetCommitting.ExplicitCommit(maxBatch, maxIntervalMillis, parallelism, waitForCommitConfirmation)
   }
+
+  /* ---------- enums / sealed‑traits ---------- */
+
+  def apply(bm: Ingest.BillingMode): Api.BillingMode = bm match {
+    case Ingest.BillingMode.PROVISIONED => Api.BillingMode.PROVISIONED
+    case Ingest.BillingMode.PAY_PER_REQUEST => Api.BillingMode.PAY_PER_REQUEST
+    case Ingest.BillingMode.UNKNOWN_TO_SDK_VERSION => Api.BillingMode.UNKNOWN_TO_SDK_VERSION
+  }
+
+  def apply(ip: Ingest.InitialPosition): Api.InitialPosition = ip match {
+    case Ingest.InitialPosition.Latest => Api.InitialPosition.Latest
+    case Ingest.InitialPosition.TrimHorizon => Api.InitialPosition.TrimHorizon
+    case Ingest.InitialPosition.AtTimestamp(y, m, d, h, mm, s) =>
+      Api.InitialPosition.AtTimestamp(y, m, d, h, mm, s)
+  }
+
+  def apply(sp: Ingest.ShardPrioritization): Api.ShardPrioritization = sp match {
+    case Ingest.ShardPrioritization.NoOpShardPrioritization => Api.ShardPrioritization.NoOpShardPrioritization
+    case Ingest.ShardPrioritization.ParentsFirstShardPrioritization(d) =>
+      Api.ShardPrioritization.ParentsFirstShardPrioritization(d)
+  }
+
+  def apply(cvc: Ingest.ClientVersionConfig): Api.ClientVersionConfig = cvc match {
+    case Ingest.ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X =>
+      Api.ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X
+    case Ingest.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X => Api.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X
+  }
+
+  def apply(ml: Ingest.MetricsLevel): Api.MetricsLevel = ml match {
+    case Ingest.MetricsLevel.NONE => Api.MetricsLevel.NONE
+    case Ingest.MetricsLevel.SUMMARY => Api.MetricsLevel.SUMMARY
+    case Ingest.MetricsLevel.DETAILED => Api.MetricsLevel.DETAILED
+  }
+
+  def apply(md: Ingest.MetricsDimension): Api.MetricsDimension = md match {
+    case Ingest.MetricsDimension.OPERATION_DIMENSION_NAME => Api.MetricsDimension.OPERATION_DIMENSION_NAME
+    case Ingest.MetricsDimension.SHARD_ID_DIMENSION_NAME => Api.MetricsDimension.SHARD_ID_DIMENSION_NAME
+    case Ingest.MetricsDimension.STREAM_IDENTIFIER => Api.MetricsDimension.STREAM_IDENTIFIER
+    case Ingest.MetricsDimension.WORKER_IDENTIFIER => Api.MetricsDimension.WORKER_IDENTIFIER
+  }
+
+  def apply(kcs: Ingest.KinesisCheckpointSettings): Api.KinesisCheckpointSettings =
+    Api.KinesisCheckpointSettings(kcs.disableCheckpointing, kcs.maxBatchSize, kcs.maxBatchWaitMillis)
+
+  def apply(ksss: Ingest.KinesisSchedulerSourceSettings): Api.KinesisSchedulerSourceSettings =
+    Api.KinesisSchedulerSourceSettings(ksss.bufferSize, ksss.backpressureTimeoutMillis)
+
+  def apply(lmc: Ingest.LeaseManagementConfig): Api.LeaseManagementConfig =
+    Api.LeaseManagementConfig(
+      lmc.failoverTimeMillis,
+      lmc.shardSyncIntervalMillis,
+      lmc.cleanupLeasesUponShardCompletion,
+      lmc.ignoreUnexpectedChildShards,
+      lmc.maxLeasesForWorker,
+      lmc.maxLeaseRenewalThreads,
+      lmc.billingMode.map(apply),
+      lmc.initialLeaseTableReadCapacity,
+      lmc.initialLeaseTableWriteCapacity,
+      lmc.reBalanceThresholdPercentage,
+      lmc.dampeningPercentage,
+      lmc.allowThroughputOvershoot,
+      lmc.disableWorkerMetrics,
+      lmc.maxThroughputPerHostKBps,
+      lmc.isGracefulLeaseHandoffEnabled,
+      lmc.gracefulLeaseHandoffTimeoutMillis,
+    )
+
+  def apply(pc: Ingest.PollingConfig): Api.PollingConfig =
+    Api.PollingConfig(
+      pc.maxRecords,
+      pc.retryGetRecordsInSeconds,
+      pc.maxGetRecordsThreadPool,
+      pc.idleTimeBetweenReadsInMillis,
+    )
+
+  def apply(prc: Ingest.ProcessorConfig): Api.ProcessorConfig =
+    Api.ProcessorConfig(prc.callProcessRecordsEvenForEmptyRecordList)
+
+  def apply(cc: Ingest.CoordinatorConfig): Api.CoordinatorConfig =
+    Api.CoordinatorConfig(
+      cc.parentShardPollIntervalMillis,
+      cc.skipShardSyncAtWorkerInitializationIfLeasesExist,
+      cc.shardPrioritization.map(apply),
+      cc.clientVersionConfig.map(apply),
+    )
+
+  def apply(lc: Ingest.LifecycleConfig): Api.LifecycleConfig =
+    Api.LifecycleConfig(lc.taskBackoffTimeMillis, lc.logWarningForTaskAfterMillis)
+
+  def apply(rc: Ingest.RetrievalConfig): Api.RetrievalConfig =
+    Api.RetrievalConfig(rc.listShardsBackoffTimeInMillis, rc.maxListShardsRetryAttempts)
+
+  def apply(mc: Ingest.MetricsConfig): Api.MetricsConfig =
+    Api.MetricsConfig(
+      mc.metricsBufferTimeMillis,
+      mc.metricsMaxQueueSize,
+      mc.metricsLevel.map(apply),
+      mc.metricsEnabledDimensions.map(_.map(apply)),
+    )
+
+  def apply(kcl: Ingest.KCLConfiguration): Api.KCLConfiguration =
+    Api.KCLConfiguration(
+      Some(apply(kcl.configsBuilder)),
+      Some(apply(kcl.leaseManagementConfig)),
+      Some(apply(kcl.pollingConfig)),
+      Some(apply(kcl.processorConfig)),
+      Some(apply(kcl.coordinatorConfig)),
+      Some(apply(kcl.lifecycleConfig)),
+      Some(apply(kcl.retrievalConfig)),
+      Some(apply(kcl.metricsConfig)),
+    )
+
+  def apply(cb: Ingest.ConfigsBuilder): Api.ConfigsBuilder =
+    Api.ConfigsBuilder(cb.tableName, cb.workerIdentifier)
+
   def apply(source: Ingest.IngestSource): Api.IngestSource = source match {
     case Ingest.FileIngest(
           format,
@@ -211,32 +317,30 @@ object IngestToApi {
       )
 
     case Ingest.KinesisKclIngest(
-          name,
+          kinesisStreamName,
           applicationName,
-          streamName,
           format,
-          initialPosition,
           credentialsOpt,
           regionOpt,
+          initialPosition,
           numRetries,
-          maxBatchSize,
-          backpressureTimeoutMillis,
           recordDecoders,
+          schedulerSourceSettings,
           checkpointSettings,
+          advancedSettings,
         ) =>
       Api.KinesisKclIngest(
-        name,
-        applicationName,
-        streamName,
+        kinesisStreamName = kinesisStreamName,
+        applicationName = applicationName,
         IngestToApi(format),
         credentialsOpt.map(IngestToApi.apply),
         regionOpt.map(IngestToApi.apply),
         IngestToApi(initialPosition),
         numRetries,
-        maxBatchSize,
-        backpressureTimeoutMillis,
         recordDecoders.map(IngestToApi.apply),
-        checkpointSettings,
+        Some(IngestToApi(schedulerSourceSettings)),
+        Some(IngestToApi(checkpointSettings)),
+        Some(IngestToApi(advancedSettings)),
       )
     case Ingest.ServerSentEventIngest(format, url, recordDecoders) =>
       Api.ServerSentEventIngest(

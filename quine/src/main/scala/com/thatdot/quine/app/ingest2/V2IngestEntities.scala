@@ -1,6 +1,7 @@
 package com.thatdot.quine.app.ingest2
 
 import java.nio.charset.Charset
+import java.time.Instant
 
 import scala.util.{Failure, Success, Try}
 
@@ -190,43 +191,259 @@ object V2IngestEntities {
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
 
-  sealed trait InitialPosition
-
-  @title("Latest")
-  @description("All records added to the shard since subscribing.")
-  case object Latest extends InitialPosition
-
-  @title("TrimHorizon")
-  @description("All records in the shard.")
-  case object TrimHorizon extends InitialPosition
-
-  @title("AtTimestamp")
-  @description("All records starting from the provided date-time.")
-  final case class AtTimestamp(year: Int, month: Int, dayOfMonth: Int, hourOfDay: Int, minute: Int, second: Int)
-      extends InitialPosition
-
   @title("Kinesis Data Stream Using Kcl lib")
   @description("A stream of data being ingested from Kinesis")
   case class KinesisKclIngest(
-    name: String,
-    @description(
-      """Name of the application (irrelevant unless using KCL, where `applicationName` also becomes the default DynamoDB
-        |lease table name. Defaults to 'Quine' if needed and not provided).""".stripMargin,
-    )
-    applicationName: Option[String],
+    /** The name of the stream that this application processes records from. */
     kinesisStreamName: String,
-    @description("The format used to decode each Kinesis record.")
+    /** Overrides the table name used for the Amazon DynamoDB lease table, the default CloudWatch namespace, and consumer name. */
+    applicationName: String,
     format: StreamingFormat,
+    credentialsOpt: Option[V1.AwsCredentials],
+    regionOpt: Option[V1.AwsRegion],
     initialPosition: InitialPosition,
-    credentialsOpt: Option[V1.AwsCredentials], // TODO V2 type
-    regionOpt: Option[V1.AwsRegion], // TODO V2 type
     numRetries: Int,
-    bufferSize: Int,
-    backpressureTimeoutMillis: Long,
-    recordDecoders: Seq[V1.RecordDecodingType] = Seq(), // TODO V2 type
-    checkpointSettings: Option[V1.KinesisIngest.KinesisCheckpointSettings], // TODO V2 type
+    recordDecoders: Seq[V1.RecordDecodingType] = Seq(),
+    /** Additional settings for the Kinesis Scheduler.
+      */
+    schedulerSourceSettings: KinesisSchedulerSourceSettings,
+    /** Optional stream checkpoint settings. If present, checkpointing will manage `iteratorType` and `shardIds`,
+      * ignoring those fields in the API request.
+      */
+    checkpointSettings: KinesisCheckpointSettings,
+    /** Optional advanced configuration, derived from the KCL 3.x documented configuration table
+      * (https://docs.aws.amazon.com/streams/latest/dev/kcl-configuration.html), but without fields that are available
+      * elsewhere in this API object schema.
+      */
+    advancedSettings: KCLConfiguration,
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
+
+  /** Scheduler Checkpoint Settings
+    *
+    * @param disableCheckpointing Disable checkpointing to the DynamoDB table.
+    * @param maxBatchSize         Maximum checkpoint batch size.
+    * @param maxBatchWaitMillis   Maximum checkpoint batch wait time in milliseconds.
+    */
+  case class KinesisCheckpointSettings(
+    disableCheckpointing: Boolean = false,
+    maxBatchSize: Option[Int] = None,
+    maxBatchWaitMillis: Option[Long] = None,
+  )
+
+  /** Settings used when materialising a `KinesisSchedulerSource`.
+    *
+    * @param bufferSize               Sets the buffer size. Buffer size must be greater than 0; use size `1` to disable
+    *                                 stage buffering.
+    * @param backpressureTimeoutMillis Sets the back‑pressure timeout in milliseconds.
+    */
+  case class KinesisSchedulerSourceSettings(
+    bufferSize: Option[Int] = None,
+    backpressureTimeoutMillis: Option[Long] = None,
+  )
+
+  /** A complex object comprising abbreviated configuration objects used by the
+    * Kinesis Client Library (KCL).
+    *
+    * @param leaseManagementConfig Lease‑management configuration.
+    * @param pollingConfig       Configuration for the polling subsystem.
+    * @param processorConfig     Configuration for the record‑processor.
+    * @param coordinatorConfig   Configuration for the shard‑coordinator.
+    * @param lifecycleConfig     Configuration for lifecycle behaviour.
+    * @param retrievalConfig     Configuration for record retrieval.
+    * @param metricsConfig       Configuration for CloudWatch metrics.
+    */
+  case class KCLConfiguration(
+    configsBuilder: ConfigsBuilder = ConfigsBuilder(),
+    leaseManagementConfig: LeaseManagementConfig = LeaseManagementConfig(),
+    pollingConfig: PollingConfig = PollingConfig(),
+    processorConfig: ProcessorConfig = ProcessorConfig(),
+    coordinatorConfig: CoordinatorConfig = CoordinatorConfig(),
+    lifecycleConfig: LifecycleConfig = LifecycleConfig(),
+    retrievalConfig: RetrievalConfig = RetrievalConfig(),
+    metricsConfig: MetricsConfig = MetricsConfig(),
+  )
+
+  /** Abbreviated configuration for the KCL `ConfigsBuilder`. */
+  case class ConfigsBuilder(
+    /** Allows overriding the table name used for the Amazon DynamoDB lease table. */
+    tableName: Option[String] = None,
+    /** A unique identifier that represents this instantiation of the application processor. */
+    workerIdentifier: Option[String] = None,
+  )
+
+  sealed trait BillingMode { def value: String }
+  object BillingMode {
+
+    /** Provisioned billing. */
+    case object PROVISIONED extends BillingMode {
+      val value = "PROVISIONED"
+    }
+
+    /** Pay‑per‑request billing. */
+    case object PAY_PER_REQUEST extends BillingMode {
+      val value = "PAY_PER_REQUEST"
+    }
+
+    /** The billing mode is not one of the provided options. */
+    case object UNKNOWN_TO_SDK_VERSION extends BillingMode {
+      val value = "UNKNOWN_TO_SDK_VERSION"
+    }
+  }
+
+  /** Initial position in the shard from which the KCL should start consuming. */
+  sealed trait InitialPosition
+  object InitialPosition {
+
+    /** All records added to the shard since subscribing. */
+    case object Latest extends InitialPosition
+
+    /** All records in the shard. */
+    case object TrimHorizon extends InitialPosition
+
+    /** All records starting from the provided date/time. */
+    final case class AtTimestamp(year: Int, month: Int, date: Int, hourOfDay: Int, minute: Int, second: Int)
+        extends InitialPosition {
+
+      /** Convenience conversion to `java.time.Instant`. */
+      def toInstant: Instant = Instant.parse(f"$year%04d-$month%02d-$date%02dT$hourOfDay%02d:$minute%02d:$second%02dZ")
+    }
+  }
+
+  /** Lease‑management configuration. */
+  case class LeaseManagementConfig(
+    /** Milliseconds that must pass before a lease owner is considered to have failed. */
+    failoverTimeMillis: Option[Long] = None,
+    /** Time between shard‑sync calls. */
+    shardSyncIntervalMillis: Option[Long] = None,
+    /** Remove leases as soon as child leases have started processing. */
+    cleanupLeasesUponShardCompletion: Option[Boolean] = None,
+    /** Ignore child shards that have an open shard (primarily for DynamoDB Streams). */
+    ignoreUnexpectedChildShards: Option[Boolean] = None,
+    /** Maximum number of leases a single worker should accept. */
+    maxLeasesForWorker: Option[Int] = None,
+    /** Size of the lease‑renewer thread‑pool. */
+    maxLeaseRenewalThreads: Option[Int] = None,
+    /** Capacity mode of the lease table created in DynamoDB. */
+    billingMode: Option[BillingMode] = None,
+    /** DynamoDB read capacity when creating a new lease table (provisioned mode). */
+    initialLeaseTableReadCapacity: Option[Int] = None,
+    /** DynamoDB write capacity when creating a new lease table (provisioned mode). */
+    initialLeaseTableWriteCapacity: Option[Int] = None,
+    /** Percentage threshold at which the load‑balancing algorithm considers reassigning shards. */
+    reBalanceThresholdPercentage: Option[Int] = None,
+    /** Dampening percentage used to limit load moved from an overloaded worker during rebalance. */
+    dampeningPercentage: Option[Int] = None,
+    /** Allow throughput overshoot when taking additional leases from an overloaded worker. */
+    allowThroughputOvershoot: Option[Boolean] = None,
+    /** Ignore worker resource metrics (such as CPU) when reassigning leases. */
+    disableWorkerMetrics: Option[Boolean] = None,
+    /** Maximum throughput (KB/s) to assign to a worker during lease assignment. */
+    maxThroughputPerHostKBps: Option[Double] = None,
+    /** Enable graceful lease hand‑off between workers. */
+    isGracefulLeaseHandoffEnabled: Option[Boolean] = None,
+    /** Minimum time to wait (ms) for the current shard’s processor to shut down gracefully before forcing hand‑off. */
+    gracefulLeaseHandoffTimeoutMillis: Option[Long] = None,
+  )
+
+  /** Polling‑specific configuration. */
+  case class PollingConfig(
+    /** Maximum number of records that Kinesis returns. */
+    maxRecords: Option[Int] = None,
+    /** Delay between `GetRecords` attempts for failures (seconds). */
+    retryGetRecordsInSeconds: Option[Int] = None,
+    /** Thread‑pool size used for `GetRecords`. */
+    maxGetRecordsThreadPool: Option[Int] = None,
+    /** How long KCL waits between `GetRecords` calls (milliseconds). */
+    idleTimeBetweenReadsInMillis: Option[Long] = None,
+  )
+
+  /** Record‑processor configuration. */
+  case class ProcessorConfig(
+    /** Invoke the record processor even when Kinesis returns an empty record list. */
+    callProcessRecordsEvenForEmptyRecordList: Option[Boolean] = None,
+  )
+
+  /** Marker trait for shard‑prioritisation strategies. */
+  sealed trait ShardPrioritization
+  object ShardPrioritization {
+
+    /** No‑op prioritisation. */
+    case object NoOpShardPrioritization extends ShardPrioritization
+
+    /** Process shard parents first, limited by a `maxDepth` argument. */
+    case class ParentsFirstShardPrioritization(maxDepth: Int) extends ShardPrioritization
+  }
+
+  /** Compatibility mode for the KCL client version. */
+  sealed trait ClientVersionConfig
+  object ClientVersionConfig {
+    case object CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X extends ClientVersionConfig
+    case object CLIENT_VERSION_CONFIG_3X extends ClientVersionConfig
+  }
+
+  /** Coordinator (shard‑coordinator) configuration. */
+  case class CoordinatorConfig(
+    /** Interval between polling to see if the parent shard has completed (ms). */
+    parentShardPollIntervalMillis: Option[Long] = None,
+    /** Skip shard‑sync on worker initialisation if leases already exist. */
+    skipShardSyncAtWorkerInitializationIfLeasesExist: Option[Boolean] = None,
+    /** Shard prioritisation strategy. */
+    shardPrioritization: Option[ShardPrioritization] = None,
+    /** KCL version compatibility mode (used during migration). */
+    clientVersionConfig: Option[ClientVersionConfig] = None,
+  )
+
+  /** Lifecycle configuration. */
+  case class LifecycleConfig(
+    /** Time to wait before retrying failed KCL tasks (ms). */
+    taskBackoffTimeMillis: Option[Long] = None,
+    /** Time before logging a warning if a task hasn’t completed (ms). */
+    logWarningForTaskAfterMillis: Option[Long] = None,
+  )
+
+  /** Record‑retrieval configuration. */
+  case class RetrievalConfig(
+    /** Milliseconds to wait between `ListShards` calls when failures occur. */
+    listShardsBackoffTimeInMillis: Option[Long] = None,
+    /** Maximum number of retry attempts for `ListShards` before giving up. */
+    maxListShardsRetryAttempts: Option[Int] = None,
+  )
+
+  /** CloudWatch metrics granularity level. */
+  sealed trait MetricsLevel
+  object MetricsLevel {
+
+    /** Metrics disabled. */
+    case object NONE extends MetricsLevel
+
+    /** Emit only the most significant metrics. */
+    case object SUMMARY extends MetricsLevel
+
+    /** Emit all available metrics. */
+    case object DETAILED extends MetricsLevel
+  }
+
+  /** Dimensions that may be attached to CloudWatch metrics. */
+  sealed trait MetricsDimension { def value: String }
+  object MetricsDimension {
+    case object OPERATION_DIMENSION_NAME extends MetricsDimension { val value = "Operation" }
+    case object SHARD_ID_DIMENSION_NAME extends MetricsDimension { val value = "ShardId" }
+    case object STREAM_IDENTIFIER extends MetricsDimension { val value = "StreamId" }
+    case object WORKER_IDENTIFIER extends MetricsDimension { val value = "WorkerIdentifier" }
+  }
+
+  /** CloudWatch metrics configuration. */
+  case class MetricsConfig(
+    /** Maximum duration (ms) to buffer metrics before publishing to CloudWatch. */
+    metricsBufferTimeMillis: Option[Long] = None,
+    /** Maximum number of metrics to buffer before publishing to CloudWatch. */
+    metricsMaxQueueSize: Option[Int] = None,
+    /** Granularity level of CloudWatch metrics to enable and publish. */
+    metricsLevel: Option[MetricsLevel] = None,
+    /** Allowed dimensions for CloudWatch metrics. */
+    metricsEnabledDimensions: Option[Set[MetricsDimension]] = None,
+  )
 
   @title("Server Sent Events Stream")
   @description(
@@ -497,10 +714,8 @@ object V2IngestEntities {
     def asV1IngestStreamConfiguration: V1.IngestStreamConfiguration = {
 
       def asV1StreamedRecordFormat(format: StreamingFormat): Try[V1.StreamedRecordFormat] = format match {
-        case StreamingFormat.JsonFormat =>
-          Success(V1.StreamedRecordFormat.CypherJson(query, parameter))
-        case StreamingFormat.RawFormat =>
-          Success(V1.StreamedRecordFormat.CypherRaw(query, parameter))
+        case StreamingFormat.JsonFormat => Success(V1.StreamedRecordFormat.CypherJson(query, parameter))
+        case StreamingFormat.RawFormat => Success(V1.StreamedRecordFormat.CypherRaw(query, parameter))
         case StreamingFormat.ProtobufFormat(schemaUrl, typeName) =>
           Success(V1.StreamedRecordFormat.CypherProtobuf(query, parameter, schemaUrl, typeName))
         case _: StreamingFormat.AvroFormat =>
@@ -513,10 +728,8 @@ object V2IngestEntities {
       }
 
       def asV1FileIngestFormat(format: FileFormat): Try[V1.FileIngestFormat] = format match {
-        case FileFormat.LineFormat =>
-          Success(V1.FileIngestFormat.CypherLine(query, parameter))
-        case FileFormat.JsonFormat =>
-          Success(V1.FileIngestFormat.CypherJson(query, parameter))
+        case FileFormat.LineFormat => Success(V1.FileIngestFormat.CypherLine(query, parameter))
+        case FileFormat.JsonFormat => Success(V1.FileIngestFormat.CypherJson(query, parameter))
         case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
           Success(V1.FileIngestFormat.CypherCsv(query, parameter, headers, delimiter, quoteChar, escapeChar))
       }
@@ -564,13 +777,7 @@ object V2IngestEntities {
           }
         case NumberIteratorIngest(_, startOffset, limit) =>
           Success(
-            V1.NumberIteratorIngest(
-              V1.IngestRoutes.defaultNumberFormat,
-              startOffset,
-              limit,
-              maxPerSecond,
-              parallelism,
-            ),
+            V1.NumberIteratorIngest(V1.IngestRoutes.defaultNumberFormat, startOffset, limit, maxPerSecond, parallelism),
           )
 
         case WebsocketIngest(format, url, initMessages, keepAlive, charset) =>
@@ -714,46 +921,6 @@ object V2IngestEntities {
           ingest.numRetries,
           ingest.recordDecoders,
         )
-      case V1.KinesisKCLIngest(
-            format,
-            applicationName,
-            kinesisStreamName,
-            _,
-            credentials,
-            region,
-            initialPosition,
-            numRetries,
-            _,
-            recordDecoders,
-            _,
-            checkpointSettings,
-            _,
-          ) =>
-        // Note: This will be refined more in a V2 WIP branch
-        KinesisKclIngest(
-          name = applicationName, // TODO Probably not this
-          applicationName = Some(applicationName),
-          kinesisStreamName = kinesisStreamName,
-          format = StreamingFormat(format),
-          initialPosition =
-            // TODO Probably extract this translation
-            initialPosition match {
-              case V1.KinesisIngest.InitialPosition.TrimHorizon =>
-                TrimHorizon
-              case V1.KinesisIngest.InitialPosition.Latest =>
-                Latest
-              case V1.KinesisIngest.InitialPosition.AtTimestamp(year, month, day, hour, minute, second) =>
-                AtTimestamp(year, month, day, hour, minute, second)
-            },
-          credentialsOpt = credentials,
-          regionOpt = region,
-          numRetries = numRetries,
-          bufferSize = 0, // TODO Not this
-          backpressureTimeoutMillis = 0, // TODO Not this
-          recordDecoders = recordDecoders,
-          checkpointSettings = checkpointSettings,
-        )
-
       case ingest: V1.ServerSentEventsIngest =>
         ServerSentEventIngest(
           StreamingFormat(ingest.format),
@@ -812,6 +979,34 @@ object V2IngestEntities {
           StreamingFormat.RawFormat,
           ingest.startAtOffset,
           ingest.ingestLimit,
+        )
+      case V1.KinesisKCLIngest(
+            format,
+            applicationName,
+            kinesisStreamName,
+            _,
+            credentials,
+            region,
+            initialPosition,
+            numRetries,
+            _,
+            recordDecoders,
+            schedulerSourceSettings,
+            checkpointSettings,
+            advancedSettings,
+          ) =>
+        KinesisKclIngest(
+          kinesisStreamName = kinesisStreamName,
+          applicationName = applicationName,
+          format = StreamingFormat(format),
+          credentialsOpt = credentials,
+          regionOpt = region,
+          initialPosition = V1ToV2(initialPosition),
+          numRetries = numRetries,
+          recordDecoders = recordDecoders,
+          schedulerSourceSettings = V1ToV2(schedulerSourceSettings),
+          checkpointSettings = V1ToV2(checkpointSettings),
+          advancedSettings = V1ToV2(advancedSettings),
         )
     }
   }

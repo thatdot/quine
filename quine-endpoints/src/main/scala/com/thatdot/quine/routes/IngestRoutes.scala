@@ -480,7 +480,7 @@ object KinesisIngest {
         extends Parameterized
   }
 
-  case class KCLSchedulerSourceSettings(
+  case class KinesisSchedulerSourceSettings(
     @docs(
       """Sets the KinesisSchedulerSourceSettings buffer size. Buffer size must be greater than 0; use size 1 to disable
         |stage buffering.""".stripMargin,
@@ -794,7 +794,7 @@ final case class KinesisKCLIngest(
   @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
   recordDecoders: Seq[RecordDecodingType] = Seq.empty,
   @docs("Optional additional settings for the KCL Scheduler.")
-  schedulerSourceSettings: Option[KinesisIngest.KCLSchedulerSourceSettings],
+  schedulerSourceSettings: Option[KinesisIngest.KinesisSchedulerSourceSettings],
   @docs("Stream checkpoint settings.")
   checkpointSettings: Option[KinesisIngest.KinesisCheckpointSettings],
   @docs(
@@ -1414,15 +1414,15 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
   implicit val exampleConfigsBuilderSchema: Record[KinesisIngest.ConfigsBuilder] =
     genericRecord[KinesisIngest.ConfigsBuilder].withExample(exampleConfigsBuilder)
 
-  private val exampleKinesisSchedulerSourceSettings: KinesisIngest.KCLSchedulerSourceSettings =
-    KinesisIngest.KCLSchedulerSourceSettings(
+  private val exampleKinesisSchedulerSourceSettings: KinesisIngest.KinesisSchedulerSourceSettings =
+    KinesisIngest.KinesisSchedulerSourceSettings(
       bufferSize = Some(1),
       backpressureTimeoutMillis = Some(2222),
     )
-  implicit val kinesisSchedulerSourceSettingsSchema: Record[KinesisIngest.KCLSchedulerSourceSettings] =
-    genericRecord[KinesisIngest.KCLSchedulerSourceSettings].withExample(exampleKinesisSchedulerSourceSettings)
+  implicit val kinesisSchedulerSourceSettingsSchema: Record[KinesisIngest.KinesisSchedulerSourceSettings] =
+    genericRecord[KinesisIngest.KinesisSchedulerSourceSettings].withExample(exampleKinesisSchedulerSourceSettings)
 
-  private val exampleAdvancedKclConfiguration: KinesisIngest.KCLConfiguration = KinesisIngest.KCLConfiguration(
+  private val exampleKclConfiguration: KinesisIngest.KCLConfiguration = KinesisIngest.KCLConfiguration(
     configsBuilder = Some(exampleConfigsBuilder),
     leaseManagementConfig = Some(exampleLeaseManagementConfig),
     pollingConfig = Some(examplePollingConfig),
@@ -1433,7 +1433,7 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
     metricsConfig = Some(exampleMetricsConfig),
   )
   implicit val kclConfigurationSchema: Record[KinesisIngest.KCLConfiguration] =
-    genericRecord[KinesisIngest.KCLConfiguration].withExample(exampleAdvancedKclConfiguration)
+    genericRecord[KinesisIngest.KCLConfiguration].withExample(exampleKclConfiguration)
 
   val exampleIngestStreamInfo: IngestStreamInfo = IngestStreamInfo(
     status = IngestStreamStatus.Running,

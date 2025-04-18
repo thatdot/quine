@@ -15,7 +15,7 @@ import cats.implicits.catsSyntaxValidatedId
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.ingest2.V2IngestEntities
+import com.thatdot.quine.app.ingest2.V1ToV2
 import com.thatdot.quine.app.ingest2.V2IngestEntities.{FileFormat, LogRecordErrorHandler, QuineIngestConfiguration}
 import com.thatdot.quine.app.ingest2.codec.FrameDecoder
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
@@ -28,8 +28,8 @@ import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
-import com.thatdot.quine.routes._
 import com.thatdot.quine.util.{BaseError, SwitchMode, Valve, ValveSwitch}
+import com.thatdot.quine.{routes => V1}
 
 /** A decoded source represents a source of interpreted values, that is, values that have
   * been translated from raw formats as supplied by their ingest source.
@@ -131,16 +131,16 @@ abstract class DecodedSource(val meter: IngestMeter) {
 object DecodedSource extends LazySafeLogging {
 
   /** Convenience to extract parallelism from v1 configuration types w/o altering v1 configurations */
-  def parallelism(config: IngestStreamConfiguration): Int = config match {
-    case k: KafkaIngest => k.parallelism
-    case k: KinesisIngest => k.parallelism
-    case s: ServerSentEventsIngest => s.parallelism
-    case s: SQSIngest => s.writeParallelism
-    case w: WebsocketSimpleStartupIngest => w.parallelism
-    case f: FileIngest => f.parallelism
-    case s: S3Ingest => s.parallelism
-    case s: StandardInputIngest => s.parallelism
-    case n: NumberIteratorIngest => n.parallelism
+  def parallelism(config: V1.IngestStreamConfiguration): Int = config match {
+    case k: V1.KafkaIngest => k.parallelism
+    case k: V1.KinesisIngest => k.parallelism
+    case s: V1.ServerSentEventsIngest => s.parallelism
+    case s: V1.SQSIngest => s.writeParallelism
+    case w: V1.WebsocketSimpleStartupIngest => w.parallelism
+    case f: V1.FileIngest => f.parallelism
+    case s: V1.S3Ingest => s.parallelism
+    case s: V1.StandardInputIngest => s.parallelism
+    case n: V1.NumberIteratorIngest => n.parallelism
     case other => throw new NoSuchElementException(s"Ingest type $other not supported")
 
   }
@@ -176,16 +176,15 @@ object DecodedSource extends LazySafeLogging {
   // build from v1 configuration
   def apply(
     name: String,
-    config: IngestStreamConfiguration,
+    config: V1.IngestStreamConfiguration,
     meter: IngestMeter,
     system: ActorSystem,
   )(implicit
     protobufCache: ProtobufSchemaCache,
     logConfig: LogConfig,
   ): ValidatedNel[BaseError, DecodedSource] = {
-
     config match {
-      case KafkaIngest(
+      case V1.KafkaIngest(
             format,
             topics,
             _,
@@ -213,7 +212,7 @@ object DecodedSource extends LazySafeLogging {
           system,
         ).framedSource.map(_.toDecoded(FrameDecoder(format)))
 
-      case FileIngest(
+      case V1.FileIngest(
             format,
             path,
             encoding,
@@ -234,7 +233,7 @@ object DecodedSource extends LazySafeLogging {
           Seq(), // V1 file ingest does not define recordDecoders
         )
 
-      case S3Ingest(
+      case V1.S3Ingest(
             format,
             bucketName,
             key,
@@ -258,7 +257,7 @@ object DecodedSource extends LazySafeLogging {
           Seq(), // There is no compression support in the v1 configuration object.
         )(system).decodedSource
 
-      case StandardInputIngest(
+      case V1.StandardInputIngest(
             format,
             encoding,
             _,
@@ -273,7 +272,7 @@ object DecodedSource extends LazySafeLogging {
           Seq(),
         ).decodedSource
 
-      case KinesisIngest(
+      case V1.KinesisIngest(
             streamedRecordFormat,
             streamName,
             shardIds,
@@ -296,7 +295,7 @@ object DecodedSource extends LazySafeLogging {
           recordEncodings.map(ContentDecoder(_)),
         )(system.getDispatcher).framedSource.map(_.toDecoded(FrameDecoder(streamedRecordFormat)))
 
-      case KinesisKCLIngest(
+      case V1.KinesisKCLIngest(
             format,
             applicationName,
             kinesisStreamName,
@@ -307,39 +306,28 @@ object DecodedSource extends LazySafeLogging {
             numRetries,
             _,
             recordDecoders,
-            _,
+            schedulerSourceSettings,
             checkpointSettings,
-            _,
+            advancedSettings,
           ) =>
-        // Note: This will be refined more in a V2 WIP branch
         KinesisKclSrc(
-          name = applicationName, // TODO Probably not this
-          applicationName = Some(applicationName),
           kinesisStreamName = kinesisStreamName,
+          applicationName = applicationName,
           meter = meter,
           credentialsOpt = credentials,
           regionOpt = region,
-          initialPosition =
-            // TODO Probably extract this translation
-            initialPosition match {
-              case KinesisIngest.InitialPosition.TrimHorizon =>
-                V2IngestEntities.TrimHorizon
-              case KinesisIngest.InitialPosition.Latest =>
-                V2IngestEntities.Latest
-              case KinesisIngest.InitialPosition.AtTimestamp(year, month, day, hour, minute, second) =>
-                V2IngestEntities.AtTimestamp(year, month, day, hour, minute, second)
-            },
+          initialPosition = V1ToV2(initialPosition),
           numRetries = numRetries,
           decoders = recordDecoders.map(ContentDecoder(_)),
-          bufferSize = 0, // TODO Not this
-          backpressureTimeoutMillis = 0, // TODO Not this
-          checkpointSettings = checkpointSettings,
+          schedulerSettings = V1ToV2(schedulerSourceSettings),
+          checkpointSettings = V1ToV2(checkpointSettings),
+          advancedSettings = V1ToV2(advancedSettings),
         )(ExecutionContext.parasitic).framedSource.map(_.toDecoded(FrameDecoder(format)))
 
-      case NumberIteratorIngest(_, startAtOffset, ingestLimit, _, _) =>
+      case V1.NumberIteratorIngest(_, startAtOffset, ingestLimit, _, _) =>
         Validated.valid(NumberIteratorSource(IngestBounds(startAtOffset, ingestLimit), meter).decodedSource)
 
-      case SQSIngest(
+      case V1.SQSIngest(
             format,
             queueURL,
             readParallelism,
@@ -361,7 +349,7 @@ object DecodedSource extends LazySafeLogging {
         ).framedSource
           .map(_.toDecoded(FrameDecoder(format)))
 
-      case ServerSentEventsIngest(
+      case V1.ServerSentEventsIngest(
             format,
             url,
             _,
@@ -371,7 +359,7 @@ object DecodedSource extends LazySafeLogging {
         ServerSentEventSource(url, meter, recordEncodings.map(ContentDecoder(_)))(system).framedSource
           .map(_.toDecoded(FrameDecoder(format)))
 
-      case WebsocketSimpleStartupIngest(
+      case V1.WebsocketSimpleStartupIngest(
             format,
             wsUrl,
             initMessages,
@@ -458,32 +446,30 @@ object DecodedSource extends LazySafeLogging {
         )(ExecutionContext.parasitic).framedSource.map(_.toDecoded(FrameDecoder(format)))
 
       case KinesisKclIngest(
-            name,
+            kinesisStreamName,
             applicationName,
-            streamName,
             format,
-            iteratorType,
             credentialsOpt,
             regionOpt,
+            iteratorType,
             numRetries,
-            bufferSize,
-            backpressureTimeoutMillis,
             recordDecoders,
+            schedulerSourceSettings,
             checkpointSettings,
+            advancedSettings,
           ) =>
         KinesisKclSrc(
-          name,
-          applicationName,
-          streamName,
-          meter,
-          credentialsOpt,
-          regionOpt,
-          iteratorType,
-          numRetries,
-          recordDecoders.map(ContentDecoder(_)),
-          bufferSize,
-          backpressureTimeoutMillis,
-          checkpointSettings,
+          kinesisStreamName = kinesisStreamName,
+          applicationName = applicationName,
+          meter = meter,
+          credentialsOpt = credentialsOpt,
+          regionOpt = regionOpt,
+          initialPosition = iteratorType,
+          numRetries = numRetries,
+          decoders = recordDecoders.map(ContentDecoder(_)),
+          schedulerSettings = schedulerSourceSettings,
+          checkpointSettings = checkpointSettings,
+          advancedSettings = advancedSettings,
         )(ExecutionContext.parasitic).framedSource.map(_.toDecoded(FrameDecoder(format)))
 
       case ServerSentEventIngest(format, url, recordDecoders) =>

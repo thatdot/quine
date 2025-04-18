@@ -4,6 +4,7 @@ import java.nio.charset.Charset
 
 import scala.util.{Failure, Success}
 
+import cats.implicits.catsSyntaxEitherId
 import io.circe.Encoder.encodeString
 import io.circe.generic.extras.auto._
 import io.circe.generic.extras.semiauto.{
@@ -23,6 +24,8 @@ import com.thatdot.quine.app.ingest2.V2IngestEntities.StreamingFormat.ProtobufFo
 import com.thatdot.quine.app.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.serialization.EncoderDecoder
 import com.thatdot.quine.app.v2api.endpoints.V2ApiConfiguration
+import com.thatdot.quine.routes.AwsCredentials
+import com.thatdot.quine.routes.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.{routes => V1}
 
 object V2IngestEntityEncoderDecoders extends V2IngestEntitySchemas {
@@ -55,14 +58,7 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit val ingestFormatTypeSchema: Schema[IngestFormat] =
     Schema.derived
       .description("Ingest format")
-      .encodedExample(
-        CsvFormat(
-          Right(List("header1", "header2")),
-          V1.CsvCharacter.Comma,
-          V1.CsvCharacter.DoubleQuote,
-          V1.CsvCharacter.Backslash,
-        ).asJson,
-      )
+      .encodedExample(CsvFormat(Right(List("header1", "header2")), Comma, DoubleQuote, Backslash).asJson)
 
   implicit val charsetCodec: Codec[String, Charset, TextPlain] = Codec.string.mapDecode(s =>
     scala.util.Try(Charset.forName(s)) match {
@@ -79,9 +75,8 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit lazy val kafkaSecurityProtocolSchema: Schema[V1.KafkaSecurityProtocol] = Schema.derived
   implicit lazy val kafkaAutoOffsetResetSchema: Schema[V1.KafkaAutoOffsetReset] = Schema.derived
   implicit lazy val kafkaOffsetCommittingSchema: Schema[V1.KafkaOffsetCommitting] = Schema.derived
-  implicit lazy val awsCredentialsSchema: Schema[V1.AwsCredentials] = Schema.derived
-  implicit lazy val kinesisIteratorSchema: Schema[V1.KinesisIngest.IteratorType] = Schema.derived
-  implicit lazy val kinesisKCLIteratorSchema: Schema[InitialPosition] = Schema.derived
+  implicit lazy val awsCredentialsSchema: Schema[AwsCredentials] = Schema.derived
+  implicit lazy val initialPositionSchema: Schema[InitialPosition] = Schema.derived
   implicit lazy val awsRegionSchema: Schema[V1.AwsRegion] = Schema.derived
   implicit lazy val keepaliveProtocolSchema: Schema[V1.WebsocketSimpleStartupIngest.KeepaliveProtocol] = Schema.derived
   implicit lazy val csvIngestFormatSchema: Schema[CsvFormat] = Schema.derived
@@ -90,7 +85,29 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
     Schema.schemaForArray(recordDecodingTypeSchema).map(a => Some(a.toSeq))(s => s.toArray)
   implicit lazy val fileFormatTypeSchema: Schema[FileFormat] = Schema.derived
   implicit lazy val streamingFormatTypeSchema: Schema[StreamingFormat] = Schema.derived
-  implicit lazy val checkpointSettingsSchema: Schema[V1.KinesisIngest.KinesisCheckpointSettings] = Schema.derived
+  implicit lazy val kinesisSchedulerSourceSettingsSchema: Schema[KinesisSchedulerSourceSettings] = Schema.derived
+
+  // ---- Schemas for the KCLConfiguration ----
+
+  implicit lazy val metricsDimensionSchema: Schema[MetricsDimension] = Schema.derived
+  implicit lazy val clientVersionConfigSchema: Schema[ClientVersionConfig] = Schema.derived
+
+  implicit lazy val billingModeSchema: Schema[BillingMode] = Schema.derived
+
+  implicit lazy val shardPrioritizationSchema: Schema[ShardPrioritization] = Schema.derived
+  implicit lazy val metricsLevelSchema: Schema[MetricsLevel] = Schema.derived
+  implicit lazy val metricsConfigSchema: Schema[MetricsConfig] = Schema.derived
+  implicit lazy val configsBuilderSchema: Schema[ConfigsBuilder] = Schema.derived
+  implicit lazy val leaseManagementConfigSchema: Schema[LeaseManagementConfig] = Schema.derived
+  implicit lazy val pollingConfigSchema: Schema[PollingConfig] = Schema.derived
+  implicit lazy val processorConfigSchema: Schema[ProcessorConfig] = Schema.derived
+  implicit lazy val coordinatorConfigSchema: Schema[CoordinatorConfig] = Schema.derived
+  implicit lazy val lifecycleConfigSchema: Schema[LifecycleConfig] = Schema.derived
+  implicit lazy val retrievalConfigSchema: Schema[RetrievalConfig] = Schema.derived
+  implicit lazy val kinesisIteratorSchema: Schema[V1.KinesisIngest.IteratorType] = Schema.derived
+  implicit lazy val kinesisCheckpointSettingsSchema: Schema[KinesisCheckpointSettings] = Schema.derived
+  implicit lazy val kclConfigurationSchema: Schema[KCLConfiguration] = Schema.derived
+
   implicit lazy val ingestSourceTypeSchema: Schema[IngestSource] = Schema.derived
   implicit lazy val ingestSchema: Schema[QuineIngestConfiguration] = Schema.derived[QuineIngestConfiguration]
 
@@ -123,7 +140,6 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
     encodeKafkaSecurityProtocol: Encoder[V1.KafkaSecurityProtocol],
     decodeKafkaSecurityProtocol: Decoder[V1.KafkaSecurityProtocol],
   ) = {
-    import cats.implicits.catsSyntaxEitherId
     val encoder: Encoder[V1.KafkaSecurityProtocol] = encodeString.contramap(_.name)
     val decoder: Decoder[V1.KafkaSecurityProtocol] = Decoder.decodeString.emap {
       case s if s == V1.KafkaSecurityProtocol.PlainText.name => V1.KafkaSecurityProtocol.PlainText.asRight
@@ -145,16 +161,10 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
     )
 
   implicit lazy val (
-    encodeKCLIteratorType: Encoder[InitialPosition],
-    decodeKCLIteratorType: Decoder[InitialPosition],
+    encodeInitialPosition: Encoder[InitialPosition],
+    decodeInitialPosition: Decoder[InitialPosition],
   ) =
     (deriveConfiguredEncoder[InitialPosition], deriveConfiguredDecoder[InitialPosition])
-
-  implicit lazy val (
-    encodeIteratorType: Encoder[V1.KinesisIngest.IteratorType],
-    decodeIteratorType: Decoder[V1.KinesisIngest.IteratorType],
-  ) =
-    (deriveConfiguredEncoder[V1.KinesisIngest.IteratorType], deriveConfiguredDecoder[V1.KinesisIngest.IteratorType])
 
   implicit lazy val FileFormatEncoder: Encoder[FileFormat] =
     deriveConfiguredEncoder[FileFormat]

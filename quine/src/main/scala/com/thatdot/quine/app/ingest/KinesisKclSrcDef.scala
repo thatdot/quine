@@ -75,9 +75,9 @@ final case class KinesisKclSrcDef(
   numRetries: Int,
   maxPerSecond: Option[Int],
   decoders: Seq[ContentDecoder],
-  schedulerSettings: Option[KinesisIngest.KCLSchedulerSourceSettings],
+  schedulerSettings: Option[KinesisIngest.KinesisSchedulerSourceSettings],
   checkpointSettings: Option[KinesisIngest.KinesisCheckpointSettings],
-  advancedKCLConfig: Option[KinesisIngest.KCLConfiguration],
+  advancedSettings: Option[KinesisIngest.KCLConfiguration],
 )(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(
       format,
@@ -145,7 +145,7 @@ final case class KinesisKclSrcDef(
       }
 
       val streamTracker = new SingleStreamTracker(streamName, initialPositionInStream)
-      val workerId = advancedKCLConfig
+      val workerId = advancedSettings
         .flatMap(_.configsBuilder.flatMap(_.workerIdentifier))
         .getOrElse(s"${InetAddress.getLocalHost.getHostName}:${UUID.randomUUID()}")
       val configsBuilder = new ConfigsBuilder(
@@ -159,8 +159,8 @@ final case class KinesisKclSrcDef(
       )
 
       // `ConfigsBuilder#tableName` may only be set after construction, but we
-      // need to do it before the rest of the `advancedKCLConfig` traversal
-      advancedKCLConfig.foreach(_.configsBuilder.foreach(_.tableName.foreach(configsBuilder.tableName)))
+      // need to do it before the rest of the `advancedSettings` traversal
+      advancedSettings.foreach(_.configsBuilder.foreach(_.tableName.foreach(configsBuilder.tableName)))
 
       // Used below to set the retrievalSpecificConfig that PollingConfig implements
       val pollingConfig = new PollingConfig(streamName, kinesisClient)
@@ -175,7 +175,7 @@ final case class KinesisKclSrcDef(
       val retrievalConfig = configsBuilder.retrievalConfig
       val metricsConfig = configsBuilder.metricsConfig
 
-      advancedKCLConfig.foreach { apiKclConfig =>
+      advancedSettings.foreach { apiKclConfig =>
         apiKclConfig.leaseManagementConfig.foreach { apiLeaseConfig =>
           apiLeaseConfig.failoverTimeMillis.foreach(leaseManagementConfig.failoverTimeMillis)
           apiLeaseConfig.shardSyncIntervalMillis.foreach(leaseManagementConfig.shardSyncIntervalMillis)
@@ -290,7 +290,7 @@ final case class KinesisKclSrcDef(
       }
 
       // Note: Currently, this config is the only one built within the configs builder
-      // that is not affected by the `advancedKCLConfig` traversal above. That makes
+      // that is not affected by the `advancedSettings` traversal above. That makes
       // sense because we also have `checkpointSettings` at the same level, but the
       // reasons that we don't build a `checkpointConfig` from that parameter are:
       //   1. Those settings are used for `KinesisSchedulerCheckpointSettings` in the

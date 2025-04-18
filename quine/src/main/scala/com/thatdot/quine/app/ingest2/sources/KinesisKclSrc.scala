@@ -2,10 +2,12 @@ package com.thatdot.quine.app.ingest2.sources
 
 import java.net.InetAddress
 import java.nio.ByteBuffer
-import java.util.{Calendar, UUID}
+import java.util.{Calendar, Optional, UUID}
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
+import scala.jdk.CollectionConverters._
+import scala.jdk.DurationConverters.ScalaDurationOps
 
 import org.apache.pekko.stream.connectors.kinesis.scaladsl.KinesisSchedulerSource
 import org.apache.pekko.stream.connectors.kinesis.{
@@ -26,15 +28,20 @@ import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.retries.StandardRetryStrategy
 import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
+import software.amazon.awssdk.services.dynamodb.model.BillingMode
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
 import software.amazon.kinesis.common.{ConfigsBuilder, InitialPositionInStream, InitialPositionInStreamExtended}
+import software.amazon.kinesis.coordinator.CoordinatorConfig.ClientVersionConfig
 import software.amazon.kinesis.coordinator.Scheduler
+import software.amazon.kinesis.leases.{NoOpShardPrioritization, ParentsFirstShardPrioritization}
+import software.amazon.kinesis.metrics.MetricsLevel
 import software.amazon.kinesis.processor.{ShardRecordProcessorFactory, SingleStreamTracker}
+import software.amazon.kinesis.retrieval.polling.PollingConfig
 
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
-import com.thatdot.quine.app.ingest2.V2IngestEntities.{AtTimestamp, InitialPosition, Latest, TrimHorizon}
+import com.thatdot.quine.app.ingest2.V2IngestEntities
 import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.util.BaseError
@@ -43,30 +50,30 @@ import com.thatdot.quine.{routes => V1}
 /** The definition of a source stream from Amazon Kinesis using KCL,
   * now translated to expose a framedSource.
   *
-  * @param name               The unique, human-facing name of the ingest stream
-  * @param applicationName    The name of the application as seen by KCL and its accompanying DynamoDB instance
-  * @param kinesisStreamName  The Kinesis stream name
+  * @param kinesisStreamName  The name of the kinesis stream to start ingesting from
+  * @param applicationName    The name of the dynamo db table and cloud watch metrics, unless overridden
   * @param meter              An instance of [[IngestMeter]] for metering the ingest flow
   * @param credentialsOpt     The AWS credentials to access the stream (optional)
   * @param regionOpt          The AWS region in which Kinesis resides (optional)
-  * @param initialPosition    The KCL iterator type describing where to begin reading records
+  * @param initialPosition    The KCL initial position in stream describing where to begin reading records
   * @param numRetries         The maximum number of retry attempts for AWS client calls
   * @param decoders           A sequence of [[ContentDecoder]] for handling inbound Kinesis records
-  * @param checkpointSettings Kinesis checkpointing configuration
+  * @param schedulerSettings  Pekko Connectors scheduler settings
+  * @param checkpointSettings Pekko Connectors checkpointing configuration
+  * @param advancedSettings   All additional configuration settings for KCL
   */
 final case class KinesisKclSrc(
-  name: String,
-  applicationName: Option[String],
   kinesisStreamName: String,
+  applicationName: String,
   meter: IngestMeter,
   credentialsOpt: Option[V1.AwsCredentials],
   regionOpt: Option[V1.AwsRegion],
-  initialPosition: InitialPosition,
+  initialPosition: V2IngestEntities.InitialPosition,
   numRetries: Int,
   decoders: Seq[ContentDecoder],
-  bufferSize: Int,
-  backpressureTimeoutMillis: Long,
-  checkpointSettings: Option[V1.KinesisIngest.KinesisCheckpointSettings],
+  schedulerSettings: V2IngestEntities.KinesisSchedulerSourceSettings,
+  checkpointSettings: V2IngestEntities.KinesisCheckpointSettings,
+  advancedSettings: V2IngestEntities.KCLConfiguration,
 )(implicit val ec: ExecutionContext)
     extends FramedSourceProvider
     with LazyLogging {
@@ -94,50 +101,197 @@ final case class KinesisKclSrc(
       .region(regionOpt)
       .build
 
-    val schedulerSourceSettings =
-      KinesisSchedulerSourceSettings(
-        bufferSize,
-        FiniteDuration(backpressureTimeoutMillis, MILLISECONDS),
-      )
+    val schedulerSourceSettings: KinesisSchedulerSourceSettings = {
+      val base = KinesisSchedulerSourceSettings.defaults
+      val withSize = schedulerSettings.bufferSize.fold(base)(base.withBufferSize)
+      val withSizeAndTimeout = schedulerSettings.backpressureTimeoutMillis.fold(withSize) { t =>
+        withSize.withBackpressureTimeout(java.time.Duration.ofMillis(t))
+      }
+      withSizeAndTimeout
+    }
 
     val builder: ShardRecordProcessorFactory => Scheduler = { recordProcessorFactory =>
-      val hostname = {
-        try InetAddress.getLocalHost.getHostName
-        catch {
-          case _: Exception => "unknown"
-        }
-      }
 
       val initialPositionInStream: InitialPositionInStreamExtended = initialPosition match {
-        case Latest =>
+        case V2IngestEntities.InitialPosition.Latest =>
           InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.LATEST)
-        case TrimHorizon =>
+        case V2IngestEntities.InitialPosition.TrimHorizon =>
           InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.TRIM_HORIZON)
-        case AtTimestamp(year, month, date, hourOfDay, minute, second) =>
+        case V2IngestEntities.InitialPosition.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
           val time = Calendar.getInstance()
           // Minus one because Calendar Month is 0 indexed
           time.set(year, month - 1, date, hourOfDay, minute, second)
           InitialPositionInStreamExtended.newInitialPositionAtTimestamp(time.getTime)
       }
 
+      val streamTracker = new SingleStreamTracker(kinesisStreamName, initialPositionInStream)
+      val workerId = advancedSettings.configsBuilder.workerIdentifier
+        .getOrElse(s"${InetAddress.getLocalHost.getHostName}:${UUID.randomUUID()}")
       val configsBuilder = new ConfigsBuilder(
-        new SingleStreamTracker(kinesisStreamName, initialPositionInStream),
-        applicationName.getOrElse("Quine"),
+        streamTracker,
+        applicationName,
         kinesisClient,
         dynamoClient,
         cloudWatchClient,
-        s"$hostname:${UUID.randomUUID()}",
+        workerId,
         recordProcessorFactory,
       )
 
+      advancedSettings.configsBuilder.tableName.foreach(configsBuilder.tableName)
+
+      // Used below to set the retrievalSpecificConfig that PollingConfig implements
+      val pollingConfig = new PollingConfig(kinesisStreamName, kinesisClient)
+
+      val leaseManagementConfig = configsBuilder.leaseManagementConfig
+        // This should be covered by `streamTracker`, but this is to be safe since we're
+        // not providing an override in the abbreviated `LeaseManagementConfig` API schema
+        .initialPositionInStream(initialPositionInStream)
+      val processorConfig = configsBuilder.processorConfig
+      val coordinatorConfig = configsBuilder.coordinatorConfig
+      val lifecycleConfig = configsBuilder.lifecycleConfig
+      val retrievalConfig = configsBuilder.retrievalConfig
+      val metricsConfig = configsBuilder.metricsConfig
+
+      advancedSettings.leaseManagementConfig.failoverTimeMillis.foreach(leaseManagementConfig.failoverTimeMillis)
+      advancedSettings.leaseManagementConfig.shardSyncIntervalMillis.foreach(
+        leaseManagementConfig.shardSyncIntervalMillis,
+      )
+      advancedSettings.leaseManagementConfig.cleanupLeasesUponShardCompletion.foreach(
+        leaseManagementConfig.cleanupLeasesUponShardCompletion,
+      )
+      advancedSettings.leaseManagementConfig.ignoreUnexpectedChildShards.foreach(
+        leaseManagementConfig.ignoreUnexpectedChildShards,
+      )
+      advancedSettings.leaseManagementConfig.maxLeasesForWorker.foreach(leaseManagementConfig.maxLeasesForWorker)
+      advancedSettings.leaseManagementConfig.maxLeaseRenewalThreads.foreach(value =>
+        leaseManagementConfig.maxLeaseRenewalThreads(value),
+      )
+      advancedSettings.leaseManagementConfig.billingMode.foreach {
+        case V2IngestEntities.BillingMode.PROVISIONED =>
+          leaseManagementConfig.billingMode(BillingMode.PROVISIONED)
+        case V2IngestEntities.BillingMode.PAY_PER_REQUEST =>
+          leaseManagementConfig.billingMode(BillingMode.PAY_PER_REQUEST)
+        case V2IngestEntities.BillingMode.UNKNOWN_TO_SDK_VERSION =>
+          leaseManagementConfig.billingMode(BillingMode.UNKNOWN_TO_SDK_VERSION)
+      }
+      advancedSettings.leaseManagementConfig.initialLeaseTableReadCapacity.foreach(
+        leaseManagementConfig.initialLeaseTableReadCapacity,
+      )
+      advancedSettings.leaseManagementConfig.initialLeaseTableWriteCapacity.foreach(
+        leaseManagementConfig.initialLeaseTableWriteCapacity,
+      )
+      // Begin setting workerUtilizationAwareAssignmentConfig
+      val workerUtilizationAwareAssignmentConfig = leaseManagementConfig.workerUtilizationAwareAssignmentConfig()
+      advancedSettings.leaseManagementConfig.reBalanceThresholdPercentage.foreach(
+        workerUtilizationAwareAssignmentConfig.reBalanceThresholdPercentage,
+      )
+      advancedSettings.leaseManagementConfig.dampeningPercentage.foreach(
+        workerUtilizationAwareAssignmentConfig.dampeningPercentage,
+      )
+      advancedSettings.leaseManagementConfig.allowThroughputOvershoot.foreach(
+        workerUtilizationAwareAssignmentConfig.allowThroughputOvershoot,
+      )
+      advancedSettings.leaseManagementConfig.disableWorkerMetrics.foreach(
+        workerUtilizationAwareAssignmentConfig.disableWorkerMetrics,
+      )
+      advancedSettings.leaseManagementConfig.maxThroughputPerHostKBps.foreach(
+        workerUtilizationAwareAssignmentConfig.maxThroughputPerHostKBps,
+      )
+      // Finalize setting workerUtilizationAwareAssignmentConfig by updating its value in the leaseManagementConfig
+      leaseManagementConfig.workerUtilizationAwareAssignmentConfig(workerUtilizationAwareAssignmentConfig)
+
+      val gracefulLeaseHandoffConfig = leaseManagementConfig.gracefulLeaseHandoffConfig()
+      advancedSettings.leaseManagementConfig.isGracefulLeaseHandoffEnabled.foreach(
+        gracefulLeaseHandoffConfig.isGracefulLeaseHandoffEnabled,
+      )
+      advancedSettings.leaseManagementConfig.gracefulLeaseHandoffTimeoutMillis.foreach(
+        gracefulLeaseHandoffConfig.gracefulLeaseHandoffTimeoutMillis,
+      )
+      leaseManagementConfig.gracefulLeaseHandoffConfig(gracefulLeaseHandoffConfig)
+
+      advancedSettings.pollingConfig.maxRecords.foreach(pollingConfig.maxRecords)
+      // It's tempting to always set the config value for Optional types, using RichOption or some such,
+      // but we really only want to set something other than the library default if one is provided via the API
+      advancedSettings.pollingConfig.maxGetRecordsThreadPool.foreach(value =>
+        pollingConfig.maxGetRecordsThreadPool(Optional.of(value)),
+      )
+      advancedSettings.pollingConfig.retryGetRecordsInSeconds.foreach(value =>
+        pollingConfig.retryGetRecordsInSeconds(Optional.of(value)),
+      )
+
+      advancedSettings.pollingConfig.idleTimeBetweenReadsInMillis.foreach(pollingConfig.idleTimeBetweenReadsInMillis)
+      // Setting polling config defined above with stream name and kinesisClient
+      retrievalConfig.retrievalSpecificConfig(pollingConfig)
+
+      advancedSettings.processorConfig.callProcessRecordsEvenForEmptyRecordList.foreach(
+        processorConfig.callProcessRecordsEvenForEmptyRecordList,
+      )
+
+      advancedSettings.coordinatorConfig.parentShardPollIntervalMillis.foreach(
+        coordinatorConfig.parentShardPollIntervalMillis,
+      )
+      advancedSettings.coordinatorConfig.skipShardSyncAtWorkerInitializationIfLeasesExist.foreach(
+        coordinatorConfig.skipShardSyncAtWorkerInitializationIfLeasesExist,
+      )
+      advancedSettings.coordinatorConfig.shardPrioritization.foreach {
+        case V2IngestEntities.ShardPrioritization.ParentsFirstShardPrioritization(maxDepth) =>
+          coordinatorConfig.shardPrioritization(new ParentsFirstShardPrioritization(maxDepth))
+        case V2IngestEntities.ShardPrioritization.NoOpShardPrioritization =>
+          coordinatorConfig.shardPrioritization(new NoOpShardPrioritization())
+      }
+      advancedSettings.coordinatorConfig.clientVersionConfig.foreach {
+        case V2IngestEntities.ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X =>
+          coordinatorConfig.clientVersionConfig(ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X)
+        case V2IngestEntities.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X =>
+          coordinatorConfig.clientVersionConfig(ClientVersionConfig.CLIENT_VERSION_CONFIG_3X)
+      }
+
+      advancedSettings.lifecycleConfig.taskBackoffTimeMillis.foreach(lifecycleConfig.taskBackoffTimeMillis)
+
+      // It's tempting to always set the config value for Optional types, using RichOption or some such,
+      // but we really only want to set something other than the library default if one is provided via the API
+      advancedSettings.lifecycleConfig.logWarningForTaskAfterMillis.foreach(value =>
+        lifecycleConfig.logWarningForTaskAfterMillis(Optional.of(value)),
+      )
+
+      advancedSettings.retrievalConfig.listShardsBackoffTimeInMillis.foreach(
+        retrievalConfig.listShardsBackoffTimeInMillis,
+      )
+      advancedSettings.retrievalConfig.maxListShardsRetryAttempts.foreach(retrievalConfig.maxListShardsRetryAttempts)
+
+      advancedSettings.metricsConfig.metricsBufferTimeMillis.foreach(metricsConfig.metricsBufferTimeMillis)
+      advancedSettings.metricsConfig.metricsMaxQueueSize.foreach(metricsConfig.metricsMaxQueueSize)
+      advancedSettings.metricsConfig.metricsLevel.foreach {
+        case V2IngestEntities.MetricsLevel.NONE => metricsConfig.metricsLevel(MetricsLevel.NONE)
+        case V2IngestEntities.MetricsLevel.SUMMARY => metricsConfig.metricsLevel(MetricsLevel.SUMMARY)
+        case V2IngestEntities.MetricsLevel.DETAILED => metricsConfig.metricsLevel(MetricsLevel.DETAILED)
+      }
+      advancedSettings.metricsConfig.metricsEnabledDimensions.foreach(values =>
+        metricsConfig.metricsEnabledDimensions(new java.util.HashSet(values.map(_.value).asJava)),
+      )
+
+      // Note: Currently, this config is the only one built within the configs builder
+      // that is not affected by the `advancedSettings` traversal above. That makes
+      // sense because we also have `checkpointSettings` at the same level, but the
+      // reasons that we don't build a `checkpointConfig` from that parameter are:
+      //   1. Those settings are used for `KinesisSchedulerCheckpointSettings` in the
+      //      `ack` flow, and that purpose is distinct from this checkpoint config's
+      //      purpose, so we probably don't want to re-use those values for discrete
+      //      things.
+      //   2. At a glance, the only way to build a checkpoint config other than the
+      //      parameterless default one built within the configs builder at this
+      //      accessor is to build a `DynamoDBCheckpointer` via its factory, and that
+      //      is no small task.
+      val checkpointConfig = configsBuilder.checkpointConfig
+
       new Scheduler(
-        configsBuilder.checkpointConfig,
-        configsBuilder.coordinatorConfig,
-        configsBuilder.leaseManagementConfig,
-        configsBuilder.lifecycleConfig,
-        configsBuilder.metricsConfig,
-        configsBuilder.processorConfig,
-        configsBuilder.retrievalConfig,
+        checkpointConfig,
+        coordinatorConfig,
+        leaseManagementConfig,
+        lifecycleConfig,
+        metricsConfig,
+        processorConfig,
+        retrievalConfig,
       )
     }
 
@@ -162,24 +316,21 @@ final case class KinesisKclSrc(
   }
 
   val ack: Flow[CommittableRecord, Done, NotUsed] = {
-    val defaultSettings: KinesisSchedulerCheckpointSettings = KinesisSchedulerCheckpointSettings.defaults
-    checkpointSettings
-      .map {
-        case apiSettings if !apiSettings.disableCheckpointing =>
-          KinesisSchedulerCheckpointSettings
-            .apply(
-              apiSettings.maxBatchSize.getOrElse(defaultSettings.maxBatchSize),
-              apiSettings.maxBatchWaitMillis.map(Duration(_, MILLISECONDS)).getOrElse(defaultSettings.maxBatchWait),
-            )
-        case _ =>
-          defaultSettings
+    if (checkpointSettings.disableCheckpointing) {
+      Flow.fromFunction[CommittableRecord, Done](_ => Done)
+    } else {
+      val settings: KinesisSchedulerCheckpointSettings = {
+        val base = KinesisSchedulerCheckpointSettings.defaults
+        val withBatchSize = checkpointSettings.maxBatchSize.fold(base)(base.withMaxBatchSize)
+        val withBatchAndWait = checkpointSettings.maxBatchWaitMillis.fold(withBatchSize) { wait =>
+          withBatchSize.withMaxBatchWait(wait.millis.toJava)
+        }
+        withBatchAndWait
       }
-      .map(
-        KinesisSchedulerSource
-          .checkpointRecordsFlow(_)
-          .map(_ => Done),
-      )
-      .getOrElse(Flow[CommittableRecord].map(_ => Done))
+      KinesisSchedulerSource
+        .checkpointRecordsFlow(settings)
+        .map(_ => Done)
+    }
   }
 }
 
