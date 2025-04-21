@@ -41,10 +41,12 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles, ThatDotLogo}
       else "Hold \"Shift\" to return results as a table"
 
     div(className := Styles.navBar)(
-      img(
-        src := (if (props.isQuineOSS) QuineLogo.toString else ThatDotLogo.toString),
-        className := Styles.navBarLogo,
-        onClick := (e => if (e.shiftKey) props.downloadSvg()),
+      div(style := jsObj(flex = "0 1 auto", minWidth = "128px"))(
+        img(
+          src := (if (props.isQuineOSS) QuineLogo.toString else ThatDotLogo.toString),
+          className := Styles.navBarLogo,
+          onClick := (e => if (e.shiftKey) props.downloadSvg()),
+        ),
       ),
       div(className := Styles.queryInput)(
         input(
