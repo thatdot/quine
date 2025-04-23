@@ -278,7 +278,7 @@ object ApiToIngest {
         src.numRetries,
         src.recordDecoders.map(ApiToIngest.apply),
       )
-    case Api.KinesisKclIngest(
+    case Api.KinesisKCLIngest(
           kinesisStreamName,
           applicationName,
           format,

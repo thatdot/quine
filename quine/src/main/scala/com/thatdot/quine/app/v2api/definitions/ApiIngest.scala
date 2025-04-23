@@ -495,7 +495,7 @@ object ApiIngest {
 
   @title("Kinesis Data Stream Using Kcl lib")
   @description("A stream of data being ingested from Kinesis")
-  case class KinesisKclIngest(
+  case class KinesisKCLIngest(
     @description("The name of the stream that this application processes records from.")
     kinesisStreamName: String,
     @description(

@@ -345,7 +345,7 @@ object IngestToApi {
           checkpointSettings,
           advancedSettings,
         ) =>
-      Api.KinesisKclIngest(
+      Api.KinesisKCLIngest(
         kinesisStreamName = kinesisStreamName,
         applicationName = applicationName,
         IngestToApi(format),
