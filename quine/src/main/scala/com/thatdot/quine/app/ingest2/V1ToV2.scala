@@ -64,15 +64,36 @@ object V1ToV2 {
   def apply(maybeLeaseManagementConfig: Option[V1.KinesisIngest.LeaseManagementConfig]): V2.LeaseManagementConfig =
     maybeLeaseManagementConfig.fold(V2.LeaseManagementConfig())(apply)
 
-  def apply(pollingConfig: V1.KinesisIngest.PollingConfig): V2.PollingConfig = V2.PollingConfig(
+  def apply(
+    retrievalSpecificConfig: V1.KinesisIngest.RetrievalSpecificConfig,
+  ): V2.RetrievalSpecificConfig = retrievalSpecificConfig match {
+    case fanOutConfig: V1.KinesisIngest.RetrievalSpecificConfig.FanOutConfig => apply(fanOutConfig)
+    case pollingConfig: V1.KinesisIngest.RetrievalSpecificConfig.PollingConfig => apply(pollingConfig)
+  }
+
+  def apply(
+    maybeRetrievalSpecificConfig: Option[V1.KinesisIngest.RetrievalSpecificConfig],
+  ): Option[V2.RetrievalSpecificConfig] = maybeRetrievalSpecificConfig.map(apply)
+
+  def apply(
+    fanOutConfig: V1.KinesisIngest.RetrievalSpecificConfig.FanOutConfig,
+  ): V2.RetrievalSpecificConfig.FanOutConfig = V2.RetrievalSpecificConfig.FanOutConfig(
+    consumerArn = fanOutConfig.consumerArn,
+    consumerName = fanOutConfig.consumerName,
+    maxDescribeStreamSummaryRetries = fanOutConfig.maxDescribeStreamSummaryRetries,
+    maxDescribeStreamConsumerRetries = fanOutConfig.maxDescribeStreamConsumerRetries,
+    registerStreamConsumerRetries = fanOutConfig.registerStreamConsumerRetries,
+    retryBackoffMillis = fanOutConfig.retryBackoffMillis,
+  )
+
+  def apply(
+    pollingConfig: V1.KinesisIngest.RetrievalSpecificConfig.PollingConfig,
+  ): V2.RetrievalSpecificConfig.PollingConfig = V2.RetrievalSpecificConfig.PollingConfig(
     maxRecords = pollingConfig.maxRecords,
     retryGetRecordsInSeconds = pollingConfig.retryGetRecordsInSeconds,
     maxGetRecordsThreadPool = pollingConfig.maxGetRecordsThreadPool,
     idleTimeBetweenReadsInMillis = pollingConfig.idleTimeBetweenReadsInMillis,
   )
-
-  def apply(maybePollingConfig: Option[V1.KinesisIngest.PollingConfig]): V2.PollingConfig =
-    maybePollingConfig.fold(V2.PollingConfig())(apply)
 
   def apply(processorConfig: V1.KinesisIngest.ProcessorConfig): V2.ProcessorConfig = V2.ProcessorConfig(
     callProcessRecordsEvenForEmptyRecordList = processorConfig.callProcessRecordsEvenForEmptyRecordList,
@@ -155,7 +176,7 @@ object V1ToV2 {
   def apply(advancedSettings: V1.KinesisIngest.KCLConfiguration): V2.KCLConfiguration = V2.KCLConfiguration(
     configsBuilder = V1ToV2(advancedSettings.configsBuilder),
     leaseManagementConfig = V1ToV2(advancedSettings.leaseManagementConfig),
-    pollingConfig = V1ToV2(advancedSettings.pollingConfig),
+    retrievalSpecificConfig = V1ToV2(advancedSettings.retrievalSpecificConfig),
     processorConfig = V1ToV2(advancedSettings.processorConfig),
     coordinatorConfig = V1ToV2(advancedSettings.coordinatorConfig),
     lifecycleConfig = V1ToV2(advancedSettings.lifecycleConfig),

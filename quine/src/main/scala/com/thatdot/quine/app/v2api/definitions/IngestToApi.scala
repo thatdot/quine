@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.v2api.definitions
 
+import com.thatdot.quine.app.ingest2.V2IngestEntities.RetrievalSpecificConfig
 import com.thatdot.quine.app.ingest2.{V2IngestEntities => Ingest}
 import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
 import com.thatdot.quine.{routes => V1}
@@ -185,8 +186,23 @@ object IngestToApi {
       lmc.gracefulLeaseHandoffTimeoutMillis,
     )
 
-  def apply(pc: Ingest.PollingConfig): Api.PollingConfig =
-    Api.PollingConfig(
+  def apply(rsc: Ingest.RetrievalSpecificConfig): Api.RetrievalSpecificConfig = rsc match {
+    case foc: RetrievalSpecificConfig.FanOutConfig => apply(foc)
+    case pc: RetrievalSpecificConfig.PollingConfig => apply(pc)
+  }
+
+  def apply(foc: Ingest.RetrievalSpecificConfig.FanOutConfig): Api.RetrievalSpecificConfig.FanOutConfig =
+    Api.RetrievalSpecificConfig.FanOutConfig(
+      consumerArn = foc.consumerArn,
+      consumerName = foc.consumerName,
+      maxDescribeStreamSummaryRetries = foc.maxDescribeStreamSummaryRetries,
+      maxDescribeStreamConsumerRetries = foc.maxDescribeStreamConsumerRetries,
+      registerStreamConsumerRetries = foc.registerStreamConsumerRetries,
+      retryBackoffMillis = foc.retryBackoffMillis,
+    )
+
+  def apply(pc: Ingest.RetrievalSpecificConfig.PollingConfig): Api.RetrievalSpecificConfig.PollingConfig =
+    Api.RetrievalSpecificConfig.PollingConfig(
       pc.maxRecords,
       pc.retryGetRecordsInSeconds,
       pc.maxGetRecordsThreadPool,
@@ -222,7 +238,7 @@ object IngestToApi {
     Api.KCLConfiguration(
       Some(apply(kcl.configsBuilder)),
       Some(apply(kcl.leaseManagementConfig)),
-      Some(apply(kcl.pollingConfig)),
+      kcl.retrievalSpecificConfig.map(apply),
       Some(apply(kcl.processorConfig)),
       Some(apply(kcl.coordinatorConfig)),
       Some(apply(kcl.lifecycleConfig)),

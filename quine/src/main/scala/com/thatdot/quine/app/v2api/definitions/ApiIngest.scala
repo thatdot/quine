@@ -568,7 +568,7 @@ object ApiIngest {
   case class KCLConfiguration(
     configsBuilder: Option[ConfigsBuilder] = None,
     leaseManagementConfig: Option[LeaseManagementConfig] = None,
-    pollingConfig: Option[PollingConfig] = None,
+    retrievalSpecificConfig: Option[RetrievalSpecificConfig] = None,
     processorConfig: Option[ProcessorConfig] = None,
     coordinatorConfig: Option[CoordinatorConfig] = None,
     lifecycleConfig: Option[LifecycleConfig] = None,
@@ -709,19 +709,50 @@ object ApiIngest {
     )
     gracefulLeaseHandoffTimeoutMillis: Option[Long],
   )
-  case class PollingConfig(
-    @description("Allows setting the maximum number of records that Kinesis returns.")
-    maxRecords: Option[Int],
-    @description("Configures the delay between GetRecords attempts for failures.")
-    retryGetRecordsInSeconds: Option[Int],
-    @description("The thread pool size used for GetRecords.")
-    maxGetRecordsThreadPool: Option[Int],
-    @description(
-      """Determines how long KCL waits between GetRecords calls to poll the data from data streams.
-        |The unit is milliseconds.""".stripMargin,
-    )
-    idleTimeBetweenReadsInMillis: Option[Long],
-  )
+
+  sealed trait RetrievalSpecificConfig
+
+  object RetrievalSpecificConfig {
+    case class FanOutConfig(
+      @description(
+        "The ARN of an already created consumer, if this is set no automatic consumer creation will be attempted.",
+      )
+      consumerArn: Option[String],
+      @description("The name of the consumer to create. If this isn't set the `applicationName` will be used.")
+      consumerName: Option[String],
+      @description(
+        """The maximum number of retries for calling DescribeStreamSummary.
+          |Once exhausted the consumer creation/retrieval will fail.""".stripMargin,
+      )
+      maxDescribeStreamSummaryRetries: Option[Int],
+      @description(
+        """The maximum number of retries for calling DescribeStreamConsumer.
+          |Once exhausted the consumer creation/retrieval will fail.""".stripMargin,
+      )
+      maxDescribeStreamConsumerRetries: Option[Int],
+      @description(
+        """The maximum number of retries for calling RegisterStreamConsumer.
+          |Once exhausted the consumer creation/retrieval will fail.""".stripMargin,
+      )
+      registerStreamConsumerRetries: Option[Int],
+      @description("The maximum amount of time that will be made between failed calls.")
+      retryBackoffMillis: Option[Long],
+    ) extends RetrievalSpecificConfig
+    case class PollingConfig(
+      @description("Allows setting the maximum number of records that Kinesis returns.")
+      maxRecords: Option[Int],
+      @description("Configures the delay between GetRecords attempts for failures.")
+      retryGetRecordsInSeconds: Option[Int],
+      @description("The thread pool size used for GetRecords.")
+      maxGetRecordsThreadPool: Option[Int],
+      @description(
+        """Determines how long KCL waits between GetRecords calls to poll the data from data streams.
+          |The unit is milliseconds.""".stripMargin,
+      )
+      idleTimeBetweenReadsInMillis: Option[Long],
+    ) extends RetrievalSpecificConfig
+  }
+
   case class ProcessorConfig(
     @description("When set, the record processor is called even when no records were provided from Kinesis.")
     callProcessRecordsEvenForEmptyRecordList: Option[Boolean],

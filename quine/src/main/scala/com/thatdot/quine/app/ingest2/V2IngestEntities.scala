@@ -245,18 +245,18 @@ object V2IngestEntities {
   /** A complex object comprising abbreviated configuration objects used by the
     * Kinesis Client Library (KCL).
     *
-    * @param leaseManagementConfig Lease‑management configuration.
-    * @param pollingConfig       Configuration for the polling subsystem.
-    * @param processorConfig     Configuration for the record‑processor.
-    * @param coordinatorConfig   Configuration for the shard‑coordinator.
-    * @param lifecycleConfig     Configuration for lifecycle behaviour.
-    * @param retrievalConfig     Configuration for record retrieval.
-    * @param metricsConfig       Configuration for CloudWatch metrics.
+    * @param leaseManagementConfig   Lease‑management configuration.
+    * @param retrievalSpecificConfig Configuration for fan out or shared polling.
+    * @param processorConfig         Configuration for the record‑processor.
+    * @param coordinatorConfig       Configuration for the shard‑coordinator.
+    * @param lifecycleConfig         Configuration for lifecycle behaviour.
+    * @param retrievalConfig         Configuration for record retrieval.
+    * @param metricsConfig           Configuration for CloudWatch metrics.
     */
   case class KCLConfiguration(
     configsBuilder: ConfigsBuilder = ConfigsBuilder(),
     leaseManagementConfig: LeaseManagementConfig = LeaseManagementConfig(),
-    pollingConfig: PollingConfig = PollingConfig(),
+    retrievalSpecificConfig: Option[RetrievalSpecificConfig] = None,
     processorConfig: ProcessorConfig = ProcessorConfig(),
     coordinatorConfig: CoordinatorConfig = CoordinatorConfig(),
     lifecycleConfig: LifecycleConfig = LifecycleConfig(),
@@ -346,17 +346,43 @@ object V2IngestEntities {
     gracefulLeaseHandoffTimeoutMillis: Option[Long] = None,
   )
 
-  /** Polling‑specific configuration. */
-  case class PollingConfig(
-    /** Maximum number of records that Kinesis returns. */
-    maxRecords: Option[Int] = None,
-    /** Delay between `GetRecords` attempts for failures (seconds). */
-    retryGetRecordsInSeconds: Option[Int] = None,
-    /** Thread‑pool size used for `GetRecords`. */
-    maxGetRecordsThreadPool: Option[Int] = None,
-    /** How long KCL waits between `GetRecords` calls (milliseconds). */
-    idleTimeBetweenReadsInMillis: Option[Long] = None,
-  )
+  sealed trait RetrievalSpecificConfig
+
+  object RetrievalSpecificConfig {
+    case class FanOutConfig(
+      /** The ARN of an already created consumer, if this is set no automatic consumer creation will be attempted. */
+      consumerArn: Option[String],
+      /** The name of the consumer to create. If this isn't set the `applicationName` will be used. */
+      consumerName: Option[String],
+      /** The maximum number of retries for calling DescribeStreamSummary.
+        * Once exhausted the consumer creation/retrieval will fail.
+        */
+      maxDescribeStreamSummaryRetries: Option[Int],
+      /** The maximum number of retries for calling DescribeStreamConsumer.
+        * Once exhausted the consumer creation/retrieval will fail.
+        */
+      maxDescribeStreamConsumerRetries: Option[Int],
+      /** The maximum number of retries for calling RegisterStreamConsumer.
+        * Once exhausted the consumer creation/retrieval will fail.
+        */
+      registerStreamConsumerRetries: Option[Int],
+      /** The maximum amount of time that will be made between failed calls. */
+      retryBackoffMillis: Option[Long],
+    ) extends RetrievalSpecificConfig
+
+    /** Polling‑specific configuration. */
+    case class PollingConfig(
+      /** Maximum number of records that Kinesis returns. */
+      maxRecords: Option[Int] = None,
+      /** Delay between `GetRecords` attempts for failures (seconds). */
+      retryGetRecordsInSeconds: Option[Int] = None,
+      /** Thread‑pool size used for `GetRecords`. */
+      maxGetRecordsThreadPool: Option[Int] = None,
+      /** How long KCL waits between `GetRecords` calls (milliseconds). */
+      idleTimeBetweenReadsInMillis: Option[Long] = None,
+    ) extends RetrievalSpecificConfig
+
+  }
 
   /** Record‑processor configuration. */
   case class ProcessorConfig(

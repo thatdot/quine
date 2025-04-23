@@ -36,6 +36,7 @@ import software.amazon.kinesis.coordinator.Scheduler
 import software.amazon.kinesis.leases.{NoOpShardPrioritization, ParentsFirstShardPrioritization}
 import software.amazon.kinesis.metrics.MetricsLevel
 import software.amazon.kinesis.processor.{ShardRecordProcessorFactory, SingleStreamTracker}
+import software.amazon.kinesis.retrieval.fanout.FanOutConfig
 import software.amazon.kinesis.retrieval.polling.PollingConfig
 
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
@@ -139,9 +140,6 @@ final case class KinesisKclSrc(
 
       advancedSettings.configsBuilder.tableName.foreach(configsBuilder.tableName)
 
-      // Used below to set the retrievalSpecificConfig that PollingConfig implements
-      val pollingConfig = new PollingConfig(kinesisStreamName, kinesisClient)
-
       val leaseManagementConfig = configsBuilder.leaseManagementConfig
         // This should be covered by `streamTracker`, but this is to be safe since we're
         // not providing an override in the abbreviated `LeaseManagementConfig` API schema
@@ -209,19 +207,42 @@ final case class KinesisKclSrc(
       )
       leaseManagementConfig.gracefulLeaseHandoffConfig(gracefulLeaseHandoffConfig)
 
-      advancedSettings.pollingConfig.maxRecords.foreach(pollingConfig.maxRecords)
-      // It's tempting to always set the config value for Optional types, using RichOption or some such,
-      // but we really only want to set something other than the library default if one is provided via the API
-      advancedSettings.pollingConfig.maxGetRecordsThreadPool.foreach(value =>
-        pollingConfig.maxGetRecordsThreadPool(Optional.of(value)),
-      )
-      advancedSettings.pollingConfig.retryGetRecordsInSeconds.foreach(value =>
-        pollingConfig.retryGetRecordsInSeconds(Optional.of(value)),
-      )
+      advancedSettings.retrievalSpecificConfig
+        .map {
+          case V2IngestEntities.RetrievalSpecificConfig.FanOutConfig(
+                consumerArn,
+                consumerName,
+                maxDescribeStreamSummaryRetries,
+                maxDescribeStreamConsumerRetries,
+                registerStreamConsumerRetries,
+                retryBackoffMillis,
+              ) =>
+            val fanOutConfig = new FanOutConfig(kinesisClient)
+            fanOutConfig.streamName(kinesisStreamName)
+            consumerArn.foreach(fanOutConfig.consumerArn)
+            consumerName.foreach(fanOutConfig.consumerName)
+            maxDescribeStreamSummaryRetries.foreach(fanOutConfig.maxDescribeStreamSummaryRetries)
+            maxDescribeStreamConsumerRetries.foreach(fanOutConfig.maxDescribeStreamConsumerRetries)
+            registerStreamConsumerRetries.foreach(fanOutConfig.registerStreamConsumerRetries)
+            retryBackoffMillis.foreach(fanOutConfig.retryBackoffMillis)
+            fanOutConfig
 
-      advancedSettings.pollingConfig.idleTimeBetweenReadsInMillis.foreach(pollingConfig.idleTimeBetweenReadsInMillis)
-      // Setting polling config defined above with stream name and kinesisClient
-      retrievalConfig.retrievalSpecificConfig(pollingConfig)
+          case V2IngestEntities.RetrievalSpecificConfig.PollingConfig(
+                maxRecords,
+                retryGetRecordsInSeconds,
+                maxGetRecordsThreadPool,
+                idleTimeBetweenReadsInMillis,
+              ) =>
+            val pollingConfig = new PollingConfig(kinesisStreamName, kinesisClient)
+            maxRecords.foreach(pollingConfig.maxRecords)
+            // It's tempting to always set the config value for Optional types, using RichOption or some such,
+            // but we really only want to set something other than the library default if one is provided via the API
+            maxGetRecordsThreadPool.foreach(value => pollingConfig.maxGetRecordsThreadPool(Optional.of(value)))
+            retryGetRecordsInSeconds.foreach(value => pollingConfig.retryGetRecordsInSeconds(Optional.of(value)))
+            idleTimeBetweenReadsInMillis.foreach(pollingConfig.idleTimeBetweenReadsInMillis)
+            pollingConfig
+        }
+        .foreach(retrievalConfig.retrievalSpecificConfig)
 
       advancedSettings.processorConfig.callProcessRecordsEvenForEmptyRecordList.foreach(
         processorConfig.callProcessRecordsEvenForEmptyRecordList,

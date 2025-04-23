@@ -1,6 +1,7 @@
 package com.thatdot.quine.app.v2api.definitions
 
 import com.thatdot.quine.app.ingest2.{V2IngestEntities, V2IngestEntities => Ingest}
+import com.thatdot.quine.app.v2api.definitions.ApiIngest.RetrievalSpecificConfig
 import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
 import com.thatdot.quine.{routes => V1}
 
@@ -171,8 +172,23 @@ object ApiToIngest {
       lmc.gracefulLeaseHandoffTimeoutMillis,
     )
 
-  def apply(pc: Api.PollingConfig): Ingest.PollingConfig =
-    Ingest.PollingConfig(
+  def apply(rsc: Api.RetrievalSpecificConfig): Ingest.RetrievalSpecificConfig = rsc match {
+    case foc: RetrievalSpecificConfig.FanOutConfig => apply(foc)
+    case pc: RetrievalSpecificConfig.PollingConfig => apply(pc)
+  }
+
+  def apply(foc: Api.RetrievalSpecificConfig.FanOutConfig): Ingest.RetrievalSpecificConfig.FanOutConfig =
+    Ingest.RetrievalSpecificConfig.FanOutConfig(
+      consumerArn = foc.consumerArn,
+      consumerName = foc.consumerName,
+      maxDescribeStreamSummaryRetries = foc.maxDescribeStreamSummaryRetries,
+      maxDescribeStreamConsumerRetries = foc.maxDescribeStreamConsumerRetries,
+      registerStreamConsumerRetries = foc.registerStreamConsumerRetries,
+      retryBackoffMillis = foc.retryBackoffMillis,
+    )
+
+  def apply(pc: Api.RetrievalSpecificConfig.PollingConfig): Ingest.RetrievalSpecificConfig.PollingConfig =
+    Ingest.RetrievalSpecificConfig.PollingConfig(
       pc.maxRecords,
       pc.retryGetRecordsInSeconds,
       pc.maxGetRecordsThreadPool,
@@ -208,7 +224,7 @@ object ApiToIngest {
     Ingest.KCLConfiguration(
       kcl.configsBuilder.map(apply).getOrElse(Ingest.ConfigsBuilder()),
       kcl.leaseManagementConfig.map(apply).getOrElse(Ingest.LeaseManagementConfig()),
-      kcl.pollingConfig.map(apply).getOrElse(Ingest.PollingConfig()),
+      kcl.retrievalSpecificConfig.map(apply),
       kcl.processorConfig.map(apply).getOrElse(Ingest.ProcessorConfig()),
       kcl.coordinatorConfig.map(apply).getOrElse(Ingest.CoordinatorConfig()),
       kcl.lifecycleConfig.map(apply).getOrElse(Ingest.LifecycleConfig()),

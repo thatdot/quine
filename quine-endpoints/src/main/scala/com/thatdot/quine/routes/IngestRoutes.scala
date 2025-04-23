@@ -514,7 +514,7 @@ object KinesisIngest {
   case class KCLConfiguration(
     configsBuilder: Option[ConfigsBuilder],
     leaseManagementConfig: Option[LeaseManagementConfig],
-    pollingConfig: Option[PollingConfig],
+    retrievalSpecificConfig: Option[RetrievalSpecificConfig],
     processorConfig: Option[ProcessorConfig],
     coordinatorConfig: Option[CoordinatorConfig],
     lifecycleConfig: Option[LifecycleConfig],
@@ -631,17 +631,48 @@ object KinesisIngest {
             |This is a new configuration introduced in KCL 3.x.""".stripMargin)
     gracefulLeaseHandoffTimeoutMillis: Option[Long],
   )
-  case class PollingConfig(
-    @docs("Allows setting the maximum number of records that Kinesis returns.")
-    maxRecords: Option[Int],
-    @docs("Configures the delay between GetRecords attempts for failures.")
-    retryGetRecordsInSeconds: Option[Int],
-    @docs("The thread pool size used for GetRecords.")
-    maxGetRecordsThreadPool: Option[Int],
-    @docs("""Determines how long KCL waits between GetRecords calls to poll the data from data streams.
-            |The unit is milliseconds.""".stripMargin)
-    idleTimeBetweenReadsInMillis: Option[Long],
-  )
+
+  sealed abstract class RetrievalSpecificConfig
+
+  object RetrievalSpecificConfig {
+
+    case class FanOutConfig(
+      @docs("The ARN of an already created consumer, if this is set no automatic consumer creation will be attempted.")
+      consumerArn: Option[String],
+      @docs("The name of the consumer to create. If this isn't set the `applicationName` will be used.")
+      consumerName: Option[String],
+      @docs(
+        """The maximum number of retries for calling DescribeStreamSummary.
+          |Once exhausted the consumer creation/retrieval will fail.""".stripMargin,
+      )
+      maxDescribeStreamSummaryRetries: Option[Int],
+      @docs(
+        """The maximum number of retries for calling DescribeStreamConsumer.
+          |Once exhausted the consumer creation/retrieval will fail.""".stripMargin,
+      )
+      maxDescribeStreamConsumerRetries: Option[Int],
+      @docs(
+        """The maximum number of retries for calling RegisterStreamConsumer.
+          |Once exhausted the consumer creation/retrieval will fail.""".stripMargin,
+      )
+      registerStreamConsumerRetries: Option[Int],
+      @docs("The maximum amount of time that will be made between failed calls.")
+      retryBackoffMillis: Option[Long],
+    ) extends RetrievalSpecificConfig
+
+    case class PollingConfig(
+      @docs("Allows setting the maximum number of records that Kinesis returns.")
+      maxRecords: Option[Int],
+      @docs("Configures the delay between GetRecords attempts for failures.")
+      retryGetRecordsInSeconds: Option[Int],
+      @docs("The thread pool size used for GetRecords.")
+      maxGetRecordsThreadPool: Option[Int],
+      @docs("""Determines how long KCL waits between GetRecords calls to poll the data from data streams.
+          |The unit is milliseconds.""".stripMargin)
+      idleTimeBetweenReadsInMillis: Option[Long],
+    ) extends RetrievalSpecificConfig
+  }
+
   case class ProcessorConfig(
     @docs("When set, the record processor is called even when no records were provided from Kinesis.")
     callProcessRecordsEvenForEmptyRecordList: Option[Boolean],
@@ -1280,14 +1311,16 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
   implicit val kinesisCheckpointSettingsSchema: Record[KinesisIngest.KinesisCheckpointSettings] =
     genericRecord[KinesisIngest.KinesisCheckpointSettings].withExample(exampleCheckpointSettings)
 
-  private val examplePollingConfig: KinesisIngest.PollingConfig = KinesisIngest.PollingConfig(
-    maxRecords = Some(1),
-    retryGetRecordsInSeconds = Some(1),
-    maxGetRecordsThreadPool = Some(1),
-    idleTimeBetweenReadsInMillis = Some(2222),
-  )
-  implicit val examplePollingConfigSchema: Record[KinesisIngest.PollingConfig] =
-    genericRecord[KinesisIngest.PollingConfig].withExample(examplePollingConfig)
+  private val examplePollingConfig: KinesisIngest.RetrievalSpecificConfig.PollingConfig =
+    KinesisIngest.RetrievalSpecificConfig.PollingConfig(
+      maxRecords = Some(1),
+      retryGetRecordsInSeconds = Some(1),
+      maxGetRecordsThreadPool = Some(1),
+      idleTimeBetweenReadsInMillis = Some(2222),
+    )
+
+  implicit val retrievalSpecificConfigSchema: Tagged[KinesisIngest.RetrievalSpecificConfig] =
+    genericTagged[KinesisIngest.RetrievalSpecificConfig].withExample(examplePollingConfig)
 
   private val exampleProcessorConfig: KinesisIngest.ProcessorConfig = KinesisIngest.ProcessorConfig(
     callProcessRecordsEvenForEmptyRecordList = Some(true),
@@ -1425,7 +1458,7 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
   private val exampleKclConfiguration: KinesisIngest.KCLConfiguration = KinesisIngest.KCLConfiguration(
     configsBuilder = Some(exampleConfigsBuilder),
     leaseManagementConfig = Some(exampleLeaseManagementConfig),
-    pollingConfig = Some(examplePollingConfig),
+    retrievalSpecificConfig = Some(examplePollingConfig),
     processorConfig = Some(exampleProcessorConfig),
     coordinatorConfig = Some(exampleCoordinatorConfig),
     lifecycleConfig = Some(exampleLifecycleConfig),

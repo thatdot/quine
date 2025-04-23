@@ -99,7 +99,7 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit lazy val metricsConfigSchema: Schema[MetricsConfig] = Schema.derived
   implicit lazy val configsBuilderSchema: Schema[ConfigsBuilder] = Schema.derived
   implicit lazy val leaseManagementConfigSchema: Schema[LeaseManagementConfig] = Schema.derived
-  implicit lazy val pollingConfigSchema: Schema[PollingConfig] = Schema.derived
+  implicit lazy val retrievalSpecificConfigSchema: Schema[RetrievalSpecificConfig] = Schema.derived
   implicit lazy val processorConfigSchema: Schema[ProcessorConfig] = Schema.derived
   implicit lazy val coordinatorConfigSchema: Schema[CoordinatorConfig] = Schema.derived
   implicit lazy val lifecycleConfigSchema: Schema[LifecycleConfig] = Schema.derived
