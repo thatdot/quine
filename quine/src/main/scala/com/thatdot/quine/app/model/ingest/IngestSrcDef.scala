@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest
+package com.thatdot.quine.app.model.ingest
 
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.{Files, Paths}
@@ -23,8 +23,8 @@ import org.apache.kafka.common.KafkaException
 import software.amazon.awssdk.core.exception.SdkException
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.app.ingest.serialization._
-import com.thatdot.quine.app.ingest.util.AwsOps
+import com.thatdot.quine.app.model.ingest.serialization._
+import com.thatdot.quine.app.model.ingest.util.AwsOps
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.app.{ControlSwitches, PekkoKillSwitch, QuineAppIngestControl, ShutdownSwitch}

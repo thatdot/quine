@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest.util
+package com.thatdot.quine.app.model.ingest.util
 
 import java.lang.reflect.Field
 
@@ -13,7 +13,7 @@ import org.apache.kafka.common.config.SaslConfigs.SASL_JAAS_CONFIG
 import org.apache.kafka.common.config.{AbstractConfig, ConfigDef, ConfigValue}
 
 import com.thatdot.common.logging.Log._
-import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.ErrorString
+import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.routes.KafkaIngest.KafkaProperties
 import com.thatdot.quine.routes.KafkaOffsetCommitting
 object KafkaSettingsValidator extends LazySafeLogging {

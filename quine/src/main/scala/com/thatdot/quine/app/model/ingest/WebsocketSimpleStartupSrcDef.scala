@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest
+package com.thatdot.quine.app.model.ingest
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
@@ -12,8 +12,8 @@ import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
 import org.apache.pekko.util.ByteString
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
-import com.thatdot.quine.app.ingest.serialization.ImportFormat
+import com.thatdot.quine.app.model.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
+import com.thatdot.quine.app.model.ingest.serialization.ImportFormat
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest

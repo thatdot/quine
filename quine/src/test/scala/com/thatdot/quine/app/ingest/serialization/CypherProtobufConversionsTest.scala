@@ -3,6 +3,7 @@ package com.thatdot.quine.app.ingest.serialization
 import cats.implicits.toFunctorOps
 
 import com.thatdot.quine.app.ingest.serialization.ProtobufTest._
+import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.compiler.cypher.{CypherHarness, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.cypher.Expr
 

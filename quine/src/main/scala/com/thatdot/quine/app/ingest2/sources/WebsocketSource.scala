@@ -17,8 +17,8 @@ import org.apache.pekko.util.ByteString
 import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxValidatedId
 
-import com.thatdot.quine.app.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
 import com.thatdot.quine.app.ingest2.source.FramedSource
+import com.thatdot.quine.app.model.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol

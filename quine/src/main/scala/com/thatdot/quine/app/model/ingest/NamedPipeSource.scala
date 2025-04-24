@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest
+package com.thatdot.quine.app.model.ingest
 
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel

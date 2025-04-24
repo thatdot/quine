@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest.serialization
+package com.thatdot.quine.app.model.ingest.serialization
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.util.Base64

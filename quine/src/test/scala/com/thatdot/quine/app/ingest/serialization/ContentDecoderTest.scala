@@ -6,6 +6,9 @@ import java.util.zip.{Deflater, GZIPOutputStream}
 import scala.util.Random
 
 import org.scalatest.funsuite.AnyFunSuite
+
+import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
+
 class ContentDecoderTest extends AnyFunSuite {
 
   def gzipCompress(input: Array[Byte]): Array[Byte] = {

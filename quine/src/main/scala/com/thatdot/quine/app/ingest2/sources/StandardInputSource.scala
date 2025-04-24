@@ -8,11 +8,11 @@ import org.apache.pekko.util.ByteString
 
 import cats.data.ValidatedNel
 
-import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.V2IngestEntities.FileFormat
 import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.ingest2.sources.StandardInputSource.stdInSource
+import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.util.BaseError
 

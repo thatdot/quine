@@ -9,8 +9,8 @@ import org.apache.pekko.util.ByteString
 
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.source.IngestBounds
+import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.app.{PekkoKillSwitch, ShutdownSwitch}
 package object sources extends LazyLogging {

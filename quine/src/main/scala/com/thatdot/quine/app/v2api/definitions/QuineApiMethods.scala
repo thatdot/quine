@@ -21,10 +21,10 @@ import io.circe.Json
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
-import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
-import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.app.ingest2.V2IngestEntities
 import com.thatdot.quine.app.ingest2.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
+import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
+import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._

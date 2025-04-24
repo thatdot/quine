@@ -3,7 +3,7 @@ package com.thatdot.quine.app.ingest
 import org.scalatest.Inspectors.forAll
 import org.scalatest.funsuite.AnyFunSuite
 
-import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
+import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit
 
 /** Apply test on ingest endpoint as a validator.

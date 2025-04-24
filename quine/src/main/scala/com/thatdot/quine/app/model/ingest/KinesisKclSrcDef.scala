@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest
+package com.thatdot.quine.app.model.ingest
 
 import java.net.InetAddress
 import java.nio.ByteBuffer
@@ -36,9 +36,9 @@ import software.amazon.kinesis.retrieval.fanout.FanOutConfig
 import software.amazon.kinesis.retrieval.polling.PollingConfig
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
-import com.thatdot.quine.app.ingest.util.AwsOps
-import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
+import com.thatdot.quine.app.model.ingest.serialization.{ContentDecoder, ImportFormat}
+import com.thatdot.quine.app.model.ingest.util.AwsOps
+import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}

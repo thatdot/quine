@@ -24,11 +24,11 @@ import software.amazon.awssdk.retries.StandardRetryStrategy
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
-import com.thatdot.quine.app.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.ingest.util.AwsOps
-import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.ingest2.sources.KinesisSource.buildAsyncClient
+import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
+import com.thatdot.quine.app.model.ingest.util.AwsOps
+import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.exceptions.ShardIterationException
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisIngest}

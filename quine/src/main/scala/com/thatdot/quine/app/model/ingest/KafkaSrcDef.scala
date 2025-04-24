@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest
+package com.thatdot.quine.app.model.ingest
 
 import scala.concurrent.duration.{Duration, FiniteDuration, MILLISECONDS}
 import scala.util.Try
@@ -26,8 +26,8 @@ import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserialize
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.KafkaKillSwitch
-import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
-import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
+import com.thatdot.quine.app.model.ingest.serialization.{ContentDecoder, ImportFormat}
+import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}

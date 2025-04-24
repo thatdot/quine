@@ -7,8 +7,8 @@ import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.sns.SnsAsyncClient
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.ingest.util.AwsOps
-import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
+import com.thatdot.quine.app.model.ingest.util.AwsOps
+import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToSNS

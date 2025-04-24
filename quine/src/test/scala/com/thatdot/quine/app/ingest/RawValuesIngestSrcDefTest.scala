@@ -21,7 +21,8 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, CypherJsonInputFormat}
+import com.thatdot.quine.app.model.ingest.RawValuesIngestSrcDef
+import com.thatdot.quine.app.model.ingest.serialization.{ContentDecoder, CypherJsonInputFormat}
 import com.thatdot.quine.app.{IngestTestGraph, ShutdownSwitch, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphService}

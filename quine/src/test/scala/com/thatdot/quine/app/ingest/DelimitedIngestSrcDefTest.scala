@@ -17,6 +17,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.app.model.ingest.{ContentDelimitedIngestSrcDef, IngestSrcDef}
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.app.{IngestTestGraph, QuineAppIngestControl, StdInStream, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Expr

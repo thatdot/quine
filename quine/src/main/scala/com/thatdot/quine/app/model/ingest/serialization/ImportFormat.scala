@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest.serialization
+package com.thatdot.quine.app.model.ingest.serialization
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}

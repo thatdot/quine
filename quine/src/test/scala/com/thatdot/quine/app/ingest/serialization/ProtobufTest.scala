@@ -32,6 +32,7 @@ import com.thatdot.quine.app.ingest.serialization.ProtobufTest.{
   warcraftSchemaFile,
 }
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
+import com.thatdot.quine.app.model.ingest.serialization.ProtobufParser
 import com.thatdot.quine.app.serialization.ProtobufSchemaError.{
   AmbiguousMessageType,
   InvalidProtobufSchema,

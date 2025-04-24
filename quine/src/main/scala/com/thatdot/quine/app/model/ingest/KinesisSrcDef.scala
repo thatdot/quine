@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest
+package com.thatdot.quine.app.model.ingest
 
 import java.time.Instant
 
@@ -23,9 +23,9 @@ import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
-import com.thatdot.quine.app.ingest.util.AwsOps
-import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
+import com.thatdot.quine.app.model.ingest.serialization.{ContentDecoder, ImportFormat}
+import com.thatdot.quine.app.model.ingest.util.AwsOps
+import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisIngest}

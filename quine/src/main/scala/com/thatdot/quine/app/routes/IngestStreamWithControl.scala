@@ -15,7 +15,7 @@ import com.codahale.metrics.Metered
 import io.circe.Json
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Loggable, SafeLoggableInterpolator}
-import com.thatdot.quine.app.ingest.QuineIngestSource
+import com.thatdot.quine.app.model.ingest.QuineIngestSource
 import com.thatdot.quine.routes.{IngestStreamStats, IngestStreamStatus, RatesSummary}
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 

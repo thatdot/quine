@@ -13,15 +13,15 @@ import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.app.ingest.QuineIngestSource
-import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.V1ToV2
-import com.thatdot.quine.app.ingest2.V2IngestEntities.{FileFormat, LogRecordErrorHandler, QuineIngestConfiguration}
+import com.thatdot.quine.app.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.ingest2.codec.FrameDecoder
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.ingest2.sources.S3Source.s3Source
 import com.thatdot.quine.app.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.ingest2.sources._
+import com.thatdot.quine.app.model.ingest.QuineIngestSource
+import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
@@ -371,8 +371,6 @@ object DecodedSource extends LazySafeLogging {
           .map(_.toDecoded(FrameDecoder(format)))
     }
   }
-
-  import com.thatdot.quine.app.ingest2.V2IngestEntities._
 
   //V2 configuration
   def apply(src: FramedSource, format: IngestFormat)(implicit

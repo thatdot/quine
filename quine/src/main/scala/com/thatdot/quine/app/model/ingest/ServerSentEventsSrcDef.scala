@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest
+package com.thatdot.quine.app.model.ingest
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.http.scaladsl.Http
@@ -8,7 +8,7 @@ import org.apache.pekko.stream.connectors.sse.scaladsl.EventSource
 import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
+import com.thatdot.quine.app.model.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.util.SwitchMode

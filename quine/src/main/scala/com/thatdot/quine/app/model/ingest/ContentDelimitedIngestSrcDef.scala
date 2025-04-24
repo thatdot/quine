@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest
+package com.thatdot.quine.app.model.ingest
 
 import scala.util.Success
 
@@ -8,7 +8,7 @@ import org.apache.pekko.stream.scaladsl.{Flow, Framing, Source}
 import org.apache.pekko.util.ByteString
 
 import com.thatdot.common.logging.Log._
-import com.thatdot.quine.app.ingest.serialization.{
+import com.thatdot.quine.app.model.ingest.serialization.{
   CypherJsonInputFormat,
   CypherRawInputFormat,
   CypherStringInputFormat,

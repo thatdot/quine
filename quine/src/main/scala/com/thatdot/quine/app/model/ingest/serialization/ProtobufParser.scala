@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest.serialization
+package com.thatdot.quine.app.model.ingest.serialization
 
 import com.google.protobuf.Descriptors.Descriptor
 import com.google.protobuf.{DynamicMessage, InvalidProtocolBufferException}

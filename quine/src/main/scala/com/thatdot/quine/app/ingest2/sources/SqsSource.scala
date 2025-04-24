@@ -12,10 +12,10 @@ import software.amazon.awssdk.services.sqs.SqsAsyncClient
 import software.amazon.awssdk.services.sqs.model.Message
 
 import com.thatdot.quine.app.ShutdownSwitch
-import com.thatdot.quine.app.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.ingest.util.AwsOps
-import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.ingest2.source.FramedSource
+import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
+import com.thatdot.quine.app.model.ingest.util.AwsOps
+import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.util.BaseError

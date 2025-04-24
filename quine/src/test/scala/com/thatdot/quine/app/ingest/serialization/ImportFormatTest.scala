@@ -5,6 +5,7 @@ import scala.util.Success
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.quine.app.model.ingest.serialization.CypherJsonInputFormat
 import com.thatdot.quine.graph.cypher.Expr
 
 class ImportFormatTest extends AnyFunSuite {

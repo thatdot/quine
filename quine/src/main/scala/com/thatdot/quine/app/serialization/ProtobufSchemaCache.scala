@@ -16,7 +16,7 @@ import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
 
 /** Provides common utilities for its inheritors to parse protobuf descriptors.
   *
-  * @see [[com.thatdot.quine.app.ingest.serialization.ProtobufParser]]
+  * @see [[com.thatdot.quine.app.model.ingest.serialization.ProtobufParser]]
   * @see [[QuineValueToProtobuf]]
   */
 trait ProtobufSchemaCache {
