@@ -310,10 +310,6 @@ lazy val `quine`: Project = project
       "org.webjars.npm" % "sugar-date" % sugarV,
       "org.webjars.npm" % "vis-network" % visNetworkV,
       "org.apache.avro" % "avro" % avroV,
-      // transitive dependency of rsocket-transport-netty. Current version required by rsocket-transport-netty has vulnerabilities
-      "io.projectreactor.netty" % "reactor-netty-core" % "1.0.48",
-      // transitive dependency of rsocket-transport-netty. Current version required by rsocket-transport-netty has vulnerabilities
-      "io.projectreactor.netty" % "reactor-netty-http" % "1.0.48",
       "io.rsocket" % "rsocket-core" % rsocketV,
       "io.rsocket" % "rsocket-transport-netty" % rsocketV,
       // Transitive dep of several others. Vulnerable >= 4.1.91.Final, <= 4.1.117.Final.
@@ -322,9 +318,7 @@ lazy val `quine`: Project = project
       // ----+------------------------------------------------+------------------------------------------------+-------------------------
       // [ ] | com.thatdot:[quine, quine-cassandra-persistor] | software.amazon.awssdk:sts                     | 2.29.52
       // [ ] | com.thatdot:quine-cassandra-persistor          | org.apache.cassandra:java-driver-query-builder | 4.18.1 (note: lower version evicted by sibling dep)
-      // [ ] | com.thatdot:quine                              | io.projectreactor.netty:reactor-netty-core     | 1.0.48
-      // [ ] | com.thatdot:quine                              | io.projectreactor.netty:reactor-netty-http     | 1.0.48
-      // [ ] | com.thatdot:quine                              | io.rsocket:rsocket-transport-netty             | 1.1.4
+      // [ ] | com.thatdot:quine                              | io.rsocket:rsocket-transport-netty             | 1.1.5
       // [ ] | com.thatdot:quine                              | org.apache.peko:pekko-connectors-kinesis_2.13  | 1.0.2
       // [x] | com.thatdot:quine                              | software.amazon.glue:schema-registry-serde     | 1.1.23
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:sso                     | 2.29.52
