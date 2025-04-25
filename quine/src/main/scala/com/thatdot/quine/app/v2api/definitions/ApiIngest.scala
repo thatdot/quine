@@ -132,59 +132,6 @@ object ApiIngest {
     case object Failed extends TerminalStatus
   }
 
-  @title("Streamed Record Format")
-  @description("Format by which streamed records are decoded.")
-  sealed abstract class StreamedRecordFormat
-  object StreamedRecordFormat {
-
-    @title("JSON via Cypher")
-    @description(
-      """Records are JSON values. For every record received, the
-        |given Cypher query will be re-executed with the parameter in the query set
-        |equal to the new JSON value.""".stripMargin,
-    )
-    final case class CypherJson(
-      @description("Cypher query to execute on each record.") query: String,
-      @default("that")
-      @description("Name of the Cypher parameter to populate with the JSON value.") parameter: String = "that",
-    ) extends StreamedRecordFormat
-
-    @title("Raw Bytes via Cypher")
-    @description(
-      """Records may have any format. For every record received, the
-        |given Cypher query will be re-executed with the parameter in the query set
-        |equal to the new value as a Cypher byte array.""".stripMargin,
-    )
-    final case class CypherRaw(
-      @description("Cypher query to execute on each record.") query: String,
-      @default("that")
-      @description("Name of the Cypher parameter to populate with the byte array.") parameter: String = "that",
-    ) extends StreamedRecordFormat
-
-    @title("Protobuf via Cypher")
-    @description(
-      "Records are serialized instances of `typeName` as described in the schema (a `.desc` descriptor file) at " +
-      "`schemaUrl`. For every record received, the given Cypher query will be re-executed with the parameter " +
-      "in the query set equal to the new (deserialized) Protobuf message.",
-    )
-    final case class CypherProtobuf(
-      @description("Cypher query to execute on each record.") query: String,
-      @description("Name of the Cypher parameter to populate with the Protobuf message.")
-      @default("that")
-      parameter: String = "that",
-      @description(
-        "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`.",
-      ) schemaUrl: String,
-      @description(
-        "Message type name to use from the given `.desc` file as the incoming message type.",
-      ) typeName: String,
-    ) extends StreamedRecordFormat
-
-    @title("Drop")
-    @description("Ignore the data without further processing.")
-    case object Drop extends StreamedRecordFormat
-  }
-
   sealed trait CsvCharacter
   object CsvCharacter {
     case object Backslash extends CsvCharacter
