@@ -3,7 +3,7 @@ package com.thatdot.quine.app.model.ingest.serialization
 import com.google.protobuf.Descriptors.Descriptor
 import com.google.protobuf.{DynamicMessage, InvalidProtocolBufferException}
 
-import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
+import com.thatdot.quine.app.model.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.graph.cypher.Value
 
 /** Parses Protobuf messages to cypher values according to a schema.

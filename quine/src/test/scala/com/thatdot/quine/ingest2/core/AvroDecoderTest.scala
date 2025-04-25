@@ -11,7 +11,7 @@ import org.apache.avro.generic.GenericData
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.app.ingest2.core.DataFoldableFrom
+import com.thatdot.quine.app.model.ingest2.core.DataFoldableFrom
 
 class AvroDecoderTest extends AnyFunSpec with Matchers {
 

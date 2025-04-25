@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2
+package com.thatdot.quine.app.model.ingest2
 
 import java.nio.charset.Charset
 import java.time.Instant

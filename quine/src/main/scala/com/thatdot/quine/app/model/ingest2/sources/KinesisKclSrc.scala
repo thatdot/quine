@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2.sources
+package com.thatdot.quine.app.model.ingest2.sources
 
 import java.net.InetAddress
 import java.nio.ByteBuffer
@@ -39,11 +39,11 @@ import software.amazon.kinesis.processor.{ShardRecordProcessorFactory, SingleStr
 import software.amazon.kinesis.retrieval.fanout.FanOutConfig
 import software.amazon.kinesis.retrieval.polling.PollingConfig
 
-import com.thatdot.quine.app.ingest2.V2IngestEntities
-import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest.util.AwsOps
 import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities
+import com.thatdot.quine.app.model.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.util.BaseError
 import com.thatdot.quine.{routes => V1}

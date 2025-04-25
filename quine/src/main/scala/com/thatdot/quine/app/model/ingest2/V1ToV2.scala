@@ -1,6 +1,6 @@
-package com.thatdot.quine.app.ingest2
+package com.thatdot.quine.app.model.ingest2
 
-import com.thatdot.quine.app.ingest2.{V2IngestEntities => V2}
+import com.thatdot.quine.app.model.ingest2.{V2IngestEntities => V2}
 import com.thatdot.quine.{routes => V1}
 
 object V1ToV2 {

@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.util
 
 import com.thatdot.common.logging.Log.{AlwaysSafeLoggable, Loggable, toStringLoggable}
-import com.thatdot.quine.app.ingest2.V2IngestEntities
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
 import com.thatdot.quine.app.serialization.ConversionFailure
 import com.thatdot.quine.app.v2api.definitions.{ApiCommand, ApiIngest}

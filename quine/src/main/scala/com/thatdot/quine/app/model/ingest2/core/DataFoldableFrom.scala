@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2.core
+package com.thatdot.quine.app.model.ingest2.core
 
 import scala.collection.{SeqView, View, mutable}
 import scala.util.Try

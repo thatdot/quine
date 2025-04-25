@@ -1,7 +1,6 @@
 package com.thatdot.quine.app.v2api.definitions
 
-import com.thatdot.quine.app.ingest2.V2IngestEntities.RetrievalSpecificConfig
-import com.thatdot.quine.app.ingest2.{V2IngestEntities => Ingest}
+import com.thatdot.quine.app.model.ingest2.{V2IngestEntities => Ingest}
 import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
 import com.thatdot.quine.{routes => V1}
 
@@ -187,8 +186,8 @@ object IngestToApi {
     )
 
   def apply(rsc: Ingest.RetrievalSpecificConfig): Api.RetrievalSpecificConfig = rsc match {
-    case foc: RetrievalSpecificConfig.FanOutConfig => apply(foc)
-    case pc: RetrievalSpecificConfig.PollingConfig => apply(pc)
+    case foc: Ingest.RetrievalSpecificConfig.FanOutConfig => apply(foc)
+    case pc: Ingest.RetrievalSpecificConfig.PollingConfig => apply(pc)
   }
 
   def apply(foc: Ingest.RetrievalSpecificConfig.FanOutConfig): Api.RetrievalSpecificConfig.FanOutConfig =

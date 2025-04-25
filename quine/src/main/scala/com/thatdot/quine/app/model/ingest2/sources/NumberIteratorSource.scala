@@ -1,12 +1,12 @@
-package com.thatdot.quine.app.ingest2.sources
+package com.thatdot.quine.app.model.ingest2.sources
 
 import scala.util.{Success, Try}
 
 import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.app.ShutdownSwitch
-import com.thatdot.quine.app.ingest2.core.DataFoldableFrom
-import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
+import com.thatdot.quine.app.model.ingest2.core.DataFoldableFrom
+import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.cypher.{Expr, Value, Value => CypherValue}
 

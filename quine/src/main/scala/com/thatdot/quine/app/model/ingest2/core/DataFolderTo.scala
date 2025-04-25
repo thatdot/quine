@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2.core
+package com.thatdot.quine.app.model.ingest2.core
 
 import java.time._
 import java.time.format.DateTimeFormatter

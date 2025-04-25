@@ -10,9 +10,9 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.app.ingest2.codec.StringDecoder
-import com.thatdot.quine.app.ingest2.source.FramedSource
-import com.thatdot.quine.app.ingest2.sources.withKillSwitches
+import com.thatdot.quine.app.model.ingest2.codec.StringDecoder
+import com.thatdot.quine.app.model.ingest2.source.FramedSource
+import com.thatdot.quine.app.model.ingest2.sources.withKillSwitches
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.{Metrics, ShutdownSwitch}
 import com.thatdot.quine.graph.cypher.Expr

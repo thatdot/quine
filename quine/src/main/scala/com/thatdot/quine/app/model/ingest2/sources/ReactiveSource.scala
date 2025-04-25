@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2.sources
+package com.thatdot.quine.app.model.ingest2.sources
 
 import org.apache.pekko.stream.scaladsl.Source
 
@@ -10,7 +10,7 @@ import io.rsocket.util.DefaultPayload
 import reactor.util.retry.Retry
 
 import com.thatdot.quine.app.RSocketKillSwitch
-import com.thatdot.quine.app.ingest2.source.FramedSource
+import com.thatdot.quine.app.model.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.util.BaseError
 

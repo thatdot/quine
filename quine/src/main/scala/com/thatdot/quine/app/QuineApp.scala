@@ -18,10 +18,10 @@ import cats.syntax.all._
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
-import com.thatdot.quine.app.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
-import com.thatdot.quine.app.ingest2.{V2IngestEntities, V2IngestEntityEncoderDecoders}
 import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.model.ingest.{IngestSrcDef, QuineIngestSource}
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
+import com.thatdot.quine.app.model.ingest2.{V2IngestEntities, V2IngestEntityEncoderDecoders}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, EncoderDecoder, ProtobufSchemaCache}
 import com.thatdot.quine.app.util.QuineLoggables._
@@ -76,7 +76,7 @@ final class QuineApp(
     with LazySafeLogging {
 
   import QuineApp._
-  import com.thatdot.quine.app.ingest2.V2IngestEntityEncoderDecoders.implicits._
+  import com.thatdot.quine.app.model.ingest2.V2IngestEntityEncoderDecoders.implicits._
 
   implicit private[this] val idProvider: QuineIdProvider = graph.idProvider
 

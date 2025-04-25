@@ -4,8 +4,8 @@ import io.circe.Json
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.app.ingest2.core.DataFoldableFrom._
-import com.thatdot.quine.app.ingest2.core.DataFolderTo._
+import com.thatdot.quine.app.model.ingest2.core.DataFoldableFrom._
+import com.thatdot.quine.app.model.ingest2.core.DataFolderTo._
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.ingest2.core.FoldableTestData.toAnyDataFolder
 

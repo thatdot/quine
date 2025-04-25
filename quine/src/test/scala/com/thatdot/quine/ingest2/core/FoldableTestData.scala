@@ -5,7 +5,7 @@ import java.time.{Duration => JavaDuration, LocalDate, LocalDateTime, LocalTime,
 import scala.collection.immutable.SortedMap
 import scala.util.Random
 
-import com.thatdot.quine.app.ingest2.core.{CollectionBuilder, DataFoldableFrom, DataFolderTo, MapBuilder}
+import com.thatdot.quine.app.model.ingest2.core.{CollectionBuilder, DataFoldableFrom, DataFolderTo, MapBuilder}
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.randomString
 
 /** Object including all types that are covered by [[DataFoldableFrom]] */

@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2.source
+package com.thatdot.quine.app.model.ingest2.source
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
@@ -6,8 +6,8 @@ import scala.util.Try
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.ingest2.V2IngestEntities.QuineIngestConfiguration
-import com.thatdot.quine.app.ingest2.V2IngestEntities.StreamingFormat.DropFormat
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.QuineIngestConfiguration
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.StreamingFormat.DropFormat
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}

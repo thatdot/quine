@@ -9,8 +9,8 @@ import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.app.Metrics
-import com.thatdot.quine.app.ingest2.source.IngestBounds
-import com.thatdot.quine.app.ingest2.sources.NumberIteratorSource
+import com.thatdot.quine.app.model.ingest2.source.IngestBounds
+import com.thatdot.quine.app.model.ingest2.sources.NumberIteratorSource
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.metrics.HostQuineMetrics

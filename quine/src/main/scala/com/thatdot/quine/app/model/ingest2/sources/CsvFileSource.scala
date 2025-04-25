@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2.sources
+package com.thatdot.quine.app.model.ingest2.sources
 
 import java.nio.charset.{Charset, StandardCharsets}
 
@@ -10,11 +10,11 @@ import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
 import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.ShutdownSwitch
-import com.thatdot.quine.app.ingest2.core.DataFoldableFrom
-import com.thatdot.quine.app.ingest2.core.DataFoldableFrom._
-import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
-import com.thatdot.quine.app.ingest2.sources
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
+import com.thatdot.quine.app.model.ingest2.core.DataFoldableFrom
+import com.thatdot.quine.app.model.ingest2.core.DataFoldableFrom._
+import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
+import com.thatdot.quine.app.model.ingest2.sources
 import com.thatdot.quine.app.routes.IngestMeter
 case class CsvFileSource(
   src: Source[ByteString, NotUsed],

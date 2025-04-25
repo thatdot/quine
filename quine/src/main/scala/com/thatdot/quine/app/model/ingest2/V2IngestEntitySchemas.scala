@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2
+package com.thatdot.quine.app.model.ingest2
 
 import java.nio.charset.Charset
 
@@ -19,9 +19,9 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
-import com.thatdot.quine.app.ingest2.V2IngestEntities.FileFormat.CsvFormat
-import com.thatdot.quine.app.ingest2.V2IngestEntities.StreamingFormat.ProtobufFormat
-import com.thatdot.quine.app.ingest2.V2IngestEntities._
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.CsvFormat
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.StreamingFormat.ProtobufFormat
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.serialization.EncoderDecoder
 import com.thatdot.quine.app.v2api.endpoints.V2ApiConfiguration
 import com.thatdot.quine.routes.AwsCredentials

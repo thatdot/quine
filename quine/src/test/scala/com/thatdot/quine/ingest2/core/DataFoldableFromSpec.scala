@@ -4,7 +4,7 @@ import io.circe.Json
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
+import com.thatdot.quine.app.model.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.{Expr => ce}
 

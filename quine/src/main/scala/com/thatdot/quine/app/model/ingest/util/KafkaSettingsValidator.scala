@@ -16,6 +16,7 @@ import com.thatdot.common.logging.Log._
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.routes.KafkaIngest.KafkaProperties
 import com.thatdot.quine.routes.KafkaOffsetCommitting
+
 object KafkaSettingsValidator extends LazySafeLogging {
   type ErrorString = String
 

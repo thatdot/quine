@@ -8,13 +8,13 @@ import cats.data.Validated.invalidNel
 import cats.data.ValidatedNel
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.ingest2.V2IngestEntities
-import com.thatdot.quine.app.ingest2.V2IngestEntities.{
+import com.thatdot.quine.app.model.ingest.QuineIngestSource
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
   QuineIngestConfiguration => V2IngestConfiguration,
   QuineIngestStreamWithStatus,
 }
-import com.thatdot.quine.app.ingest2.source.{DecodedSource, QuineValueIngestQuery}
-import com.thatdot.quine.app.model.ingest.QuineIngestSource
+import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, QuineValueIngestQuery}
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.exceptions.{DuplicateIngestException, NamespaceNotFoundException}

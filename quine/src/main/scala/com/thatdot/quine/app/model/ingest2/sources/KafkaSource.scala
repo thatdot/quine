@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2.sources
+package com.thatdot.quine.app.model.ingest2.sources
 
 import scala.concurrent.duration.{Duration, FiniteDuration, MILLISECONDS}
 
@@ -25,10 +25,10 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
 
 import com.thatdot.quine.app.KafkaKillSwitch
-import com.thatdot.quine.app.ingest2.source.FramedSource
-import com.thatdot.quine.app.ingest2.sources.KafkaSource._
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
+import com.thatdot.quine.app.model.ingest2.source.FramedSource
+import com.thatdot.quine.app.model.ingest2.sources.KafkaSource._
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.exceptions.KafkaValidationException
 import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit

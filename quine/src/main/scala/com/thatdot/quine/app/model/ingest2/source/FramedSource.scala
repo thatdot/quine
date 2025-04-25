@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2.source
+package com.thatdot.quine.app.model.ingest2.source
 
 import scala.util.Try
 
@@ -6,8 +6,8 @@ import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.{Done, NotUsed}
 
 import com.thatdot.quine.app.ShutdownSwitch
-import com.thatdot.quine.app.ingest2.codec.FrameDecoder
-import com.thatdot.quine.app.ingest2.core.DataFoldableFrom
+import com.thatdot.quine.app.model.ingest2.codec.FrameDecoder
+import com.thatdot.quine.app.model.ingest2.core.DataFoldableFrom
 import com.thatdot.quine.app.routes.IngestMeter
 
 /** Define a source in terms of Frames it can return.

@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.ingest2.sources
+package com.thatdot.quine.app.model.ingest2.sources
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
@@ -11,8 +11,8 @@ import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxValidatedId
 
 import com.thatdot.quine.app.ShutdownSwitch
-import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
+import com.thatdot.quine.app.model.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.util.BaseError
 
