@@ -13,7 +13,7 @@ import cats.syntax.either._
 import io.circe.Json
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.app.outputs.{
+import com.thatdot.quine.app.model.outputs.{
   ConsoleLoggingOutput,
   CypherQueryOutput,
   DropOutput,

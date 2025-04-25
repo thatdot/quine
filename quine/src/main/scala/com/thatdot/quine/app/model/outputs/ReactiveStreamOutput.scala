@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.outputs
+package com.thatdot.quine.app.model.outputs
 
 import java.nio.ByteBuffer
 

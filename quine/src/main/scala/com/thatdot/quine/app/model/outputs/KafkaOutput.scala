@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.outputs
+package com.thatdot.quine.app.model.outputs
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.kafka.scaladsl.{Producer => KafkaProducer}

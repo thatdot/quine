@@ -1,4 +1,5 @@
-package com.thatdot.quine.app.outputs
+package com.thatdot.quine.app.model.outputs
+
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.connectors.sns.scaladsl.SnsPublisher
 import org.apache.pekko.stream.scaladsl.{Flow, Keep}

@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.outputs
+package com.thatdot.quine.app.model.outputs
 
 import scala.util.{Failure, Success}
 
