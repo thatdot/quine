@@ -10,10 +10,11 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{EndpointInput, Schema, path, query, statusCode}
 
-import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryPattern.StandingQueryMode.MultipleValues
-import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryPattern._
-import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryResultOutputUserDef.PrintToStandardOut
-import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries._
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery._
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode.MultipleValues
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern._
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultOutputUserDef
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultOutputUserDef.PrintToStandardOut
 import com.thatdot.quine.app.v2api.definitions.{
   CreateSQApiCmd,
   CreateSQOutputApiCmd,

@@ -30,6 +30,7 @@ import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters._
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
+import com.thatdot.quine.app.v2api.definitions.query.standing.{StandingQuery, StandingQueryResultOutputUserDef}
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
@@ -198,13 +199,13 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
   def deleteNamespace(namespace: String): Future[Boolean] =
     app.deleteNamespace(Some(Symbol(namespace)))
 
-  def listAllStandingQueries: Future[List[ApiStandingQueries.RegisteredStandingQuery]] = {
+  def listAllStandingQueries: Future[List[StandingQuery.RegisteredStandingQuery]] = {
     implicit val executor = ExecutionContext.parasitic
     Future.sequence(app.getNamespaces.map(app.getStandingQueries)).map(_.toList.flatten).map(_.map(StandingToApi.apply))
   }
 
   // --------------------- Standing Query Endpoints ------------------------
-  def listStandingQueries(namespaceId: NamespaceId): Future[List[ApiStandingQueries.RegisteredStandingQuery]] =
+  def listStandingQueries(namespaceId: NamespaceId): Future[List[StandingQuery.RegisteredStandingQuery]] =
     graph.requiredGraphIsReadyFuture {
       app.getStandingQueries(namespaceId).map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)
     }
@@ -222,10 +223,10 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       }
 
   private def validateOutputDef(
-    outputDef: ApiStandingQueries.StandingQueryResultOutputUserDef,
+    outputDef: StandingQueryResultOutputUserDef,
   ): Option[NonEmptyList[ErrorString]] =
     outputDef match {
-      case k: ApiStandingQueries.StandingQueryResultOutputUserDef.WriteToKafka =>
+      case k: StandingQueryResultOutputUserDef.WriteToKafka =>
         KafkaSettingsValidator.validateOutput(k.kafkaProperties)
       case _ => None
     }
@@ -234,7 +235,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     name: String,
     outputName: String,
     namespaceId: NamespaceId,
-    sqResultOutput: ApiStandingQueries.StandingQueryResultOutputUserDef,
+    sqResultOutput: StandingQueryResultOutputUserDef,
   ): Future[Either[CustomError, Unit]] = graph.requiredGraphIsReadyFuture {
     validateOutputDef(sqResultOutput) match {
       case Some(errors) =>
@@ -254,7 +255,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     name: String,
     outputName: String,
     namespaceId: NamespaceId,
-  ): Future[Option[ApiStandingQueries.StandingQueryResultOutputUserDef]] = graph.requiredGraphIsReadyFuture {
+  ): Future[Option[StandingQueryResultOutputUserDef]] = graph.requiredGraphIsReadyFuture {
     app
       .removeStandingQueryOutput(name, outputName, namespaceId)
       .map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)
@@ -263,7 +264,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
   def createSQ(
     name: String,
     namespaceId: NamespaceId,
-    sq: ApiStandingQueries.StandingQueryDefinition,
+    sq: StandingQuery.StandingQueryDefinition,
   ): Future[Either[CustomError, Option[Unit]]] =
     graph.requiredGraphIsReadyFuture {
       try app
@@ -281,10 +282,10 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       }
     }
 
-  def deleteSQ(name: String, namespaceId: NamespaceId): Future[Option[ApiStandingQueries.RegisteredStandingQuery]] =
+  def deleteSQ(name: String, namespaceId: NamespaceId): Future[Option[StandingQuery.RegisteredStandingQuery]] =
     app.cancelStandingQuery(name, namespaceId).map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)
 
-  def getSQ(name: String, namespaceId: NamespaceId): Future[Option[ApiStandingQueries.RegisteredStandingQuery]] =
+  def getSQ(name: String, namespaceId: NamespaceId): Future[Option[StandingQuery.RegisteredStandingQuery]] =
     app.getStandingQuery(name, namespaceId).map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)
 
   // --------------------- Cypher Endpoints ------------------------

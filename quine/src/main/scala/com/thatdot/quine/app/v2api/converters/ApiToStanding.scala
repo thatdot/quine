@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.v2api.converters
 
-import com.thatdot.quine.app.v2api.definitions.{ApiStandingQueries => Api}
+import com.thatdot.quine.app.v2api.definitions.query.{standing => Api}
 import com.thatdot.quine.{routes => Standing}
 
 object ApiToStanding {
@@ -161,7 +161,7 @@ object ApiToStanding {
     }
   }
 
-  def apply(sq: Api.StandingQueryDefinition): Standing.StandingQueryDefinition =
+  def apply(sq: Api.StandingQuery.StandingQueryDefinition): Standing.StandingQueryDefinition =
     Standing.StandingQueryDefinition(
       ApiToStanding(sq.pattern),
       sq.outputs.view.mapValues(ApiToStanding.apply).toMap,

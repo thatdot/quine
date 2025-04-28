@@ -1,7 +1,8 @@
 package com.thatdot.quine.app.v2api.converters
 
-import com.thatdot.quine.app.v2api.definitions.{ApiStandingQueries => Api}
+import com.thatdot.quine.app.v2api.definitions.query.{standing => Api}
 import com.thatdot.quine.{routes => Standing}
+
 object StandingToApi {
 
   private def apply(mode: Standing.StandingQueryPattern.StandingQueryMode): Api.StandingQueryPattern.StandingQueryMode =
@@ -187,8 +188,8 @@ object StandingToApi {
       stats.outputHashCode,
     )
 
-  def apply(query: Standing.RegisteredStandingQuery): Api.RegisteredStandingQuery =
-    Api.RegisteredStandingQuery(
+  def apply(query: Standing.RegisteredStandingQuery): Api.StandingQuery.RegisteredStandingQuery =
+    Api.StandingQuery.RegisteredStandingQuery(
       query.name,
       query.internalId,
       query.pattern.map(StandingToApi.apply),

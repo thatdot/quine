@@ -2,7 +2,7 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import io.circe.{Decoder, Encoder}
 
-import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryPattern.StandingQueryMode
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode
 
 trait V2StandingApiSchemas extends V2ApiConfiguration {
 
