@@ -28,7 +28,8 @@ import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfigur
 import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
-import com.thatdot.quine.app.v2api.definitions.ApiToIngest.OfApiMethod
+import com.thatdot.quine.app.v2api.converters._
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
@@ -578,7 +579,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     ingestName: String,
     settings: Conf,
     namespaceId: NamespaceId,
-  )(implicit configOf: OfApiMethod[V2IngestConfiguration, Conf]): Either[CustomError, Boolean] =
+  )(implicit configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf]): Either[CustomError, Boolean] =
     app
       .addV2IngestStream(
         ingestName,

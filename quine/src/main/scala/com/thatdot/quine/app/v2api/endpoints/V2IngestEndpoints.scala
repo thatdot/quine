@@ -9,8 +9,8 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Endpoint, EndpointInput, Schema, path, statusCode}
 
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.{
-  ApiIngest,
   CreateIngestApiCmd,
   CustomError,
   ErrorEnvelope,
@@ -24,7 +24,7 @@ import com.thatdot.quine.graph.NamespaceId
 
 trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
 
-  import com.thatdot.quine.app.v2api.definitions.ApiToIngest.OssConversions._
+  import com.thatdot.quine.app.v2api.converters.ApiToIngest.OssConversions._
 
   private val ingestStreamNameElement: EndpointInput.PathCapture[String] =
     path[String]("name").description("Ingest stream name").default("NumbersStream")

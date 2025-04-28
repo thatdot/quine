@@ -11,12 +11,12 @@ import org.scalatest.Assertion
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.app.v2api.definitions.ApiIngest
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.FileFormat.{CsvFormat, JsonFormat}
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.KinesisIngest.IteratorType
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.RecordDecodingType._
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.StreamingFormat.ProtobufFormat
-import com.thatdot.quine.app.v2api.definitions.ApiIngest._
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.FileFormat.{CsvFormat, JsonFormat}
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.KinesisIngest.IteratorType
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.RecordDecodingType._
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.StreamingFormat.ProtobufFormat
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 class IngestCodecTest

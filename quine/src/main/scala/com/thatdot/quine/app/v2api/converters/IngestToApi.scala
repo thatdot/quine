@@ -1,7 +1,7 @@
-package com.thatdot.quine.app.v2api.definitions
+package com.thatdot.quine.app.v2api.converters
 
 import com.thatdot.quine.app.model.ingest2.{V2IngestEntities => Ingest}
-import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
+import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
 import com.thatdot.quine.{routes => V1}
 
 object IngestToApi {

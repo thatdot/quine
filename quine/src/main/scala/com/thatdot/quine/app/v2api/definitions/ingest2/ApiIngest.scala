@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.v2api.definitions
+package com.thatdot.quine.app.v2api.definitions.ingest2
 
 import java.nio.charset.Charset
 import java.time.Instant

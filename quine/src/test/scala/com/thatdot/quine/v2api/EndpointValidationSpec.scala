@@ -17,9 +17,9 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.app.config.QuineConfig
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.KinesisIngest.IteratorType
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.{Oss, RecordDecodingType}
-import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.KinesisIngest.IteratorType
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{Oss, RecordDecodingType}
+import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 import com.thatdot.quine.app.v2api.{OssApiMethods, V2OssRoutes}
 import com.thatdot.quine.app.{IngestTestGraph, QuineApp}

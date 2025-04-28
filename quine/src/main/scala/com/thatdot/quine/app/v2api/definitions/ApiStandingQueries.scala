@@ -5,8 +5,8 @@ import java.util.UUID
 
 import sttp.tapir.Schema.annotations.{default, description, title}
 
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryResultOutputUserDef.SequencedCypherQuery
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{AwsCredentials, AwsRegion, RatesSummary}
 
 object ApiStandingQueries {
 

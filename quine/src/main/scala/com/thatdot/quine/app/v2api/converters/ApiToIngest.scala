@@ -1,8 +1,7 @@
-package com.thatdot.quine.app.v2api.definitions
+package com.thatdot.quine.app.v2api.converters
 
 import com.thatdot.quine.app.model.ingest2.{V2IngestEntities => Ingest}
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.RetrievalSpecificConfig
-import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
+import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
 import com.thatdot.quine.{routes => V1}
 
 object ApiToIngest {
@@ -173,8 +172,8 @@ object ApiToIngest {
     )
 
   def apply(rsc: Api.RetrievalSpecificConfig): Ingest.RetrievalSpecificConfig = rsc match {
-    case foc: RetrievalSpecificConfig.FanOutConfig => apply(foc)
-    case pc: RetrievalSpecificConfig.PollingConfig => apply(pc)
+    case foc: Api.RetrievalSpecificConfig.FanOutConfig => apply(foc)
+    case pc: Api.RetrievalSpecificConfig.PollingConfig => apply(pc)
   }
 
   def apply(foc: Api.RetrievalSpecificConfig.FanOutConfig): Ingest.RetrievalSpecificConfig.FanOutConfig =
@@ -236,7 +235,7 @@ object ApiToIngest {
     Ingest.ConfigsBuilder(cb.tableName, cb.workerIdentifier)
 
   def apply(src: Api.IngestSource): Ingest.IngestSource = src match {
-    case src: ApiIngest.FileIngest =>
+    case src: Api.FileIngest =>
       Ingest.FileIngest(
         ApiToIngest(src.format),
         src.path,
@@ -247,19 +246,19 @@ object ApiToIngest {
         src.characterEncoding,
         src.recordDecoders.map(ApiToIngest.apply),
       )
-    case src: ApiIngest.StdInputIngest =>
+    case src: Api.StdInputIngest =>
       Ingest.StdInputIngest(
         ApiToIngest(src.format),
         src.maximumLineSize,
         src.characterEncoding,
       )
-    case src: ApiIngest.NumberIteratorIngest =>
+    case src: Api.NumberIteratorIngest =>
       Ingest.NumberIteratorIngest(
         Ingest.StreamingFormat.RawFormat,
         src.startOffset,
         src.limit,
       )
-    case src: ApiIngest.WebsocketIngest =>
+    case src: Api.WebsocketIngest =>
       Ingest.WebsocketIngest(
         ApiToIngest(src.format),
         src.url,
@@ -267,7 +266,7 @@ object ApiToIngest {
         ApiToIngest(src.keepAlive),
         src.characterEncoding,
       )
-    case src: ApiIngest.KinesisIngest =>
+    case src: Api.KinesisIngest =>
       Ingest.KinesisIngest(
         ApiToIngest(src.format),
         src.streamName,
@@ -306,13 +305,13 @@ object ApiToIngest {
         checkpointSettings = checkpointSettings.map(ApiToIngest.apply).getOrElse(Ingest.KinesisCheckpointSettings()),
         advancedSettings = advancedSettings.map(ApiToIngest.apply).getOrElse(Ingest.KCLConfiguration()),
       )
-    case src: ApiIngest.ServerSentEventIngest =>
+    case src: Api.ServerSentEventIngest =>
       Ingest.ServerSentEventIngest(
         ApiToIngest(src.format),
         src.url,
         src.recordDecoders.map(ApiToIngest.apply),
       )
-    case src: ApiIngest.SQSIngest =>
+    case src: Api.SQSIngest =>
       Ingest.SQSIngest(
         ApiToIngest(src.format),
         src.queueUrl,
@@ -322,7 +321,7 @@ object ApiToIngest {
         src.deleteReadMessages,
         src.recordDecoders.map(ApiToIngest.apply),
       )
-    case src: ApiIngest.KafkaIngest =>
+    case src: Api.KafkaIngest =>
       Ingest.KafkaIngest(
         ApiToIngest(src.format),
         src.topics,
@@ -351,12 +350,12 @@ object ApiToIngest {
       Ingest.ReactiveStreamIngest(ApiToIngest(url), port, format)
   }
   def apply(handler: Api.OnRecordErrorHandler): Ingest.OnRecordErrorHandler = handler match {
-    case ApiIngest.LogRecordErrorHandler => Ingest.LogRecordErrorHandler
-    case ApiIngest.DeadLetterErrorHandler => Ingest.DeadLetterErrorHandler
+    case Api.LogRecordErrorHandler => Ingest.LogRecordErrorHandler
+    case Api.DeadLetterErrorHandler => Ingest.DeadLetterErrorHandler
   }
   def apply(handler: Api.OnStreamErrorHandler): Ingest.OnStreamErrorHandler = handler match {
-    case ApiIngest.RetryStreamError(retryCount) => Ingest.RetryStreamError(retryCount)
-    case ApiIngest.LogStreamError => Ingest.LogStreamError
+    case Api.RetryStreamError(retryCount) => Ingest.RetryStreamError(retryCount)
+    case Api.LogStreamError => Ingest.LogStreamError
   }
   def apply(conf: Api.Oss.QuineIngestConfiguration): Ingest.QuineIngestConfiguration =
     Ingest.QuineIngestConfiguration(

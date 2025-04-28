@@ -13,9 +13,9 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.CsvCharacter.{Backslash, Comma, DoubleQuote}
-import com.thatdot.quine.app.v2api.definitions.ApiIngest.FileFormat.CsvFormat
-import com.thatdot.quine.app.v2api.definitions.ApiIngest._
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.CsvCharacter.{Backslash, Comma, DoubleQuote}
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.FileFormat.CsvFormat
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 
 trait V2IngestApiSchemas extends V2ApiConfiguration {
   implicit val config: Configuration = ingestSourceTypeConfig
