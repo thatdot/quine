@@ -7,6 +7,7 @@ import scala.concurrent.ExecutionContext
 
 import org.apache.pekko.actor.Status.Success
 import org.apache.pekko.actor.{Actor, ActorRef}
+import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.common.quineid.QuineId
@@ -22,8 +23,11 @@ import com.thatdot.quine.graph.cypher.quinepattern.{
   FilterState,
   ProductState,
   PublishToOutput,
+  QueryPlan,
+  QueryTarget,
   QuinePatternExpressionInterpreter,
   QuinePatternHelpers,
+  QuinePatternInterpreter,
   QuinePatternQueryState,
   QuinePatternUnimplementedException,
   SendAcrossEdgeState,
@@ -81,6 +85,14 @@ object QuinePatternCommand {
   ) extends QuinePatternCommand
   case class AtomicIncrement(propertyExpr: String, by: Int, binding: Symbol, ctx: QueryContext, output: ActorRef)
       extends QuinePatternCommand
+  case class ExecutePlanOnEdges(
+    edgeType: Symbol,
+    edgeDirection: EdgeDirection,
+    targetNodePlan: QueryPlan,
+    parameters: Map[Symbol, com.thatdot.quine.graph.cypher.Value],
+    ctx: QueryContext,
+    output: ActorRef,
+  ) extends QuinePatternCommand
 }
 
 /** A trait that defines the behavior for Quine's pattern-based query system. This trait implements
@@ -176,6 +188,19 @@ trait QuinePatternQueryBehavior
   def quinePatternQueryBehavior(command: QuinePatternCommand): Unit = command match {
     case QuinePatternCommand.QuinePatternStop => states.clear()
     case QuinePatternCommand.QuinePatternAck => ()
+    case QuinePatternCommand.LoadLazyPlan(sqid, plan, output) => loadLazyQuery(sqid, plan, output)
+    case QuinePatternCommand.ExecutePlanOnEdges(edgeType, edgeDirection, targetNodePlan, parameters, ctx, output) =>
+      val edgeList = edges.toSet.toList
+      val nodeStreams = edgeList.filter(he => he.edgeType == edgeType && he.direction == edgeDirection).map { he =>
+        QuinePatternInterpreter.interpret(targetNodePlan, QueryTarget.Node(he.other), namespace, parameters, ctx)(graph)
+      }
+      val finalStream = if (nodeStreams.isEmpty) {
+        Source.empty[QueryContext]
+      } else {
+        nodeStreams.reduce((s1, s2) => s1.merge(s2))
+      }
+      output ! finalStream
+      output ! Success("Done")
     case QuinePatternCommand.AtomicIncrement(propName, by, binding, ctx, output) =>
       val prop = properties.get(Symbol(propName))
       val event = prop match {
@@ -257,7 +282,6 @@ trait QuinePatternQueryBehavior
         output ! ctx
         output ! Success("Done")
       }(ExecutionContext.parasitic)
-    case QuinePatternCommand.LoadLazyPlan(sqid, plan, output) => loadLazyQuery(sqid, plan, output)
     case _ => throw new QuinePatternUnimplementedException(s"Not yet implemented: $command")
   }
 }

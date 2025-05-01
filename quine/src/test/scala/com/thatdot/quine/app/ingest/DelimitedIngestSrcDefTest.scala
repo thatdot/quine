@@ -12,6 +12,7 @@ import org.apache.pekko.stream.testkit.TestSubscriber
 import org.apache.pekko.stream.testkit.scaladsl.TestSink
 import org.apache.pekko.util.{ByteString, Timeout}
 
+import cats.data.Validated
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
@@ -162,13 +163,13 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   }
 
   test("number format") {
-    val d: IngestSrcDef = IngestSrcDef
+    val maybeIngestSrcDef = IngestSrcDef
       .createIngestSrcDef(
         "number input",
         None,
         NumberIteratorIngest(
           FileIngestFormat.CypherLine(
-            s"""MATCH (x) WHERE id(x) = idFrom(toInteger($$that)) SET x.value = toInteger($$that)""",
+            """MATCH (x) WHERE id(x) = idFrom(toInteger($that)) SET x.value = toInteger($that)""",
           ),
           0,
           Some(11L),
@@ -177,34 +178,41 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         ),
         SwitchMode.Open,
       )
-      .valueOr(_ => ???)
-    val g = graph.asInstanceOf[LiteralOpsGraph]
 
-    Await.ready(
-      d.stream(namespace, _ => ())
-        .runWith(Sink.ignore)
-        .map { _ =>
+    maybeIngestSrcDef match {
+      case Validated.Valid(d) =>
+        val g = graph.asInstanceOf[LiteralOpsGraph]
 
-          (1 to 10).foreach { i =>
-            val prop: Map[Symbol, PropertyValue] =
-              Await.result(g.literalOps(namespace).getProps(idFrom(Expr.Integer(i.toLong))(graph.idProvider)), 1.second)
-            assert(
-              prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized == Success(
-                QuineValue.Integer(i.toLong),
-              ),
-            )
-          }
+        Await.ready(
+          d.stream(namespace, _ => ())
+            .runWith(Sink.ignore)
+            .map { _ =>
 
-        },
-      10.seconds,
-    )
+              (1 to 10).foreach { i =>
+                val prop: Map[Symbol, PropertyValue] =
+                  Await.result(
+                    g.literalOps(namespace).getProps(idFrom(Expr.Integer(i.toLong))(graph.idProvider)),
+                    1.second,
+                  )
+                assert(
+                  prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized == Success(
+                    QuineValue.Integer(i.toLong),
+                  ),
+                )
+              }
+
+            },
+          10.seconds,
+        )
+      case Validated.Invalid(e) => fail(e.toString)
+    }
   }
 
   test("stdin") {
 
     val istream = new StdInStream()
 
-    val d: IngestSrcDef = IngestSrcDef
+    val maybeIngestSrcDef = IngestSrcDef
       .createIngestSrcDef(
         "stdin",
         None,
@@ -217,31 +225,35 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         ),
         SwitchMode.Open,
       )
-      .valueOr(_ => ???)
-    val done = d.stream(namespace, _ => ()).toMat(Sink.ignore)(Keep.right).run()
-    val fc = d.getControl
-    val c: QuineAppIngestControl = Await.result(fc, 3.seconds)
-    val g = graph.asInstanceOf[LiteralOpsGraph]
-    (1 to 10).foreach(i => istream.writeBytes(s"$i\n".getBytes()))
 
-    Thread.sleep(1000)
-    Await.result(c.terminate(), 3.seconds)
-    Await.ready(done, 3.seconds).map { _ =>
+    maybeIngestSrcDef match {
+      case Validated.Valid(d) =>
+        val done = d.stream(namespace, _ => ()).toMat(Sink.ignore)(Keep.right).run()
+        val fc = d.getControl
+        val c: QuineAppIngestControl = Await.result(fc, 3.seconds)
+        val g = graph.asInstanceOf[LiteralOpsGraph]
+        (1 to 10).foreach(i => istream.writeBytes(s"$i\n".getBytes()))
 
-      (1 to 10).foreach { i =>
+        Thread.sleep(1000)
+        Await.result(c.terminate(), 3.seconds)
+        Await.ready(done, 3.seconds).map { _ =>
 
-        val prop: Map[Symbol, PropertyValue] = Await
-          .result(
-            g.literalOps(namespace).getProps(idFrom(Expr.Str("stdin"), Expr.Str(i.toString))(graph.idProvider)),
-            1.second,
-          )
-        assert(
-          prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized == Success(
-            QuineValue.Str(i.toString),
-          ),
-        )
-      }
+          (1 to 10).foreach { i =>
+
+            val prop: Map[Symbol, PropertyValue] = Await
+              .result(
+                g.literalOps(namespace).getProps(idFrom(Expr.Str("stdin"), Expr.Str(i.toString))(graph.idProvider)),
+                1.second,
+              )
+            assert(
+              prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized == Success(
+                QuineValue.Str(i.toString),
+              ),
+            )
+          }
+        }
+        istream.close()
+      case Validated.Invalid(e) => fail(e.toList.mkString("\n"))
     }
-    istream.close()
   }
 }

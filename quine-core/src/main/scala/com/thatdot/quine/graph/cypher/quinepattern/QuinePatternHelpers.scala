@@ -45,6 +45,8 @@ object QuinePatternHelpers {
       case Value.NodeId(qid) => Expr.Bytes(qid)
       case Value.Node(id, labels, props) =>
         Expr.Node(id, labels, props.values.map(p => p._1 -> patternValueToCypherValue(p._2)))
+      case Value.Duration(d) => Expr.Duration(d)
+      case Value.DateTimeLocal(dtl) => Expr.LocalDateTime(dtl)
     }
 
   def createNodeActionSource(nodeAction: ActorRef => NotUsed): Source[QueryContext, NotUsed] =

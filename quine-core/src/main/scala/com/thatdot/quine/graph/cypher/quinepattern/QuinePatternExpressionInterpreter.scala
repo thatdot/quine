@@ -51,6 +51,8 @@ object QuinePatternExpressionInterpreter {
         }
       case Expression.Parameter(_, name, _) =>
         val trimName = Symbol(name.name.substring(1))
+        if (!parameters.contains(trimName))
+          throw new QuinePatternUnimplementedException(s"Parameter $trimName not found in $parameters")
         CypherAndQuineHelpers.cypherValueToPatternValue(idProvider)(parameters(trimName))
       case Expression.Apply(_, name, args, _) =>
         val evaledArgs = args.map(arg => eval(arg, idProvider, qc, parameters))
@@ -61,6 +63,13 @@ object QuinePatternExpressionInterpreter {
             val cypherIdValues = evaledArgs.map(QuinePatternHelpers.patternValueToCypherValue)
             val id = com.thatdot.quine.graph.idFrom(cypherIdValues: _*)(idProvider)
             Value.NodeId(id)
+          // Handling `strId` as a special case due to it's reliance on the idProvider
+          case "strId" =>
+            evaledArgs match {
+              case List(Value.NodeId(id)) => Value.Text(idProvider.qidToPrettyString(id))
+              case List(Value.Node(id, _, _)) => Value.Text(idProvider.qidToPrettyString(id))
+              case _ => throw new QuinePatternUnimplementedException(s"Unexpected arguments to strId: $evaledArgs")
+            }
           case otherFunctionName =>
             QuinePatternFunction.findBuiltIn(otherFunctionName) match {
               case Some(func) => func(evaledArgs)
@@ -68,12 +77,13 @@ object QuinePatternExpressionInterpreter {
             }
         }
       case Expression.UnaryOp(_, op, exp, _) =>
+        //TODO Probably would be nice to convert these to functions
         op match {
           case Operator.Minus =>
             eval(exp, idProvider, qc, parameters) match {
               case Value.Integer(n) => Value.Integer(-n)
               case Value.Real(d) => Value.Real(-d)
-              case _ => ???
+              case other => throw new QuinePatternUnimplementedException(s"Unexpected expression: $other")
             }
           case Operator.Not =>
             eval(exp, idProvider, qc, parameters) match {
@@ -95,6 +105,8 @@ object QuinePatternExpressionInterpreter {
           case Operator.GreaterThanEqual => CompareGreaterThanEqualToFunction(evaledArgs)
           case Operator.And => LogicalAndFunction(evaledArgs)
           case Operator.Or => LogicalOrFunction(evaledArgs)
+          case Operator.NotEquals => NotEquals(evaledArgs)
+          case Operator.GreaterThan => CompareGreaterThanFunction(evaledArgs)
           case otherOperator => throw new QuinePatternUnimplementedException(s"Unexpected operator: $otherOperator")
         }
       case Expression.FieldAccess(_, of, fieldName, _) =>

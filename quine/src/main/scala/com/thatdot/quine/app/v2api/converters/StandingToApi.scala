@@ -172,6 +172,7 @@ object StandingToApi {
         shouldRetry,
       )
       prependToOutputDef(cypherQuery, StandingToApi(andThen))
+    case other => sys.error(s"API v2 doesn't support StandingQueryResultOutputUserDef: $other")
   }
   private def apply(pattern: Standing.StandingQueryPattern): Api.StandingQueryPattern =
     pattern match {

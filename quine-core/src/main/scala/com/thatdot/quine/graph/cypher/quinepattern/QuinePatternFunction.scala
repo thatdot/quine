@@ -1,8 +1,11 @@
 package com.thatdot.quine.graph.cypher.quinepattern
 
+import java.nio.charset.StandardCharsets
 import java.time.format.DateTimeFormatter
-import java.time.{Instant, ZoneOffset, ZonedDateTime => JavaZonedDateTime}
+import java.time.{Instant, LocalDateTime, ZoneOffset, ZonedDateTime => JavaZonedDateTime}
 import java.util.Locale
+
+import org.apache.commons.codec.net.PercentCodec
 
 import com.thatdot.language.ast.Value
 
@@ -17,14 +20,21 @@ import com.thatdot.language.ast.Value
   */
 object QuinePatternFunction {
   val builtIns: Set[QuinePatternFunction] = Set(
+    AbsFunction,
     CeilFunction,
     CoalesceFunction,
     CollectionMaxFunction,
     CollectionMinFunction,
     DateTimeFunction,
+    DurationFunction,
+    DurationBetweenFunction,
     FloorFunction,
+    IdFunction,
+    LocalDateTimeFunction,
     RegexFirstMatchFunction,
+    SignFunction,
     SplitFunction,
+    TextUrlEncodeFunction,
     ToFloatFunction,
     ToIntegerFunction,
     ToLowerFunction,
@@ -68,16 +78,21 @@ sealed trait QuinePatternFunction {
   def arity: FunctionArity;
   def cypherFunction: PartialFunction[List[Value], Value]
 
-  // Would be nice if this had an explicit error channel
+  // TODO This should have an error channel. Right now errors are thrown
+  // TODO as runtime exceptions so that we get visibility into implementation
+  // TODO errors in the QuinePattern alpha
   def apply(args: List[Value]): Value = {
     arity match {
       case FunctionArity.FixedArity(n) =>
-        if (args.size != n) throw new QuinePatternUnimplementedException(s"Function $name doesn't support $n arguments")
+        if (args.size != n)
+          throw new RuntimeException(
+            s"Function $name has arity of $n, but received ${args.size} arguments!",
+          )
       case _ =>
         //No need to do anything in this case
         ()
     }
-    if (!handleNullsBySpec && args.contains(Value.Null)) {
+    if (handleNullsBySpec && args.contains(Value.Null)) {
       Value.Null
     } else {
       cypherFunction.applyOrElse(
@@ -168,7 +183,10 @@ object ToIntegerFunction extends QuinePatternFunction {
   val name: String = "toInteger"
   val arity: FunctionArity = FunctionArity.FixedArity(1)
   val cypherFunction: PartialFunction[List[Value], Value] = { case List(Value.Text(str)) =>
-    Value.Integer(str.toLong)
+    try Value.Integer(str.toLong)
+    catch {
+      case _: Throwable => Value.Null
+    }
   }
 }
 
@@ -422,7 +440,11 @@ object ToFloatFunction extends QuinePatternFunction {
   val cypherFunction: PartialFunction[List[Value], Value] = {
     case List(Value.Real(r)) => Value.Real(r)
     case List(Value.Integer(n)) => Value.Real(n.toDouble)
-    case List(Value.Text(str)) => Value.Real(str.toDouble)
+    case List(Value.Text(str)) =>
+      try Value.Real(str.toDouble)
+      catch {
+        case _: Throwable => Value.Null
+      }
   }
 }
 
@@ -452,6 +474,7 @@ object AddFunction extends QuinePatternFunction {
   val cypherFunction: PartialFunction[List[Value], Value] = {
     case List(Value.Integer(n1), Value.Integer(n2)) => Value.Integer(n1 + n2)
     case List(Value.Real(n1), Value.Real(n2)) => Value.Real(n1 + n2)
+    case List(Value.Real(n1), Value.Integer(n2)) => Value.Real(n1 + n2)
     case List(Value.Text(lstr), Value.Text(rstr)) => Value.Text(lstr + rstr)
     case List(Value.Text(str), Value.Integer(n)) => Value.Text(str + n)
   }
@@ -477,6 +500,7 @@ object MultiplyFunction extends QuinePatternFunction {
   val cypherFunction: PartialFunction[List[Value], Value] = {
     case List(Value.Integer(n1), Value.Integer(n2)) => Value.Integer(n1 * n2)
     case List(Value.Real(n1), Value.Real(n2)) => Value.Real(n1 * n2)
+    case List(Value.Real(n), Value.Integer(n2)) => Value.Real(n * n2)
     case List(Value.Integer(a), Value.Real(b)) => Value.Real(a * b)
   }
 }
@@ -505,6 +529,7 @@ object DivideFunction extends QuinePatternFunction {
   val cypherFunction: PartialFunction[List[Value], Value] = {
     case List(Value.Integer(n1), Value.Integer(n2)) => Value.Integer(n1 / n2)
     case List(Value.Real(n1), Value.Real(n2)) => Value.Real(n1 / n2)
+    case List(Value.Integer(n), Value.Real(n2)) => Value.Real(n / n2)
   }
 }
 
@@ -556,6 +581,17 @@ object CompareGreaterThanEqualToFunction extends QuinePatternFunction {
     case List(Value.Integer(a), Value.Integer(b)) => if (a >= b) Value.True else Value.False
     case List(Value.Real(a), Value.Real(b)) => if (a >= b) Value.True else Value.False
     case List(Value.Text(a), Value.Text(b)) => if (a >= b) Value.True else Value.False
+  }
+}
+
+object CompareGreaterThanFunction extends QuinePatternFunction {
+  val name: String = "greaterThan"
+  val arity: FunctionArity = FunctionArity.FixedArity(2)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Integer(a), Value.Integer(b)) => if (a > b) Value.True else Value.False
+    case List(Value.Real(a), Value.Real(b)) => if (a > b) Value.True else Value.False
+    case List(Value.Text(a), Value.Text(b)) => if (a > b) Value.True else Value.False
+    case List(Value.Duration(a), Value.Duration(b)) => if (a.compareTo(b) > 0) Value.True else Value.False
   }
 }
 
@@ -633,5 +669,110 @@ object LogicalOrFunction extends QuinePatternFunction {
     case List(Value.False, Value.False) => Value.False
     case List(Value.True, Value.False) => Value.True
     case List(Value.False, Value.True) => Value.True
+  }
+}
+
+/** Represents a Cypher-compatible `sign` function for pattern matching in the Quine query language
+  * .
+  *
+  * The `sign` function evaluates a single numerical argument and returns the sign
+  * of the value as an integer:
+  * - `1` if the number is positive.
+  * - `-1` if the number is negative.
+  * - `0` if the number is zero.
+  *
+  * Supported input types:
+  * - `Integer`: Processes integer numerical values.
+  * - `Real`: Processes real (floating-point) numerical values.
+  *
+  * Expects exactly one argument (Fixed Arity: 1). If the argument is not a numerical
+  * input of the supported types
+  * or if it has more/less than one argument, an error is raised.
+  */
+object SignFunction extends QuinePatternFunction {
+  val name: String = "sign"
+  val arity: FunctionArity = FunctionArity.FixedArity(1)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Integer(n)) => Value.Integer(if (n > 0) 1 else if (n < 0) -1 else 0)
+    case List(Value.Real(n)) => Value.Integer(if (n > 0) 1 else if (n < 0) -1 else 0)
+  }
+}
+
+/** Implements the absolute value function for use within the Quine query language engine.
+  *
+  * The `AbsFunction` object extends the `QuinePatternFunction` trait, providing an implementation
+  * of a Cypher-compatible
+  * function that calculates the absolute value of a numeric input. It supports both integer
+  * and real number types.
+  *
+  * The function behavior is defined as follows:
+  * - The name of the function is "abs".
+  * - It has a fixed arity of 1, meaning it requires exactly one argument.
+  * - The function takes a single numeric value and returns its absolute value.
+  *   - For integer inputs, the result is an integer.
+  *   - For real number inputs, the result is a real number.
+  *
+  * Input that does not match the expected types or format will result in an error.
+  */
+object AbsFunction extends QuinePatternFunction {
+  val name: String = "abs"
+  val arity: FunctionArity = FunctionArity.FixedArity(1)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Integer(n)) => Value.Integer(math.abs(n))
+    case List(Value.Real(n)) => Value.Real(math.abs(n))
+  }
+}
+
+object IdFunction extends QuinePatternFunction {
+  val name: String = "id"
+  val arity: FunctionArity = FunctionArity.FixedArity(1)
+  override val handleNullsBySpec: Boolean = false
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Node(nodeId, _, _)) => Value.NodeId(nodeId)
+    case List(Value.Null) => throw new IllegalArgumentException("Cannot evaluate id function on null value")
+  }
+}
+
+object NotEquals extends QuinePatternFunction {
+  val name: String = "notEquals"
+  val arity: FunctionArity = FunctionArity.FixedArity(2)
+  override val handleNullsBySpec: Boolean = false
+  val cypherFunction: PartialFunction[List[Value], Value] = { case List(v1, v2) =>
+    if (v1 == v2) Value.False else Value.True
+  }
+}
+
+object DurationFunction extends QuinePatternFunction {
+  val name: String = "duration"
+  val arity: FunctionArity = FunctionArity.FixedArity(1)
+  val cypherFunction: PartialFunction[List[Value], Value] = { case List(Value.Text(durationString)) =>
+    Value.Duration(java.time.Duration.parse(durationString))
+  }
+}
+
+object DurationBetweenFunction extends QuinePatternFunction {
+  val name: String = "duration.between"
+  val arity: FunctionArity = FunctionArity.FixedArity(2)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.DateTime(start), Value.DateTime(end)) => Value.Duration(java.time.Duration.between(start, end))
+    case List(Value.DateTimeLocal(start), Value.DateTimeLocal(end)) =>
+      Value.Duration(java.time.Duration.between(start, end))
+  }
+}
+
+object TextUrlEncodeFunction extends QuinePatternFunction {
+  val name: String = "text.urlencode"
+  val arity: FunctionArity = FunctionArity.FixedArity(1)
+  val cypherFunction: PartialFunction[List[Value], Value] = { case List(Value.Text(text)) =>
+    Value.Text(new String(new PercentCodec(Array.empty[Byte], false).encode(text.getBytes(StandardCharsets.UTF_8))))
+  }
+}
+
+object LocalDateTimeFunction extends QuinePatternFunction {
+  val name: String = "localdatetime"
+  val arity: FunctionArity = FunctionArity.FixedArity(2)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Text(dateTimeStr), Value.Text(formatStr)) =>
+      Value.DateTimeLocal(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ofPattern(formatStr)))
   }
 }

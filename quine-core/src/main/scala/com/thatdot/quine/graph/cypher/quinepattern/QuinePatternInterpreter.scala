@@ -30,12 +30,14 @@ object QuinePatternInterpreter {
     namespace: NamespaceId,
     parameters: Map[Symbol, Value],
     ctx: QueryContext,
+    isOutputQuery: Boolean = false,
   )(implicit graph: QuinePatternOpsGraph): Source[QueryContext, NotUsed] =
     queryPlan match {
-      case allNodeScan: QueryPlan.AllNodeScan => interpretAllNodeScan(allNodeScan, target, parameters)
-      case anchorById: QueryPlan.SpecificId => interpretById(anchorById, target, namespace, parameters, ctx)
-      case _: QueryPlan.TraverseEdge => throw new QuinePatternUnimplementedException("traverseEdge")
-      case product: QueryPlan.Product => interpretApply(product, target, namespace, parameters, ctx)
+      case allNodeScan: QueryPlan.AllNodeScan => interpretAllNodeScan(allNodeScan, target, namespace, parameters, ctx)
+      case anchorById: QueryPlan.SpecificId =>
+        interpretById(anchorById, target, namespace, parameters, ctx, isOutputQuery)
+      case edgePlan: QueryPlan.TraverseEdge => interpretTraverseEdge(edgePlan, namespace, target, parameters, ctx)
+      case product: QueryPlan.Product => interpretApply(product, target, namespace, parameters, ctx, isOutputQuery)
       case loadNode: QueryPlan.LoadNode => interpretLoad(loadNode, target, namespace, parameters, ctx)
       case unwind: QueryPlan.Unwind => interpretUnwind(unwind, target, namespace, parameters, ctx)
       case filter: QueryPlan.Filter => interpretFilter(filter, target, parameters, ctx)
@@ -44,6 +46,37 @@ object QuinePatternInterpreter {
       case _: QueryPlan.CreateHalfEdge => throw new QuinePatternUnimplementedException("createEdge")
       case call: QueryPlan.ProcedureCall => interpretCall(call, namespace, parameters, ctx)
       case QueryPlan.UnitPlan => interpretUnit(ctx)
+      case _: QueryPlan.AdjustContext => throw new QuinePatternUnimplementedException("adjustContext")
+    }
+
+  def interpretTraverseEdge(
+    edgePlan: QueryPlan.TraverseEdge,
+    namespace: NamespaceId,
+    target: QueryTarget,
+    parameters: Map[Symbol, Value],
+    ctx: QueryContext,
+  )(implicit graph: QuinePatternOpsGraph): Source[QueryContext, NotUsed] =
+    target match {
+      case QueryTarget.Node(qid) =>
+        val stqid = SpaceTimeQuineId(qid, namespace, None)
+        Source
+          .actorRefWithBackpressure[Source[QueryContext, NotUsed]](
+            ackMessage = QuinePatternCommand.QuinePatternAck,
+            completionMatcher = { case _: Success =>
+              CompletionStrategy.immediately
+            },
+            failureMatcher = PartialFunction.empty,
+          )
+          .mapMaterializedValue { ref =>
+            graph.relayTell(
+              stqid,
+              QuinePatternCommand
+                .ExecutePlanOnEdges(edgePlan.label, edgePlan.direction, edgePlan.nodeInstructions, parameters, ctx, ref),
+            )
+            NotUsed
+          }
+          .flatMapConcat(identity)
+      case otherTarget => throw new QuinePatternUnimplementedException(s"TraverseEdge on $otherTarget")
     }
 
   def interpretCall(
@@ -100,17 +133,13 @@ object QuinePatternInterpreter {
   def interpretFilter(filter: QueryPlan.Filter, target: QueryTarget, parameters: Map[Symbol, Value], ctx: QueryContext)(
     implicit graph: QuinePatternOpsGraph,
   ): Source[QueryContext, NotUsed] =
-    target match {
-      case _: QueryTarget.Node => throw new QuinePatternUnimplementedException("Filtering on nodes")
-      case QueryTarget.All => throw new QuinePatternUnimplementedException("Filtering on all nodes")
-      case QueryTarget.None =>
-        Source.single(ctx).filter { ctx =>
-          QuinePatternExpressionInterpreter.eval(filter.filterExpression, graph.idProvider, ctx, parameters) match {
-            case PatternValue.True => true
-            case PatternValue.False => false
-            case other => throw new QuinePatternUnimplementedException(s"Unsupported value type for filter: $other")
-          }
-        }
+    Source.single(ctx).filter { ctx =>
+      QuinePatternExpressionInterpreter.eval(filter.filterExpression, graph.idProvider, ctx, parameters) match {
+        case PatternValue.True => true
+        case PatternValue.False => false
+        case PatternValue.Null => false
+        case other => throw new QuinePatternUnimplementedException(s"Unsupported value type for filter: $other")
+      }
     }
 
   def interpretCreatePatternWithConnections(
@@ -171,7 +200,8 @@ object QuinePatternInterpreter {
                         parameters,
                       ) match {
                         case PatternValue.Map(values) => values
-                        case _ => ???
+                        case other =>
+                          throw new QuinePatternUnimplementedException(s"Unsupported value type for properties: $other")
                       }
                       graph.relayTell(stqid, QuinePatternCommand.SetProperties(result, nextCtx, ref))
                     case None => ref ! nextCtx
@@ -308,12 +338,14 @@ object QuinePatternInterpreter {
                   val result =
                     QuinePatternExpressionInterpreter.eval(properties, graph.idProvider, ctx, parameters) match {
                       case PatternValue.Map(values) => values
-                      case _ => ???
+                      case other =>
+                        throw new QuinePatternUnimplementedException(s"Unsupported value type for properties: $other")
                     }
                   graph.relayTell(stqid, QuinePatternCommand.SetProperties(result, ctx, ref))
                   NotUsed
                 }
-              case _ => ???
+              case other =>
+                throw new QuinePatternUnimplementedException(s"Unexpected value type $other for effect.SetProperties")
             }
           case Cypher.Effect.SetLabel(_, on, labels) =>
             ctx(on.name) match {
@@ -323,7 +355,8 @@ object QuinePatternInterpreter {
                   graph.relayTell(stqid, QuinePatternCommand.SetLabels(labels, ctx, ref))
                   NotUsed
                 }
-              case _ => ???
+              case other =>
+                throw new QuinePatternUnimplementedException(s"Unexpected value type $other for effect.SetLabel")
             }
           case Cypher.Effect.Create(_, patterns) =>
             patterns.foldLeft(Source.single(ctx))((src, pattern) =>
@@ -346,7 +379,9 @@ object QuinePatternInterpreter {
         NotUsed
       }
     case QueryTarget.All => ???
-    case QueryTarget.None => ???
+    case QueryTarget.None =>
+      println(s"Attempting to $loadPlan on no target!")
+      ???
   }
 
   def interpretById(
@@ -355,13 +390,12 @@ object QuinePatternInterpreter {
     namespace: NamespaceId,
     parameters: Map[Symbol, Value],
     ctx: QueryContext,
+    isOutputQuery: Boolean = false,
   )(implicit graph: QuinePatternOpsGraph): Source[QueryContext, NotUsed] =
     QuinePatternExpressionInterpreter.eval(idPlan.idExp, graph.idProvider, ctx, parameters) match {
       case PatternValue.NodeId(qid) =>
-        idPlan.nodeInstructions.foldLeft(Source.single(ctx))((combinedStream, nextPlan) =>
-          combinedStream.flatMapConcat(ctx => interpret(nextPlan, QueryTarget.Node(qid), namespace, parameters, ctx)),
-        )
-      case _ => ???
+        interpret(idPlan.nodeInstructions, QueryTarget.Node(qid), namespace, parameters, ctx)
+      case other => throw new QuinePatternUnimplementedException(s"Unsupported value type for id: $other")
     }
 
   def interpretProjection(
@@ -387,10 +421,11 @@ object QuinePatternInterpreter {
     namespace: NamespaceId,
     parameters: Map[Symbol, Value],
     ctx: QueryContext,
+    isOutputQuery: Boolean = false,
   )(implicit graph: QuinePatternOpsGraph): Source[QueryContext, NotUsed] =
-    interpret(product.left, target, namespace, parameters, ctx)
+    interpret(product.left, target, namespace, parameters, ctx, isOutputQuery)
       .flatMapConcat(leftContext =>
-        interpret(product.right, QueryTarget.None, namespace, parameters, leftContext).map(rightContext =>
+        interpret(product.right, target, namespace, parameters, leftContext, isOutputQuery).map(rightContext =>
           leftContext ++ rightContext,
         ),
       )
@@ -398,7 +433,14 @@ object QuinePatternInterpreter {
   def interpretAllNodeScan(
     scan: QueryPlan.AllNodeScan,
     target: QueryTarget,
-    symbolToValue: Map[Symbol, Value],
-  ): Source[QueryContext, NotUsed] =
-    throw new QuinePatternUnimplementedException("AllNodeScan")
+    namespace: NamespaceId,
+    parameters: Map[Symbol, Value],
+    ctx: QueryContext,
+  )(implicit graph: QuinePatternOpsGraph): Source[QueryContext, NotUsed] =
+    graph
+      .enumerateAllNodeIds(namespace)
+      .flatMapMerge(
+        breadth = 32,
+        qid => interpret(scan.nodeInstructions, QueryTarget.Node(qid), namespace, parameters, ctx),
+      )
 }

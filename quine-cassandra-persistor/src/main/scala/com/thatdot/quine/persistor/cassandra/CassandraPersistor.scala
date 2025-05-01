@@ -19,7 +19,7 @@ import shapeless.poly._
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan
+import com.thatdot.quine.graph.cypher.quinepattern.{QueryPlan, QuinePatternUnimplementedException}
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -232,7 +232,8 @@ abstract class CassandraPersistor(
 
   def containsMultipleValuesStates(): Future[Boolean] = standingQueryStates.containsMultipleValuesStates()
 
-  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] = ???
+  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] =
+    throw new QuinePatternUnimplementedException("Persisting query plans is not supported yet.")
 
   override def shutdown(): Future[Unit] = session.closeAsync().asScala.void
 

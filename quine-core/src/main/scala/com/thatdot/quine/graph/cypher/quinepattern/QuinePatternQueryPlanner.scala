@@ -3,7 +3,6 @@ package com.thatdot.quine.graph.cypher.quinepattern
 import com.thatdot.cypher.ast.{QueryPart, ReadingClause}
 import com.thatdot.cypher.phases.SymbolAnalysisModule
 import com.thatdot.cypher.{ast => Cypher}
-import com.thatdot.language.ast.Expression
 import com.thatdot.language.{ast => Pattern}
 
 object LazyQuinePatternQueryPlanner {
@@ -32,9 +31,6 @@ object LazyQuinePatternQueryPlanner {
 
   object LazyQueryPlan {
     case class Product(of: List[LazyQueryPlan]) extends LazyQueryPlan
-    case class ReAnchor(idExp: Pattern.Expression) extends LazyQueryPlan
-    case class Unwind(listExp: Pattern.Expression, binding: Pattern.Identifier, subquery: LazyQueryPlan)
-        extends LazyQueryPlan
     case class FilterMap(
       filter: Pattern.Expression,
       map: List[Cypher.Projection],
@@ -43,6 +39,10 @@ object LazyQuinePatternQueryPlanner {
     ) extends LazyQueryPlan
     case class Watch(watch: Pattern.Expression) extends LazyQueryPlan
     case class WatchEdge(label: Symbol, direction: Pattern.Direction, plan: LazyQueryPlan) extends LazyQueryPlan
+
+    case class ReAnchor(idExp: Pattern.Expression) extends LazyQueryPlan
+    case class Unwind(listExp: Pattern.Expression, binding: Pattern.Identifier, subquery: LazyQueryPlan)
+        extends LazyQueryPlan
     case class DoEffect(effect: Cypher.Effect) extends LazyQueryPlan
   }
 
@@ -53,59 +53,63 @@ object LazyQuinePatternQueryPlanner {
     maybeExpression match {
       case Some(value) =>
         value match {
-          case idl: Expression.IdLookup =>
+          case idl: Pattern.Expression.IdLookup =>
             if (idl.nodeIdentifier == identifier) List(value) else Nil
-          case sid: Expression.SynthesizeId =>
+          case sid: Pattern.Expression.SynthesizeId =>
             sid.from.flatMap(exp => findFiltersFor(identifier, Some(exp)))
-          case _: Expression.AtomicLiteral => Nil
-          case _: Expression.ListLiteral => throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
-          case _: Expression.MapLiteral => throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
-          case idExp: Expression.Ident =>
+          case _: Pattern.Expression.AtomicLiteral => Nil
+          case _: Pattern.Expression.ListLiteral =>
+            throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
+          case _: Pattern.Expression.MapLiteral =>
+            throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
+          case idExp: Pattern.Expression.Ident =>
             if (idExp.identifier == identifier) List(value) else Nil
-          case _: Expression.Parameter => Nil
-          case _: Expression.Apply => throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
-          case unary: Expression.UnaryOp =>
+          case _: Pattern.Expression.Parameter => Nil
+          case _: Pattern.Expression.Apply => throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
+          case unary: Pattern.Expression.UnaryOp =>
             findFiltersFor(identifier, Some(unary.exp))
-          case Expression.BinOp(_, _, lhs, rhs, _) =>
+          case Pattern.Expression.BinOp(_, _, lhs, rhs, _) =>
             findFiltersFor(identifier, Some(lhs)) ++ findFiltersFor(identifier, Some(rhs))
-          case fa: Expression.FieldAccess =>
+          case fa: Pattern.Expression.FieldAccess =>
             if (QuinePatternHelpers.getRootId(fa.of) == identifier) List(fa) else Nil
-          case _: Expression.IndexIntoArray => throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
-          case isNull: Expression.IsNull => findFiltersFor(identifier, Some(isNull.of))
-          case _: Expression.CaseBlock => throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
+          case _: Pattern.Expression.IndexIntoArray =>
+            throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
+          case isNull: Pattern.Expression.IsNull => findFiltersFor(identifier, Some(isNull.of))
+          case _: Pattern.Expression.CaseBlock =>
+            throw new QuinePatternUnimplementedException(s"Unsupported exp: $value")
         }
       case None => Nil
     }
 
   def findProjectionsFor(identifier: Pattern.Identifier, projection: Cypher.Projection): List[Cypher.Projection] =
     projection.expression match {
-      case idLookup: Expression.IdLookup => if (idLookup.nodeIdentifier == identifier) List(projection) else Nil
-      case _: Expression.SynthesizeId =>
+      case idLookup: Pattern.Expression.IdLookup => if (idLookup.nodeIdentifier == identifier) List(projection) else Nil
+      case _: Pattern.Expression.SynthesizeId =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.AtomicLiteral =>
+      case _: Pattern.Expression.AtomicLiteral =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.ListLiteral =>
+      case _: Pattern.Expression.ListLiteral =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.MapLiteral =>
+      case _: Pattern.Expression.MapLiteral =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.Ident =>
+      case _: Pattern.Expression.Ident =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.Parameter =>
+      case _: Pattern.Expression.Parameter =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.Apply =>
+      case _: Pattern.Expression.Apply =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.UnaryOp =>
+      case _: Pattern.Expression.UnaryOp =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.BinOp =>
+      case _: Pattern.Expression.BinOp =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case fa: Expression.FieldAccess =>
+      case fa: Pattern.Expression.FieldAccess =>
         val rootId = QuinePatternHelpers.getRootId(fa.of)
         if (rootId == identifier) List(projection) else Nil
-      case _: Expression.IndexIntoArray =>
+      case _: Pattern.Expression.IndexIntoArray =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.IsNull =>
+      case _: Pattern.Expression.IsNull =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
-      case _: Expression.CaseBlock =>
+      case _: Pattern.Expression.CaseBlock =>
         throw new QuinePatternUnimplementedException(s"Unsupported exp: ${projection.expression}")
     }
 
@@ -148,7 +152,7 @@ object LazyQuinePatternQueryPlanner {
                 op = Pattern.Operator.Equals,
                 lhs = Pattern.Expression.FieldAccess(
                   source = Pattern.Source.NoSource,
-                  of = Expression.Ident(
+                  of = Pattern.Expression.Ident(
                     source = Pattern.Source.NoSource,
                     identifier = binding,
                     ty = None,
@@ -297,7 +301,8 @@ object LazyQuinePatternQueryPlanner {
             case _: Cypher.ReadingClause.FromSubquery =>
               throw new QuinePatternUnimplementedException(s"Unsupported clause: $h")
           }
-        case Cypher.QueryPart.WithClausePart(withClause) => ???
+        case _: Cypher.QueryPart.WithClausePart =>
+          throw new QuinePatternUnimplementedException(s"Unsupported clause: $h")
         case Cypher.QueryPart.EffectPart(effect) => LazyQueryPlan.DoEffect(effect)
       }
   }
@@ -333,7 +338,6 @@ object LazyQuinePatternQueryPlanner {
   * Utilizes eager evaluation to convert patterns, filters, and clauses into executable plans within Quine.
   */
 object EagerQuinePatternQueryPlanner {
-  def planPattern(pattern: Cypher.GraphPattern): QueryPlan = ???
 
   /** Extracts an ID predicate condition from a given node pattern and combines it with the remaining filter conditions.
     *
@@ -357,6 +361,9 @@ object EagerQuinePatternQueryPlanner {
                 idMatch.orElse(idMatch2) -> binop.copy(lhs = restLeft, rhs = restRight)
               case Pattern.Operator.Equals =>
                 (lhs, rhs) match {
+                  // This looks like it should be an anchor, but it isn't. :(
+                  case (_: Pattern.Expression.IdLookup, _: Pattern.Expression.IdLookup) =>
+                    None -> binop
                   case (idl: Pattern.Expression.IdLookup, idExp) =>
                     if (idl.nodeIdentifier == binding)
                       Some(idExp) -> Pattern.Expression.mkAtomicLiteral(Pattern.Source.NoSource, Pattern.Value.True)
@@ -396,32 +403,30 @@ object EagerQuinePatternQueryPlanner {
         pattern.maybeBinding match {
           case Some(value) =>
             connections match {
-              case Nil => QueryPlan.AllNodeScan(List(QueryPlan.LoadNode(value))) -> exp
+              case Nil => QueryPlan.AllNodeScan(QueryPlan.LoadNode(value)) -> exp
               case h :: t =>
                 val stepResult = planConnection(h.dest, t, exp)
                 QueryPlan.AllNodeScan(
-                  List(
+                  QueryPlan.Product(
                     QueryPlan.LoadNode(value),
                     QueryPlan.TraverseEdge(
                       h.edge.labels.head,
                       QuinePatternHelpers.directionToEdgeDirection(h.edge.direction),
-                      List(stepResult._1),
+                      stepResult._1,
                     ),
                   ),
                 ) -> stepResult._2
             }
           case None =>
             connections match {
-              case Nil => QueryPlan.AllNodeScan(Nil) -> exp
+              case Nil => throw new QuinePatternUnimplementedException("???") //QueryPlan.AllNodeScan(Nil) -> exp
               case h :: t =>
                 val stepResult = planConnection(h.dest, t, exp)
                 QueryPlan.AllNodeScan(
-                  List(
-                    QueryPlan.TraverseEdge(
-                      h.edge.labels.head,
-                      QuinePatternHelpers.directionToEdgeDirection(h.edge.direction),
-                      List(stepResult._1),
-                    ),
+                  QueryPlan.TraverseEdge(
+                    h.edge.labels.head,
+                    QuinePatternHelpers.directionToEdgeDirection(h.edge.direction),
+                    stepResult._1,
                   ),
                 ) -> stepResult._2
             }
@@ -432,35 +437,147 @@ object EagerQuinePatternQueryPlanner {
             val stepResult = planConnection(h.dest, t, exp)
             QueryPlan.SpecificId(
               idPredicate,
-              List(
-                QueryPlan.TraverseEdge(
-                  h.edge.labels.head,
-                  QuinePatternHelpers.directionToEdgeDirection(h.edge.direction),
-                  List(stepResult._1),
-                ),
+              QueryPlan.TraverseEdge(
+                h.edge.labels.head,
+                QuinePatternHelpers.directionToEdgeDirection(h.edge.direction),
+                stepResult._1,
               ),
             ) -> stepResult._2
-          case Nil => QueryPlan.SpecificId(idPredicate, List(QueryPlan.LoadNode(pattern.maybeBinding.get))) -> exp
+          case Nil => QueryPlan.SpecificId(idPredicate, QueryPlan.LoadNode(pattern.maybeBinding.get)) -> exp
         }
     }
   }
 
-  def planFilteredPattern(pattern: Cypher.GraphPattern, filter: Pattern.Expression): (QueryPlan, Pattern.Expression) =
-    planConnection(pattern.initial, pattern.path, filter)
+  def planFilteredPattern(
+    pattern: PatternChain,
+    filter: Pattern.Expression,
+    initial: Boolean,
+  ): (QueryPlan, Pattern.Expression) =
+    pattern match {
+      case PatternChain.ChainCont(nodePattern, edge, chain) =>
+        getIdPredicateForNodePattern(nodePattern, filter) match {
+          case (None, exp) =>
+            val (remainingPlan, remainingFilter) = planFilteredPattern(chain, exp, false)
+            val traverseEdge = QueryPlan.TraverseEdge(
+              edge.labels.head,
+              QuinePatternHelpers.directionToEdgeDirection(edge.direction),
+              remainingPlan,
+            )
+            if (initial)
+              QueryPlan.AllNodeScan(
+                QueryPlan.Product(QueryPlan.LoadNode(nodePattern.maybeBinding.get), traverseEdge),
+              ) -> remainingFilter
+            else
+              QueryPlan.Product(QueryPlan.LoadNode(nodePattern.maybeBinding.get), traverseEdge) -> remainingFilter
+          case (Some(idExp), exp) =>
+            val (remainingPlan, remainingFilter) = planFilteredPattern(chain, exp, false)
+            val traverseEdge = QueryPlan.TraverseEdge(
+              edge.labels.head,
+              QuinePatternHelpers.directionToEdgeDirection(edge.direction),
+              remainingPlan,
+            )
+            if (initial)
+              QueryPlan.SpecificId(
+                idExp,
+                QueryPlan.Product(QueryPlan.LoadNode(nodePattern.maybeBinding.get), traverseEdge),
+              ) -> remainingFilter
+            else
+              QueryPlan.Product(
+                QueryPlan.LoadNode(nodePattern.maybeBinding.get),
+                QueryPlan.Product(
+                  QueryPlan.Filter(
+                    Pattern.Expression.BinOp(
+                      Pattern.Source.NoSource,
+                      Pattern.Operator.Equals,
+                      Pattern.Expression.Apply(
+                        Pattern.Source.NoSource,
+                        Symbol("id"),
+                        List(
+                          Pattern.Expression.Ident(Pattern.Source.NoSource, nodePattern.maybeBinding.get, None),
+                        ),
+                        None,
+                      ),
+                      idExp,
+                      None,
+                    ),
+                  ),
+                  traverseEdge,
+                ),
+              ) -> exp
+        }
+      case PatternChain.ChainEnd(nodePattern) =>
+        getIdPredicateForNodePattern(nodePattern, filter) match {
+          case (None, exp) =>
+            if (initial)
+              QueryPlan.AllNodeScan(QueryPlan.LoadNode(nodePattern.maybeBinding.get)) -> exp
+            else
+              QueryPlan.LoadNode(nodePattern.maybeBinding.get) -> exp
+          case (Some(idExp), exp) =>
+            if (initial)
+              QueryPlan.SpecificId(idExp, QueryPlan.LoadNode(nodePattern.maybeBinding.get)) -> exp
+            else
+              QueryPlan.Product(
+                QueryPlan.LoadNode(nodePattern.maybeBinding.get),
+                QueryPlan.Filter(
+                  Pattern.Expression.BinOp(
+                    Pattern.Source.NoSource,
+                    Pattern.Operator.Equals,
+                    Pattern.Expression.Apply(
+                      Pattern.Source.NoSource,
+                      Symbol("id"),
+                      List(
+                        Pattern.Expression.Ident(Pattern.Source.NoSource, nodePattern.maybeBinding.get, None),
+                      ),
+                      None,
+                    ),
+                    idExp,
+                    None,
+                  ),
+                ),
+              ) -> exp
+        }
+    }
 
   def planFilters(expression: Pattern.Expression): QueryPlan =
     QueryPlan.Filter(expression)
+
+  sealed trait PatternChain
+
+  object PatternChain {
+    case class ChainCont(nodePattern: Cypher.NodePattern, edge: Cypher.EdgePattern, chain: PatternChain)
+        extends PatternChain
+    case class ChainEnd(nodePattern: Cypher.NodePattern) extends PatternChain
+  }
+
+  def rewriteGraphPattern(pattern: Cypher.GraphPattern): PatternChain = pattern.path match {
+    case h :: t =>
+      PatternChain.ChainCont(
+        pattern.initial,
+        h.edge,
+        rewriteGraphPattern(Cypher.GraphPattern(Pattern.Source.NoSource, h.dest, t)),
+      )
+    case Nil => PatternChain.ChainEnd(pattern.initial)
+  }
 
   def planPatterns(patterns: List[Cypher.GraphPattern], maybePredicate: Option[Pattern.Expression]): QueryPlan =
     maybePredicate match {
       case Some(exp) =>
         val (planForPatterns, remainingFilters) = patterns.foldLeft(QueryPlan.unit -> exp) {
           case ((plan, filter), pattern) =>
-            val (newPlan, newFilter) = planFilteredPattern(pattern, filter)
+            val (newPlan, newFilter) = planFilteredPattern(rewriteGraphPattern(pattern), filter, true)
             QueryPlan.Product(plan, newPlan) -> newFilter
         }
         QueryPlan.Product(planForPatterns, planFilters(remainingFilters))
-      case None => patterns.map(planPattern).reduce(QueryPlan.Product(_, _))
+      case None =>
+        patterns
+          .map(p =>
+            planFilteredPattern(
+              rewriteGraphPattern(p),
+              Pattern.Expression.mkAtomicLiteral(Pattern.Source.NoSource, Pattern.Value.True),
+              true,
+            )._1,
+          )
+          .reduce(QueryPlan.Product(_, _))
     }
 
   def planProjection(projection: Cypher.Projection): QueryPlan =

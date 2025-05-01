@@ -18,7 +18,7 @@ import org.rocksdb._
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan
+import com.thatdot.quine.graph.cypher.quinepattern.{QueryPlan, QuinePatternUnimplementedException}
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -476,11 +476,8 @@ final class RocksDbPersistor(
       }
     }(ioDispatcher)
 
-  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] = ???
-//    Future {
-//    val sqBytes = QuinePatternCodec.format.write(qp)
-//    putKeyValue(quinePatternsCF, standingQueryId.toString.getBytes(UTF_8), sqBytes)
-//  }(ioDispatcher)
+  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] =
+    throw new QuinePatternUnimplementedException("Query plan persistence is not implemented for RocksDB")
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future {
     getKey(metaDataCF, key.getBytes(UTF_8))

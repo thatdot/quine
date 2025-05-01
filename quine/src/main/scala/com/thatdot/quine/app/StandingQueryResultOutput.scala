@@ -21,6 +21,7 @@ import com.thatdot.quine.app.model.outputs.{
   KafkaOutput,
   KinesisOutput,
   PostToEndpointOutput,
+  QuinePatternOutput,
   ReactiveStreamOutput,
   SlackOutput,
   SnsOutput,
@@ -101,6 +102,18 @@ object StandingQueryResultOutput extends LazySafeLogging {
           resultHandlingFlow(name, inNamespace, output, graph)(protobufSchemaCache, logConfig)
 
         new CypherQueryOutput(query, createRecursiveOutput).flow(name, inNamespace, output, graph)
+      case pattern: QuinePatternQuery =>
+        def createRecursiveOutput(
+          name: String,
+          inNamespace: NamespaceId,
+          output: StandingQueryResultOutputUserDef,
+          graph: CypherOpsGraph,
+          protobufSchemaCache: ProtobufSchemaCache,
+          logConfig: LogConfig,
+        ): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] =
+          resultHandlingFlow(name, inNamespace, output, graph)(protobufSchemaCache, logConfig)
+
+        new QuinePatternOutput(pattern, createRecursiveOutput).flow(name, inNamespace, output, graph)
     }
   }.named(s"sq-output-$name")
 

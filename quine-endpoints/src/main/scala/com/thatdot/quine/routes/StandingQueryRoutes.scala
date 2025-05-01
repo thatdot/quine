@@ -347,6 +347,24 @@ object StandingQueryResultOutputUserDef {
     override def slug: String = "cypher"
   }
 
+  final case class QuinePatternQuery(
+    @docs("Cypher query to execute on standing query result") query: String,
+    @docs("Name of the Cypher parameter holding the standing query result") parameter: String = "that",
+    @docs("maximum number of standing query results being processed at once")
+    parallelism: Int = IngestRoutes.defaultWriteParallelism,
+    @docs(
+      """Send the result of the Cypher query to another standing query output (in order to provide chained
+        |transformation and actions). The data returned by this query will be passed as the `data` object
+        |of the new StandingQueryResult (see \"Standing Query Result Output\")""".stripMargin
+        .replace('\n', ' '),
+    )
+    andThen: Option[StandingQueryResultOutputUserDef],
+    @docs(StandingQueryOutputStructure.docString)
+    structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug: String = "quinePatternQuery"
+  }
+
   @unnamed
   @title("Reactive Stream")
   final case class ReactiveStream(

@@ -158,6 +158,10 @@ object Recipe {
               structure,
             ),
           )
+        case QuinePatternQuery(query, parameter, parallelism, andThen, structure) =>
+          (query.subs, andThen.traverse(_.subs)).mapN(
+            StandingQueryResultOutputUserDef.QuinePatternQuery(_, parameter, parallelism, _, structure),
+          )
         case WriteToKinesis(
               credentialsOpt,
               regionOpt,
