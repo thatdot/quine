@@ -2,19 +2,19 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
+import io.circe.Json
 import io.circe.generic.extras.auto._
-import io.circe.{Decoder, Encoder, Json}
+import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.Schema.annotations.{description, title}
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, path, query}
+import sttp.tapir.{Codec, DecodeResult, EndpointInput, path, query, statusCode}
 
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
-import com.thatdot.quine.graph.NamespaceId
 
 object V2DebugEndpointEntities {
   sealed abstract class TEdgeDirection
@@ -103,15 +103,10 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
 
    */
   /** Generate an endpoint at  /api/ v2/admin/$path */
-  private def debugEndpoint[T](implicit
-    schema: Schema[ObjectEnvelope[T]],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
-    baseEndpoint[T]("debug", "nodes").tag("Debug Node Operations")
+  private def debugEndpoint = rawEndpoint("debug", "nodes").tag("Debug Node Operations")
 
   private val debugOpsPropertyGetEndpoint =
-    debugEndpoint[Option[Json]]
+    debugEndpoint
       .name("Get Property")
       .description(
         """Retrieve a single property from the node; note that values are represented as
@@ -125,20 +120,18 @@ closely as possible to how they would be emitted by
       .in(atTimeParameter)
       .in(namespaceParameter)
       .get
-      .serverLogic { case (memberIdx, id, propKey, atime, ns) =>
-        runServerLogic[(QuineId, String, Option[AtTime], NamespaceId), Option[Json]](
-          DebugOpsPropertygetApiCmd,
-          memberIdx,
-          (id, propKey, atime, namespaceFromParam(ns)),
-          t => appMethods.debugOpsPropertyGet(t._1, t._2, t._3, t._4),
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[Option[Json]]])
+      .serverLogic { case (id, propKey, atime, ns) =>
+        runServerLogicOk(appMethods.debugOpsPropertyGet(id, propKey, atime, namespaceFromParam(ns)))(
+          (inp: Option[Json]) => SuccessEnvelope.Ok.apply(inp),
         )
       }
 
-  private val debugOpsGetEndpoint
-    : Full[Unit, Unit, (Option[Int], QuineId, Option[AtTime], Option[String]), ErrorEnvelope[
-      _ <: CustomError,
-    ], ObjectEnvelope[TLiteralNode[QuineId]], Any, Future] =
-    debugEndpoint[TLiteralNode[QuineId]]
+  private val debugOpsGetEndpoint: Full[Unit, Unit, (QuineId, Option[AtTime], Option[String]), ErrorEnvelope[
+    _ <: CustomError,
+  ], SuccessEnvelope.Ok[TLiteralNode[QuineId]], Any, Future] =
+    debugEndpoint
       .name("List Properties/Edges")
       .description(
         "Retrieve a node's list of properties and list of edges." +
@@ -148,17 +141,16 @@ closely as possible to how they would be emitted by
       .in(atTimeParameter)
       .in(namespaceParameter)
       .get
-      .serverLogic { case (memberIdx, id, atime, ns) =>
-        runServerLogic[(QuineId, Option[AtTime], NamespaceId), TLiteralNode[QuineId]](
-          DebugOpsGetApiCmd,
-          memberIdx,
-          (id, atime, namespaceFromParam(ns)),
-          t => appMethods.debugOpsGet(t._1, t._2, t._3),
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[TLiteralNode[QuineId]]])
+      .serverLogic { case (id, atime, ns) =>
+        runServerLogicOk(appMethods.debugOpsGet(id, atime, namespaceFromParam(ns)))((inp: TLiteralNode[QuineId]) =>
+          SuccessEnvelope.Ok.apply(inp),
         )
       }
 
   //TODO temporarily outputs string
-  private val debugOpsVerboseEndpoint = debugEndpoint[String]
+  private val debugOpsVerboseEndpoint = debugEndpoint
     .name("List Node State (Verbose)")
     .description(
       "Returns information relating to the node's internal state." +
@@ -169,17 +161,16 @@ closely as possible to how they would be emitted by
     .in(atTimeParameter)
     .in(namespaceParameter)
     .get
-    .serverLogic { case (memberIdx, id, atime, ns) =>
-      runServerLogic[(QuineId, Option[AtTime], NamespaceId), String](
-        DebugVerboseApiCmd,
-        memberIdx,
-        (id, atime, namespaceFromParam(ns)),
-        t => appMethods.debugOpsVerbose(t._1, t._2, t._3),
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[String]])
+    .serverLogic { case (id, atime, ns) =>
+      runServerLogicOk(appMethods.debugOpsVerbose(id, atime, namespaceFromParam(ns)))((inp: String) =>
+        SuccessEnvelope.Ok.apply(inp),
       )
     }
 
   private val debugOpsEdgesGetEndpoint =
-    debugEndpoint[Vector[TRestHalfEdge[QuineId]]]
+    debugEndpoint
       .name("List Edges")
       .description(
         "Retrieve all node edges." +
@@ -195,20 +186,15 @@ closely as possible to how they would be emitted by
       .in(fullEdgeParameter)
       .in(namespaceParameter)
       .get
-      .serverLogic { case (memberIdx, id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, fullOnly, ns) =>
-        runServerLogic[
-          (QuineId, Option[AtTime], Option[Int], Option[TEdgeDirection], Option[QuineId], Option[String], NamespaceId),
-          Vector[TRestHalfEdge[QuineId]],
-        ](
-          DebugEdgesGetApiCmd,
-          memberIdx,
-          (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
-          t =>
-            if (fullOnly.getOrElse(true))
-              appMethods.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7)
-            else
-              appMethods.debugOpsHalfEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
-        )
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]]])
+      .serverLogic { case (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, fullOnly, ns) =>
+        runServerLogicOk(
+          if (fullOnly.getOrElse(true))
+            appMethods.debugOpsEdgesGet(id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns))
+          else
+            appMethods.debugOpsHalfEdgesGet(id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
+        )((inp: Vector[TRestHalfEdge[QuineId]]) => SuccessEnvelope.Ok.apply(inp))
       }
 
   val debugEndpoints: List[ServerEndpoint[Any, Future]] = List(

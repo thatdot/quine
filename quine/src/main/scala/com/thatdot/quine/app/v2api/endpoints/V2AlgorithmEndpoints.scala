@@ -2,7 +2,7 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import java.nio.file.{Files, Paths}
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.stream.IOResult
 import org.apache.pekko.stream.connectors.s3.MultipartUploadResult
@@ -11,7 +11,6 @@ import org.apache.pekko.stream.scaladsl.{FileIO, Sink}
 import org.apache.pekko.util.ByteString
 
 import io.circe.generic.extras.auto._
-import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
 import sttp.tapir._
@@ -19,15 +18,7 @@ import sttp.tapir.generic.auto.schemaForCaseClass
 import sttp.tapir.server.ServerEndpoint
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.app.v2api.definitions.{
-  GenerateRandomWalkApiCmd,
-  ObjectEnvelope,
-  SaveRandomWalksApiCmd,
-  V2QuineEndpointDefinitions,
-}
-import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.model.Milliseconds
-import com.thatdot.quine.routes.IngestRoutes
+import com.thatdot.quine.app.v2api.definitions.{ErrorEnvelope, SuccessEnvelope, V2QuineEndpointDefinitions}
 
 object V2AlgorithmEndpointEntities extends V2ApiConfiguration {
   /* WARNING: these values duplicate `AlgorithmGraph.defaults.walkPrefix` and `walkSuffix` from the
@@ -120,15 +111,11 @@ trait V2AlgorithmEndpoints extends V2QuineEndpointDefinitions {
   import V2AlgorithmEndpointEntities._
 
   /** Algorithm base path */
-  private def algorithmEndpoint[T](implicit
-    schema: Schema[ObjectEnvelope[T]],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ) = baseEndpoint[T]("algorithm")
+  private def algorithmEndpoint = rawEndpoint("algorithm")
     .tag("Graph Algorithms")
     .description("High-level operations on the graph to support graph AI, ML, and other algorithms.")
 
-  private def saveRandomWalksEndpoint = algorithmEndpoint[Option[String]]
+  private def saveRandomWalksEndpoint = algorithmEndpoint
     .name("Save Random Walks")
     .description("""Generate random walks from all nodes in the graph (optionally: at a specific historical time), and save
 the results.
@@ -173,11 +160,11 @@ concatenated to produce the final file name:
     .in(atTimeParameter)
     .in(parallelismParameter)
     .in(jsonOrYamlBody[TSaveLocation](Some(S3Bucket("your-s3-bucket-name", None))))
-    .out(statusCode(StatusCode.Accepted))
     .post
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[Option[String]]])
     .serverLogic {
       case (
-            memberIdx,
             walkLengthOpt,
             numWalksOpt,
             queryOpt,
@@ -186,46 +173,31 @@ concatenated to produce the final file name:
             randomSeedOpt,
             namespace,
             atTimeOpt,
-            parallelismOpt,
+            parallelism,
             saveLocation,
           ) =>
-        runServerLogicFromEither[
-          (
-            Option[Int],
-            Option[Int],
-            Option[String],
-            Option[Double],
-            Option[Double],
-            Option[String],
-            NamespaceId,
-            Option[Milliseconds],
-            Int,
-            TSaveLocation,
+        runServerLogicFromEitherOk(
+          Future.successful(
+            appMethods
+              .algorithmSaveRandomWalks(
+                walkLengthOpt,
+                numWalksOpt,
+                queryOpt,
+                returnOpt,
+                inOutOpt,
+                randomSeedOpt,
+                namespaceFromParam(namespace),
+                atTimeOpt,
+                parallelism,
+                saveLocation,
+              )
+              .left
+              .map(ErrorEnvelope(_)),
           ),
-          Option[String],
-        ](
-          SaveRandomWalksApiCmd,
-          memberIdx,
-          (
-            walkLengthOpt,
-            numWalksOpt,
-            queryOpt,
-            returnOpt,
-            inOutOpt,
-            randomSeedOpt,
-            namespaceFromParam(namespace),
-            atTimeOpt,
-            parallelismOpt.getOrElse(IngestRoutes.defaultWriteParallelism),
-            saveLocation,
-          ),
-          t =>
-            Future.successful(
-              appMethods.algorithmSaveRandomWalks(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10),
-            ),
-        )
+        )((inp: Option[String]) => SuccessEnvelope.Ok(inp))
     }
 
-  private def generateRandomWalkEndpoint = algorithmEndpoint[Option[List[String]]]
+  private def generateRandomWalkEndpoint = algorithmEndpoint
     .name("Generate Random Walk")
     .description("Generate a random walk from a node in the graph and return the results.")
     .post
@@ -239,27 +211,23 @@ concatenated to produce the final file name:
     .in(randomSeedOptQs)
     .in(namespaceParameter)
     .in(atTimeParameter)
-    .serverLogic {
-      case (memberIdx, id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespace, atTimeOpt) =>
-        runServerLogicFromEither[
-          (
-            QuineId,
-            Option[Int],
-            Option[String],
-            Option[Double],
-            Option[Double],
-            Option[String],
-            NamespaceId,
-            Option[Milliseconds],
-          ),
-          Option[List[String]],
-        ](
-          GenerateRandomWalkApiCmd,
-          memberIdx,
-          (id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespaceFromParam(namespace), atTimeOpt),
-          t => appMethods.algorithmRandomWalk(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8),
-        )
-
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[Option[List[String]]]])
+    .serverLogic { case (id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespace, atTimeOpt) =>
+      runServerLogicFromEitherOk(
+        appMethods
+          .algorithmRandomWalk(
+            id,
+            walkLengthOpt,
+            queryOpt,
+            returnOpt,
+            inOutOpt,
+            randomSeedOpt,
+            namespaceFromParam(namespace),
+            atTimeOpt,
+          )
+          .map(f => f.left.map(ErrorEnvelope.apply))(ExecutionContext.parasitic),
+      )((inp: Option[List[String]]) => SuccessEnvelope.Ok.apply(inp))
     }
 
   val algorithmEndpoints: List[ServerEndpoint[Any, Future]] = List(

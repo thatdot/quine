@@ -2,19 +2,20 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import java.util.concurrent.TimeUnit
 
-import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.{ExecutionContext, Future}
 
 import endpoints4s.generic.title
+import io.circe.Json
 import io.circe.generic.extras.auto._
 import io.circe.syntax.EncoderOps
-import io.circe.{Decoder, Encoder, Json}
+import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.Schema.annotations.description
 import sttp.tapir.generic.auto._
 import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.{Codec, DecodeResult, Schema, oneOfBody}
+import sttp.tapir.{Codec, DecodeResult, Schema, oneOfBody, statusCode}
 
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.v2api.definitions._
@@ -24,7 +25,6 @@ import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TUiEdge,
   TUiNode,
 }
-import com.thatdot.quine.graph.NamespaceId
 
 object V2CypherEndpointEntities extends TapirJsonCirce {
   @title("Cypher Query")
@@ -69,11 +69,8 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
   private val cypherLanguageUrl = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
 
   /** SQ Base path */
-  private def cypherQueryEndpoint[T](implicit
-    schema: Schema[ObjectEnvelope[T]],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ) = baseEndpoint[T]("cypher-queries").tag("Cypher Query Language")
+  private def cypherQueryEndpoint =
+    rawEndpoint("cypher-queries").tag("Cypher Query Language")
 
   private val textEx = TCypherQuery(
     "MATCH (n) RETURN n LIMIT $lim",
@@ -91,7 +88,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
     duration.getOrElse(FiniteDuration.apply(20, TimeUnit.SECONDS)) //akka default http timeout
 
   private val cypherEndpoint =
-    cypherQueryEndpoint[TCypherQueryResult]
+    cypherQueryEndpoint
       .name("Cypher Query")
       .description(s"Execute an arbitrary [Cypher]($cypherLanguageUrl) query")
       .in("query-graph")
@@ -100,19 +97,22 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
       .in(namespaceParameter)
       .in(queryBody)
       .post
-      .serverLogic { case (memberIdx, atTime, timeout, namespace, query) =>
-        runServerLogicFromEither[
-          (Option[AtTime], Option[FiniteDuration], NamespaceId, TCypherQuery),
-          TCypherQueryResult,
-        ](
-          CypherPostApiCmd,
-          memberIdx,
-          (atTime, timeout, namespaceFromParam(namespace), TCypherQuery(query.text, query.parameters)),
-          t => appMethods.cypherPost(t._1, toConcreteDuration(t._2), t._3, t._4),
-        )
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[TCypherQueryResult]])
+      .serverLogic { case (atTime, timeout, namespace, query) =>
+        runServerLogicFromEitherOk(
+          appMethods
+            .cypherPost(
+              atTime,
+              toConcreteDuration(timeout),
+              namespaceFromParam(namespace),
+              TCypherQuery(query.text, query.parameters),
+            )
+            .map(f => f.left.map(ErrorEnvelope.apply))(ExecutionContext.parasitic),
+        )((inp: TCypherQueryResult) => SuccessEnvelope.Ok.apply(inp))
       }
 
-  private val cypherNodesEndpoint = cypherQueryEndpoint[Seq[TUiNode]]
+  private val cypherNodesEndpoint = cypherQueryEndpoint
     .name("Cypher Query Return Nodes")
     .description(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
                       |Queries that do not return nodes will fail with a type error.""".stripMargin)
@@ -122,18 +122,17 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
     .in(namespaceParameter)
     .in(queryBody)
     .post
-    .serverLogic { case (memberIdx, atTime, timeout, namespace, query) =>
-      runServerLogicFromEither[(Option[AtTime], Option[FiniteDuration], NamespaceId, TCypherQuery), Seq[
-        TUiNode,
-      ]](
-        CypherNodesPostApiCmd,
-        memberIdx,
-        (atTime, timeout, namespaceFromParam(namespace), TCypherQuery(query.text, query.parameters)),
-        t => appMethods.cypherNodesPost(t._1, toConcreteDuration(t._2), t._3, t._4),
-      )
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[Seq[TUiNode]]])
+    .serverLogic { case (atTime, timeout, namespace, query) =>
+      runServerLogicFromEitherOk(
+        appMethods
+          .cypherNodesPost(atTime, toConcreteDuration(timeout), namespaceFromParam(namespace), query)
+          .map(f => f.left.map(ErrorEnvelope.apply))(ExecutionContext.parasitic),
+      )((inp: Seq[TUiNode]) => SuccessEnvelope.Ok.apply(inp))
     }
 
-  private val cypherEdgesEndpoint = cypherQueryEndpoint[Seq[TUiEdge]]
+  private val cypherEdgesEndpoint = cypherQueryEndpoint
     .name("Cypher Query Return Edges")
     .description(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
          |Queries that do not return edges will fail with a type error.""".stripMargin)
@@ -143,15 +142,19 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
     .in(namespaceParameter)
     .in(queryBody)
     .post
-    .serverLogic { case (memberIdx, atTime, timeout, namespace, query) =>
-      runServerLogicFromEither[(Option[AtTime], Option[FiniteDuration], NamespaceId, TCypherQuery), Seq[
-        TUiEdge,
-      ]](
-        CypherEdgesPostApiCmd,
-        memberIdx,
-        (atTime, timeout, namespaceFromParam(namespace), TCypherQuery(query.text, query.parameters)),
-        t => appMethods.cypherEdgesPost(t._1, toConcreteDuration(t._2), t._3, t._4),
-      )
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[Seq[TUiEdge]]])
+    .serverLogic { case (atTime, timeout, namespace, query) =>
+      runServerLogicFromEitherOk(
+        appMethods
+          .cypherEdgesPost(
+            atTime,
+            toConcreteDuration(timeout),
+            namespaceFromParam(namespace),
+            TCypherQuery(query.text, query.parameters),
+          )
+          .map(f => f.left.map(ErrorEnvelope.apply))(ExecutionContext.parasitic),
+      )((inp: Seq[TUiEdge]) => SuccessEnvelope.Ok.apply(inp))
     }
 
   val cypherEndpoints: List[ServerEndpoint[Any, Future]] = List(

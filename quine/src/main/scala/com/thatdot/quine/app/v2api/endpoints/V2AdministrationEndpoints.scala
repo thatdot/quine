@@ -2,19 +2,20 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.{ExecutionContext, Future}
 
+import io.circe.Json
 import io.circe.generic.extras.auto._
 import io.circe.syntax.EncoderOps
-import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.{Endpoint, Schema, path, query, statusCode}
+import sttp.tapir.server.ServerEndpoint.Full
+import sttp.tapir.{Endpoint, Schema, emptyOutputAs, oneOfVariantFromMatchType, path, statusCode}
 
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.app.v2api.definitions.SuccessEnvelope.NoContent
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities._
-import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes._
 
@@ -127,6 +128,7 @@ object V2AdministrationEndpointEntities {
 }
 
 trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
+
   implicit lazy val graphHashCodeSchema: Schema[TGraphHashCode] =
     Schema.derived[TGraphHashCode].description("Graph Hash Code").encodedExample(TGraphHashCode(1000L, 12345L).asJson)
 
@@ -136,36 +138,25 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiCon
     .description("A map of shard IDs to shard in-memory node limits")
     .encodedExample(exampleShardMap.asJson)
 
-  private def rawAdminEndpoint(path: String): EndpointBase =
+  protected def adminEndpoint(path: String): Endpoint[Unit, Unit, ErrorEnvelope[_ <: CustomError], Unit, Any] =
     rawEndpoint("admin").in(path).tag("Administration")
 
-  /** Generate an endpoint at  /api/ v2/admin/$path */
-  protected def adminEndpoint[T](path: String)(implicit
-    schema: Schema[ObjectEnvelope[T]],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
-    withOutput[T](rawAdminEndpoint(path))
+  protected val buildInfoEndpoint
+    : Full[Unit, Unit, Unit, ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Ok[TQuineInfo], Any, Future] =
+    adminEndpoint("build-info")
+      .name("Build Information")
+      .description("Returns a JSON object containing information about how Quine was built")
+      .get
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[TQuineInfo]])
+      .serverLogic { _ =>
+        runServerLogicOk(Future.successful(appMethods.buildInfo))(inp => SuccessEnvelope.Ok(inp))
+      }
 
-  protected val buildInfoEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
+  protected val configEndpoint: ServerEndpoint.Full[Unit, Unit, Unit, ErrorEnvelope[
     _ <: CustomError,
-  ], ObjectEnvelope[TQuineInfo], Any, Future] = adminEndpoint[TQuineInfo]("build-info")
-    .name("Build Information")
-    .description("Returns a JSON object containing information about how Quine was built")
-    .get
-    .serverLogic { memberIdx =>
-      runServerLogic[Unit, TQuineInfo](GetBuildInfoApiCmd, memberIdx, (), _ => Future.successful(appMethods.buildInfo))
-    }
-
-  protected val configEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
-    _ <: CustomError,
-  ], ObjectEnvelope[Json], Any, Future] = {
-    implicit val configSchema: Schema[ObjectEnvelope[Json]] =
-      Schema
-        .derived[ObjectEnvelope[Json]]
-        .encodedExample(Json.obj(("data", appMethods.emptyConfigExample.loadedConfigJson)))
-
-    adminEndpoint[Json]("config")
+  ], SuccessEnvelope.Ok[Json], Any, Future] =
+    adminEndpoint("config")
       .name("Running Configuration")
       .description("""Fetch the full configuration of the running system. "Full" means that this
 every option value is specified including all specified config files, command line
@@ -176,20 +167,18 @@ Pekko HTTP option `org.apache.pekko.http.server.request-timeout` can be used to 
 server request timeout of this REST API, but it won't show up in the response of this
 endpoint.
 """).get
-      .serverLogic { memberIdx =>
-        runServerLogic[Unit, Json](
-          GetConfigApiCmd,
-          memberIdx,
-          (),
-          _ => Future.successful(appMethods.config.loadedConfigJson),
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[Json]])
+      .serverLogic { _ =>
+        runServerLogicOk(Future.successful(appMethods.config.loadedConfigJson))((inp: Json) =>
+          SuccessEnvelope.Ok.apply(inp),
         )
       }
-  }
 
   protected val graphHashCodeEndpoint
-    : ServerEndpoint.Full[Unit, Unit, (Option[Int], Option[Milliseconds], Option[String]), ErrorEnvelope[
+    : ServerEndpoint.Full[Unit, Unit, (Option[Milliseconds], Option[String]), ErrorEnvelope[
       _ <: CustomError,
-    ], ObjectEnvelope[TGraphHashCode], Any, Future] = adminEndpoint[TGraphHashCode]("graph-hash-code")
+    ], SuccessEnvelope.Ok[TGraphHashCode], Any, Future] = adminEndpoint("graph-hash-code")
     .description("""Generate a hash of the state of the graph at the provided timestamp.
                    |
                    |This is done by materializing readonly/historical versions of all nodes at a particular timestamp and
@@ -203,79 +192,88 @@ endpoint.
     .in(atTimeParameter)
     .in(namespaceParameter)
     .get
-    .serverLogic { case (memberIdx, atime, ns: Option[String]) =>
-      runServerLogic[(Option[AtTime], NamespaceId), TGraphHashCode](
-        GraphHashCodeApiCmd,
-        memberIdx,
-        (atime, namespaceFromParam(ns)),
-        t => appMethods.graphHashCode(t._1, t._2),
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[TGraphHashCode]])
+    .serverLogic { case (atime, ns: Option[String]) =>
+      runServerLogicOk(appMethods.graphHashCode(atime, namespaceFromParam(ns)))((inp: TGraphHashCode) =>
+        SuccessEnvelope.Ok(inp),
       )
     }
 
-  protected val livenessEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], Unit, Unit, Any, Future] =
-    rawAdminEndpoint("liveness")
+  protected val livenessEndpoint: Full[Unit, Unit, Unit, ErrorEnvelope[_ <: CustomError], Unit, Any, Future] =
+    adminEndpoint("liveness")
       .name("Process Liveness")
       .description("""This is a basic no-op endpoint for use when checking if the system is hung or responsive.
                      | The intended use is for a process manager to restart the process if the app is hung (non-responsive).
                      | It does not otherwise indicate readiness to handle data requests or system health.
                      | Returns a 204 response.""")
       .get
-      .out(statusCode(StatusCode.NoContent))
+      .out(statusCode(StatusCode.NoContent).description("System is live"))
       .serverLogicSuccess(_ => Future.successful(()))
 
-  protected val readinessEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
-    _ <: CustomError,
-  ], ObjectEnvelope[Boolean], Any, Future] = adminEndpoint[Boolean]("readiness")
-    .name("Process Readiness")
-    .description("""This indicates whether the system is fully up and ready to service user requests.
+  protected val readinessEndpoint
+    : Full[Unit, Unit, Unit, ErrorEnvelope[_ <: CustomError], SuccessEnvelope.NoContent.type, Any, Future] =
+    adminEndpoint("readiness")
+      .name("Process Readiness")
+      .description("""This indicates whether the system is fully up and ready to service user requests.
 The intended use is for a load balancer to use this to know when the instance is
 up ready and start routing user requests to it.
 """).get
-    .serverLogic { memberIdx =>
-      runServerLogicFromEither[Unit, Boolean](
-        GetReadinessApiCmd,
-        memberIdx,
-        (),
-        _ => Future.successful(Either.cond(appMethods.isReady, true, ServiceUnavailable("System is not ready"))),
-      )
-    }
+      .out(statusCode(StatusCode.NoContent).description("System is ready to serve requests"))
+      .out(emptyOutputAs(NoContent))
+      .errorOutVariantPrepend {
+        oneOfVariantFromMatchType(
+          statusCode(StatusCode.ServiceUnavailable).and {
+            jsonBody[ErrorEnvelope[ServiceUnavailable]]
+              .description("System is not ready")
+          },
+        )
+      }
+      .serverLogic { _ =>
+        runServerLogicFromEitherNoContent(
+          Future.successful(
+            Either.cond(
+              appMethods.isReady,
+              NoContent,
+              ErrorEnvelope(ServiceUnavailable("System is not ready")),
+            ),
+          ),
+        )
+      }
 
-  protected val gracefulShutdownEndpoint
-    : ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[Unit], Any, Future] =
-    adminEndpoint[Unit]("shutdown")
+  protected val gracefulShutdownEndpoint: ServerEndpoint.Full[Unit, Unit, Unit, ErrorEnvelope[
+    _ <: CustomError,
+  ], SuccessEnvelope.Accepted, Any, Future] =
+    adminEndpoint("shutdown")
       .name("Graceful Shutdown")
       .description(
         "Initiate a graceful graph shutdown. Final shutdown may take a little longer. `200` indicates a shutdown has been successfully initiated.",
       )
       .post
-      .serverLogic { memberIdx =>
-        runServerLogic[Unit, Unit](
-          ShutdownApiCmd,
-          memberIdx,
-          (),
-          _ => appMethods.performShutdown(),
-        )
+      .out(statusCode(StatusCode.Accepted).description("Shutdown initiated"))
+      .out(jsonBody[SuccessEnvelope.Accepted])
+      .serverLogic { _ =>
+        runServerLogicAccepted(appMethods.performShutdown())((inp: Unit) => SuccessEnvelope.Accepted())
       }
 
-  protected val metaDataEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
+  protected val metaDataEndpoint: ServerEndpoint.Full[Unit, Unit, Unit, ErrorEnvelope[
     _ <: CustomError,
-  ], ObjectEnvelope[Map[String, String]], Any, Future] =
-    adminEndpoint[Map[String, String]]("meta-data")
+  ], SuccessEnvelope.Ok[Map[String, String]], Any, Future] =
+    adminEndpoint("meta-data")
       .name("Persisted Meta-Data")
       .summary("Meta-data")
       .get
-      .serverLogic { memberIdx =>
-        runServerLogic[Unit, Map[String, String]](
-          GetMetaDataApiCmd,
-          memberIdx,
-          (),
-          _ => appMethods.metaData,
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[Map[String, String]]])
+      .serverLogic { _ =>
+        runServerLogicOk(appMethods.metaData)((inp: Map[String, String]) =>
+          SuccessEnvelope.Ok(inp): SuccessEnvelope.Ok[Map[String, String]],
         )
       }
 
-  protected val metricsEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
+  protected val metricsEndpoint: ServerEndpoint.Full[Unit, Unit, Unit, ErrorEnvelope[
     _ <: CustomError,
-  ], ObjectEnvelope[TMetricsReport], Any, Future] = adminEndpoint[TMetricsReport]("metrics")
+  ], SuccessEnvelope.Ok[TMetricsReport], Any, Future] = adminEndpoint("metrics")
     .name("Metrics")
     .summary("Metrics Summary")
     .description(
@@ -306,63 +304,56 @@ up ready and start routing user requests to it.
           |""".stripMargin,
     )
     .get
-    .serverLogic { memberIdx =>
-      runServerLogic[Unit, TMetricsReport](
-        GetMetricsApiCmd,
-        memberIdx,
-        (),
-        _ => Future.successful(metricsReportFromV1Metrics(appMethods.metrics)),
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[TMetricsReport]])
+    .serverLogic { _ =>
+      runServerLogicOk(Future.successful(metricsReportFromV1Metrics(appMethods.metrics)))((inp: TMetricsReport) =>
+        SuccessEnvelope.Ok(inp),
       )
     }
 
   //TODO shardMapLimitSchema
-  protected val shardSizesEndpoint
-    : ServerEndpoint.Full[Unit, Unit, (Option[Int], Map[Int, TShardInMemoryLimit]), ErrorEnvelope[
-      _ <: CustomError,
-    ], ObjectEnvelope[Map[Int, TShardInMemoryLimit]], Any, Future] =
-    adminEndpoint[Map[Int, TShardInMemoryLimit]]("shards").post
+  protected val shardSizesEndpoint: ServerEndpoint.Full[Unit, Unit, Map[Int, TShardInMemoryLimit], ErrorEnvelope[
+    _ <: CustomError,
+  ], SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]], Any, Future] =
+    adminEndpoint("shards").put
       .name("Shard Sizes")
       .description("""Get and update the in-memory node limits.
                    |
                    |Sending a request containing an empty json object will return the current in-memory node settings.
                    |
                    |To apply different values, apply your edits to the returned document and sent those values in
-                   |a new POST request.
+                   |a new PUT request.
                    |""".stripMargin)
       .in("size-limits")
       .in(jsonOrYamlBody[Map[Int, TShardInMemoryLimit]](Some(exampleShardMap)))
-      .serverLogic { case (memberIdx, resizes) =>
-        runServerLogic[Map[Int, TShardInMemoryLimit], Map[Int, TShardInMemoryLimit]](
-          GetMetricsApiCmd,
-          memberIdx,
-          resizes,
-          r =>
-            appMethods
-              .shardSizes(r.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
-              .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(
-                ExecutionContext.parasitic,
-              ),
-        )
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]])
+      .serverLogic { resizes =>
+        runServerLogicOk(
+          appMethods
+            .shardSizes(resizes.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
+            .map(f => f.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(
+              ExecutionContext.parasitic,
+            ),
+        )((inp: Map[Int, TShardInMemoryLimit]) => SuccessEnvelope.Ok(inp))
       }
 
-  protected val requestNodeSleepEndpoint
-    : ServerEndpoint.Full[Unit, Unit, (Option[Int], QuineId, Option[String]), ErrorEnvelope[
-      _ <: CustomError,
-    ], ObjectEnvelope[Unit], Any, Future] = adminEndpoint[Unit]("nodes").post
+  protected val requestNodeSleepEndpoint: ServerEndpoint.Full[Unit, Unit, (QuineId, Option[String]), ErrorEnvelope[
+    _ <: CustomError,
+  ], SuccessEnvelope.Accepted, Any, Future] = adminEndpoint("nodes").post
     .name("Sleep Node")
     .description("""Attempt to put the specified node to sleep.
                    |
                    |This behavior is not guaranteed. Activity on the node will supersede this request""".stripMargin)
     .in(path[QuineId]("nodeIdSegment"))
     .in("request-sleep")
-    .in(query[Option[String]]("namespace"))
+    .in(namespaceParameter)
     .out(statusCode(StatusCode.Accepted))
-    .serverLogic { case (memberIdx, nodeId, namespace) =>
-      runServerLogic[(QuineId, NamespaceId), Unit](
-        SleepNodeApiCmd,
-        memberIdx,
-        (nodeId, namespaceFromParam(namespace)),
-        t => appMethods.requestNodeSleep(t._1, t._2),
+    .out(jsonBody[SuccessEnvelope.Accepted])
+    .serverLogic { case (nodeId, namespace) =>
+      runServerLogicAccepted(appMethods.requestNodeSleep(nodeId, namespaceFromParam(namespace)))((inp: Unit) =>
+        SuccessEnvelope.Accepted(),
       )
     }
 

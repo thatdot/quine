@@ -8,7 +8,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 import io.circe.generic.extras.auto._
-import io.circe.{Decoder, Encoder, Json}
+import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.DecodeResult.Value
@@ -17,16 +17,15 @@ import sttp.tapir.{EndpointOutput, endpoint, _}
 
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.definitions.CustomError.toCustomError
+import com.thatdot.quine.app.v2api.definitions.ErrorText.serverErrorDescription
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.routes.IngestRoutes
 
-/** Response Envelopes */
-case class ErrorEnvelope[T](error: T)
-case class ObjectEnvelope[T](data: T)
+/** Error Response Envelope */
+case class ErrorEnvelope[+T](error: T)
 
 /** Component definitions for Tapir endpoints. */
 trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
@@ -35,8 +34,9 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
 
   val appMethods: ApplicationApiMethods
   // ------- parallelism -----------
-  val parallelismParameter: EndpointInput.Query[Option[Int]] = query[Option[Int]](name = "parallelism")
-    .description(s"Operations to execute simultaneously. Default: `${IngestRoutes.defaultWriteParallelism}`")
+  val parallelismParameter: EndpointInput.Query[Int] = query[Int](name = "parallelism")
+    .description(s"Operations to execute simultaneously")
+    .default(IngestRoutes.defaultWriteParallelism)
   // ------- atTime ----------------
 
   type AtTime = Milliseconds
@@ -84,44 +84,35 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
       "Milliseconds to wait before the HTTP request times out",
     )
 
-  type EndpointOutput[T] = Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T]]
+  type EndpointOutput[T] = Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope[T]]
 
   /** Matching error types to api-rendered error outputs. Api Status codes are returned by matching the type of the
     * custom error to the status code matched here
+    * Defines the default case that maps an error not specified in the endpoints definition to an
+    * internal server error.
     */
   protected val commonErrorOutput
     : EndpointOutput.OneOf[ErrorEnvelope[_ <: CustomError], ErrorEnvelope[_ <: CustomError]] =
     oneOf[ErrorEnvelope[_ <: CustomError]](
-      oneOfVariantFromMatchType(
-        statusCode(StatusCode.InternalServerError).and(jsonBody[ErrorEnvelope[ServerError]].description("bad request")),
-      ),
-      oneOfVariantFromMatchType(
-        statusCode(StatusCode.BadRequest).and(jsonBody[ErrorEnvelope[BadRequest]].description("bad request")),
-      ),
-      oneOfVariantFromMatchType(
-        statusCode(StatusCode.NotFound).and(jsonBody[ErrorEnvelope[NotFound]].description("not found")),
-      ),
-      oneOfVariantFromMatchType(
-        statusCode(StatusCode.Unauthorized).and(jsonBody[ErrorEnvelope[Unauthorized]].description("unauthorized")),
-      ),
-      oneOfVariantFromMatchType(
-        statusCode(StatusCode.ServiceUnavailable)
-          .and(jsonBody[ErrorEnvelope[ServiceUnavailable]].description("service unavailable")),
-      ),
-      oneOfVariantFromMatchType(statusCode(StatusCode.NoContent).and(emptyOutputAs(ErrorEnvelope(NoContent)))),
       oneOfDefaultVariant(
-        statusCode(StatusCode.InternalServerError).and(jsonBody[ErrorEnvelope[ServerError]].description("server error")),
+        statusCode(StatusCode.InternalServerError).and(
+          jsonBody[ErrorEnvelope[CustomError]].description(serverErrorDescription()),
+        ),
       ),
     )
 
-  protected def toObjectEnvelopeEncoder[T](encoder: Encoder[T]): Encoder[ObjectEnvelope[T]] =
-    (a: ObjectEnvelope[T]) =>
-      Json.fromFields(
-        Seq(("data", encoder.apply(a.data).deepDropNullValues)),
-      ) // always drop null values from output json.
+  type EndpointBase = Endpoint[Unit, Unit, ErrorEnvelope[_ <: CustomError], Unit, Any]
 
-  protected def toObjectEnvelopeDecoder[T](decoder: Decoder[T]): Decoder[ObjectEnvelope[T]] =
-    c => decoder.apply(c.downField("data").root).map(ObjectEnvelope(_))
+  /** Base for api/v2 endpoints with common errors
+    *
+    * @param basePaths Provided base Paths will be appended in order, i.e `endpoint("a","b") == /api/v2/a/b`
+    */
+  def rawEndpoint(
+    basePaths: String*,
+  ): Endpoint[Unit, Unit, ErrorEnvelope[_ <: CustomError], Unit, Any] =
+    endpoint
+      .in(basePaths.foldLeft("api" / "v2")((path, segment) => path / segment))
+      .errorOut(commonErrorOutput)
 
   def yamlBody[T]()(implicit
     schema: Schema[T],
@@ -142,18 +133,72 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
   def textBody[T](codec: Codec[String, T, TextPlain]): EndpointIO.Body[String, T] =
     stringBodyAnyFormat(codec, Charset.defaultCharset())
 
-  /** Wrap output types in their corresponding envelopes. */
-  protected def wrapOutput[OUT](value: Either[CustomError, OUT]): EndpointOutput[OUT] =
-    value.fold(t => Left(ErrorEnvelope(t)), v => Right(ObjectEnvelope(v)))
+  def runServerLogicOk[IN, OUT: Decoder](f: Future[IN])(
+    outToResponse: IN => SuccessEnvelope.Ok[OUT],
+  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Ok[OUT]]] = {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    runServerLogicFromEitherOk(f.map(Right(_)))(outToResponse)
+  }
+
+  def runServerLogicCreated[IN, OUT: Decoder](f: Future[IN])(
+    outToResponse: IN => SuccessEnvelope.Created[OUT],
+  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Created[OUT]]] = {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    runServerLogicFromEitherCreated(f.map(Right(_)))(outToResponse)
+  }
+
+  def runServerLogicAccepted[IN: Decoder](f: Future[IN])(
+    outToResponse: IN => SuccessEnvelope.Accepted,
+  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Accepted]] = {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    runServerLogicFromEitherAccepted(f.map(Right(_)))(outToResponse)
+  }
+
+  def runServerLogicNoContent[IN: Decoder](
+    f: Future[IN],
+  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.NoContent.type]] = {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    runServerLogicFromEitherNoContent(f.map(Right(_)))
+  }
+
+  def runServerLogicFromEitherOk[IN, OUT: Decoder](
+    f: Future[Either[ErrorEnvelope[_ <: CustomError], IN]],
+  )(
+    outToResponse: IN => SuccessEnvelope.Ok[OUT],
+  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Ok[OUT]]] = {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    f.map(_.map(outToResponse)).recover(t => Left(ErrorEnvelope(toCustomError(t))))
+  }
+
+  def runServerLogicFromEitherCreated[IN, OUT: Decoder](
+    f: Future[Either[ErrorEnvelope[_ <: CustomError], IN]],
+  )(
+    outToResponse: IN => SuccessEnvelope.Created[OUT],
+  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Created[OUT]]] = {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    f.map(_.map(outToResponse)).recover(t => Left(ErrorEnvelope(toCustomError(t))))
+  }
+
+  def runServerLogicFromEitherAccepted[IN](f: Future[Either[ErrorEnvelope[_ <: CustomError], IN]])(
+    outToResponse: IN => SuccessEnvelope.Accepted,
+  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Accepted]] = {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    f.map(_.map(outToResponse)).recover(t => Left(ErrorEnvelope(toCustomError(t))))
+  }
+
+  def runServerLogicFromEitherNoContent[T](
+    f: Future[Either[ErrorEnvelope[_ <: CustomError], T]],
+  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.NoContent.type]] = {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    f.map(_.map(_ => SuccessEnvelope.NoContent)).recover(t => Left(ErrorEnvelope(toCustomError(t))))
+  }
+
 }
 
 /** Component definitions for Tapir quine endpoints. */
 trait V2QuineEndpointDefinitions extends V2EndpointDefinitions {
 
   val appMethods: QuineApiMethods
-
-  /** OSS Specific behavior defined in [[com.thatdot.quine.v2api.V2OssRoutes]]. */
-  def memberIdxParameter: EndpointInput[Option[Int]]
 
   /** OSS Specific behavior defined in [[V2OssRoutes]]. */
   def namespaceParameter: EndpointInput[Option[String]]
@@ -167,72 +212,5 @@ trait V2QuineEndpointDefinitions extends V2EndpointDefinitions {
   ): Future[Either[CustomError, Option[A]]] =
     if (!appMethods.graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
     else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)
-
-  type EndpointBase = Endpoint[Unit, Option[Int], Unit, Unit, Any]
-
-  /** Base for api/v2 endpoints with common errors that expects the universal parameter memberIdx.
-    *
-    * We sometimes require access to an endpoint definition with no output type specified, because Tapir will not allow
-    * a 204 output response with defined outputs.
-    *
-    * @param basePaths Provided base Paths will be appended in order, i.e `endpoint("a","b") == /api/v2/a/b`
-    */
-  def rawEndpoint(
-    basePaths: String*,
-  ): Endpoint[Unit, Option[Int], Unit, Unit, Any] =
-    endpoint
-      .in(basePaths.foldLeft("api" / "v2")((path, segment) => path / segment))
-      .in(memberIdxParameter)
-
-  def withOutput[T](endpoint: EndpointBase)(implicit
-    schema: Schema[ObjectEnvelope[T]],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
-    endpoint
-      .errorOut(commonErrorOutput)
-      .out(jsonBody[ObjectEnvelope[T]](toObjectEnvelopeEncoder(encoder), toObjectEnvelopeDecoder(decoder), schema))
-
-  /** Base endpoint type with output type defined within a common [[ObjectEnvelope]] and common error output.
-    * @param basePaths Provided base Paths will be appended in order, i.e `endpoint("a","b") == /api/v2/a/b`
-    */
-  def baseEndpoint[T](
-    basePaths: String*,
-  )(implicit
-    schema: Schema[ObjectEnvelope[T]],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
-    withOutput[T](rawEndpoint(basePaths: _*))
-
-  //TODO split into definitions in extensions of [[TapirRoutes]] that support specific platforms.
-  /** Wrap server responses in their respective output envelopes. */
-  def runServerLogic[IN, OUT: Decoder](
-    cmd: ApiCommand,
-    idx: Option[Int],
-    in: IN,
-    f: IN => Future[OUT],
-  ): Future[EndpointOutput[OUT]] = {
-    implicit val ctx = ExecutionContext.parasitic
-    val g: Future[OUT] => Future[Either[CustomError, OUT]] = gin =>
-      gin.map(Right(_)).recover(t => Left(toCustomError(t)))
-    runServerLogicFromEither(cmd, idx, in, f.andThen(g))
-
-  }
-
-  /** Run server logic, defining some future values as custom error returns. */
-  def runServerLogicFromEither[IN, OUT: Decoder](
-    cmd: ApiCommand,
-    idx: Option[Int],
-    in: IN,
-    f: IN => Future[Either[CustomError, OUT]],
-  ): Future[Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[OUT]]] = {
-    logger.debug(log"Received arguments for API call $cmd: ${in.toString}")
-    implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    try f(in).map(wrapOutput).recover(t => Left(ErrorEnvelope(toCustomError(t))))
-    catch {
-      case t: Throwable => Future.successful(Left(ErrorEnvelope(toCustomError(t))))
-    }
-  }
 
 }

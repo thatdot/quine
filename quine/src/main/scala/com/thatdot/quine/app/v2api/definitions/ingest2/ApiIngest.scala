@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.v2api.definitions.ingest2
 
-import java.nio.charset.Charset
+import java.nio.charset.{Charset, StandardCharsets}
 import java.time.Instant
 
 import com.typesafe.scalalogging.LazyLogging
@@ -56,6 +56,7 @@ object ApiIngest {
       "Indicator of whether the ingest is still running, completed, etc.",
     ) status: IngestStreamStatus,
     @description("Error message about the ingest, if any") message: Option[String],
+    // Add a warnings output string
     @description("Configuration of the ingest stream") settings: IngestSource,
     @description("Statistics on progress of running ingest stream") stats: IngestStreamStats,
   ) {
@@ -324,14 +325,16 @@ object ApiIngest {
       s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
          |resuming ingest from a partially consumed file.""".stripMargin,
     )
-    startOffset: Long,
+    @default(0)
+    startOffset: Long = 0,
     @description(s"Optionally limit how many records are ingested from this file.")
     limit: Option[Long],
     @description(
       "The text encoding scheme for the file. UTF-8, US-ASCII and ISO-8859-1 are " +
       "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).",
     )
-    characterEncoding: Charset,
+    @default(StandardCharsets.UTF_8)
+    characterEncoding: Charset = StandardCharsets.UTF_8,
     @description(
       "List of decodings to be applied to each input. The specified decodings are applied in declared array order.",
     )

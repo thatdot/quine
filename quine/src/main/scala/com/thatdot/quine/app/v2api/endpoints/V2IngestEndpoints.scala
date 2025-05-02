@@ -1,40 +1,32 @@
 package com.thatdot.quine.app.v2api.endpoints
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import io.circe.generic.extras.auto._
-import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.{Endpoint, EndpointInput, Schema, path, statusCode}
+import sttp.tapir.{EndpointInput, path, statusCode}
 
+import com.thatdot.quine.app.v2api.definitions.CustomError.{badRequestError, notFoundError}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.{
-  CreateIngestApiCmd,
-  CustomError,
+  BadRequest,
   ErrorEnvelope,
-  IngestStatusApiCmd,
-  ObjectEnvelope,
-  PauseIngestApiCmd,
-  UnpauseIngestApiCmd,
+  NotFound,
+  SuccessEnvelope,
   V2QuineEndpointDefinitions,
 }
-import com.thatdot.quine.graph.NamespaceId
 
 trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
 
   import com.thatdot.quine.app.v2api.converters.ApiToIngest.OssConversions._
 
   private val ingestStreamNameElement: EndpointInput.PathCapture[String] =
-    path[String]("name").description("Ingest stream name").default("NumbersStream")
+    path[String]("name").description("Ingest stream name").example("NumbersStream")
 
-  private def ingestEndpoint[T](implicit
-    schema: Schema[ObjectEnvelope[T]],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
-    baseEndpoint[T]("ingests")
+  private def ingestEndpoint =
+    rawEndpoint("ingests")
       .tag("Ingest Streams")
       .description("Sources of streaming data ingested into the graph interpreter.")
 
@@ -46,7 +38,11 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
     maxPerSecond = Some(100),
   )
 
-  private val createIngestEndpoint = ingestEndpoint[Boolean]
+  // TODO: fix the layout of the serverLogicFromEither so this isn't required
+  implicit val ec: ExecutionContext = ExecutionContext.parasitic
+
+  // TODO: return resource
+  private val createIngestEndpoint = ingestEndpoint
     .name("Create Ingest Stream")
     .description("""Create an [ingest stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
                    |that connects a streaming event source to Quine and loads data into the graph.
@@ -58,49 +54,63 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
     .in(namespaceParameter)
     .in(jsonOrYamlBody[ApiIngest.Oss.QuineIngestConfiguration](Some(ingestExample)))
     .post
-    .out(statusCode(StatusCode.Created))
-    .serverLogic { case (memberIdx, ingestStreamName, ns, ingestStreamConfig) =>
-      runServerLogicFromEither[(String, ApiIngest.Oss.QuineIngestConfiguration, NamespaceId), Boolean](
-        CreateIngestApiCmd,
-        memberIdx,
-        (ingestStreamName, ingestStreamConfig, namespaceFromParam(ns)),
-        t => Future.successful(appMethods.createIngestStream(t._1, t._2, t._3)),
-      )
+    .out(statusCode(StatusCode.Created).description("Ingest Stream Created"))
+    .out(jsonBody[SuccessEnvelope.Created[Unit]])
+    .errorOutVariantPrepend(badRequestError("Quine", "Ingest stream with that name already exists"))
+    .serverLogic { case (ingestStreamName, ns, ingestStreamConfig) =>
+      runServerLogicFromEitherCreated(appMethods.listIngestStreams(namespaceFromParam(ns)).map { streams =>
+        streams.get(ingestStreamName) match {
+          case Some(_) =>
+            Left(ErrorEnvelope(BadRequest(s"Ingest Stream $ingestStreamName already exists")))
+          case None =>
+            appMethods
+              .createIngestStream(ingestStreamName, ingestStreamConfig, namespaceFromParam(ns))
+              .map(_ => ())
+              .left
+              .map(ErrorEnvelope.apply)
+        }
+      })((inp: Unit) => SuccessEnvelope.Created(inp))
     }
 
-  private val pauseIngestEndpoint = ingestEndpoint[Option[ApiIngest.IngestStreamInfoWithName]]
+  private val pauseIngestEndpoint = ingestEndpoint
     .name("Pause Ingest Stream")
     .description("Temporarily pause processing new events by the named ingest stream.")
     .in(ingestStreamNameElement)
     .in("pause")
     .in(namespaceParameter)
     .post
-    .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogicFromEither[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
-        PauseIngestApiCmd,
-        memberIdx,
-        (ingestStreamName, namespaceFromParam(ns)),
-        t => appMethods.pauseIngestStream(t._1, t._2),
-      )
+    .errorOutVariantPrepend(notFoundError("Ingest stream with that name does not exist"))
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
+    .serverLogic { case (ingestStreamName, ns) =>
+      runServerLogicFromEitherOk(appMethods.pauseIngestStream(ingestStreamName, namespaceFromParam(ns)).map {
+        _.flatMap {
+          case None => Left(NotFound(s"Ingest Stream $ingestStreamName does not exist"))
+          case Some(streamInfo) => Right(streamInfo)
+        }.left.map(ErrorEnvelope.apply)
+      })((id: ApiIngest.IngestStreamInfoWithName) => SuccessEnvelope.Ok(id))
     }
 
-  private val unpauseIngestEndpoint = ingestEndpoint[Option[ApiIngest.IngestStreamInfoWithName]]
+  private val unpauseIngestEndpoint = ingestEndpoint
     .name("Unpause Ingest Stream")
     .description("Resume processing new events by the named ingest stream.")
     .in(ingestStreamNameElement)
     .in("start")
     .in(namespaceParameter)
     .post
-    .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogicFromEither[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
-        UnpauseIngestApiCmd,
-        memberIdx,
-        (ingestStreamName, namespaceFromParam(ns)),
-        t => appMethods.unpauseIngestStream(t._1, t._2),
-      )
+    .errorOutVariantPrepend(notFoundError("Quine", "Ingest stream with that name does not exist"))
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
+    .serverLogic { case (ingestStreamName, ns) =>
+      runServerLogicFromEitherOk(appMethods.unpauseIngestStream(ingestStreamName, namespaceFromParam(ns)).map {
+        _.flatMap {
+          case None => Left(NotFound(s"Ingest Stream $ingestStreamName does not exist"))
+          case Some(streamInfo) => Right(streamInfo)
+        }.left.map(ErrorEnvelope.apply)
+      })((id: ApiIngest.IngestStreamInfoWithName) => SuccessEnvelope.Ok(id))
     }
 
-  private val deleteIngestEndpoint = ingestEndpoint[Option[ApiIngest.IngestStreamInfoWithName]]
+  private val deleteIngestEndpoint = ingestEndpoint
     .name("Delete Ingest Stream")
     .description("""Immediately halt and remove the named ingest stream from Quine.
                     |
@@ -109,31 +119,43 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
     .in(ingestStreamNameElement)
     .in(namespaceParameter)
     .delete
-    .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogic[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
-        CreateIngestApiCmd,
-        memberIdx,
-        (ingestStreamName, namespaceFromParam(ns)),
-        t => appMethods.deleteIngestStream(t._1, t._2),
-      )
+    .errorOutVariantPrepend(notFoundError("Ingest stream with that name does not exist"))
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
+    .serverLogic { case (ingestStreamName, ns) =>
+      runServerLogicFromEitherOk(
+        appMethods
+          .deleteIngestStream(ingestStreamName, namespaceFromParam(ns))
+          .map {
+            case None => Left(NotFound(s"Ingest Stream $ingestStreamName does not exist"))
+            case Some(streamInfo) => Right(streamInfo)
+          }
+          .map(f => f.left.map(ErrorEnvelope.apply)),
+      )((inp: ApiIngest.IngestStreamInfoWithName) => SuccessEnvelope.Ok(inp))
     }
 
-  private val ingestStatusEndpoint = ingestEndpoint[Option[ApiIngest.IngestStreamInfoWithName]]
+  private val ingestStatusEndpoint = ingestEndpoint
     .name("Ingest Stream Status")
     .description("Return the ingest stream status information for a configured ingest stream by name.")
     .in(ingestStreamNameElement)
     .in(namespaceParameter)
     .get
-    .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogic[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
-        IngestStatusApiCmd,
-        memberIdx,
-        (ingestStreamName, namespaceFromParam(ns)),
-        t => appMethods.ingestStreamStatus(t._1, t._2),
-      )
+    .errorOutVariantPrepend(notFoundError("Ingest stream with that name does not exist"))
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
+    .serverLogic { case (ingestStreamName, ns) =>
+      runServerLogicFromEitherOk(
+        appMethods
+          .ingestStreamStatus(ingestStreamName, namespaceFromParam(ns))
+          .map {
+            case None => Left(NotFound(s"Ingest Stream $ingestStreamName does not exist"))
+            case Some(streamInfo) => Right(streamInfo)
+          }
+          .map(f => f.left.map(ErrorEnvelope.apply)),
+      )((inp: ApiIngest.IngestStreamInfoWithName) => SuccessEnvelope.Ok.apply(inp))
     }
 
-  private val listIngestEndpoint = ingestEndpoint[Map[String, ApiIngest.IngestStreamInfo]]
+  private val listIngestEndpoint = ingestEndpoint
     .name("List Ingest Streams")
     .description(
       """Return a JSON object containing the configured [ingest streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
@@ -141,12 +163,11 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
     )
     .in(namespaceParameter)
     .get
-    .serverLogic { case (memberIdx, ns) =>
-      runServerLogic[NamespaceId, Map[String, ApiIngest.IngestStreamInfo]](
-        IngestStatusApiCmd,
-        memberIdx,
-        namespaceFromParam(ns),
-        ns => appMethods.listIngestStreams(ns),
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[Map[String, ApiIngest.IngestStreamInfo]]])
+    .serverLogic { ns =>
+      runServerLogicOk(appMethods.listIngestStreams(namespaceFromParam(ns)))(
+        (inp: Map[String, ApiIngest.IngestStreamInfo]) => SuccessEnvelope.Ok.apply(inp),
       )
     }
 

@@ -2,53 +2,56 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
-import io.circe.{Decoder, Encoder}
+import io.circe.generic.extras.auto._
+import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.{Schema, path}
+import sttp.tapir.{path, statusCode}
 
 import com.thatdot.quine.app.v2api.definitions._
 
 /** Placeholder route to demonstrate V2. Not intended to represent a final endpoint. */
 trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
 
-  private def namespaceEndpoint[T](implicit
-    schema: Schema[ObjectEnvelope[T]],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ) = baseEndpoint[T]("namespaces").tag("Namespaces")
+  private def namespaceEndpoint = rawEndpoint("namespaces").tag("Namespaces")
 
-  val getNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
+  val getNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, Unit, ErrorEnvelope[
     _ <: CustomError,
-  ], ObjectEnvelope[List[String]], Any, Future] =
-    namespaceEndpoint[List[String]].get
+  ], SuccessEnvelope.Ok[List[String]], Any, Future] =
+    namespaceEndpoint.get
       .name("List Namespaces")
       .description("Retrieve the list of all existing namespaces")
-      .serverLogic(memberIdx =>
-        runServerLogic[Unit, List[String]](GetNamespaces, memberIdx, (), _ => appMethods.getNamespaces),
-      )
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[List[String]]])
+      .serverLogic(_ => runServerLogicOk(appMethods.getNamespaces)((inp: List[String]) => SuccessEnvelope.Ok(inp)))
 
-  val createNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, (Option[Int], String), ErrorEnvelope[
+  val createNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, String, ErrorEnvelope[
     _ <: CustomError,
-  ], ObjectEnvelope[Boolean], Any, Future] =
-    namespaceEndpoint[Boolean]
+  ], SuccessEnvelope.Created[String], Any, Future] =
+    namespaceEndpoint
       .name("Create Namespace")
       .description("Create the requested namespace")
       .in(path[String]("namespace"))
       .put
-      .serverLogic { case (memberIdx, namespace) =>
-        runServerLogic[String, Boolean](CreateNamespace, memberIdx, namespace, appMethods.createNamespace)
+      .out(statusCode(StatusCode.Created))
+      .out(jsonBody[SuccessEnvelope.Created[String]])
+      .serverLogic { namespace =>
+        runServerLogicCreated(appMethods.createNamespace(namespace))((inp: Boolean) =>
+          SuccessEnvelope.Created(namespace),
+        )
       }
 
-  val deleteNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, (Option[Int], String), ErrorEnvelope[
+  val deleteNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, String, ErrorEnvelope[
     _ <: CustomError,
-  ], ObjectEnvelope[Boolean], Any, Future] =
-    namespaceEndpoint[Boolean]
+  ], SuccessEnvelope.Ok[String], Any, Future] =
+    namespaceEndpoint
       .name("Delete Namespace")
       .description("Delete the requested namespace")
       .in(path[String]("namespace"))
       .delete
-      .serverLogic { case (memberIdx, namespace) =>
-        runServerLogic(DeleteNamespace, memberIdx, namespace, appMethods.deleteNamespace)
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[SuccessEnvelope.Ok[String]])
+      .serverLogic { namespace =>
+        runServerLogicOk(appMethods.deleteNamespace(namespace))((_: Boolean) => SuccessEnvelope.Ok(namespace))
       }
 }
