@@ -17,7 +17,7 @@ import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.RecipeInterpreter.RecipeState
-import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStore}
+import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStoreV1}
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.cypher.{RunningCypherQuery, Value}
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId}
@@ -25,7 +25,7 @@ import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log.implicits._
 object RecipeInterpreter {
 
-  type RecipeState = QueryUiConfigurationState with IngestStreamState with StandingQueryStore
+  type RecipeState = QueryUiConfigurationState with IngestStreamState with StandingQueryStoreV1
 }
 
 /** Runs a Recipe by making a series of blocking graph method calls as determined

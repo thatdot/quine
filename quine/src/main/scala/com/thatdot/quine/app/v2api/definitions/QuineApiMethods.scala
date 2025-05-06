@@ -130,7 +130,7 @@ import com.thatdot.quine.app.routes.{AlgorithmMethods => V1AlgorithmMethods}
 trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
 
   override val graph: BaseGraph with LiteralOpsGraph with StandingQueryOpsGraph with CypherOpsGraph with AlgorithmGraph
-  override val app: BaseApp with StandingQueryStore with IngestStreamState
+  override val app: BaseApp with StandingQueryStoreV1 with IngestStreamState
 
   // duplicated from, com.thatdot.quine.app.routes.IngestApiMethods
   private def stream2Info(

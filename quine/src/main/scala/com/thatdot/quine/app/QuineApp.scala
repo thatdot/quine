@@ -48,10 +48,9 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PrimePersistor, Version}
-import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
-import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.{BaseError, SwitchMode}
+import com.thatdot.quine.{routes => V1}
 
 /** The Quine application state
   *
@@ -66,11 +65,11 @@ final class QuineApp(
     extends BaseApp(graph)
     with AdministrationRoutesState
     with QueryUiConfigurationState
-    with StandingQueryStore
+    with StandingQueryStoreV1
     with IngestStreamState
-    with QueryUiConfigurationSchemas
-    with StandingQuerySchemas
-    with IngestSchemas
+    with V1.QueryUiConfigurationSchemas
+    with V1.StandingQuerySchemas
+    with V1.IngestSchemas
     with EncoderDecoder.DeriveEndpoints4s
     with com.thatdot.quine.routes.exts.CirceJsonAnySchema
     with LazySafeLogging {
@@ -118,21 +117,21 @@ final class QuineApp(
     */
 
   @volatile
-  private[this] var sampleQueries: Vector[SampleQuery] = Vector.empty
+  private[this] var sampleQueries: Vector[V1.SampleQuery] = Vector.empty
   // Locks are on the object; we can't use a var (e.g. the collection) as something to synchronize on
   // as it's always being updated to point to a new object.
   final private[this] val sampleQueriesLock = new AnyRef
   @volatile
-  private[this] var quickQueries: Vector[UiNodeQuickQuery] = Vector.empty
+  private[this] var quickQueries: Vector[V1.UiNodeQuickQuery] = Vector.empty
   final private[this] val quickQueriesLock = new AnyRef
   @volatile
-  private[this] var nodeAppearances: Vector[UiNodeAppearance] = Vector.empty
+  private[this] var nodeAppearances: Vector[V1.UiNodeAppearance] = Vector.empty
   final private[this] val nodeAppearancesLock = new AnyRef
 
   type FriendlySQName = String
   type SQOutputName = String
   type SQOutputTarget =
-    Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, (StandingQueryResultOutputUserDef, UniqueKillSwitch)])]
+    Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, (V1.StandingQueryResultOutputUserDef, UniqueKillSwitch)])]
   @volatile
   private[this] var standingQueryOutputTargets: Map[NamespaceId, SQOutputTarget] =
     Map(defaultNamespaceId -> Map.empty)
@@ -145,25 +144,25 @@ final class QuineApp(
 
   /** == Accessors == */
 
-  def getSampleQueries: Future[Vector[SampleQuery]] = Future.successful(sampleQueries)
+  def getSampleQueries: Future[Vector[V1.SampleQuery]] = Future.successful(sampleQueries)
 
-  def getQuickQueries: Future[Vector[UiNodeQuickQuery]] = Future.successful(quickQueries)
+  def getQuickQueries: Future[Vector[V1.UiNodeQuickQuery]] = Future.successful(quickQueries)
 
-  def getNodeAppearances: Future[Vector[UiNodeAppearance]] = Future.successful(nodeAppearances)
+  def getNodeAppearances: Future[Vector[V1.UiNodeAppearance]] = Future.successful(nodeAppearances)
 
-  def setSampleQueries(newSampleQueries: Vector[SampleQuery]): Future[Unit] =
+  def setSampleQueries(newSampleQueries: Vector[V1.SampleQuery]): Future[Unit] =
     synchronizedFakeFuture(sampleQueriesLock) {
       sampleQueries = newSampleQueries
       storeGlobalMetaData(SampleQueriesKey, sampleQueries)
     }
 
-  def setQuickQueries(newQuickQueries: Vector[UiNodeQuickQuery]): Future[Unit] =
+  def setQuickQueries(newQuickQueries: Vector[V1.UiNodeQuickQuery]): Future[Unit] =
     synchronizedFakeFuture(quickQueriesLock) {
       quickQueries = newQuickQueries
       storeGlobalMetaData(QuickQueriesKey, quickQueries)
     }
 
-  def setNodeAppearances(newNodeAppearances: Vector[UiNodeAppearance]): Future[Unit] =
+  def setNodeAppearances(newNodeAppearances: Vector[V1.UiNodeAppearance]): Future[Unit] =
     synchronizedFakeFuture(nodeAppearancesLock) {
       nodeAppearances = newNodeAppearances.map(QueryUiConfigurationState.renderNodeIcons)
       storeGlobalMetaData(NodeAppearancesKey, nodeAppearances)
@@ -172,7 +171,7 @@ final class QuineApp(
   def addStandingQuery(
     queryName: FriendlySQName,
     inNamespace: NamespaceId,
-    query: StandingQueryDefinition,
+    query: V1.StandingQueryDefinition,
   ): Future[Boolean] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       standingQueryOutputTargets.get(inNamespace).fold(Future.successful(false)) { namespaceTargets =>
@@ -184,12 +183,12 @@ final class QuineApp(
               .resultHandlingSink(outputName, inNamespace, outputDefinition, graph)(protobufSchemaCache, logConfig)
           }
           val (pattern, dgnPackage) = query.pattern match {
-            case StandingQueryPattern.Cypher(cypherQuery, mode) =>
+            case V1.StandingQueryPattern.Cypher(cypherQuery, mode) =>
               val pattern = cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider, logConfig)
               val origin = PatternOrigin.GraphPattern(pattern, Some(cypherQuery))
 
               mode match {
-                case StandingQueryMode.DistinctId =>
+                case V1.StandingQueryPattern.StandingQueryMode.DistinctId =>
                   if (!pattern.distinct) {
                     // TODO unit test this behavior
                     throw DistinctIdMustDistinct
@@ -204,12 +203,12 @@ final class QuineApp(
                     origin,
                   )
                   (dgnPattern, Some(dgnPackage))
-                case StandingQueryMode.MultipleValues =>
+                case V1.StandingQueryPattern.StandingQueryMode.MultipleValues =>
                   if (pattern.distinct) throw MultipleValuesCantDistinct
                   val compiledQuery = pattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
                   val sqv4Pattern = MultipleValuesQueryPattern(compiledQuery, query.includeCancellations, origin)
                   (sqv4Pattern, None)
-                case StandingQueryMode.QuinePattern =>
+                case V1.StandingQueryPattern.StandingQueryMode.QuinePattern =>
                   val maybeIsQPEnabled = for {
                     pv <- Option(System.getProperty("qp.enabled"))
                     b <- pv.toBooleanOption
@@ -260,15 +259,15 @@ final class QuineApp(
   /** Cancels an existing standing query.
     *
     * @return Future succeeds/fails when the storing of the updated collection of SQs succeeds/fails. The Option is
-    *         `None` when the SQ or namespace doesn't exist. The inner `RegisteredStandingQuery` is the definition of the
+    *         `None` when the SQ or namespace doesn't exist. The inner `V1.RegisteredStandingQuery` is the definition of the
     *         successfully removed standing query.
     */
   def cancelStandingQuery(
     queryName: String,
     inNamespace: NamespaceId,
-  ): Future[Option[RegisteredStandingQuery]] = onlyIfNamespaceExists(inNamespace) {
+  ): Future[Option[V1.RegisteredStandingQuery]] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
-      val cancelledSqState: Option[Future[RegisteredStandingQuery]] = for {
+      val cancelledSqState: Option[Future[V1.RegisteredStandingQuery]] = for {
         (sqId, outputs) <- standingQueryOutputTargets.get(inNamespace).flatMap(_.get(queryName))
         cancelledSq <- graph.standingQueries(inNamespace).flatMap(_.cancelStandingQuery(sqId))
       } yield {
@@ -309,7 +308,7 @@ final class QuineApp(
     queryName: String,
     outputName: String,
     inNamespace: NamespaceId,
-    sqResultOutput: StandingQueryResultOutputUserDef,
+    sqResultOutput: V1.StandingQueryResultOutputUserDef,
   ): Future[Option[Boolean]] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       val optionFut = for {
@@ -341,13 +340,13 @@ final class QuineApp(
     *
     * @return Future succeeds/fails when the storing of SQs succeeds/fails. The Option is None when the SQ or
     *         namespace doesn't exist, or if the SQ does not have an output with that name. The inner
-    *         `StandingQueryResultOutputUserDef` is the output that was successfully removes.
+    *         `V1.StandingQueryResultOutputUserDef` is the output that was successfully removes.
     */
   def removeStandingQueryOutput(
     queryName: String,
     outputName: String,
     inNamespace: NamespaceId,
-  ): Future[Option[StandingQueryResultOutputUserDef]] = onlyIfNamespaceExists(inNamespace) {
+  ): Future[Option[V1.StandingQueryResultOutputUserDef]] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       val outputOpt = for {
         (sqId, outputs) <- standingQueryOutputTargets.get(inNamespace).flatMap(_.get(queryName))
@@ -362,12 +361,12 @@ final class QuineApp(
     }
   }
 
-  def getStandingQueries(inNamespace: NamespaceId): Future[List[RegisteredStandingQuery]] =
+  def getStandingQueries(inNamespace: NamespaceId): Future[List[V1.RegisteredStandingQuery]] =
     onlyIfNamespaceExists(inNamespace) {
       getStandingQueriesWithNames(Nil, inNamespace)
     }
 
-  def getStandingQuery(queryName: String, inNamespace: NamespaceId): Future[Option[RegisteredStandingQuery]] =
+  def getStandingQuery(queryName: String, inNamespace: NamespaceId): Future[Option[V1.RegisteredStandingQuery]] =
     onlyIfNamespaceExists(inNamespace) {
       getStandingQueriesWithNames(List(queryName), inNamespace).map(_.headOption)(graph.system.dispatcher)
     }
@@ -375,12 +374,12 @@ final class QuineApp(
   /** Get standing queries live on the graph with the specified names
     *
     * @param queryNames which standing queries to retrieve, empty list corresponds to all SQs
-    * @return queries registered on the graph. Future never fails. List contains each live `RegisteredStandingQuery`.
+    * @return queries registered on the graph. Future never fails. List contains each live `V1.RegisteredStandingQuery`.
     */
   private def getStandingQueriesWithNames(
     queryNames: List[String],
     inNamespace: NamespaceId,
-  ): Future[List[RegisteredStandingQuery]] = onlyIfNamespaceExists(inNamespace) {
+  ): Future[List[V1.RegisteredStandingQuery]] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       val matchingInfo = for {
         queryName <- queryNames match {
@@ -431,9 +430,9 @@ final class QuineApp(
 
   def addIngestStream(
     name: String,
-    settings: IngestStreamConfiguration,
+    settings: V1.IngestStreamConfiguration,
     intoNamespace: NamespaceId,
-    previousStatus: Option[IngestStreamStatus], // previousStatus is None if stream was not restored at all
+    previousStatus: Option[V1.IngestStreamStatus], // previousStatus is None if stream was not restored at all
     shouldResumeRestoredIngests: Boolean,
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
@@ -443,13 +442,13 @@ final class QuineApp(
     val isQPEnabled = sys.props.get("qp.enabled").flatMap(_.toBooleanOption) getOrElse false
 
     settings match {
-      case fileIngest: FileIngest =>
+      case fileIngest: V1.FileIngest =>
         fileIngest.format match {
-          case _: FileIngestFormat.QuinePatternLine =>
+          case _: V1.FileIngestFormat.QuinePatternLine =>
             if (!isQPEnabled) {
               sys.error("To use this experimental feature, you must set the `qp.enabled` property to `true`.")
             }
-          case _: FileIngestFormat.QuinePatternJson =>
+          case _: V1.FileIngestFormat.QuinePatternJson =>
             if (!isQPEnabled) {
               sys.error("To use this experimental feature, you must set the `qp.enabled` property to `true`.")
             }
@@ -466,12 +465,12 @@ final class QuineApp(
           val (initialValveSwitchMode, initialStatus) = previousStatus match {
             case None =>
               // This is a freshly-created ingest, so there is no status to restore
-              SwitchMode.Open -> IngestStreamStatus.Running
+              SwitchMode.Open -> V1.IngestStreamStatus.Running
             case Some(lastKnownStatus) =>
-              val newStatus = IngestStreamStatus.decideRestoredStatus(lastKnownStatus, shouldResumeRestoredIngests)
+              val newStatus = V1.IngestStreamStatus.decideRestoredStatus(lastKnownStatus, shouldResumeRestoredIngests)
               val switchMode = newStatus.position match {
-                case ValvePosition.Open => SwitchMode.Open
-                case ValvePosition.Closed => SwitchMode.Close
+                case V1.ValvePosition.Open => SwitchMode.Open
+                case V1.ValvePosition.Closed => SwitchMode.Close
               }
               switchMode -> newStatus
           }
@@ -486,7 +485,7 @@ final class QuineApp(
               )(graph, protobufSchemaCache, logConfig)
 
           src
-            .leftMap(errs => IngestStreamConfiguration.InvalidStreamConfiguration(errs))
+            .leftMap(errs => V1.IngestStreamConfiguration.InvalidStreamConfiguration(errs))
             .map { ingestSrcDef =>
 
               val metrics = IngestMetrics(Instant.now, None, ingestSrcDef.meter)
@@ -530,7 +529,7 @@ final class QuineApp(
     name: String,
     settings: QuineIngestConfiguration,
     intoNamespace: NamespaceId,
-    previousStatus: Option[IngestStreamStatus], // previousStatus is None if stream was not restored at all
+    previousStatus: Option[V1.IngestStreamStatus], // previousStatus is None if stream was not restored at all
     shouldResumeRestoredIngests: Boolean,
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
@@ -560,10 +559,10 @@ final class QuineApp(
             registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC),
           )
           ingestStreams.get(intoNamespace) map { ingests =>
-            val initialStatus = previousStatus.fold[IngestStreamStatus] {
-              IngestStreamStatus.Running
+            val initialStatus = previousStatus.fold[V1.IngestStreamStatus] {
+              V1.IngestStreamStatus.Running
             } { lastKnownStatus =>
-              IngestStreamStatus.decideRestoredStatus(lastKnownStatus, shouldResumeRestoredIngests)
+              V1.IngestStreamStatus.decideRestoredStatus(lastKnownStatus, shouldResumeRestoredIngests)
             }
             val streamDefWithControl: IngestStreamWithControl[UnifiedIngestConfiguration] = IngestStreamWithControl(
               UnifiedIngestConfiguration(Left(settings)),
@@ -593,7 +592,7 @@ final class QuineApp(
 
     }
 
-  def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]] =
+  def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[V1.IngestStreamConfiguration]] =
     if (getNamespaces.contains(namespace))
       getIngestStreamsFromState(namespace).view
         .mapValues(isc => isc.copy(settings = isc.settings.asV1Config))
@@ -609,7 +608,7 @@ final class QuineApp(
 
   protected def getIngestStreamsWithStatus(
     namespace: NamespaceId,
-  ): Future[Map[IngestName, Either[IngestStreamWithStatus, QuineIngestStreamWithStatus]]] =
+  ): Future[Map[IngestName, Either[V1.IngestStreamWithStatus, QuineIngestStreamWithStatus]]] =
     onlyIfNamespaceExists(namespace) {
       implicit val ec: ExecutionContext = graph.nodeDispatcherEC
       getIngestStreamsFromState(namespace).toList
@@ -620,7 +619,7 @@ final class QuineApp(
             name, {
               isc.settings.config match {
                 case Left(v2Settings) => Right(QuineIngestStreamWithStatus(v2Settings, Some(status)))
-                case Right(v1Settings) => Left(IngestStreamWithStatus(v1Settings, Some(status)))
+                case Right(v1Settings) => Left(V1.IngestStreamWithStatus(v1Settings, Some(status)))
               }
             },
           )
@@ -639,7 +638,7 @@ final class QuineApp(
               case (name, Left(v1)) => Left((name, v1))
               case (name, Right(v2)) => Right((name, v2))
             }
-            _ <- storeLocalMetaData[Map[String, IngestStreamWithStatus]](
+            _ <- storeLocalMetaData[Map[String, V1.IngestStreamWithStatus]](
               makeNamespaceMetaDataKey(namespace, IngestStreamsKey),
               thisMemberId,
               v1StreamsWithStatus.toMap,
@@ -658,7 +657,7 @@ final class QuineApp(
   def removeIngestStream(
     name: String,
     namespace: NamespaceId,
-  ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = noneIfNoNamespace(namespace) {
+  ): Option[IngestStreamWithControl[V1.IngestStreamConfiguration]] = noneIfNoNamespace(namespace) {
     Try {
       blocking(ingestStreamsLock.synchronized {
         ingestStreams.get(namespace).flatMap(_.get(name)).map { stream =>
@@ -751,9 +750,9 @@ final class QuineApp(
   def loadAppData(timeout: Timeout, shouldResumeIngest: Boolean): Future[Unit] = {
     implicit val ec: ExecutionContext = graph.system.dispatcher
     val sampleQueriesFut =
-      getOrDefaultGlobalMetaData(SampleQueriesKey, SampleQuery.defaults)
-    val quickQueriesFut = getOrDefaultGlobalMetaData(QuickQueriesKey, UiNodeQuickQuery.defaults)
-    val nodeAppearancesFut = getOrDefaultGlobalMetaData(NodeAppearancesKey, UiNodeAppearance.defaults)
+      getOrDefaultGlobalMetaData(SampleQueriesKey, V1.SampleQuery.defaults)
+    val quickQueriesFut = getOrDefaultGlobalMetaData(QuickQueriesKey, V1.UiNodeQuickQuery.defaults)
+    val nodeAppearancesFut = getOrDefaultGlobalMetaData(NodeAppearancesKey, V1.UiNodeAppearance.defaults)
 
     // Register all user-defined procedures that require app/graph information (the rest will be loaded
     // when the first query is compiled by the [[resolveCalls]] step of the Cypher compilation pipeline)
@@ -772,7 +771,7 @@ final class QuineApp(
         getNamespaces.map(ns =>
           getOrDefaultGlobalMetaData(
             makeNamespaceMetaDataKey(ns, StandingQueryOutputsKey),
-            Map.empty: Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])],
+            Map.empty: Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])],
           ).map(ns -> _),
         ),
       )
@@ -781,14 +780,14 @@ final class QuineApp(
     val ingestStreamFut = Future
       .sequence(
         getNamespaces.map(ns =>
-          getOrDefaultLocalMetaDataWithFallback[Map[IngestName, IngestStreamWithStatus], Map[
+          getOrDefaultLocalMetaDataWithFallback[Map[IngestName, V1.IngestStreamWithStatus], Map[
             IngestName,
-            IngestStreamConfiguration,
+            V1.IngestStreamConfiguration,
           ]](
             makeNamespaceMetaDataKey(ns, IngestStreamsKey),
             thisMemberIdx,
-            Map.empty[IngestName, IngestStreamWithStatus],
-            _.view.mapValues(i => IngestStreamWithStatus(config = i, status = None)).toMap,
+            Map.empty[IngestName, V1.IngestStreamWithStatus],
+            _.view.mapValues(i => V1.IngestStreamWithStatus(config = i, status = None)).toMap,
           ).map(v => ns -> v),
         ),
       )
@@ -887,10 +886,10 @@ final class QuineApp(
   }
 
   implicit private[this] val standingQueriesSchema: JsonSchema[
-    Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])],
+    Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])],
   ] = {
     implicit val sqIdSchema = genericRecord[StandingQueryId]
-    implicit val tupSchema = genericRecord[(StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]
+    implicit val tupSchema = genericRecord[(StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])]
     mapJsonSchema(tupSchema)
   }
 
@@ -977,19 +976,22 @@ object QuineApp {
   private def makeRegisteredStandingQuery(
     internal: StandingQueryInfo,
     inNamespace: NamespaceId,
-    outputs: Map[String, StandingQueryResultOutputUserDef],
+    outputs: Map[String, V1.StandingQueryResultOutputUserDef],
     startTime: Instant,
     bufferSize: Int,
     metrics: HostQuineMetrics,
-  ): RegisteredStandingQuery = {
+  ): V1.RegisteredStandingQuery = {
     val mode = internal.queryPattern match {
-      case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern => StandingQueryMode.DistinctId
-      case _: graph.StandingQueryPattern.MultipleValuesQueryPattern => StandingQueryMode.MultipleValues
-      case _: graph.StandingQueryPattern.QuinePatternQueryPattern => StandingQueryMode.QuinePattern
+      case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
+        V1.StandingQueryPattern.StandingQueryMode.DistinctId
+      case _: graph.StandingQueryPattern.MultipleValuesQueryPattern =>
+        V1.StandingQueryPattern.StandingQueryMode.MultipleValues
+      case _: graph.StandingQueryPattern.QuinePatternQueryPattern =>
+        V1.StandingQueryPattern.StandingQueryMode.QuinePattern
     }
     val pattern = internal.queryPattern.origin match {
       case graph.PatternOrigin.GraphPattern(_, Some(cypherQuery)) =>
-        Some(StandingQueryPattern.Cypher(cypherQuery, mode))
+        Some(V1.StandingQueryPattern.Cypher(cypherQuery, mode))
       case _ =>
         None
     }
@@ -997,7 +999,7 @@ object QuineApp {
     val meter = metrics.standingQueryResultMeter(inNamespace, internal.name)
     val outputHashCode = metrics.standingQueryResultHashCode(internal.id)
 
-    RegisteredStandingQuery(
+    V1.RegisteredStandingQuery(
       internal.name,
       internal.id.uuid,
       pattern,
@@ -1005,8 +1007,8 @@ object QuineApp {
       internal.queryPattern.includeCancellation,
       internal.queueBackpressureThreshold,
       stats = Map(
-        "local" -> StandingQueryStats(
-          rates = RatesSummary(
+        "local" -> V1.StandingQueryStats(
+          rates = V1.RatesSummary(
             count = meter.getCount,
             oneMinute = meter.getOneMinuteRate,
             fiveMinute = meter.getFiveMinuteRate,

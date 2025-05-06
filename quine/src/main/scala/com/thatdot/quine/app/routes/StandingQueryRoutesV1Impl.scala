@@ -20,44 +20,15 @@ import com.thatdot.quine.exceptions.NamespaceNotFoundException
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{
   InvalidQueryPattern,
-  NamespaceId,
-  StandingQueryId,
   StandingQueryOpsGraph,
   StandingQueryResult,
   StandingQueryResultStructure,
 }
-import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKafka
-import com.thatdot.quine.routes._
+import com.thatdot.quine.{routes => V1}
 
-trait StandingQueryStore {
-
-  def addStandingQuery(queryName: String, inNamespace: NamespaceId, query: StandingQueryDefinition): Future[Boolean]
-
-  def cancelStandingQuery(queryName: String, inNamespace: NamespaceId): Future[Option[RegisteredStandingQuery]]
-
-  def addStandingQueryOutput(
-    queryName: String,
-    outputName: String,
-    inNamespace: NamespaceId,
-    sqResultOutput: StandingQueryResultOutputUserDef,
-  ): Future[Option[Boolean]]
-
-  def removeStandingQueryOutput(
-    queryName: String,
-    outputName: String,
-    inNamespace: NamespaceId,
-  ): Future[Option[StandingQueryResultOutputUserDef]]
-
-  def getStandingQueries(inNamespace: NamespaceId): Future[List[RegisteredStandingQuery]]
-
-  def getStandingQuery(queryName: String, inNamespace: NamespaceId): Future[Option[RegisteredStandingQuery]]
-
-  def getStandingQueryId(queryName: String, inNamespace: NamespaceId): Option[StandingQueryId]
-}
-
-/** The Pekko HTTP implementation of [[StandingQueryRoutes]] */
-trait StandingQueryRoutesImpl
-    extends StandingQueryRoutes
+/** The Pekko HTTP implementation of [[V1.StandingQueryRoutes]] */
+trait StandingQueryRoutesV1Impl
+    extends V1.StandingQueryRoutes
     with endpoints4s.circe.JsonSchemas
     with com.thatdot.quine.app.routes.exts.PekkoQuineEndpoints
     with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas {
@@ -70,11 +41,12 @@ trait StandingQueryRoutesImpl
 
   implicit protected def logConfig: LogConfig
 
-  def quineApp: StandingQueryStore
+  def quineApp: StandingQueryStoreV1
 
-  private def validateOutputDef(outputDef: StandingQueryResultOutputUserDef): Option[NonEmptyList[ErrorString]] =
+  private def validateOutputDef(outputDef: V1.StandingQueryResultOutputUserDef): Option[NonEmptyList[ErrorString]] =
     outputDef match {
-      case k: WriteToKafka => KafkaSettingsValidator.validateOutput(k.kafkaProperties)
+      case k: V1.StandingQueryResultOutputUserDef.WriteToKafka =>
+        KafkaSettingsValidator.validateOutput(k.kafkaProperties)
       case _ => None
     }
 

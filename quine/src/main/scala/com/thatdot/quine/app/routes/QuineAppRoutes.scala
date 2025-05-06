@@ -37,7 +37,7 @@ class QuineAppRoutes(
   val quineApp: BaseApp
     with AdministrationRoutesState
     with QueryUiConfigurationState
-    with StandingQueryStore
+    with StandingQueryStoreV1
     with IngestStreamState,
   val config: BaseConfig,
   val uri: URL,
@@ -53,7 +53,7 @@ class QuineAppRoutes(
     with AlgorithmRoutesImpl
     with AdministrationRoutesImpl
     with IngestRoutesImpl
-    with StandingQueryRoutesImpl
+    with StandingQueryRoutesV1Impl
     with exts.ServerEntitiesWithExamples
     with com.thatdot.quine.routes.exts.CirceJsonAnySchema
     with LazySafeLogging {
