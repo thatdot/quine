@@ -67,3 +67,6 @@ metrics-logs
 
 # exclusions
 !/scripts/build/
+
+# SBOM files
+*.bom.json
