@@ -164,8 +164,8 @@ concatenated to produce the final file name:
     .in(jsonOrYamlBody[TSaveLocation](Some(S3Bucket("your-s3-bucket-name", None))))
     .post
     .errorOutEither(badRequestError("Invalid Query", "Invalid Argument", "Invalid file name"))
-    .out(statusCode(StatusCode.Ok))
-    .out(jsonBody[SuccessEnvelope.Ok[Option[String]]])
+    .out(statusCode(StatusCode.Accepted))
+    .out(jsonBody[SuccessEnvelope.Accepted])
     .serverLogic[Future] {
       case (
             walkLengthOpt,
@@ -195,7 +195,7 @@ concatenated to produce the final file name:
                 saveLocation,
               ),
           ),
-        )((inp: Option[String]) => SuccessEnvelope.Ok(inp))
+        )((inp: Option[String]) => SuccessEnvelope.Accepted())
     }
 
   private def generateRandomWalkEndpoint = algorithmEndpoint

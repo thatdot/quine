@@ -20,9 +20,6 @@ object StandingQuery {
     @description("how many standing query results to buffer before backpressuring")
     @default(32)
     inputBufferSize: Int = 32, // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
-    @description("For debug and test only")
-    @default(false)
-    shouldCalculateResultHashCode: Boolean = false,
   )
 
   @title("Registered Standing Query")

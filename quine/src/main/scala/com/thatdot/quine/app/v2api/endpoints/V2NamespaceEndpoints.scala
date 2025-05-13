@@ -6,7 +6,7 @@ import io.circe.generic.extras.auto._
 import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.{path, statusCode}
+import sttp.tapir.{emptyOutputAs, oneOf, oneOfVariantFromMatchType, path, statusCode}
 
 import com.thatdot.quine.app.v2api.definitions.ErrorResponse.ServerError
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.serverError
@@ -29,16 +29,32 @@ trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigur
       .serverLogic(_ => recoverServerError(appMethods.getNamespaces)((inp: List[String]) => SuccessEnvelope.Ok(inp)))
 
   val createNamespaceEndpoint
-    : ServerEndpoint.Full[Unit, Unit, String, ServerError, SuccessEnvelope.Created[String], Any, Future] =
+    : ServerEndpoint.Full[Unit, Unit, String, ServerError, CreatedOrNoContent[String], Any, Future] =
     namespaceEndpoint
       .name("Create Namespace")
       .description("Create the requested namespace")
       .in(path[String]("namespace"))
       .put
-      .out(statusCode(StatusCode.Created))
-      .out(jsonBody[SuccessEnvelope.Created[String]])
+      .out(
+        oneOf[CreatedOrNoContent[String]](
+          oneOfVariantFromMatchType(
+            statusCode(StatusCode.Created).and(
+              jsonBody[SuccessEnvelope.Created[String]].description("Namespace Created"),
+            ),
+          ),
+          oneOfVariantFromMatchType(
+            statusCode(StatusCode.NoContent).and(
+              emptyOutputAs(SuccessEnvelope.NoContent)
+                .description("Namespace already exists. No change."),
+            ),
+          ),
+        ),
+      )
       .serverLogic[Future] { namespace =>
-        recoverServerError(appMethods.createNamespace(namespace))((inp: Boolean) => SuccessEnvelope.Created(namespace))
+        recoverServerError(appMethods.createNamespace(namespace)) {
+          case true => SuccessEnvelope.Created(namespace)
+          case false => SuccessEnvelope.NoContent
+        }
       }
 
   val deleteNamespaceEndpoint

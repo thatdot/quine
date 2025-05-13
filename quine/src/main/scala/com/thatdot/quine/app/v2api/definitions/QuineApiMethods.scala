@@ -63,13 +63,24 @@ import com.thatdot.quine.routes.{CypherQuery, MetricsReport, ShardInMemoryLimit}
 import com.thatdot.quine.util.SwitchMode
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model, routes}
 
+sealed trait ProductVersion
+object ProductVersion {
+  case object Novelty extends ProductVersion
+
+  case object Oss extends ProductVersion
+
+  case object Enterprise extends ProductVersion
+}
+
 trait ApplicationApiMethods {
   val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph with StandingQueryOpsGraph
   val app: BaseApp
+  def productVersion: ProductVersion
   implicit def timeout: Timeout
   implicit val logConfig: LogConfig
   implicit def materializer: Materializer = graph.materializer
   val config: BaseConfig
+
   def emptyConfigExample: BaseConfig
 
   def isReady = graph.isReady
@@ -214,14 +225,14 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     }
 
   def propagateStandingQuery(
-    includeSleeping: Option[Boolean],
+    includeSleeping: Boolean,
     namespaceId: NamespaceId,
     wakeUpParallelism: Int,
   ): Future[Unit] =
     graph
       .standingQueries(namespaceId)
       .fold(Future.successful[Unit](())) {
-        _.propagateStandingQueries(Some(wakeUpParallelism).filter(_ => includeSleeping.getOrElse(false)))
+        _.propagateStandingQueries(Some(wakeUpParallelism).filter(_ => includeSleeping))
           .map(_ => ())(ExecutionContext.parasitic)
       }
 
@@ -267,11 +278,12 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
   def createSQ(
     name: String,
     namespaceId: NamespaceId,
+    shouldCalculateResultHashCode: Boolean = false,
     sq: StandingQuery.StandingQueryDefinition,
   ): Future[Either[BadRequest, Option[Unit]]] =
     graph.requiredGraphIsReadyFuture {
       try app
-        .addStandingQuery(name, namespaceId, ApiToStanding(sq))
+        .addStandingQuery(name, namespaceId, ApiToStanding(sq, shouldCalculateResultHashCode))
         .map {
           case false => Left(BadRequest(s"There is already a standing query named '$name'"))
           case true => Right(Some(()))
@@ -606,7 +618,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     settings: Conf,
     namespaceId: NamespaceId,
   )(implicit configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf]): Either[BadRequest, Boolean] =
-    app
+    try app
       .addV2IngestStream(
         ingestName,
         configOf(settings),
@@ -620,6 +632,9 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       .toEither
       .left
       .map(s => BadRequest.ofErrors(s.toList))
+    catch {
+      case e: CypherException => Left(BadRequest(ErrorType.CypherError(e.getMessage)))
+    }
 
   def deleteIngestStream(
     ingestName: String,

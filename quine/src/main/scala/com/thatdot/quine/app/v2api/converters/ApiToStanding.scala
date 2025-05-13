@@ -161,13 +161,16 @@ object ApiToStanding {
     }
   }
 
-  def apply(sq: Api.StandingQuery.StandingQueryDefinition): Standing.StandingQueryDefinition =
+  def apply(
+    sq: Api.StandingQuery.StandingQueryDefinition,
+    shouldCalculateResultHashCode: Boolean,
+  ): Standing.StandingQueryDefinition =
     Standing.StandingQueryDefinition(
       ApiToStanding(sq.pattern),
       sq.outputs.view.mapValues(ApiToStanding.apply).toMap,
       sq.includeCancellations,
       sq.inputBufferSize,
-      sq.shouldCalculateResultHashCode,
+      shouldCalculateResultHashCode,
     )
 
 }

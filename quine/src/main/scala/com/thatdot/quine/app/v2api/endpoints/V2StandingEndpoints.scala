@@ -49,7 +49,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
                       |Learn more about writing
                       |[standing queries](https://docs.quine.io/components/writing-standing-queries.html)
                       |in the docs.""".stripMargin)
-      .in(query[Option[String]]("namespace"))
+      .in(namespaceParameter)
       .get
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[List[RegisteredStandingQuery]]])
@@ -62,7 +62,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
   private val propagateStandingQueryEndpoint: Full[
     Unit,
     Unit,
-    (Option[Boolean], Option[String], Int),
+    (Boolean, Option[String], Int),
     ServerError,
     SuccessEnvelope.Accepted,
     Any,
@@ -84,9 +84,11 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
       .in("control")
       .in("propagate")
       .in(
-        query[Option[Boolean]]("include-sleeping").description(
-          "Propagate to all sleeping nodes. Setting to true can be costly if there is lot of data. Default is false.",
-        ),
+        query[Boolean]("include-sleeping")
+          .default(false)
+          .description(
+            "Propagate to all sleeping nodes. Setting to true can be costly if there is lot of data.",
+          ),
       )
       .in(namespaceParameter)
       .in(query[Int]("wake-up-parallelism").default(4))
@@ -133,7 +135,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
   private val createSqExample: StandingQueryDefinition =
     StandingQueryDefinition(Cypher(exPattern, MultipleValues), Map.from(List("stdout" -> PrintToStandardOut())))
 
-  private val createSQEndpoint: Full[Unit, Unit, (String, Option[String], StandingQueryDefinition), Either[
+  private val createSQEndpoint: Full[Unit, Unit, (String, Option[String], Boolean, StandingQueryDefinition), Either[
     ServerError,
     BadRequest,
   ], SuccessEnvelope.Created[Option[
@@ -152,6 +154,12 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
                      |in the docs.""".stripMargin)
     .in(sqName)
     .in(namespaceParameter)
+    .in(
+      query[Boolean]("shouldCalculateResultHashCode")
+        .description("For debug and test only")
+        .default(false)
+        .schema(_.hidden(true)),
+    )
     .in(jsonOrYamlBody[StandingQueryDefinition](Some(createSqExample)))
     .post
     .errorOutEither(
@@ -159,10 +167,10 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     )
     .out(statusCode(StatusCode.Created))
     .out(jsonBody[SuccessEnvelope.Created[Option[Unit]]])
-    .serverLogic[Future] { case (sqName, namespace, definition) =>
+    .serverLogic[Future] { case (sqName, namespace, shouldCalculateResultHashCode, definition) =>
       recoverServerErrorEitherFlat(
         appMethods
-          .createSQ(sqName, namespaceFromParam(namespace), definition),
+          .createSQ(sqName, namespaceFromParam(namespace), shouldCalculateResultHashCode, definition),
       )((inp: Option[Unit]) => SuccessEnvelope.Created(inp))
     }
 
