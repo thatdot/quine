@@ -7,25 +7,21 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
-import io.circe.generic.extras.auto._
 import io.circe.{Decoder, Encoder}
-import sttp.model.StatusCode
+import shapeless.ops.coproduct.{Basis, CoproductToEither}
+import shapeless.{:+:, CNil, Coproduct}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.DecodeResult.Value
-import sttp.tapir.generic.auto._
-import sttp.tapir.{EndpointOutput, endpoint, _}
+import sttp.tapir._
 
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.app.v2api.definitions.CustomError.toCustomError
-import com.thatdot.quine.app.v2api.definitions.ErrorText.serverErrorDescription
+import com.thatdot.quine.app.v2api.definitions.ErrorResponse.ServerError
+import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.toServerError
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.routes.IngestRoutes
-
-/** Error Response Envelope */
-case class ErrorEnvelope[+T](error: T)
 
 /** Component definitions for Tapir endpoints. */
 trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
@@ -79,29 +75,14 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
   implicit val timeoutCodec: Codec[String, FiniteDuration, TextPlain] =
     Codec.long.mapDecode(l => DecodeResult.Value(FiniteDuration(l, TimeUnit.MILLISECONDS)))(_.toMillis)
 
-  val timeoutParameter: EndpointInput.Query[Option[FiniteDuration]] =
-    query[Option[FiniteDuration]]("timeout").description(
-      "Milliseconds to wait before the HTTP request times out",
-    )
+  val timeoutParameter: EndpointInput.Query[FiniteDuration] =
+    query[FiniteDuration]("timeout")
+      .description(
+        "Milliseconds to wait before the HTTP request times out",
+      )
+      .default(FiniteDuration.apply(20, TimeUnit.SECONDS))
 
-  type EndpointOutput[T] = Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope[T]]
-
-  /** Matching error types to api-rendered error outputs. Api Status codes are returned by matching the type of the
-    * custom error to the status code matched here
-    * Defines the default case that maps an error not specified in the endpoints definition to an
-    * internal server error.
-    */
-  protected val commonErrorOutput
-    : EndpointOutput.OneOf[ErrorEnvelope[_ <: CustomError], ErrorEnvelope[_ <: CustomError]] =
-    oneOf[ErrorEnvelope[_ <: CustomError]](
-      oneOfDefaultVariant(
-        statusCode(StatusCode.InternalServerError).and(
-          jsonBody[ErrorEnvelope[CustomError]].description(serverErrorDescription()),
-        ),
-      ),
-    )
-
-  type EndpointBase = Endpoint[Unit, Unit, ErrorEnvelope[_ <: CustomError], Unit, Any]
+  type EndpointBase = Endpoint[Unit, Unit, ServerError, Unit, Any]
 
   /** Base for api/v2 endpoints with common errors
     *
@@ -109,10 +90,9 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
     */
   def rawEndpoint(
     basePaths: String*,
-  ): Endpoint[Unit, Unit, ErrorEnvelope[_ <: CustomError], Unit, Any] =
-    endpoint
+  ): Endpoint[Unit, Unit, Nothing, Unit, Any] =
+    infallibleEndpoint
       .in(basePaths.foldLeft("api" / "v2")((path, segment) => path / segment))
-      .errorOut(commonErrorOutput)
 
   def yamlBody[T]()(implicit
     schema: Schema[T],
@@ -133,66 +113,81 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
   def textBody[T](codec: Codec[String, T, TextPlain]): EndpointIO.Body[String, T] =
     stringBodyAnyFormat(codec, Charset.defaultCharset())
 
-  def runServerLogicOk[IN, OUT: Decoder](f: Future[IN])(
-    outToResponse: IN => SuccessEnvelope.Ok[OUT],
-  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Ok[OUT]]] = {
+  /** Used to produce an endpoint that only has ServerErrors that are caught here.
+    *
+    * - Wraps server logic in tapir endpoints for catching any exception and lifting to ServerError(500 code).
+    */
+  def recoverServerError[In, Out](
+    fa: Future[In],
+  )(outToResponse: In => Out): Future[Either[ServerError, Out]] = {
     implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    runServerLogicFromEitherOk(f.map(Right(_)))(outToResponse)
+    fa.map(out => Right(outToResponse(out))).recover(t => Left(toServerError(t)))
   }
 
-  def runServerLogicCreated[IN, OUT: Decoder](f: Future[IN])(
-    outToResponse: IN => SuccessEnvelope.Created[OUT],
-  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Created[OUT]]] = {
+  /** Recover from errors that could cause the provided future to fail. Errors are represented as any shape Coproduct
+    *
+    * - Wraps server logic in tapir endpoints for catching any exception and lifting to ServerError(500 code).
+    * - Used when the input error type, `Err`, is itself a Coproduct that does not contain ServerError.
+    * - The Left of the output Either will itself be a nested either with all coproduct elements accounted for.
+    *    This is used for tapir endpoint definition as the errorOut type
+    * - When the Coproduct has size greater than 2 the tapir Either and CoproductToEither is swapped.
+    *    to fix this map the errorOut to be swapped for the endpoint: `_.mapErrorOut(err => err.swap)(err => err.swap)`
+    */
+  def recoverServerErrorEither[In, Out, Err <: Coproduct](
+    fa: Future[Either[Err, In]],
+  )(outToResponse: In => Out)(implicit
+    basis: Basis[ServerError :+: Err, Err],
+    c2e: CoproductToEither[ServerError :+: Err],
+  ): Future[Either[c2e.Out, Out]] = {
     implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    runServerLogicFromEitherCreated(f.map(Right(_)))(outToResponse)
+    fa.map {
+      case Left(err) => Left(c2e(err.embed[ServerError :+: Err]))
+      case Right(value) => Right(outToResponse(value))
+    }.recover(t => Left(c2e(Coproduct[ServerError :+: Err](toServerError(t)))))
   }
 
-  def runServerLogicAccepted[IN: Decoder](f: Future[IN])(
-    outToResponse: IN => SuccessEnvelope.Accepted,
-  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Accepted]] = {
+  /** Recover from errors that could cause the provided future to fail. Errors are represented as a Coproduct
+    * with ServerError explicitly the head of the Coproduct `Err` in the provided Future.
+    *
+    * - Wraps server logic in tapir endpoints for catching any exception and lifting to ServerError(500 code).
+    * - Used when the input error type, `Err`, is itself a Coproduct that does contain ServerError
+    * - The Left of the output Either will itself be a nested either with all coproduct elements accounted for.
+    *    This is used for tapir endpoint definition as the errorOut type
+    * - When the Coproduct has size greater than 2 the tapir Either and CoproductToEither is swapped.
+    *    to fix this map the errorOut to be swapped for the endpoint: `_.mapErrorOut(err => err.swap)(err => err.swap)`
+    */
+  def recoverServerErrorEitherWithServerError[In, Out, Err <: Coproduct](
+    fa: Future[Either[ServerError :+: Err, In]],
+  )(outToResponse: In => Out)(implicit
+    basis: Basis[ServerError :+: Err, ServerError :+: Err],
+    c2e: CoproductToEither[ServerError :+: Err],
+  ): Future[Either[c2e.Out, Out]] = {
     implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    runServerLogicFromEitherAccepted(f.map(Right(_)))(outToResponse)
+    fa.map {
+      case Left(err) => Left(c2e(err.embed[ServerError :+: Err]))
+      case Right(value) => Right(outToResponse(value))
+    }.recover(t => Left(c2e(Coproduct[ServerError :+: Err](toServerError(t)))))
   }
 
-  def runServerLogicNoContent[IN: Decoder](
-    f: Future[IN],
-  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.NoContent.type]] = {
+  /** Recover from errors that could cause the provided future to fail. Errors should likely not be represented
+    * as a Coproduct in the input provided Future
+    *
+    * - Wraps server logic in tapir endpoints for catching any exception and lifting to ServerError(500 code).
+    * - Used when the input error type, `Err`, is not a Coproduct itself.
+    * - The Left of the output Either will itself be an Either[ServerError, Err] with all coproduct elements accounted for.
+    *    This is used for tapir endpoint definition as the errorOut type
+    */
+  def recoverServerErrorEitherFlat[In, Out, Err](
+    fa: Future[Either[Err, In]],
+  )(outToResponse: In => Out)(implicit
+    c2e: CoproductToEither[ServerError :+: Err :+: CNil],
+  ): Future[Either[c2e.Out, Out]] = {
     implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    runServerLogicFromEitherNoContent(f.map(Right(_)))
+    fa.map {
+      case Left(err) => Left(c2e(Coproduct[ServerError :+: Err :+: CNil](err)))
+      case Right(value) => Right(outToResponse(value))
+    }.recover(t => Left(c2e(Coproduct[ServerError :+: Err :+: CNil](toServerError(t)))))
   }
-
-  def runServerLogicFromEitherOk[IN, OUT: Decoder](
-    f: Future[Either[ErrorEnvelope[_ <: CustomError], IN]],
-  )(
-    outToResponse: IN => SuccessEnvelope.Ok[OUT],
-  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Ok[OUT]]] = {
-    implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    f.map(_.map(outToResponse)).recover(t => Left(ErrorEnvelope(toCustomError(t))))
-  }
-
-  def runServerLogicFromEitherCreated[IN, OUT: Decoder](
-    f: Future[Either[ErrorEnvelope[_ <: CustomError], IN]],
-  )(
-    outToResponse: IN => SuccessEnvelope.Created[OUT],
-  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Created[OUT]]] = {
-    implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    f.map(_.map(outToResponse)).recover(t => Left(ErrorEnvelope(toCustomError(t))))
-  }
-
-  def runServerLogicFromEitherAccepted[IN](f: Future[Either[ErrorEnvelope[_ <: CustomError], IN]])(
-    outToResponse: IN => SuccessEnvelope.Accepted,
-  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.Accepted]] = {
-    implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    f.map(_.map(outToResponse)).recover(t => Left(ErrorEnvelope(toCustomError(t))))
-  }
-
-  def runServerLogicFromEitherNoContent[T](
-    f: Future[Either[ErrorEnvelope[_ <: CustomError], T]],
-  ): Future[Either[ErrorEnvelope[_ <: CustomError], SuccessEnvelope.NoContent.type]] = {
-    implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    f.map(_.map(_ => SuccessEnvelope.NoContent)).recover(t => Left(ErrorEnvelope(toCustomError(t))))
-  }
-
 }
 
 /** Component definitions for Tapir quine endpoints. */
@@ -208,8 +203,8 @@ trait V2QuineEndpointDefinitions extends V2EndpointDefinitions {
     ns.flatMap(t => Option.when(t != "default")(Symbol(t)))
 
   def ifNamespaceFound[A](namespaceId: NamespaceId)(
-    ifFound: => Future[Either[CustomError, A]],
-  ): Future[Either[CustomError, Option[A]]] =
+    ifFound: => Future[Either[ServerError, A]],
+  ): Future[Either[ServerError, Option[A]]] =
     if (!appMethods.graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
     else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)
 

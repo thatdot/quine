@@ -1,9 +1,6 @@
 package com.thatdot.quine.app.v2api.endpoints
 
-import java.util.concurrent.TimeUnit
-
-import scala.concurrent.duration.FiniteDuration
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import endpoints4s.generic.title
 import io.circe.Json
@@ -18,6 +15,7 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Codec, DecodeResult, Schema, oneOfBody, statusCode}
 
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, serverError}
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TCypherQuery,
@@ -70,7 +68,9 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
 
   /** SQ Base path */
   private def cypherQueryEndpoint =
-    rawEndpoint("cypher-queries").tag("Cypher Query Language")
+    rawEndpoint("cypher-queries")
+      .tag("Cypher Query Language")
+      .errorOut(serverError())
 
   private val textEx = TCypherQuery(
     "MATCH (n) RETURN n LIMIT $lim",
@@ -83,9 +83,6 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
       yamlBody[TCypherQuery]().example(textEx),
       textBody(cypherQueryAsStringCodec).example(textEx),
     )
-  // TODO timeout duration: Temporary!
-  private def toConcreteDuration(duration: Option[FiniteDuration]): FiniteDuration =
-    duration.getOrElse(FiniteDuration.apply(20, TimeUnit.SECONDS)) //akka default http timeout
 
   private val cypherEndpoint =
     cypherQueryEndpoint
@@ -97,18 +94,18 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
       .in(namespaceParameter)
       .in(queryBody)
       .post
+      .errorOutEither(badRequestError("Invalid Query"))
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[TCypherQueryResult]])
-      .serverLogic { case (atTime, timeout, namespace, query) =>
-        runServerLogicFromEitherOk(
+      .serverLogic[Future] { case (atTime, timeout, namespace, query) =>
+        recoverServerErrorEitherFlat(
           appMethods
             .cypherPost(
               atTime,
-              toConcreteDuration(timeout),
+              timeout,
               namespaceFromParam(namespace),
               TCypherQuery(query.text, query.parameters),
-            )
-            .map(f => f.left.map(ErrorEnvelope.apply))(ExecutionContext.parasitic),
+            ),
         )((inp: TCypherQueryResult) => SuccessEnvelope.Ok.apply(inp))
       }
 
@@ -122,13 +119,13 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
     .in(namespaceParameter)
     .in(queryBody)
     .post
+    .errorOutEither(badRequestError("Invalid Query"))
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Seq[TUiNode]]])
-    .serverLogic { case (atTime, timeout, namespace, query) =>
-      runServerLogicFromEitherOk(
+    .serverLogic[Future] { case (atTime, timeout, namespace, query) =>
+      recoverServerErrorEitherFlat(
         appMethods
-          .cypherNodesPost(atTime, toConcreteDuration(timeout), namespaceFromParam(namespace), query)
-          .map(f => f.left.map(ErrorEnvelope.apply))(ExecutionContext.parasitic),
+          .cypherNodesPost(atTime, timeout, namespaceFromParam(namespace), query),
       )((inp: Seq[TUiNode]) => SuccessEnvelope.Ok.apply(inp))
     }
 
@@ -142,18 +139,18 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
     .in(namespaceParameter)
     .in(queryBody)
     .post
+    .errorOutEither(badRequestError("Invalid Query"))
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Seq[TUiEdge]]])
-    .serverLogic { case (atTime, timeout, namespace, query) =>
-      runServerLogicFromEitherOk(
+    .serverLogic[Future] { case (atTime, timeout, namespace, query) =>
+      recoverServerErrorEitherFlat(
         appMethods
           .cypherEdgesPost(
             atTime,
-            toConcreteDuration(timeout),
+            timeout,
             namespaceFromParam(namespace),
             TCypherQuery(query.text, query.parameters),
-          )
-          .map(f => f.left.map(ErrorEnvelope.apply))(ExecutionContext.parasitic),
+          ),
       )((inp: Seq[TUiEdge]) => SuccessEnvelope.Ok.apply(inp))
     }
 

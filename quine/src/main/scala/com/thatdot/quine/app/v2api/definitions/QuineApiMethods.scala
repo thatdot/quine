@@ -17,6 +17,7 @@ import org.apache.pekko.util.Timeout
 import cats.data.NonEmptyList
 import cats.implicits.toFunctorOps
 import io.circe.Json
+import shapeless.{:+:, CNil, Coproduct}
 
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
@@ -29,6 +30,8 @@ import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters._
+import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, ServerError}
+import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.toServerError
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.query.standing.{StandingQuery, StandingQueryResultOutputUserDef}
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
@@ -236,7 +239,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     outputName: String,
     namespaceId: NamespaceId,
     sqResultOutput: StandingQueryResultOutputUserDef,
-  ): Future[Either[CustomError, Unit]] = graph.requiredGraphIsReadyFuture {
+  ): Future[Either[BadRequest, Unit]] = graph.requiredGraphIsReadyFuture {
     validateOutputDef(sqResultOutput) match {
       case Some(errors) =>
         Future.successful(Left(BadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}")))
@@ -265,7 +268,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     name: String,
     namespaceId: NamespaceId,
     sq: StandingQuery.StandingQueryDefinition,
-  ): Future[Either[CustomError, Option[Unit]]] =
+  ): Future[Either[BadRequest, Option[Unit]]] =
     graph.requiredGraphIsReadyFuture {
       try app
         .addStandingQuery(name, namespaceId, ApiToStanding(sq))
@@ -278,7 +281,8 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
         }(graph.nodeDispatcherEC)
       catch {
         case iqp: InvalidQueryPattern => Future.successful(Left(BadRequest(iqp.message)))
-        case cypherException: CypherException => Future.successful(Left(BadRequest(cypherException.pretty)))
+        case cypherException: CypherException =>
+          Future.successful(Left(BadRequest(ErrorType.CypherError(cypherException.pretty))))
       }
     }
 
@@ -291,13 +295,13 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
   // --------------------- Cypher Endpoints ------------------------
 
   // The Query UI relies heavily on a couple Cypher endpoints for making queries.
-  private def catchCypherException[A](futA: => Future[A]): Future[Either[CustomError, A]] =
+  private def catchCypherException[A](futA: => Future[A]): Future[Either[BadRequest, A]] =
     Future
       .fromTry(Try(futA))
       .flatten
       .transform {
         case Success(a) => Success(Right(a))
-        case Failure(qce: CypherException) => Success(Left(BadRequest(qce.pretty)))
+        case Failure(qce: CypherException) => Success(Left(BadRequest(ErrorType.CypherError(qce.pretty))))
         case Failure(err) => Failure(err)
       }(ExecutionContext.parasitic)
 
@@ -310,7 +314,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
     query: TCypherQuery,
-  ): Future[Either[CustomError, TCypherQueryResult]] =
+  ): Future[Either[BadRequest, TCypherQueryResult]] =
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
         val (columns, results, isReadOnly, _) =
@@ -333,7 +337,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
     query: TCypherQuery,
-  ): Future[Either[CustomError, Seq[TUiNode]]] =
+  ): Future[Either[BadRequest, Seq[TUiNode]]] =
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
         val (results, isReadOnly, _) =
@@ -355,7 +359,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
     query: TCypherQuery,
-  ): Future[Either[CustomError, Seq[TUiEdge]]] =
+  ): Future[Either[BadRequest, Seq[TUiEdge]]] =
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
         val (results, isReadOnly, _) =
@@ -386,7 +390,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     atTime: Option[Milliseconds],
     parallelism: Int,
     saveLocation: TSaveLocation,
-  ): Either[CustomError, Option[String]] = {
+  ): Either[ServerError :+: BadRequest :+: CNil, Option[String]] = {
 
     graph.requiredGraphIsReady()
     if (!graph.getNamespaces.contains(namespaceId)) Right(None)
@@ -422,11 +426,23 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
         .map {
           case _: InvalidPathException | _: FileAlreadyExistsException | _: SecurityException |
               _: FileSystemException =>
-            BadRequest(s"Invalid file name: $fileName") // Return a Bad Request Error
-          case e: CypherException => BadRequest(s"Invalid query: ${e.getMessage}")
-          case e: IllegalArgumentException => BadRequest(e.getMessage)
-          case NonFatal(e) => throw e // Return an Internal Server Error
-          case other => throw other // This might expose more than we want
+            Coproduct[ServerError :+: BadRequest :+: CNil](
+              BadRequest(s"Invalid file name: $fileName"),
+            ) // Return a Bad Request Error
+          case e: CypherException =>
+            Coproduct[ServerError :+: BadRequest :+: CNil](
+              BadRequest(ErrorType.CypherError(s"Invalid query: ${e.getMessage}")),
+            )
+          case e: IllegalArgumentException =>
+            Coproduct[ServerError :+: BadRequest :+: CNil](BadRequest(e.getMessage))
+          case NonFatal(e) =>
+            Coproduct[ServerError :+: BadRequest :+: CNil](
+              toServerError(e),
+            ) // Return an Internal Server Error
+          case other =>
+            Coproduct[ServerError :+: BadRequest :+: CNil](
+              toServerError(other),
+            ) // This might expose more than we want
         }
     }
   }
@@ -441,21 +457,30 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     seedOpt: Option[String],
     namespaceId: NamespaceId,
     atTime: Option[Milliseconds],
-  ): Future[Either[CustomError, Option[List[String]]]] = {
+  ): Future[Either[ServerError :+: BadRequest :+: CNil, Option[List[String]]]] = {
 
-    val errors: Either[CustomError, Option[List[String]]] = Try {
+    val errors: Either[ServerError :+: BadRequest :+: CNil, Option[List[String]]] = Try {
       require(!lengthOpt.exists(_ < 1), "walk length cannot be less than one.")
       require(!inOutParamOpt.exists(_ < 0d), "in-out parameter cannot be less than zero.")
       require(!returnParamOpt.exists(_ < 0d), "return parameter cannot be less than zero.")
       Some(Nil)
     }.toEither.left
       .map {
-        case e: CypherException => BadRequest(s"Invalid query: ${e.getMessage}")
-        case e: IllegalArgumentException => BadRequest(e.getMessage)
-        case NonFatal(e) => throw e // Return an Internal Server Error
-        case other => throw other // this might expose more than we want
+        case e: CypherException =>
+          Coproduct[ServerError :+: BadRequest :+: CNil](BadRequest(s"Invalid query: ${e.getMessage}"))
+        case e: IllegalArgumentException =>
+          Coproduct[ServerError :+: BadRequest :+: CNil](BadRequest(e.getMessage))
+        case NonFatal(e) =>
+          Coproduct[ServerError :+: BadRequest :+: CNil](
+            toServerError(e),
+          ) // Return an Internal Server Error
+        case other =>
+          Coproduct[ServerError :+: BadRequest :+: CNil](
+            toServerError(other),
+          ) // this might expose more than we want
       }
-    if (errors.isLeft) Future.successful[Either[CustomError, Option[List[String]]]](errors)
+    if (errors.isLeft)
+      Future.successful[Either[ServerError :+: BadRequest :+: CNil, Option[List[String]]]](errors)
     else {
 
       graph.requiredGraphIsReady()
@@ -580,7 +605,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     ingestName: String,
     settings: Conf,
     namespaceId: NamespaceId,
-  )(implicit configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf]): Either[CustomError, Boolean] =
+  )(implicit configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf]): Either[BadRequest, Boolean] =
     app
       .addV2IngestStream(
         ingestName,
@@ -648,7 +673,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
   def pauseIngestStream(
     ingestName: String,
     namespaceId: NamespaceId,
-  ): Future[Either[CustomError, Option[ApiIngest.IngestStreamInfoWithName]]] =
+  ): Future[Either[BadRequest, Option[ApiIngest.IngestStreamInfoWithName]]] =
     graph.requiredGraphIsReadyFuture {
       setIngestStreamPauseState(ingestName, namespaceId, SwitchMode.Close)
         .map(Right(_))(ExecutionContext.parasitic)
@@ -658,7 +683,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
   def unpauseIngestStream(
     ingestName: String,
     namespaceId: NamespaceId,
-  ): Future[Either[CustomError, Option[ApiIngest.IngestStreamInfoWithName]]] =
+  ): Future[Either[BadRequest, Option[ApiIngest.IngestStreamInfoWithName]]] =
     graph.requiredGraphIsReadyFuture {
       setIngestStreamPauseState(ingestName, namespaceId, SwitchMode.Open)
         .map(Right(_))(ExecutionContext.parasitic)

@@ -13,6 +13,8 @@ import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, EndpointInput, path, query, statusCode}
 
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.app.v2api.definitions.ErrorResponse.ServerError
+import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.serverError
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 
@@ -103,7 +105,9 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
 
    */
   /** Generate an endpoint at  /api/ v2/admin/$path */
-  private def debugEndpoint = rawEndpoint("debug", "nodes").tag("Debug Node Operations")
+  private def debugEndpoint = rawEndpoint("debug", "nodes")
+    .tag("Debug Node Operations")
+    .errorOut(serverError())
 
   private val debugOpsPropertyGetEndpoint =
     debugEndpoint
@@ -122,15 +126,18 @@ closely as possible to how they would be emitted by
       .get
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[Option[Json]]])
-      .serverLogic { case (id, propKey, atime, ns) =>
-        runServerLogicOk(appMethods.debugOpsPropertyGet(id, propKey, atime, namespaceFromParam(ns)))(
+      .serverLogic[Future] { case (id, propKey, atime, ns) =>
+        recoverServerError(appMethods.debugOpsPropertyGet(id, propKey, atime, namespaceFromParam(ns)))(
           (inp: Option[Json]) => SuccessEnvelope.Ok.apply(inp),
         )
       }
 
-  private val debugOpsGetEndpoint: Full[Unit, Unit, (QuineId, Option[AtTime], Option[String]), ErrorEnvelope[
-    _ <: CustomError,
-  ], SuccessEnvelope.Ok[TLiteralNode[QuineId]], Any, Future] =
+  private val debugOpsGetEndpoint
+    : Full[Unit, Unit, (QuineId, Option[AtTime], Option[String]), ServerError, SuccessEnvelope.Ok[
+      TLiteralNode[
+        QuineId,
+      ],
+    ], Any, Future] =
     debugEndpoint
       .name("List Properties/Edges")
       .description(
@@ -143,8 +150,8 @@ closely as possible to how they would be emitted by
       .get
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[TLiteralNode[QuineId]]])
-      .serverLogic { case (id, atime, ns) =>
-        runServerLogicOk(appMethods.debugOpsGet(id, atime, namespaceFromParam(ns)))((inp: TLiteralNode[QuineId]) =>
+      .serverLogic[Future] { case (id, atime, ns) =>
+        recoverServerError(appMethods.debugOpsGet(id, atime, namespaceFromParam(ns)))((inp: TLiteralNode[QuineId]) =>
           SuccessEnvelope.Ok.apply(inp),
         )
       }
@@ -163,8 +170,8 @@ closely as possible to how they would be emitted by
     .get
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[String]])
-    .serverLogic { case (id, atime, ns) =>
-      runServerLogicOk(appMethods.debugOpsVerbose(id, atime, namespaceFromParam(ns)))((inp: String) =>
+    .serverLogic[Future] { case (id, atime, ns) =>
+      recoverServerError(appMethods.debugOpsVerbose(id, atime, namespaceFromParam(ns)))((inp: String) =>
         SuccessEnvelope.Ok.apply(inp),
       )
     }
@@ -188,8 +195,8 @@ closely as possible to how they would be emitted by
       .get
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]]])
-      .serverLogic { case (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, fullOnly, ns) =>
-        runServerLogicOk(
+      .serverLogic[Future] { case (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, fullOnly, ns) =>
+        recoverServerError(
           if (fullOnly.getOrElse(true))
             appMethods.debugOpsEdgesGet(id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns))
           else

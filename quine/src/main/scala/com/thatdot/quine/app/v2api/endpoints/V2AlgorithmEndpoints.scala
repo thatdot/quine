@@ -2,7 +2,7 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import java.nio.file.{Files, Paths}
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import org.apache.pekko.stream.IOResult
 import org.apache.pekko.stream.connectors.s3.MultipartUploadResult
@@ -18,7 +18,8 @@ import sttp.tapir.generic.auto.schemaForCaseClass
 import sttp.tapir.server.ServerEndpoint
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.app.v2api.definitions.{ErrorEnvelope, SuccessEnvelope, V2QuineEndpointDefinitions}
+import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, serverError}
+import com.thatdot.quine.app.v2api.definitions.{SuccessEnvelope, V2QuineEndpointDefinitions}
 
 object V2AlgorithmEndpointEntities extends V2ApiConfiguration {
   /* WARNING: these values duplicate `AlgorithmGraph.defaults.walkPrefix` and `walkSuffix` from the
@@ -111,9 +112,10 @@ trait V2AlgorithmEndpoints extends V2QuineEndpointDefinitions {
   import V2AlgorithmEndpointEntities._
 
   /** Algorithm base path */
-  private def algorithmEndpoint = rawEndpoint("algorithm")
+  private def algorithmEndpoint: EndpointBase = rawEndpoint("algorithm")
     .tag("Graph Algorithms")
     .description("High-level operations on the graph to support graph AI, ML, and other algorithms.")
+    .errorOut(serverError())
 
   private def saveRandomWalksEndpoint = algorithmEndpoint
     .name("Save Random Walks")
@@ -161,9 +163,10 @@ concatenated to produce the final file name:
     .in(parallelismParameter)
     .in(jsonOrYamlBody[TSaveLocation](Some(S3Bucket("your-s3-bucket-name", None))))
     .post
+    .errorOutEither(badRequestError("Invalid Query", "Invalid Argument", "Invalid file name"))
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Option[String]]])
-    .serverLogic {
+    .serverLogic[Future] {
       case (
             walkLengthOpt,
             numWalksOpt,
@@ -176,7 +179,7 @@ concatenated to produce the final file name:
             parallelism,
             saveLocation,
           ) =>
-        runServerLogicFromEitherOk(
+        recoverServerErrorEitherWithServerError(
           Future.successful(
             appMethods
               .algorithmSaveRandomWalks(
@@ -190,9 +193,7 @@ concatenated to produce the final file name:
                 atTimeOpt,
                 parallelism,
                 saveLocation,
-              )
-              .left
-              .map(ErrorEnvelope(_)),
+              ),
           ),
         )((inp: Option[String]) => SuccessEnvelope.Ok(inp))
     }
@@ -211,23 +212,24 @@ concatenated to produce the final file name:
     .in(randomSeedOptQs)
     .in(namespaceParameter)
     .in(atTimeParameter)
+    .errorOutEither(badRequestError("Invalid Query", "Invalid Argument"))
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Option[List[String]]]])
-    .serverLogic { case (id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespace, atTimeOpt) =>
-      runServerLogicFromEitherOk(
-        appMethods
-          .algorithmRandomWalk(
-            id,
-            walkLengthOpt,
-            queryOpt,
-            returnOpt,
-            inOutOpt,
-            randomSeedOpt,
-            namespaceFromParam(namespace),
-            atTimeOpt,
-          )
-          .map(f => f.left.map(ErrorEnvelope.apply))(ExecutionContext.parasitic),
-      )((inp: Option[List[String]]) => SuccessEnvelope.Ok.apply(inp))
+    .serverLogic[Future] {
+      case (id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespace, atTimeOpt) =>
+        recoverServerErrorEitherWithServerError(
+          appMethods
+            .algorithmRandomWalk(
+              id,
+              walkLengthOpt,
+              queryOpt,
+              returnOpt,
+              inOutOpt,
+              randomSeedOpt,
+              namespaceFromParam(namespace),
+              atTimeOpt,
+            ),
+        )((inp: Option[List[String]]) => SuccessEnvelope.Ok.apply(inp))
     }
 
   val algorithmEndpoints: List[ServerEndpoint[Any, Future]] = List(

@@ -8,16 +8,21 @@ import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.server.directives.DebuggingDirectives
 
 import com.github.pjfanning.pekkohttpcirce.FailFastCirceSupport
+import io.circe.generic.extras.auto._
 import io.circe.syntax._
 import sttp.apispec.openapi.OpenAPI
 import sttp.apispec.openapi.circe._
 import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
+import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
+import sttp.tapir.server.model.ValuedEndpointOutput
 import sttp.tapir.server.pekkohttp.{PekkoHttpServerInterpreter, PekkoHttpServerOptions}
+
+import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 /** Definitions wrapping Tapir endpoints into akka-http routes.
   */
-abstract class TapirRoutes extends FailFastCirceSupport {
+abstract class TapirRoutes extends FailFastCirceSupport with V2IngestApiSchemas {
   protected val apiEndpoints: List[ServerEndpoint[Any, Future]]
   protected val ingestEndpoints: List[ServerEndpoint[Any, Future]]
 
@@ -40,7 +45,13 @@ abstract class TapirRoutes extends FailFastCirceSupport {
       }
     }
 
-  private def serverOptions(implicit ec: ExecutionContext): PekkoHttpServerOptions = PekkoHttpServerOptions.default
+  private def decodeFailureResponse(m: String): ValuedEndpointOutput[_] =
+    ValuedEndpointOutput(jsonBody[ErrorResponse.BadRequest], ErrorResponse.BadRequest(m))
+
+  private def serverOptions(implicit ec: ExecutionContext): PekkoHttpServerOptions =
+    PekkoHttpServerOptions.customiseInterceptors
+      .defaultHandlers(decodeFailureResponse)
+      .options
 
   private def v2ApiRoutes(ingestOnly: Boolean)(implicit ec: ExecutionContext): Route =
     DebuggingDirectives.logRequestResult(("HTTP", Logging.DebugLevel))(

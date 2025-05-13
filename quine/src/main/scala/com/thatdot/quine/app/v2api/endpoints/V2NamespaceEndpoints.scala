@@ -8,26 +8,28 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{path, statusCode}
 
+import com.thatdot.quine.app.v2api.definitions.ErrorResponse.ServerError
+import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.serverError
 import com.thatdot.quine.app.v2api.definitions._
 
 /** Placeholder route to demonstrate V2. Not intended to represent a final endpoint. */
 trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
 
-  private def namespaceEndpoint = rawEndpoint("namespaces").tag("Namespaces")
+  private def namespaceEndpoint = rawEndpoint("namespaces")
+    .tag("Namespaces")
+    .errorOut(serverError())
 
-  val getNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, Unit, ErrorEnvelope[
-    _ <: CustomError,
-  ], SuccessEnvelope.Ok[List[String]], Any, Future] =
+  val getNamespaceEndpoint
+    : ServerEndpoint.Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[List[String]], Any, Future] =
     namespaceEndpoint.get
       .name("List Namespaces")
       .description("Retrieve the list of all existing namespaces")
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[List[String]]])
-      .serverLogic(_ => runServerLogicOk(appMethods.getNamespaces)((inp: List[String]) => SuccessEnvelope.Ok(inp)))
+      .serverLogic(_ => recoverServerError(appMethods.getNamespaces)((inp: List[String]) => SuccessEnvelope.Ok(inp)))
 
-  val createNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, String, ErrorEnvelope[
-    _ <: CustomError,
-  ], SuccessEnvelope.Created[String], Any, Future] =
+  val createNamespaceEndpoint
+    : ServerEndpoint.Full[Unit, Unit, String, ServerError, SuccessEnvelope.Created[String], Any, Future] =
     namespaceEndpoint
       .name("Create Namespace")
       .description("Create the requested namespace")
@@ -35,15 +37,12 @@ trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigur
       .put
       .out(statusCode(StatusCode.Created))
       .out(jsonBody[SuccessEnvelope.Created[String]])
-      .serverLogic { namespace =>
-        runServerLogicCreated(appMethods.createNamespace(namespace))((inp: Boolean) =>
-          SuccessEnvelope.Created(namespace),
-        )
+      .serverLogic[Future] { namespace =>
+        recoverServerError(appMethods.createNamespace(namespace))((inp: Boolean) => SuccessEnvelope.Created(namespace))
       }
 
-  val deleteNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, String, ErrorEnvelope[
-    _ <: CustomError,
-  ], SuccessEnvelope.Ok[String], Any, Future] =
+  val deleteNamespaceEndpoint
+    : ServerEndpoint.Full[Unit, Unit, String, ServerError, SuccessEnvelope.Ok[String], Any, Future] =
     namespaceEndpoint
       .name("Delete Namespace")
       .description("Delete the requested namespace")
@@ -51,7 +50,14 @@ trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigur
       .delete
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[String]])
-      .serverLogic { namespace =>
-        runServerLogicOk(appMethods.deleteNamespace(namespace))((_: Boolean) => SuccessEnvelope.Ok(namespace))
+      .serverLogic[Future] { namespace =>
+        recoverServerError(appMethods.deleteNamespace(namespace))((_: Boolean) => SuccessEnvelope.Ok(namespace))
       }
+  protected def namespaceEndpoints: List[ServerEndpoint[Any, Future]] =
+    List(
+      getNamespaceEndpoint,
+      createNamespaceEndpoint,
+      deleteNamespaceEndpoint,
+    )
+
 }
