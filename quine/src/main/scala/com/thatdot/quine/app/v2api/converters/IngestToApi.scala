@@ -53,20 +53,20 @@ object IngestToApi {
     case V1.CsvCharacter.Pipe => Api.CsvCharacter.Pipe
     case V1.CsvCharacter.DoubleQuote => Api.CsvCharacter.DoubleQuote
   }
-  def apply(format: Ingest.FileFormat): Api.FileFormat = format match {
-    case Ingest.FileFormat.LineFormat => Api.FileFormat.LineFormat
-    case Ingest.FileFormat.JsonFormat => Api.FileFormat.JsonFormat
+  def apply(format: Ingest.FileFormat): Api.IngestFormat.FileFormat = format match {
+    case Ingest.FileFormat.LineFormat => Api.IngestFormat.FileFormat.Line
+    case Ingest.FileFormat.JsonFormat => Api.IngestFormat.FileFormat.Json
     case Ingest.FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
-      Api.FileFormat.CsvFormat(headers, IngestToApi(delimiter), IngestToApi(quoteChar), IngestToApi(escapeChar))
+      Api.IngestFormat.FileFormat.Csv(headers, IngestToApi(delimiter), IngestToApi(quoteChar), IngestToApi(escapeChar))
   }
 
-  def apply(format: Ingest.StreamingFormat): Api.StreamingFormat = format match {
-    case Ingest.StreamingFormat.JsonFormat => Api.StreamingFormat.JsonFormat
-    case Ingest.StreamingFormat.RawFormat => Api.StreamingFormat.RawFormat
+  def apply(format: Ingest.StreamingFormat): Api.IngestFormat.StreamingFormat = format match {
+    case Ingest.StreamingFormat.JsonFormat => Api.IngestFormat.StreamingFormat.Json
+    case Ingest.StreamingFormat.RawFormat => Api.IngestFormat.StreamingFormat.Raw
     case Ingest.StreamingFormat.ProtobufFormat(schemaUrl, typeName) =>
-      Api.StreamingFormat.ProtobufFormat(schemaUrl, typeName)
-    case Ingest.StreamingFormat.AvroFormat(schemaUrl) => Api.StreamingFormat.AvroFormat(schemaUrl)
-    case Ingest.StreamingFormat.DropFormat => Api.StreamingFormat.DropFormat
+      Api.IngestFormat.StreamingFormat.Protobuf(schemaUrl, typeName)
+    case Ingest.StreamingFormat.AvroFormat(schemaUrl) => Api.IngestFormat.StreamingFormat.Avro(schemaUrl)
+    case Ingest.StreamingFormat.DropFormat => Api.IngestFormat.StreamingFormat.Drop
   }
   def apply(
     proto: V1.WebsocketSimpleStartupIngest.KeepaliveProtocol,
@@ -77,15 +77,15 @@ object IngestToApi {
       Api.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis)
     case V1.WebsocketSimpleStartupIngest.NoKeepalive => Api.WebsocketSimpleStartupIngest.NoKeepalive
   }
-  def apply(it: V1.KinesisIngest.IteratorType): Api.KinesisIngest.IteratorType = it match {
-    case V1.KinesisIngest.IteratorType.Latest => Api.KinesisIngest.IteratorType.Latest
-    case V1.KinesisIngest.IteratorType.TrimHorizon => Api.KinesisIngest.IteratorType.TrimHorizon
+  def apply(it: V1.KinesisIngest.IteratorType): Api.IngestSource.Kinesis.IteratorType = it match {
+    case V1.KinesisIngest.IteratorType.Latest => Api.IngestSource.Kinesis.IteratorType.Latest
+    case V1.KinesisIngest.IteratorType.TrimHorizon => Api.IngestSource.Kinesis.IteratorType.TrimHorizon
     case V1.KinesisIngest.IteratorType.AtSequenceNumber(sequenceNumber) =>
-      Api.KinesisIngest.IteratorType.AtSequenceNumber(sequenceNumber)
+      Api.IngestSource.Kinesis.IteratorType.AtSequenceNumber(sequenceNumber)
     case V1.KinesisIngest.IteratorType.AfterSequenceNumber(sequenceNumber) =>
-      Api.KinesisIngest.IteratorType.AfterSequenceNumber(sequenceNumber)
+      Api.IngestSource.Kinesis.IteratorType.AfterSequenceNumber(sequenceNumber)
     case V1.KinesisIngest.IteratorType.AtTimestamp(millisSinceEpoch) =>
-      Api.KinesisIngest.IteratorType.AtTimestamp(millisSinceEpoch)
+      Api.IngestSource.Kinesis.IteratorType.AtTimestamp(millisSinceEpoch)
   }
   def apply(proto: V1.KafkaSecurityProtocol): Api.KafkaSecurityProtocol = proto match {
     case V1.KafkaSecurityProtocol.PlainText => Api.KafkaSecurityProtocol.PlainText
@@ -259,7 +259,7 @@ object IngestToApi {
           characterEncoding,
           recordDecoders,
         ) =>
-      Api.FileIngest(
+      Api.IngestSource.File(
         IngestToApi(format),
         path,
         ingestMode.map(IngestToApi.apply),
@@ -280,7 +280,7 @@ object IngestToApi {
           characterEncoding,
           recordDecoders,
         ) =>
-      Api.S3Ingest(
+      Api.IngestSource.S3(
         IngestToApi(format),
         bucket,
         key,
@@ -292,18 +292,18 @@ object IngestToApi {
         recordDecoders.map(IngestToApi.apply),
       )
     case Ingest.StdInputIngest(format, maximumLineSize, characterEncoding) =>
-      Api.StdInputIngest(
+      Api.IngestSource.StdInput(
         IngestToApi(format),
         maximumLineSize,
         characterEncoding,
       )
     case Ingest.NumberIteratorIngest(_, startOffset, limit) =>
-      Api.NumberIteratorIngest(
+      Api.IngestSource.NumberIterator(
         startOffset,
         limit,
       )
     case Ingest.WebsocketIngest(format, url, initMessages, keepAlive, characterEncoding) =>
-      Api.WebsocketIngest(
+      Api.IngestSource.Websocket(
         IngestToApi(format),
         url,
         initMessages,
@@ -320,7 +320,7 @@ object IngestToApi {
           numRetries,
           recordDecoders,
         ) =>
-      Api.KinesisIngest(
+      Api.IngestSource.Kinesis(
         IngestToApi(format),
         streamName,
         shardIds,
@@ -344,7 +344,7 @@ object IngestToApi {
           checkpointSettings,
           advancedSettings,
         ) =>
-      Api.KinesisKCLIngest(
+      Api.IngestSource.KinesisKCL(
         kinesisStreamName = kinesisStreamName,
         applicationName = applicationName,
         IngestToApi(format),
@@ -358,13 +358,13 @@ object IngestToApi {
         Some(IngestToApi(advancedSettings)),
       )
     case Ingest.ServerSentEventIngest(format, url, recordDecoders) =>
-      Api.ServerSentEventIngest(
+      Api.IngestSource.ServerSentEvent(
         IngestToApi(format),
         url,
         recordDecoders.map(IngestToApi.apply),
       )
     case Ingest.SQSIngest(format, queueUrl, readParallelism, credentials, region, deleteReadMessages, recordDecoders) =>
-      Api.SQSIngest(
+      Api.IngestSource.SQS(
         IngestToApi(format),
         queueUrl,
         readParallelism,
@@ -385,7 +385,7 @@ object IngestToApi {
           endingOffset,
           recordDecoders,
         ) =>
-      Api.KafkaIngest(
+      Api.IngestSource.Kafka(
         IngestToApi(format),
         topics,
         bootstrapServers,
@@ -397,7 +397,8 @@ object IngestToApi {
         endingOffset,
         recordDecoders.map(IngestToApi.apply),
       )
-    case Ingest.ReactiveStreamIngest(format, url, port) => Api.ReactiveStream(IngestToApi(format), url, port)
+    case Ingest.ReactiveStreamIngest(format, url, port) =>
+      Api.IngestSource.ReactiveStream(IngestToApi(format), url, port)
   }
 
   def apply(handler: Ingest.OnStreamErrorHandler): Api.OnStreamErrorHandler = handler match {

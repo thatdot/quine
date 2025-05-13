@@ -17,7 +17,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.app.config.QuineConfig
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.KinesisIngest.IteratorType
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{Oss, RecordDecodingType}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
@@ -81,7 +81,7 @@ class EndpointValidationSpec
 
   "A kafka ingest with unrecognized properties" should "fail with 400" in {
     val url = s"$baseUrl/ingests/foo"
-    val kafkaIngest: Api.KafkaIngest = kafkaGen.sample.get.copy(kafkaProperties =
+    val kafkaIngest: Api.IngestSource.Kafka = kafkaGen.sample.get.copy(kafkaProperties =
       Map(
         "Unrecognized.property.name" -> "anything",
         "bootstrap.servers" -> "this is an illegal field and should not be used",

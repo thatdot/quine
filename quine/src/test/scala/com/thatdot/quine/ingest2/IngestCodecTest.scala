@@ -12,11 +12,20 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.FileFormat.{CsvFormat, JsonFormat}
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.KinesisIngest.IteratorType
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.RecordDecodingType._
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.StreamingFormat.ProtobufFormat
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
+  AwsCredentials,
+  AwsRegion,
+  FileIngestMode,
+  IngestFormat,
+  IngestSource,
+  KafkaAutoOffsetReset,
+  KafkaOffsetCommitting,
+  KafkaSecurityProtocol,
+  Oss,
+  WebsocketSimpleStartupIngest,
+}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 class IngestCodecTest
@@ -32,34 +41,33 @@ class IngestCodecTest
   }
 
   test("num ingest json encode/decode") {
-    testJsonEncodeDecode(NumberIteratorIngest(2, Some(3)))
+    testJsonEncodeDecode(IngestSource.NumberIterator(2, Some(3)))
   }
 
   test("csv format json encode/decode") {
-    testJsonEncodeDecode(CsvFormat(Left(true)))
-    testJsonEncodeDecode(CsvFormat(Right(List("A", "B"))))
+    testJsonEncodeDecode(IngestFormat.FileFormat.Csv(Left(true)))
+    testJsonEncodeDecode(IngestFormat.FileFormat.Csv(Right(List("A", "B"))))
   }
 
   test("file json encode/decode") {
     testJsonEncodeDecode(
-      ApiIngest
-        .FileIngest(
-          JsonFormat,
-          "/a",
-          Some(FileIngestMode.Regular),
-          Some(10),
-          10,
-          Some(20),
-          Charset.forName("UTF-16"),
-          Seq(Zlib),
-        ),
+      ApiIngest.IngestSource.File(
+        IngestFormat.FileFormat.Json,
+        "/a",
+        Some(FileIngestMode.Regular),
+        Some(10),
+        10,
+        Some(20),
+        Charset.forName("UTF-16"),
+        Seq(Zlib),
+      ),
     )
   }
 
   test("s3 json encode/decode") {
     testJsonEncodeDecode(
-      ApiIngest.S3Ingest(
-        JsonFormat,
+      ApiIngest.IngestSource.S3(
+        IngestFormat.FileFormat.Json,
         "bucket",
         "key",
         Some(AwsCredentials("A", "B")),
@@ -73,13 +81,15 @@ class IngestCodecTest
   }
 
   test("stdin json encode/decode") {
-    testJsonEncodeDecode(ApiIngest.StdInputIngest(JsonFormat, Some(10), Charset.forName("UTF-16")))
+    testJsonEncodeDecode(
+      ApiIngest.IngestSource.StdInput(IngestFormat.FileFormat.Json, Some(10), Charset.forName("UTF-16")),
+    )
   }
 
   test("websocket json encode/decode") {
     testJsonEncodeDecode(
-      ApiIngest.WebsocketIngest(
-        StreamingFormat.JsonFormat,
+      ApiIngest.IngestSource.Websocket(
+        IngestFormat.StreamingFormat.Json,
         "url",
         Seq("A", "B", "C"),
         WebsocketSimpleStartupIngest.SendMessageInterval("message", 5001),
@@ -91,8 +101,8 @@ class IngestCodecTest
   test("kinesis json encode/decode") {
 
     testJsonEncodeDecode(
-      ApiIngest.KinesisIngest(
-        StreamingFormat.JsonFormat,
+      ApiIngest.IngestSource.Kinesis(
+        IngestFormat.StreamingFormat.Json,
         "streamName",
         Some(Set("A", "B", "C")),
         Some(AwsCredentials("A", "B")),
@@ -105,13 +115,15 @@ class IngestCodecTest
   }
 
   test("sse json encode/decode") {
-    testJsonEncodeDecode(ApiIngest.ServerSentEventIngest(StreamingFormat.JsonFormat, "url", Seq(Base64, Zlib)))
+    testJsonEncodeDecode(
+      ApiIngest.IngestSource.ServerSentEvent(IngestFormat.StreamingFormat.Json, "url", Seq(Base64, Zlib)),
+    )
   }
 
   test("sqs json encode/decode") {
     testJsonEncodeDecode(
-      ApiIngest.SQSIngest(
-        StreamingFormat.JsonFormat,
+      ApiIngest.IngestSource.SQS(
+        IngestFormat.StreamingFormat.Json,
         "queueUrl",
         12,
         Some(AwsCredentials("A", "B")),
@@ -132,8 +144,8 @@ class IngestCodecTest
         false,
       ),
     )
-    ApiIngest.KafkaIngest(
-      StreamingFormat.JsonFormat,
+    ApiIngest.IngestSource.Kafka(
+      IngestFormat.StreamingFormat.Json,
       topics,
       "bootstrapServers",
       Some("groupId"),
@@ -157,8 +169,8 @@ class IngestCodecTest
         false,
       ),
     )
-    val kafka = ApiIngest.KafkaIngest(
-      ProtobufFormat("url", "typename"),
+    val kafka = ApiIngest.IngestSource.Kafka(
+      IngestFormat.StreamingFormat.Protobuf("url", "typename"),
       topics,
       "bootstrapServers",
       Some("groupId"),

@@ -14,11 +14,10 @@ import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.CsvCharacter.{Backslash, Comma, DoubleQuote}
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.FileFormat.CsvFormat
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 
 trait V2IngestApiSchemas extends V2ApiConfiguration {
-  implicit val config: Configuration = ingestSourceTypeConfig
+  implicit val config: Configuration = typeDiscriminatorConfig
 
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] =
     Schema.derived[RecordDecodingType]
@@ -28,7 +27,9 @@ trait V2IngestApiSchemas extends V2ApiConfiguration {
   implicit val ingestFormatTypeSchema: Schema[IngestFormat] =
     Schema.derived
       .description("Ingest format")
-      .encodedExample(CsvFormat(Right(List("header1", "header2")), Comma, DoubleQuote, Backslash).asJson)
+      .encodedExample(
+        IngestFormat.FileFormat.Csv(Right(List("header1", "header2")), Comma, DoubleQuote, Backslash).asJson,
+      )
 
   implicit val charsetCodec: Codec[String, Charset, TextPlain] = Codec.string.mapDecode(s =>
     scala.util.Try(Charset.forName(s)) match {

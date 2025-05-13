@@ -45,7 +45,7 @@ object V2IngestEntityEncoderDecoders extends V2IngestEntitySchemas {
 
 trait V2IngestEntitySchemas extends V2ApiConfiguration {
 
-  implicit lazy val config: Configuration = ingestSourceTypeConfig
+  implicit lazy val config: Configuration = typeDiscriminatorConfig
 
   implicit val csvCharacterSchema: Schema[V1.CsvCharacter] = Schema.derived[V1.CsvCharacter]
   implicit val recordDecodingTypeSchema: Schema[V1.RecordDecodingType] =

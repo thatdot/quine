@@ -42,19 +42,9 @@ trait V2ApiConfiguration extends TapirJsonCirce {
   implicit def circeConfig(implicit config: Configuration): CirceConfig = config.asCircle
   implicit def tapirConfig(implicit config: Configuration): TapirConfig = config.asTapir
 
-  val ingestSourceTypeConfig: Configuration =
+  val typeDiscriminatorConfig: Configuration =
     Configuration.default
       .withDiscriminator("type")
-      .renameConstructor("NumberIteratorIngest", "NumberIterator")
-      .renameConstructor("FileIngest", "File")
-      .renameConstructor("S3Ingest", "S3")
-      .renameConstructor("StdInputIngest", "StdInput")
-      .renameConstructor("WebsocketIngest", "Websocket")
-      .renameConstructor("KinesisIngest", "Kinesis")
-      .renameConstructor("KinesisKclIngest", "KinesisKcl")
-      .renameConstructor("ServerSentEventIngest", "ServerSentEvent")
-      .renameConstructor("SQSIngest", "SQS")
-      .renameConstructor("KafkaIngest", "Kafka")
 
   trait JsonDisjoint[A, B]
   trait JsonPrim[A]
