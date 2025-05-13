@@ -41,11 +41,15 @@ object V2AdministrationEndpointEntities {
   @title("System Build Information")
   @description("Information collected when this version of the system was compiled.")
   final case class TQuineInfo(
-    @title("Quine version") version: String,
-    @title("Current build git commit") gitCommit: Option[String],
-    @title("Current build commit date") gitCommitDate: Option[String],
-    @title("Java compilation version") javaVersion: String,
-    @title("Persistence data format version") persistenceWriteVersion: String,
+    @description("Quine version") version: String,
+    @description("Current build git commit") gitCommit: Option[String],
+    @description("Current build commit date") gitCommitDate: Option[String],
+    @description("Java compilation version") javaVersion: String,
+    @description("Java runtime version") javaRuntimeVersion: String,
+    @description("Java number of cores available") javaAvailableProcessors: Int,
+    @description("Java max head size in bytes") javaMaxMemory: Long,
+    @description("Persistence data format version") persistenceWriteVersion: String,
+    @description("Quine Type") quineType: String,
   )
 
   @title("Metrics Counter")
@@ -148,10 +152,12 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiCon
         serverError(),
       )
 
-  protected val buildInfoEndpoint: Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[TQuineInfo], Any, Future] =
-    adminEndpoint("build-info")
-      .name("Build Information")
-      .description("Returns a JSON object containing information about how Quine was built")
+  protected val systemInfoEndpoint: Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[TQuineInfo], Any, Future] =
+    adminEndpoint("system-info")
+      .name("System Information")
+      .description(
+        "Returns a JSON object containing information about how Quine was built and system runtime information.",
+      )
       .get
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[TQuineInfo]])
@@ -181,9 +187,7 @@ endpoint.
       }
 
   protected val graphHashCodeEndpoint
-    : Full[Unit, Unit, (Option[AtTime], Option[String]), ServerError, SuccessEnvelope.Ok[
-      TGraphHashCode,
-    ], Any, Future] =
+    : Full[Unit, Unit, (Option[AtTime], Option[String]), ServerError, SuccessEnvelope.Ok[TGraphHashCode], Any, Future] =
     adminEndpoint("graph-hash-code")
       .description("""Generate a hash of the state of the graph at the provided timestamp.
                    |
@@ -376,7 +380,7 @@ up ready and start routing user requests to it.
   val adminHiddenEndpoints: List[ServerEndpoint[Any, Future]] = List(metaDataEndpoint)
 
   val adminEndpoints: List[ServerEndpoint[Any, Future]] = List(
-    buildInfoEndpoint,
+    systemInfoEndpoint,
     configEndpoint,
     graphHashCodeEndpoint,
     livenessEndpoint,

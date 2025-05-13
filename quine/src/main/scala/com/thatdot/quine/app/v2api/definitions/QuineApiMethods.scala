@@ -109,7 +109,11 @@ trait ApplicationApiMethods {
       gitCommit,
       QuineBuildInfo.gitHeadCommitDate,
       QuineBuildInfo.javaVmName + " " + QuineBuildInfo.javaVersion + " (" + QuineBuildInfo.javaVendor + ")",
+      javaRuntimeVersion = Runtime.version().toString,
+      javaAvailableProcessors = sys.runtime.availableProcessors(),
+      javaMaxMemory = sys.runtime.maxMemory(),
       PersistenceAgent.CurrentVersion.shortString,
+      quineType = productVersion.toString,
     )
   }
 
