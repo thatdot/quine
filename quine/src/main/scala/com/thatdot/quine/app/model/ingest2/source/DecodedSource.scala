@@ -116,6 +116,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
           .via(ack)
           .map(_ => token)
           .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
+            c.onComplete(_ => onTermination())(ExecutionContext.parasitic)
             b.map(v => ControlSwitches(a, v, c))(ExecutionContext.parasitic)
           }
           .mapMaterializedValue(c => setControl(c, initialSwitchMode, registerTerminationHooks))
