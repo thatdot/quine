@@ -2,9 +2,9 @@ package com.thatdot.quine.app.v2api.definitions
 
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
-import sttp.tapir.json.circe.jsonBody
 import sttp.tapir.{EndpointOutput, Schema, statusCode}
 
+import com.thatdot.quine.app.v2api.endpoints.V2ApiConfiguration.jsonBody
 import com.thatdot.quine.util.BaseError
 
 /** Errors that api v2 cares to distinguish for reporting */
@@ -22,7 +22,13 @@ object ErrorType {
   /** General Api error that we don't have any extra information about */
   case class ApiError(message: String) extends ErrorType
 
-  /** General Api error type for any Cypher Error
+  /** Api error type for any sort of Decode Failure
+    *
+    * Used currently for a custom decode failure handler passed to Pekko Server Options.
+    */
+  case class DecodeError(message: String, help: Option[String] = None) extends ErrorType
+
+  /** Api error type for any Cypher Error
     *
     *  This could be further broken down based upon CypherException later.
     */
@@ -47,6 +53,7 @@ object ErrorResponse {
 
   object ServerError {
     def apply(error: String): ServerError = ServerError(List(ErrorType.ApiError(error)))
+    def apply(error: ErrorType): ServerError = ServerError(List(error))
     def apply(error: BaseError): ServerError = ServerError(
       List(ErrorType.ApiError(error.getMessage)),
     )
@@ -68,12 +75,14 @@ object ErrorResponse {
 
   object NotFound {
     def apply(error: String): NotFound = NotFound(List(ErrorType.ApiError(error)))
+    def apply(error: ErrorType): NotFound = NotFound(List(error))
     def apply(error: BaseError): NotFound = NotFound(List(ErrorType.ApiError(error.getMessage)))
     def ofErrors(errors: List[BaseError]): NotFound = NotFound(errors.map(err => ErrorType.ApiError(err.getMessage)))
   }
 
   object ServiceUnavailable {
     def apply(error: String): ServiceUnavailable = ServiceUnavailable(List(ErrorType.ApiError(error)))
+    def apply(error: ErrorType): ServiceUnavailable = ServiceUnavailable(List(error))
     def apply(error: BaseError): ServiceUnavailable = ServiceUnavailable(List(ErrorType.ApiError(error.getMessage)))
     def ofErrors(errors: List[BaseError]): ServiceUnavailable = ServiceUnavailable(
       errors.map(err => ErrorType.ApiError(err.getMessage)),

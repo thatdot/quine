@@ -130,7 +130,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
       )((inp: Unit) => SuccessEnvelope.Created(inp))
     }
 
-  private val exPattern = """MATCH (n) WHERE n % 100 == 0 RETURN n.num"""
+  private val exPattern = """MATCH (n) WHERE n.num % 100 = 0 RETURN n.num"""
 
   private val createSqExample: StandingQueryDefinition =
     StandingQueryDefinition(Cypher(exPattern, MultipleValues), Map.from(List("stdout" -> PrintToStandardOut())))

@@ -5,6 +5,12 @@ import io.circe.{Decoder, Encoder, Json, Printer}
 import sttp.tapir.generic.{Configuration => TapirConfig}
 import sttp.tapir.json.circe.TapirJsonCirce
 
+/** For use when Importing definitions instead of mixing with V2ApiConfiguration
+  *
+  *  This object/trait should be used instead of TapirJsonCirce everywhere in api v2
+  */
+object V2ApiConfiguration extends V2ApiConfiguration
+
 trait V2ApiConfiguration extends TapirJsonCirce {
 
   override def jsonPrinter: Printer = Printer(dropNullValues = true, indent = "")

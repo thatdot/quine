@@ -8,21 +8,18 @@ import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.server.directives.DebuggingDirectives
 
 import com.github.pjfanning.pekkohttpcirce.FailFastCirceSupport
-import io.circe.generic.extras.auto._
 import io.circe.syntax._
 import sttp.apispec.openapi.circe._
 import sttp.apispec.openapi.{Info, OpenAPI}
 import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
-import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.server.model.ValuedEndpointOutput
 import sttp.tapir.server.pekkohttp.{PekkoHttpServerInterpreter, PekkoHttpServerOptions}
 
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 /** Definitions wrapping Tapir endpoints into akka-http routes.
   */
-abstract class TapirRoutes extends FailFastCirceSupport with V2IngestApiSchemas {
+abstract class TapirRoutes extends FailFastCirceSupport with V2IngestApiSchemas with TapirDecodeErrorHandler {
   protected val apiEndpoints: List[ServerEndpoint[Any, Future]]
   protected val ingestEndpoints: List[ServerEndpoint[Any, Future]]
 
@@ -66,12 +63,12 @@ abstract class TapirRoutes extends FailFastCirceSupport with V2IngestApiSchemas 
       }
     }
 
-  private def decodeFailureResponse(m: String): ValuedEndpointOutput[_] =
-    ValuedEndpointOutput(jsonBody[ErrorResponse.BadRequest], ErrorResponse.BadRequest(m))
-
+  /** Uses a custom decode failure handler, [[customHandler]] that we define in order to capture special cases, like
+    * YAML, and augment errors messages with help text in hard to understand cases, `type` has a wrong value.
+    */
   private def serverOptions(implicit ec: ExecutionContext): PekkoHttpServerOptions =
     PekkoHttpServerOptions.customiseInterceptors
-      .defaultHandlers(decodeFailureResponse)
+      .decodeFailureHandler(customHandler)
       .options
 
   private def v2ApiRoutes(ingestOnly: Boolean)(implicit ec: ExecutionContext): Route =

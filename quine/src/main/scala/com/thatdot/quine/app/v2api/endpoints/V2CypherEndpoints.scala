@@ -10,7 +10,6 @@ import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.Schema.annotations.description
 import sttp.tapir.generic.auto._
-import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Codec, DecodeResult, Schema, oneOfBody, statusCode}
 
@@ -24,7 +23,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TUiNode,
 }
 
-object V2CypherEndpointEntities extends TapirJsonCirce {
+object V2CypherEndpointEntities {
   @title("Cypher Query")
   final case class TCypherQuery(
     @description("Text of the query to execute") text: String,
