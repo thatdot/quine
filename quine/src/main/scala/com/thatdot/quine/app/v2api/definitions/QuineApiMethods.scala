@@ -30,6 +30,7 @@ import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters._
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, ServerError}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.toServerError
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
@@ -148,7 +149,7 @@ import com.thatdot.quine.app.routes.{AlgorithmMethods => V1AlgorithmMethods}
 trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
 
   override val graph: BaseGraph with LiteralOpsGraph with StandingQueryOpsGraph with CypherOpsGraph with AlgorithmGraph
-  override val app: BaseApp with StandingQueryStoreV1 with IngestStreamState
+  override val app: BaseApp with StandingQueryStoreV1 with IngestStreamState with QueryUiConfigurationState
 
   // duplicated from, com.thatdot.quine.app.routes.IngestApiMethods
   private def stream2Info(
@@ -268,6 +269,24 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
           }(graph.shardDispatcherEC)
     }
   }
+
+  def getSamplesQueries(implicit ctx: ExecutionContext): Future[Vector[SampleQuery]] =
+    graph.requiredGraphIsReadyFuture(app.getSampleQueries).map(_.map(UiStylingToApi.apply))
+
+  def setSampleQueries(newSampleQueries: Vector[SampleQuery]): Future[Unit] =
+    graph.requiredGraphIsReadyFuture(app.setSampleQueries(newSampleQueries.map(ApiToUiStyling.apply)))
+
+  def getQuickQueries(implicit ctx: ExecutionContext): Future[Vector[UiNodeQuickQuery]] =
+    graph.requiredGraphIsReadyFuture(app.getQuickQueries.map(_.map(UiStylingToApi.apply)))
+
+  def getNodeAppearances(implicit ctx: ExecutionContext): Future[Vector[UiNodeAppearance]] =
+    graph.requiredGraphIsReadyFuture(app.getNodeAppearances.map(_.map(UiStylingToApi.apply)))
+
+  def setQuickQueries(newQuickQueries: Vector[UiNodeQuickQuery]): Future[Unit] =
+    graph.requiredGraphIsReadyFuture(app.setQuickQueries(newQuickQueries.map(ApiToUiStyling.apply)))
+
+  def setNodeAppearances(newNodeAppearances: Vector[UiNodeAppearance]): Future[Unit] =
+    graph.requiredGraphIsReadyFuture(app.setNodeAppearances(newNodeAppearances.map(ApiToUiStyling.apply)))
 
   def deleteSQOutput(
     name: String,
@@ -730,4 +749,5 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
         }(implicitly, graph.shardDispatcherEC)
         .map(_.toMap)(graph.shardDispatcherEC)
     }
+
 }

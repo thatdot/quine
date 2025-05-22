@@ -11,7 +11,7 @@ import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.Schema.annotations.description
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.{Codec, DecodeResult, Schema, oneOfBody, statusCode}
+import sttp.tapir.{Codec, DecodeResult, Endpoint, Schema, oneOfBody, statusCode}
 
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, serverError}
@@ -46,7 +46,7 @@ object V2CypherEndpointEntities {
 
   case class TUiEdge(from: QuineId, edgeType: String, to: QuineId, isDirected: Boolean = true)
 }
-trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
+trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
 
   implicit val cypherQuerySchema: Schema[TCypherQuery] = Schema
     .derived[TCypherQuery]
@@ -66,7 +66,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigurati
   private val cypherLanguageUrl = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
 
   /** SQ Base path */
-  private def cypherQueryEndpoint =
+  def cypherQueryEndpoint: Endpoint[Unit, Unit, ErrorResponse.ServerError, Unit, Any] =
     rawEndpoint("cypher-queries")
       .tag("Cypher Query Language")
       .errorOut(serverError())

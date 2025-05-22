@@ -14,12 +14,14 @@ import com.thatdot.quine.app.v2api.endpoints.{
   V2DebugEndpoints,
   V2IngestEndpoints,
   V2StandingEndpoints,
+  V2UiStylingEndpoints,
 }
 
 /** Gathering of Quine OSS tapir-defined routes.
   */
 class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfig: LogConfig)
     extends TapirRoutes
+    with V2UiStylingEndpoints
     with V2AdministrationEndpoints
     with V2StandingEndpoints
     with V2CypherEndpoints
@@ -28,7 +30,7 @@ class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfi
     with V2IngestEndpoints {
 
   override val apiEndpoints: List[ServerEndpoint[Any, Future]] = {
-    adminEndpoints ++ debugEndpoints ++ ingestEndpoints ++ algorithmEndpoints ++ standingQueryEndpoints ++ cypherEndpoints
+    uiEndpoints ++ adminEndpoints ++ debugEndpoints ++ ingestEndpoints ++ algorithmEndpoints ++ standingQueryEndpoints ++ cypherEndpoints
   }
 
   /** List of endpoints that should not appear in api docs. */
