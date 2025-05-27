@@ -44,7 +44,7 @@ object Dependencies {
   val pegdownV = "1.6.0"
   val pekkoV = "1.1.3"
   val pekkoHttpV = "1.1.0"
-  val pekkoHttpCirceV = "3.0.0"
+  val pekkoHttpCirceV = "3.0.1"
   val pekkoManagementV = "1.1.0"
   val pekkoKafkaV = "1.1.0"
   val pekkoConnectorsV = "1.1.0"
