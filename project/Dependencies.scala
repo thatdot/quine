@@ -52,7 +52,7 @@ object Dependencies {
   val pprintV = "0.9.0"
   val protobufV = "3.25.6"
   val protobufCommonV = "2.14.2"
-  val pureconfigV = "0.17.8"
+  val pureconfigV = "0.17.9"
   val quineQueryV = "0.2.3"
   val quineCommonV = "0.0.3"
   val reactPlotlyV = "2.5.1"
