@@ -230,7 +230,8 @@ abstract class CassandraPersistor(
   override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
     standingQueryStates.deleteStandingQueryStates(id)
 
-  def containsMultipleValuesStates(): Future[Boolean] = standingQueryStates.containsMultipleValuesStates()
+  def containsMultipleValuesStates(): Future[Boolean] =
+    standingQueryStates.isEmpty().map(!_)(ExecutionContext.parasitic)
 
   override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] =
     throw new QuinePatternUnimplementedException("Persisting query plans is not supported yet.")
