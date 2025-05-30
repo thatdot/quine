@@ -7,16 +7,16 @@ import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{EndpointInput, path, query, statusCode}
+import sttp.tapir.{EndpointInput, emptyOutputAs, path, query, statusCode}
 
-import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, ServerError}
-import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, serverError}
+import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, NotFound, ServerError}
+import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode.MultipleValues
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultOutputUserDef
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultOutputUserDef.PrintToStandardOut
-import com.thatdot.quine.app.v2api.definitions.{SuccessEnvelope, V2QuineEndpointDefinitions}
+import com.thatdot.quine.app.v2api.definitions.{ErrorResponse, SuccessEnvelope, V2QuineEndpointDefinitions}
 
 trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiSchemas with V2ApiConfiguration {
 
@@ -33,6 +33,10 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     rawEndpoint("standing-queries")
       .tag("Standing Queries")
       .errorOut(serverError())
+
+  private def rawStandingQueryEndpoint =
+    rawEndpoint("standing-queries")
+      .tag("Standing Queries")
 
   private val listStandingQueriesEndpoint: ServerEndpoint.Full[Unit, Unit, Option[
     String,
@@ -101,15 +105,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
         )((_: Unit) => SuccessEnvelope.Accepted())
       }
 
-  private val addSQOutputEndpoint: Full[
-    Unit,
-    Unit,
-    (String, String, Option[String], StandingQueryResultOutputUserDef),
-    Either[ServerError, BadRequest],
-    SuccessEnvelope.Created[Unit],
-    Any,
-    Future,
-  ] = standingQueryEndpoint
+  private val addSQOutputEndpoint = rawStandingQueryEndpoint
     .name("Create Standing Query Output")
     .description(
       "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed.",
@@ -119,12 +115,15 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     .in(sqOutputName)
     .in(namespaceParameter)
     .in(jsonOrYamlBody[StandingQueryResultOutputUserDef](Some(StandingQueryResultOutputUserDef.PrintToStandardOut())))
-    .errorOutEither(badRequestError("Output is invalid", "There is another output with that name already"))
+    .errorOut(badRequestError("Output is invalid", "There is another output with that name already"))
+    .errorOutEither(notFoundError("No Standing Queries exist with the provided name."))
+    .errorOutEither(serverError())
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Created))
-    .out(jsonBody[SuccessEnvelope.Created[Unit]])
+    .out(emptyOutputAs[SuccessEnvelope.Created[Unit]](SuccessEnvelope.Created(())))
     .post
     .serverLogic[Future] { case (sqName, sqOutputName, namespace, outputDef) =>
-      recoverServerErrorEitherFlat(
+      recoverServerErrorEither(
         appMethods
           .addSQOutput(sqName, sqOutputName, namespaceFromParam(namespace), outputDef),
       )((inp: Unit) => SuccessEnvelope.Created(inp))
@@ -137,10 +136,8 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
 
   private val createSQEndpoint: Full[Unit, Unit, (String, Option[String], Boolean, StandingQueryDefinition), Either[
     ServerError,
-    BadRequest,
-  ], SuccessEnvelope.Created[Option[
-    Unit,
-  ]], Any, Future] = standingQueryEndpoint
+    Either[BadRequest, NotFound],
+  ], SuccessEnvelope.Created[RegisteredStandingQuery], Any, Future] = rawStandingQueryEndpoint
     .name("Create Standing Query")
     .description("""|Individual standing queries are issued into the graph one time;
                      |result outputs are produced as new data is written into Quine and matches are found.
@@ -162,21 +159,25 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     )
     .in(jsonOrYamlBody[StandingQueryDefinition](Some(createSqExample)))
     .post
-    .errorOutEither(
+    .errorOut(
       badRequestError("A standing query with that name already exists", "There is an issue with the query"),
     )
+    .errorOutEither(notFoundError())
+    .errorOutEither(serverError())
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Created))
-    .out(jsonBody[SuccessEnvelope.Created[Option[Unit]]])
+    .out(jsonBody[SuccessEnvelope.Created[RegisteredStandingQuery]])
     .serverLogic[Future] { case (sqName, namespace, shouldCalculateResultHashCode, definition) =>
-      recoverServerErrorEitherFlat(
+      recoverServerErrorEither(
         appMethods
           .createSQ(sqName, namespaceFromParam(namespace), shouldCalculateResultHashCode, definition),
-      )((inp: Option[Unit]) => SuccessEnvelope.Created(inp))
+      )(SuccessEnvelope.Created(_))
     }
 
-  private val deleteSQEndpoint: Full[Unit, Unit, (String, Option[String]), ServerError, SuccessEnvelope.Ok[Option[
-    RegisteredStandingQuery,
-  ]], Any, Future] =
+  private val deleteSQEndpoint
+    : Full[Unit, Unit, (String, Option[String]), Either[ServerError, ErrorResponse.NotFound], SuccessEnvelope.Ok[
+      RegisteredStandingQuery,
+    ], Any, Future] =
     standingQueryEndpoint
       .name("Delete Standing Query")
       .description("Immediately halt and remove the named standing query from Quine.")
@@ -184,17 +185,18 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
       .in(namespaceParameter)
       .delete
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[Option[RegisteredStandingQuery]]])
+      .out(jsonBody[SuccessEnvelope.Ok[RegisteredStandingQuery]])
+      .errorOutEither(notFoundError("No Standing Queries exist with the provided name."))
       .serverLogic[Future] { case (standingQueryName, namespace) =>
-        recoverServerError(appMethods.deleteSQ(standingQueryName, namespaceFromParam(namespace)))(
-          (inp: Option[RegisteredStandingQuery]) => SuccessEnvelope.Ok(inp),
+        recoverServerErrorEitherFlat(appMethods.deleteSQ(standingQueryName, namespaceFromParam(namespace)))(
+          SuccessEnvelope.Ok(_),
         )
       }
 
-  private val deleteSQOutputEndpoint
-    : Full[Unit, Unit, (String, String, Option[String]), ServerError, SuccessEnvelope.Ok[Option[
-      StandingQueryResultOutputUserDef,
-    ]], Any, Future] =
+  private val deleteSQOutputEndpoint: Full[Unit, Unit, (String, String, Option[String]), Either[
+    ServerError,
+    ErrorResponse.NotFound,
+  ], SuccessEnvelope.Ok[StandingQueryResultOutputUserDef], Any, Future] =
     standingQueryEndpoint
       .name("Delete Standing Query Output")
       .description("Remove an output from a standing query.")
@@ -204,16 +206,18 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
       .in(namespaceParameter)
       .delete
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[Option[StandingQueryResultOutputUserDef]]])
+      .out(jsonBody[SuccessEnvelope.Ok[StandingQueryResultOutputUserDef]])
+      .errorOutEither(notFoundError("No Standing Queries exist with the provided name."))
       .serverLogic[Future] { case (sqName, sqOutputName, namespace) =>
-        recoverServerError(appMethods.deleteSQOutput(sqName, sqOutputName, namespaceFromParam(namespace)))(
-          (inp: Option[StandingQueryResultOutputUserDef]) => SuccessEnvelope.Ok(inp),
+        recoverServerErrorEitherFlat(appMethods.deleteSQOutput(sqName, sqOutputName, namespaceFromParam(namespace)))(
+          SuccessEnvelope.Ok(_),
         )
       }
 
-  private val getSqEndpoint: Full[Unit, Unit, (String, Option[String]), ServerError, SuccessEnvelope.Ok[Option[
-    RegisteredStandingQuery,
-  ]], Any, Future] =
+  private val getSqEndpoint
+    : Full[Unit, Unit, (String, Option[String]), Either[ServerError, ErrorResponse.NotFound], SuccessEnvelope.Ok[
+      RegisteredStandingQuery,
+    ], Any, Future] =
     standingQueryEndpoint
       .name("Standing Query Status")
       .description("Return the status information for a configured standing query by name.")
@@ -221,10 +225,11 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
       .in(namespaceParameter)
       .get
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[Option[RegisteredStandingQuery]]])
+      .out(jsonBody[SuccessEnvelope.Ok[RegisteredStandingQuery]])
+      .errorOutEither(notFoundError("No Standing Queries exist with the provided name."))
       .serverLogic[Future] { case (sqName, namespace) =>
-        recoverServerError(appMethods.getSQ(sqName, namespaceFromParam(namespace)))(
-          (inp: Option[RegisteredStandingQuery]) => SuccessEnvelope.Ok(inp),
+        recoverServerErrorEitherFlat(appMethods.getSQ(sqName, namespaceFromParam(namespace)))(
+          SuccessEnvelope.Ok(_),
         )
       }
 

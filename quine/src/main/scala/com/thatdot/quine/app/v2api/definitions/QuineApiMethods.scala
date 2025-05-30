@@ -26,14 +26,16 @@ import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
+import com.thatdot.quine.app.model.ingest2.source.QuineValueIngestQuery
 import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters._
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
-import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, ServerError}
+import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.toServerError
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.RegisteredStandingQuery
 import com.thatdot.quine.app.v2api.definitions.query.standing.{StandingQuery, StandingQueryResultOutputUserDef}
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
@@ -84,7 +86,7 @@ trait ApplicationApiMethods {
 
   def emptyConfigExample: BaseConfig
 
-  def isReady = graph.isReady
+  def isReady: Boolean = graph.isReady
 
   def isLive = true
 
@@ -118,12 +120,10 @@ trait ApplicationApiMethods {
     )
   }
 
-  def metaData: Future[Map[String, String]] = {
-    implicit val ec = ExecutionContext.parasitic
+  def metaData(implicit ec: ExecutionContext): Future[Map[String, String]] =
     graph.namespacePersistor.getAllMetaData().flatMap { m =>
       Future.successful(m.view.mapValues(new String(_)).toMap)
     }
-  }
 
   def metrics: MetricsReport = GenerateMetrics.metricsReport(graph)
 
@@ -219,7 +219,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     app.deleteNamespace(Some(Symbol(namespace)))
 
   def listAllStandingQueries: Future[List[StandingQuery.RegisteredStandingQuery]] = {
-    implicit val executor = ExecutionContext.parasitic
+    implicit val executor: ExecutionContext = ExecutionContext.parasitic
     Future.sequence(app.getNamespaces.map(app.getStandingQueries)).map(_.toList.flatten).map(_.map(StandingToApi.apply))
   }
 
@@ -250,25 +250,32 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       case _ => None
     }
 
+  private type ErrSq = BadRequest :+: NotFound :+: CNil
+  private def asBadRequest(msg: String): ErrSq = Coproduct[ErrSq](BadRequest(msg))
+  private def asBadRequest(msg: ErrorType): ErrSq = Coproduct[ErrSq](BadRequest(msg))
+  private def asNotFound(msg: String): ErrSq = Coproduct[ErrSq](NotFound(msg))
+
   def addSQOutput(
     name: String,
     outputName: String,
     namespaceId: NamespaceId,
     sqResultOutput: StandingQueryResultOutputUserDef,
-  ): Future[Either[BadRequest, Unit]] = graph.requiredGraphIsReadyFuture {
-    validateOutputDef(sqResultOutput) match {
-      case Some(errors) =>
-        Future.successful(Left(BadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}")))
+  ): Future[Either[ErrSq, Unit]] =
+    graph.requiredGraphIsReadyFuture {
+      validateOutputDef(sqResultOutput) match {
+        case Some(errors) =>
+          Future.successful(Left(asBadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}")))
 
-      case _ =>
-        app
-          .addStandingQueryOutput(name, outputName, namespaceId, ApiToStanding(sqResultOutput))
-          .map {
-            case Some(false) => Left(BadRequest(s"There is already a standing query output named '$outputName'"))
-            case _ => Right(())
-          }(graph.shardDispatcherEC)
+        case _ =>
+          app
+            .addStandingQueryOutput(name, outputName, namespaceId, ApiToStanding(sqResultOutput))
+            .map {
+              case Some(false) => Left(asBadRequest(s"There is already a standing query output named '$outputName'"))
+              case Some(true) => Right(())
+              case _ => Left(asNotFound(s"Standing Query, $name, does not exists"))
+            }(graph.shardDispatcherEC)
+      }
     }
-  }
 
   def getSamplesQueries(implicit ctx: ExecutionContext): Future[Vector[SampleQuery]] =
     graph.requiredGraphIsReadyFuture(app.getSampleQueries).map(_.map(UiStylingToApi.apply))
@@ -292,10 +299,14 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     name: String,
     outputName: String,
     namespaceId: NamespaceId,
-  ): Future[Option[StandingQueryResultOutputUserDef]] = graph.requiredGraphIsReadyFuture {
+  ): Future[Either[NotFound, StandingQueryResultOutputUserDef]] = graph.requiredGraphIsReadyFuture {
+    implicit val exc = ExecutionContext.parasitic
     app
       .removeStandingQueryOutput(name, outputName, namespaceId)
-      .map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)
+      .map(
+        _.toRight(NotFound(s"Standing Query, $name, does not exists"))
+          .map(StandingToApi.apply),
+      )
   }
 
   def createSQ(
@@ -303,29 +314,48 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     namespaceId: NamespaceId,
     shouldCalculateResultHashCode: Boolean = false,
     sq: StandingQuery.StandingQueryDefinition,
-  ): Future[Either[BadRequest, Option[Unit]]] =
-    graph.requiredGraphIsReadyFuture {
-      try app
-        .addStandingQuery(name, namespaceId, ApiToStanding(sq, shouldCalculateResultHashCode))
-        .map {
-          case false => Left(BadRequest(s"There is already a standing query named '$name'"))
-          case true => Right(Some(()))
-        }(graph.nodeDispatcherEC)
-        .recoverWith { case _: NamespaceNotFoundException =>
-          Future.successful(Right(None))
-        }(graph.nodeDispatcherEC)
-      catch {
-        case iqp: InvalidQueryPattern => Future.successful(Left(BadRequest(iqp.message)))
-        case cypherException: CypherException =>
-          Future.successful(Left(BadRequest(ErrorType.CypherError(cypherException.pretty))))
+  ): Future[Either[ErrSq, RegisteredStandingQuery]] = {
+    implicit val ctx: ExecutionContext = graph.nodeDispatcherEC
+    graph
+      .requiredGraphIsReadyFuture {
+        try app
+          .addStandingQuery(name, namespaceId, ApiToStanding(sq, shouldCalculateResultHashCode))
+          .flatMap {
+            case false => Future.successful(Left(asBadRequest(s"There is already a standing query named '$name'")))
+            case true =>
+              app.getStandingQuery(name, namespaceId).map {
+                case Some(value) => Right(StandingToApi(value))
+                case None => sys.error("Standing Query not found after adding, this should not happen.")
+              }
+          } catch {
+          case iqp: InvalidQueryPattern => Future.successful(Left(asBadRequest(iqp.message)))
+          case cypherException: CypherException =>
+            Future.successful(Left(asBadRequest(ErrorType.CypherError(cypherException.pretty))))
+        }
       }
-    }
+      .recoverWith { case _: NamespaceNotFoundException =>
+        Future.successful(Left(asNotFound(s"Namespace, $namespaceId, Not Found")))
+      }
+  }
 
-  def deleteSQ(name: String, namespaceId: NamespaceId): Future[Option[StandingQuery.RegisteredStandingQuery]] =
-    app.cancelStandingQuery(name, namespaceId).map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)
+  def deleteSQ(
+    name: String,
+    namespaceId: NamespaceId,
+  ): Future[Either[NotFound, StandingQuery.RegisteredStandingQuery]] =
+    app
+      .cancelStandingQuery(name, namespaceId)
+      .map(
+        _.toRight(NotFound(s"Standing Query, $name, does not exists"))
+          .map(StandingToApi.apply),
+      )(ExecutionContext.parasitic)
 
-  def getSQ(name: String, namespaceId: NamespaceId): Future[Option[StandingQuery.RegisteredStandingQuery]] =
-    app.getStandingQuery(name, namespaceId).map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)
+  def getSQ(name: String, namespaceId: NamespaceId): Future[Either[NotFound, StandingQuery.RegisteredStandingQuery]] =
+    app
+      .getStandingQuery(name, namespaceId)
+      .map(
+        _.toRight(NotFound(s"Standing Query, $name, does not exists"))
+          .map(StandingToApi.apply),
+      )(ExecutionContext.parasitic)
 
   // --------------------- Cypher Endpoints ------------------------
 
@@ -492,13 +522,13 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     seedOpt: Option[String],
     namespaceId: NamespaceId,
     atTime: Option[Milliseconds],
-  ): Future[Either[ServerError :+: BadRequest :+: CNil, Option[List[String]]]] = {
+  ): Future[Either[ServerError :+: BadRequest :+: CNil, List[String]]] = {
 
-    val errors: Either[ServerError :+: BadRequest :+: CNil, Option[List[String]]] = Try {
+    val errors: Either[ServerError :+: BadRequest :+: CNil, List[String]] = Try {
       require(!lengthOpt.exists(_ < 1), "walk length cannot be less than one.")
       require(!inOutParamOpt.exists(_ < 0d), "in-out parameter cannot be less than zero.")
       require(!returnParamOpt.exists(_ < 0d), "return parameter cannot be less than zero.")
-      Some(Nil)
+      Nil
     }.toEither.left
       .map {
         case e: CypherException =>
@@ -515,7 +545,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
           ) // this might expose more than we want
       }
     if (errors.isLeft)
-      Future.successful[Either[ServerError :+: BadRequest :+: CNil, Option[List[String]]]](errors)
+      Future.successful[Either[ServerError :+: BadRequest :+: CNil, List[String]]](errors)
     else {
 
       graph.requiredGraphIsReady()
@@ -532,7 +562,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
           namespaceId,
           atTime,
         )
-        .map(w => Right(Some(w.acc)))(ExecutionContext.parasitic)
+        .map(w => Right(w.acc))(ExecutionContext.parasitic)
 
     }
   }
@@ -636,23 +666,69 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
 
   // --------------------- Ingest Endpoints ------------------------
 
+  private type ErrC = ServerError :+: BadRequest :+: CNil
+  private type Warnings = Set[String]
+
+  /** Wraps Create ingest in logic to check in ingest stream already exists and return stream info */
+  def handleCreateIngest[Conf](
+    ingestStreamName: String,
+    ns: NamespaceId,
+    ingestStreamConfig: Conf,
+  )(implicit
+    ec: ExecutionContext,
+    configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf],
+  ): Future[Either[ErrC, (ApiIngest.IngestStreamInfoWithName, Warnings)]] = {
+
+    def asBadRequest(msg: String): ErrC = Coproduct[ErrC](BadRequest(msg))
+    def asServerError(msg: String): ErrC = Coproduct[ErrC](ServerError(msg))
+
+    for {
+      existingIngests <- listIngestStreams(ns)
+
+      // Create the stream
+      eitherCreated = {
+        if (existingIngests.contains(ingestStreamName))
+          Left(asBadRequest(s"Ingest Stream, $ingestStreamName, already exists"))
+        else
+          createIngestStream(ingestStreamName, ingestStreamConfig, ns).left
+            .map(e => Coproduct[ErrC](e))
+      }
+
+      // Current stream info
+      optStream <- ingestStreamStatus(ingestStreamName, ns)
+
+      // Collect stream info and warnings.  Fail if stream cannot be found at this point.
+      result = eitherCreated.flatMap(warnings =>
+        optStream match {
+          case Some(stream) =>
+            Right((stream, warnings)): Either[ErrC, (ApiIngest.IngestStreamInfoWithName, Set[String])]
+          case None =>
+            Left(asServerError("Ingest was not found after creation"))
+        },
+      )
+
+    } yield result
+
+  }
+
   def createIngestStream[Conf](
     ingestName: String,
     settings: Conf,
     namespaceId: NamespaceId,
-  )(implicit configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf]): Either[BadRequest, Boolean] =
+  )(implicit configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf]): Either[BadRequest, Set[String]] =
     try app
       .addV2IngestStream(
         ingestName,
         configOf(settings),
         namespaceId,
         None, // this ingest is being created, not restored, so it has no previous status
-        true,
+        shouldResumeRestoredIngests = true,
         timeout,
-        true,
+        shouldSaveMetadata = true,
         Some(thisMemberIdx),
       )
       .toEither
+      .map(_ => QuineValueIngestQuery.getQueryWarnings(configOf(settings).query, configOf(settings).parameter))
       .left
       .map(s => BadRequest.ofErrors(s.toList))
     catch {

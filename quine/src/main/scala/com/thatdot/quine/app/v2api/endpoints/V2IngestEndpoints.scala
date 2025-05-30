@@ -12,11 +12,8 @@ import sttp.tapir.{EndpointInput, path, statusCode}
 
 import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
-import com.thatdot.quine.app.v2api.definitions.SuccessEnvelope.Created
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.Oss
 import com.thatdot.quine.app.v2api.definitions.{SuccessEnvelope, V2QuineEndpointDefinitions}
-
 trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
 
   import com.thatdot.quine.app.v2api.converters.ApiToIngest.OssConversions._
@@ -45,47 +42,34 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
 
   implicit val ec: ExecutionContext = ExecutionContext.parasitic
 
-  // TODO: return resource
-  private val createIngestEndpoint: Full[Unit, Unit, (String, Option[String], Oss.QuineIngestConfiguration), Either[
-    ServerError,
-    BadRequest,
-  ], Created[
-    Unit,
-  ], Any, Future] = rawIngestEndpoint
-    .name("Create Ingest Stream")
-    .description("""Create an [ingest stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
-                   |that connects a streaming event source to Quine and loads data into the graph.
-                   |
-                   |An ingest stream is defined by selecting a source `type`, then an appropriate data `format`,
-                   |and must be created with a unique name. Many ingest stream types allow a Cypher query to operate
-                   |on the event stream data to create nodes and relationships in the graph.""".stripMargin)
-    .in(ingestStreamNameElement)
-    .in(namespaceParameter)
-    .in(jsonOrYamlBody[ApiIngest.Oss.QuineIngestConfiguration](Some(ingestExample)))
-    .post
-    .out(statusCode(StatusCode.Created).description("Ingest Stream Created"))
-    .out(jsonBody[SuccessEnvelope.Created[Unit]])
-    .errorOut(serverError())
-    .errorOutEither(
-      badRequestError("Ingest stream with that name already exists"),
-    )
-    .serverLogic[Future] { case (ingestStreamName, ns, ingestStreamConfig) =>
-      recoverServerErrorEither(
-        appMethods
-          .listIngestStreams(namespaceFromParam(ns))
-          .map { streams =>
-            streams.get(ingestStreamName) match {
-              case Some(_) =>
-                Left(Coproduct[BadRequest :+: CNil](BadRequest(s"Ingest Stream $ingestStreamName already exists")))
-              case None =>
-                appMethods
-                  .createIngestStream(ingestStreamName, ingestStreamConfig, namespaceFromParam(ns))
-                  .left
-                  .map(Coproduct[BadRequest :+: CNil](_))
-            }
-          },
-      )(_ => SuccessEnvelope.Created(()))
-    }
+  private val createIngestEndpoint =
+    ingestEndpoint
+      .name("Create Ingest Stream")
+      .description("""Create an [ingest stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
+          |that connects a streaming event source to Quine and loads data into the graph.
+          |
+          |An ingest stream is defined by selecting a source `type`, then an appropriate data `format`,
+          |and must be created with a unique name. Many ingest stream types allow a Cypher query to operate
+          |on the event stream data to create nodes and relationships in the graph.""".stripMargin)
+      .in(ingestStreamNameElement)
+      .in(namespaceParameter)
+      .in(jsonOrYamlBody[ApiIngest.Oss.QuineIngestConfiguration](Some(ingestExample)))
+      .post
+      .out(statusCode(StatusCode.Created).description("Ingest Stream Created"))
+      .out(jsonBody[SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName]])
+      .errorOutEither(
+        badRequestError(
+          "Ingest Stream with that name already exists",
+          "Ingest Stream creation failed with config errors",
+        ),
+      )
+      .serverLogic[Future] { case (ingestStreamName, ns, ingestStreamConfig) =>
+        recoverServerErrorEitherWithServerError(
+          appMethods.handleCreateIngest(ingestStreamName, namespaceFromParam(ns), ingestStreamConfig),
+        ) { case (stream, warnings) =>
+          SuccessEnvelope.Created(stream, warnings = warnings.toList)
+        }
+      }
 
   private val pauseIngestEndpoint: Full[Unit, Unit, (String, Option[String]), Either[
     ServerError,

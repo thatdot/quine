@@ -57,6 +57,32 @@ object QuineValueIngestQuery extends LazyLogging {
     case _ => QuineValueIngestQuery.build(graph, config.query, config.parameter, namespaceId).get
   }
 
+  def getQueryWarnings(query: String, parameter: String): Set[String] =
+    Try(compiler.cypher.compile(query, unfixedParameters = Seq(parameter)))
+      .map { compiled: CompiledQuery[Location.Anywhere] =>
+        var warnings: Set[String] = Set()
+        if (compiled.query.canContainAllNodeScan) {
+          warnings = warnings ++ Set(
+            "Cypher query may contain full node scan; for improved performance, re-write without full node scan. " +
+            (compiled.queryText match {
+              case Some(text) => "The provided query was: " + text
+              case None => ""
+            }),
+          )
+        }
+        if (!compiled.query.isIdempotent) {
+          warnings = warnings ++ Set(
+            """Could not verify that the provided ingest query is idempotent. If timeouts occur, query
+                |execution may be retried and duplicate data may be created.""".stripMargin.replace(
+              '\n',
+              ' ',
+            ),
+          )
+        }
+        warnings
+      }
+      .getOrElse(Set())
+
   def apply(
     config: IngestStreamConfiguration, //v1
     graph: CypherOpsGraph,

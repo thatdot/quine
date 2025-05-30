@@ -214,7 +214,7 @@ concatenated to produce the final file name:
     .in(atTimeParameter)
     .errorOutEither(badRequestError("Invalid Query", "Invalid Argument"))
     .out(statusCode(StatusCode.Ok))
-    .out(jsonBody[SuccessEnvelope.Ok[Option[List[String]]]])
+    .out(jsonBody[SuccessEnvelope.Ok[List[String]]])
     .serverLogic[Future] {
       case (id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespace, atTimeOpt) =>
         recoverServerErrorEitherWithServerError(
@@ -229,7 +229,7 @@ concatenated to produce the final file name:
               namespaceFromParam(namespace),
               atTimeOpt,
             ),
-        )((inp: Option[List[String]]) => SuccessEnvelope.Ok.apply(inp))
+        )(SuccessEnvelope.Ok(_))
     }
 
   val algorithmEndpoints: List[ServerEndpoint[Any, Future]] = List(
