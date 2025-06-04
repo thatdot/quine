@@ -19,7 +19,7 @@ addSbtPlugin("com.github.sbt" % "sbt-proguard" % "0.6.0")
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.10.0")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.7")
 libraryDependencies += "software.amazon.awssdk" % "ecr" % "2.17.231"
-libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "7.2.0.202503040940-r"
+libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "7.2.1.202505142326-r"
 addSbtPlugin("com.github.sbt" % "sbt-boilerplate" % "0.7.0")
 addSbtPlugin("net.vonbuchholtz" % "sbt-dependency-check" % "5.1.0")
 addSbtPlugin("com.github.sbt" %% "sbt-sbom" % "0.4.0")
