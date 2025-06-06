@@ -14,7 +14,7 @@ final case class WebServerBindConfig(
   address: Host = Host("0.0.0.0"),
   port: Port = Port(8080),
   enabled: Boolean = true,
-  useTls: Boolean = sys.env.contains(KeystorePathEnvVar) && sys.env.contains(KeystorePasswordEnvVar),
+  useTls: Boolean = sys.env.contains(KeystorePathEnvVar) && sys.env.contains(KeystorePasswordEnvVar)
 ) {
   def protocol: String = if (useTls) "https" else "http"
 
@@ -41,6 +41,9 @@ object WebServerBindConfig {
 final case class WebserverAdvertiseConfig(
   address: Host,
   port: Port,
+  path: Option[String] = None
 ) {
-  def url(protocol: String): URL = new URL(protocol, address.asString, port.asInt, "")
+  def url(protocol: String): URL = {
+    new URL(protocol, address.asString, port.asInt, path.getOrElse(""))
+  }
 }
