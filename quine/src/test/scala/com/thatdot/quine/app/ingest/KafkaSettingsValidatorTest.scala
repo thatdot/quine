@@ -70,17 +70,17 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
   }
   test("Unsupported output settings disallowed") {
     //value.deserializer
-    assert(KafkaSettingsValidator.validateOutput(Map("value.deserializer" -> "a")).get.size == 1)
+    assert(KafkaSettingsValidator.validateProperties(Map("value.deserializer" -> "a")).get.size == 1)
 
     //bootstrap.servers
-    assert(KafkaSettingsValidator.validateOutput(Map("bootstrap.servers" -> "a")).get.size == 1)
+    assert(KafkaSettingsValidator.validateProperties(Map("bootstrap.servers" -> "a")).get.size == 1)
 
     //completely made up
-    assert(KafkaSettingsValidator.validateOutput(Map("my.super.cool.property" -> "false")).get.size == 1)
+    assert(KafkaSettingsValidator.validateProperties(Map("my.super.cool.property" -> "false")).get.size == 1)
 
   }
   test("non-member settings disallowed") {
-    assert(KafkaSettingsValidator.validateOutput(Map("auto.offset.reset" -> "a")).get.size == 1)
+    assert(KafkaSettingsValidator.validateProperties(Map("auto.offset.reset" -> "a")).get.size == 1)
   }
   test("SSL selections allowed") {
     // truststore
@@ -116,7 +116,7 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
       assert(
         KafkaSettingsValidator.validateInput(Map(setting)).nonEmpty,
       )
-      assert(KafkaSettingsValidator.validateOutput(Map(setting)).nonEmpty)
+      assert(KafkaSettingsValidator.validateProperties(Map(setting)).nonEmpty)
     }
   }
 

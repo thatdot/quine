@@ -116,7 +116,7 @@ object KafkaSettingsValidator extends LazySafeLogging {
     v.withUnrecognizedErrors(errors)
   }
 
-  def validateOutput(properties: KafkaProperties): Option[NonEmptyList[String]] = {
+  def validateProperties(properties: KafkaProperties): Option[NonEmptyList[String]] = {
     val v = new KafkaSettingsValidator(underlyingValidator(classOf[ProducerConfig]), properties)
 
     val errors: Seq[ErrorString] = List(

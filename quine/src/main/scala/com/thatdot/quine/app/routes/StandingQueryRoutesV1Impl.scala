@@ -46,7 +46,7 @@ trait StandingQueryRoutesV1Impl
   private def validateOutputDef(outputDef: V1.StandingQueryResultOutputUserDef): Option[NonEmptyList[ErrorString]] =
     outputDef match {
       case k: V1.StandingQueryResultOutputUserDef.WriteToKafka =>
-        KafkaSettingsValidator.validateOutput(k.kafkaProperties)
+        KafkaSettingsValidator.validateProperties(k.kafkaProperties)
       case _ => None
     }
 

@@ -27,7 +27,7 @@ trait V2ApiConfiguration extends TapirJsonCirce {
             renameConstructors.getOrElse(className, className)
           },
         )
-    def asCircle: CirceConfig =
+    def asCirce: CirceConfig =
       discriminator
         .fold(CirceConfig.default)(d => CirceConfig.default.withDiscriminator(d))
         .copy(
@@ -45,7 +45,7 @@ trait V2ApiConfiguration extends TapirJsonCirce {
     val default: Configuration = Configuration(None, Map.empty)
   }
 
-  implicit def circeConfig(implicit config: Configuration): CirceConfig = config.asCircle
+  implicit def circeConfig(implicit config: Configuration): CirceConfig = config.asCirce
   implicit def tapirConfig(implicit config: Configuration): TapirConfig = config.asTapir
 
   val typeDiscriminatorConfig: Configuration =

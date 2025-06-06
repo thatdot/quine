@@ -2,8 +2,10 @@ package com.thatdot.quine.app.v2api.definitions.query.standing
 
 import sttp.tapir.Schema.annotations.{default, description, title}
 
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{AwsCredentials, AwsRegion}
+import com.thatdot.quine.app.v2api.definitions.{AwsCredentials, AwsRegion}
+import com.thatdot.quine.routes.OutputFormat // Will be irrelevant when this file is soon deleted
 
+// Shall be deleted when Outputs V2 is used in API V2
 /** Output sink for processing standing query results */
 @title(StandingQueryResultOutputUserDef.title)
 @description(

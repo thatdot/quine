@@ -1,8 +1,8 @@
-package com.thatdot.quine.app.v2api.definitions.query.standing
+package com.thatdot.quine.app.v2api.definitions.outputs2
 
 import sttp.tapir.Schema.annotations.{description, title}
 
-@title("Standing Query Result Output Format")
+@title("Result Output Format")
 sealed trait OutputFormat
 
 object OutputFormat {

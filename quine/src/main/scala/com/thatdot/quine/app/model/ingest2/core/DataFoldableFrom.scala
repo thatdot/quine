@@ -1,6 +1,7 @@
 package com.thatdot.quine.app.model.ingest2.core
 
 import scala.collection.{SeqView, View, mutable}
+import scala.reflect.ClassTag
 import scala.util.Try
 
 import io.circe.{Json, JsonNumber, JsonObject}
@@ -8,6 +9,7 @@ import org.apache.avro.generic.{GenericArray, GenericEnumSymbol, GenericFixed, G
 
 import com.thatdot.common.logging.Log._
 import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 
 trait DataFoldableFrom[A] extends LazySafeLogging {
   def fold[B](value: A, folder: DataFolderTo[B]): B
@@ -15,6 +17,10 @@ trait DataFoldableFrom[A] extends LazySafeLogging {
   def fold[B, Frame](t: (Try[A], Frame), folder: DataFolderTo[B]): (Try[B], Frame) =
     (t._1.map(a => fold(a, folder)), t._2)
 
+  def to[B: DataFolderTo: ClassTag]: A => B = {
+    case b: B => b
+    case a => fold(a, DataFolderTo[B])
+  }
 }
 
 object DataFoldableFrom {
@@ -269,4 +275,33 @@ object DataFoldableFrom {
     override def fold[B](record: GenericRecord, folder: DataFolderTo[B]): B = foldField(record, folder)
   }
 
+  implicit def quineValueDataFoldableFrom(implicit idProvider: QuineIdProvider): DataFoldableFrom[QuineValue] =
+    new DataFoldableFrom[QuineValue] {
+      override def fold[B](value: QuineValue, folder: DataFolderTo[B]): B = value match {
+        case QuineValue.Str(string) => folder.string(string)
+        case QuineValue.Integer(long) => folder.integer(long)
+        case QuineValue.Floating(double) => folder.floating(double)
+        case QuineValue.True => folder.trueValue
+        case QuineValue.False => folder.falseValue
+        case QuineValue.Null => folder.nullValue
+        case QuineValue.Bytes(bytes) => folder.bytes(bytes)
+        case QuineValue.List(list) =>
+          val builder = folder.vectorBuilder()
+          list.foreach(qv => builder.add(fold(qv, folder)))
+          builder.finish()
+        case QuineValue.Map(map) =>
+          val builder = folder.mapBuilder()
+          map.foreach { case (k, v) =>
+            builder.add(k, fold(v, folder))
+          }
+          builder.finish()
+        case QuineValue.DateTime(instant) => folder.localDateTime(instant.toLocalDateTime)
+        case QuineValue.Duration(duration) => folder.duration(duration)
+        case QuineValue.Date(date) => folder.date(date)
+        case QuineValue.LocalTime(time) => folder.localTime(time)
+        case QuineValue.Time(time) => folder.time(time)
+        case QuineValue.LocalDateTime(localDateTime) => folder.localDateTime(localDateTime)
+        case QuineValue.Id(id) => folder.string(idProvider.qidToPrettyString(id))
+      }
+    }
 }

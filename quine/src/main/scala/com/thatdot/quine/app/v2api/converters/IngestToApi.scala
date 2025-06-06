@@ -16,7 +16,7 @@ object IngestToApi {
 
     implicit val quineIngestConfigurationToApi
       : ToApiMethod[Ingest.QuineIngestConfiguration, Api.Oss.QuineIngestConfiguration] =
-      (a: Ingest.QuineIngestConfiguration) => IngestToApi.apply(a)
+      (a: Ingest.QuineIngestConfiguration) => apply(a)
   }
   def apply(status: V1.IngestStreamStatus): Api.IngestStreamStatus = status match {
     case V1.IngestStreamStatus.Completed => Api.IngestStreamStatus.Completed
@@ -27,21 +27,13 @@ object IngestToApi {
     case V1.IngestStreamStatus.Restored => Api.IngestStreamStatus.Restored
   }
 
-  def apply(rates: V1.RatesSummary): Api.RatesSummary =
-    Api.RatesSummary(
-      rates.count,
-      rates.oneMinute,
-      rates.fiveMinute,
-      rates.fifteenMinute,
-      rates.overall,
-    )
   def apply(stats: V1.IngestStreamStats): Api.IngestStreamStats =
     Api.IngestStreamStats(
-      stats.ingestedCount,
-      IngestToApi(stats.rates),
-      IngestToApi(stats.byteRates),
-      stats.startTime,
-      stats.totalRuntime,
+      ingestedCount = stats.ingestedCount,
+      rates = InternalToApi.fromV1(stats.rates),
+      byteRates = InternalToApi.fromV1(stats.byteRates),
+      startTime = stats.startTime,
+      totalRuntime = stats.totalRuntime,
     )
 
   def apply(c: V1.CsvCharacter): Api.CsvCharacter = c match {
@@ -57,7 +49,12 @@ object IngestToApi {
     case Ingest.FileFormat.LineFormat => Api.IngestFormat.FileFormat.Line
     case Ingest.FileFormat.JsonFormat => Api.IngestFormat.FileFormat.Json
     case Ingest.FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
-      Api.IngestFormat.FileFormat.Csv(headers, IngestToApi(delimiter), IngestToApi(quoteChar), IngestToApi(escapeChar))
+      Api.IngestFormat.FileFormat.Csv(
+        headers = headers,
+        delimiter = apply(delimiter),
+        quoteChar = apply(quoteChar),
+        escapeChar = apply(escapeChar),
+      )
   }
 
   def apply(format: Ingest.StreamingFormat): Api.IngestFormat.StreamingFormat = format match {
@@ -108,11 +105,6 @@ object IngestToApi {
     case V1.RecordDecodingType.Gzip => Api.RecordDecodingType.Gzip
     case V1.RecordDecodingType.Base64 => Api.RecordDecodingType.Base64
   }
-  def apply(c: V1.AwsCredentials): Api.AwsCredentials =
-    Api.AwsCredentials(c.accessKeyId, c.secretAccessKey)
-
-  def apply(r: V1.AwsRegion): Api.AwsRegion =
-    Api.AwsRegion(r.region)
 
   def apply(c: V1.KafkaOffsetCommitting): Api.KafkaOffsetCommitting = c match {
     case V1.KafkaOffsetCommitting.ExplicitCommit(maxBatch, maxIntervalMillis, parallelism, waitForCommitConfirmation) =>
@@ -167,22 +159,22 @@ object IngestToApi {
 
   def apply(lmc: Ingest.LeaseManagementConfig): Api.LeaseManagementConfig =
     Api.LeaseManagementConfig(
-      lmc.failoverTimeMillis,
-      lmc.shardSyncIntervalMillis,
-      lmc.cleanupLeasesUponShardCompletion,
-      lmc.ignoreUnexpectedChildShards,
-      lmc.maxLeasesForWorker,
-      lmc.maxLeaseRenewalThreads,
-      lmc.billingMode.map(apply),
-      lmc.initialLeaseTableReadCapacity,
-      lmc.initialLeaseTableWriteCapacity,
-      lmc.reBalanceThresholdPercentage,
-      lmc.dampeningPercentage,
-      lmc.allowThroughputOvershoot,
-      lmc.disableWorkerMetrics,
-      lmc.maxThroughputPerHostKBps,
-      lmc.isGracefulLeaseHandoffEnabled,
-      lmc.gracefulLeaseHandoffTimeoutMillis,
+      failoverTimeMillis = lmc.failoverTimeMillis,
+      shardSyncIntervalMillis = lmc.shardSyncIntervalMillis,
+      cleanupLeasesUponShardCompletion = lmc.cleanupLeasesUponShardCompletion,
+      ignoreUnexpectedChildShards = lmc.ignoreUnexpectedChildShards,
+      maxLeasesForWorker = lmc.maxLeasesForWorker,
+      maxLeaseRenewalThreads = lmc.maxLeaseRenewalThreads,
+      billingMode = lmc.billingMode.map(apply),
+      initialLeaseTableReadCapacity = lmc.initialLeaseTableReadCapacity,
+      initialLeaseTableWriteCapacity = lmc.initialLeaseTableWriteCapacity,
+      reBalanceThresholdPercentage = lmc.reBalanceThresholdPercentage,
+      dampeningPercentage = lmc.dampeningPercentage,
+      allowThroughputOvershoot = lmc.allowThroughputOvershoot,
+      disableWorkerMetrics = lmc.disableWorkerMetrics,
+      maxThroughputPerHostKBps = lmc.maxThroughputPerHostKBps,
+      isGracefulLeaseHandoffEnabled = lmc.isGracefulLeaseHandoffEnabled,
+      gracefulLeaseHandoffTimeoutMillis = lmc.gracefulLeaseHandoffTimeoutMillis,
     )
 
   def apply(rsc: Ingest.RetrievalSpecificConfig): Api.RetrievalSpecificConfig = rsc match {
@@ -202,10 +194,10 @@ object IngestToApi {
 
   def apply(pc: Ingest.RetrievalSpecificConfig.PollingConfig): Api.RetrievalSpecificConfig.PollingConfig =
     Api.RetrievalSpecificConfig.PollingConfig(
-      pc.maxRecords,
-      pc.retryGetRecordsInSeconds,
-      pc.maxGetRecordsThreadPool,
-      pc.idleTimeBetweenReadsInMillis,
+      maxRecords = pc.maxRecords,
+      retryGetRecordsInSeconds = pc.retryGetRecordsInSeconds,
+      maxGetRecordsThreadPool = pc.maxGetRecordsThreadPool,
+      idleTimeBetweenReadsInMillis = pc.idleTimeBetweenReadsInMillis,
     )
 
   def apply(prc: Ingest.ProcessorConfig): Api.ProcessorConfig =
@@ -213,10 +205,10 @@ object IngestToApi {
 
   def apply(cc: Ingest.CoordinatorConfig): Api.CoordinatorConfig =
     Api.CoordinatorConfig(
-      cc.parentShardPollIntervalMillis,
-      cc.skipShardSyncAtWorkerInitializationIfLeasesExist,
-      cc.shardPrioritization.map(apply),
-      cc.clientVersionConfig.map(apply),
+      parentShardPollIntervalMillis = cc.parentShardPollIntervalMillis,
+      skipShardSyncAtWorkerInitializationIfLeasesExist = cc.skipShardSyncAtWorkerInitializationIfLeasesExist,
+      shardPrioritization = cc.shardPrioritization.map(apply),
+      clientVersionConfig = cc.clientVersionConfig.map(apply),
     )
 
   def apply(lc: Ingest.LifecycleConfig): Api.LifecycleConfig =
@@ -227,22 +219,22 @@ object IngestToApi {
 
   def apply(mc: Ingest.MetricsConfig): Api.MetricsConfig =
     Api.MetricsConfig(
-      mc.metricsBufferTimeMillis,
-      mc.metricsMaxQueueSize,
-      mc.metricsLevel.map(apply),
-      mc.metricsEnabledDimensions.map(_.map(apply)),
+      metricsBufferTimeMillis = mc.metricsBufferTimeMillis,
+      metricsMaxQueueSize = mc.metricsMaxQueueSize,
+      metricsLevel = mc.metricsLevel.map(apply),
+      metricsEnabledDimensions = mc.metricsEnabledDimensions.map(_.map(apply)),
     )
 
   def apply(kcl: Ingest.KCLConfiguration): Api.KCLConfiguration =
     Api.KCLConfiguration(
-      Some(apply(kcl.configsBuilder)),
-      Some(apply(kcl.leaseManagementConfig)),
-      kcl.retrievalSpecificConfig.map(apply),
-      Some(apply(kcl.processorConfig)),
-      Some(apply(kcl.coordinatorConfig)),
-      Some(apply(kcl.lifecycleConfig)),
-      Some(apply(kcl.retrievalConfig)),
-      Some(apply(kcl.metricsConfig)),
+      configsBuilder = Some(apply(kcl.configsBuilder)),
+      leaseManagementConfig = Some(apply(kcl.leaseManagementConfig)),
+      retrievalSpecificConfig = kcl.retrievalSpecificConfig.map(apply),
+      processorConfig = Some(apply(kcl.processorConfig)),
+      coordinatorConfig = Some(apply(kcl.coordinatorConfig)),
+      lifecycleConfig = Some(apply(kcl.lifecycleConfig)),
+      retrievalConfig = Some(apply(kcl.retrievalConfig)),
+      metricsConfig = Some(apply(kcl.metricsConfig)),
     )
 
   def apply(cb: Ingest.ConfigsBuilder): Api.ConfigsBuilder =
@@ -260,14 +252,14 @@ object IngestToApi {
           recordDecoders,
         ) =>
       Api.IngestSource.File(
-        IngestToApi(format),
-        path,
-        ingestMode.map(IngestToApi.apply),
-        maximumLineSize,
-        startOffset,
-        limit,
-        characterEncoding,
-        recordDecoders.map(IngestToApi.apply),
+        format = apply(format),
+        path = path,
+        fileIngestMode = ingestMode.map(apply),
+        maximumLineSize = maximumLineSize,
+        startOffset = startOffset,
+        limit = limit,
+        characterEncoding = characterEncoding,
+        recordDecoders = recordDecoders.map(apply),
       )
     case Ingest.S3Ingest(
           format,
@@ -281,34 +273,31 @@ object IngestToApi {
           recordDecoders,
         ) =>
       Api.IngestSource.S3(
-        IngestToApi(format),
-        bucket,
-        key,
-        credentials.map(IngestToApi.apply),
-        maximumLineSize,
-        startOffset,
-        limit,
-        characterEncoding,
-        recordDecoders.map(IngestToApi.apply),
+        format = apply(format),
+        bucket = bucket,
+        key = key,
+        credentials = credentials.map(InternalToApi.fromV1),
+        maximumLineSize = maximumLineSize,
+        startOffset = startOffset,
+        limit = limit,
+        characterEncoding = characterEncoding,
+        recordDecoders = recordDecoders.map(apply),
       )
     case Ingest.StdInputIngest(format, maximumLineSize, characterEncoding) =>
       Api.IngestSource.StdInput(
-        IngestToApi(format),
-        maximumLineSize,
-        characterEncoding,
+        format = apply(format),
+        maximumLineSize = maximumLineSize,
+        characterEncoding = characterEncoding,
       )
     case Ingest.NumberIteratorIngest(_, startOffset, limit) =>
-      Api.IngestSource.NumberIterator(
-        startOffset,
-        limit,
-      )
+      Api.IngestSource.NumberIterator(startOffset, limit)
     case Ingest.WebsocketIngest(format, url, initMessages, keepAlive, characterEncoding) =>
       Api.IngestSource.Websocket(
-        IngestToApi(format),
-        url,
-        initMessages,
-        IngestToApi(keepAlive),
-        characterEncoding,
+        format = apply(format),
+        url = url,
+        initMessages = initMessages,
+        keepAlive = apply(keepAlive),
+        characterEncoding = characterEncoding,
       )
     case Ingest.KinesisIngest(
           format,
@@ -321,14 +310,14 @@ object IngestToApi {
           recordDecoders,
         ) =>
       Api.IngestSource.Kinesis(
-        IngestToApi(format),
-        streamName,
-        shardIds,
-        credentials.map(IngestToApi.apply),
-        region.map(IngestToApi.apply),
-        IngestToApi(iteratorType),
-        numRetries,
-        recordDecoders.map(IngestToApi.apply),
+        format = apply(format),
+        streamName = streamName,
+        shardIds = shardIds,
+        credentials = credentials.map(InternalToApi.fromV1),
+        region = region.map(InternalToApi.fromV1),
+        iteratorType = apply(iteratorType),
+        numRetries = numRetries,
+        recordDecoders = recordDecoders.map(apply),
       )
 
     case Ingest.KinesisKclIngest(
@@ -347,31 +336,31 @@ object IngestToApi {
       Api.IngestSource.KinesisKCL(
         kinesisStreamName = kinesisStreamName,
         applicationName = applicationName,
-        IngestToApi(format),
-        credentialsOpt.map(IngestToApi.apply),
-        regionOpt.map(IngestToApi.apply),
-        IngestToApi(initialPosition),
-        numRetries,
-        recordDecoders.map(IngestToApi.apply),
-        Some(IngestToApi(schedulerSourceSettings)),
-        Some(IngestToApi(checkpointSettings)),
-        Some(IngestToApi(advancedSettings)),
+        format = apply(format),
+        credentials = credentialsOpt.map(InternalToApi.fromV1),
+        regionOpt = regionOpt.map(InternalToApi.fromV1),
+        initialPosition = apply(initialPosition),
+        numRetries = numRetries,
+        recordDecoders = recordDecoders.map(apply),
+        schedulerSourceSettings = Some(apply(schedulerSourceSettings)),
+        checkpointSettings = Some(apply(checkpointSettings)),
+        advancedSettings = Some(apply(advancedSettings)),
       )
     case Ingest.ServerSentEventIngest(format, url, recordDecoders) =>
       Api.IngestSource.ServerSentEvent(
-        IngestToApi(format),
-        url,
-        recordDecoders.map(IngestToApi.apply),
+        format = apply(format),
+        url = url,
+        recordDecoders = recordDecoders.map(apply),
       )
     case Ingest.SQSIngest(format, queueUrl, readParallelism, credentials, region, deleteReadMessages, recordDecoders) =>
       Api.IngestSource.SQS(
-        IngestToApi(format),
-        queueUrl,
-        readParallelism,
-        credentials.map(IngestToApi.apply),
-        region.map(IngestToApi.apply),
-        deleteReadMessages,
-        recordDecoders.map(IngestToApi.apply),
+        format = apply(format),
+        queueUrl = queueUrl,
+        readParallelism = readParallelism,
+        credentials = credentials.map(InternalToApi.fromV1),
+        region = region.map(InternalToApi.fromV1),
+        deleteReadMessages = deleteReadMessages,
+        recordDecoders = recordDecoders.map(apply),
       )
     case Ingest.KafkaIngest(
           format,
@@ -386,19 +375,19 @@ object IngestToApi {
           recordDecoders,
         ) =>
       Api.IngestSource.Kafka(
-        IngestToApi(format),
-        topics,
-        bootstrapServers,
-        groupId,
-        IngestToApi(protocol),
-        offsetCommitting.map(IngestToApi.apply),
-        IngestToApi(autoOffsetReset),
-        kafkaProperties,
-        endingOffset,
-        recordDecoders.map(IngestToApi.apply),
+        format = apply(format),
+        topics = topics,
+        bootstrapServers = bootstrapServers,
+        groupId = groupId,
+        securityProtocol = apply(protocol),
+        offsetCommitting = offsetCommitting.map(apply),
+        autoOffsetReset = apply(autoOffsetReset),
+        kafkaProperties = kafkaProperties,
+        endingOffset = endingOffset,
+        recordDecoders = recordDecoders.map(apply),
       )
     case Ingest.ReactiveStreamIngest(format, url, port) =>
-      Api.IngestSource.ReactiveStream(IngestToApi(format), url, port)
+      Api.IngestSource.ReactiveStream(apply(format), url, port)
   }
 
   def apply(handler: Ingest.OnStreamErrorHandler): Api.OnStreamErrorHandler = handler match {
@@ -412,12 +401,12 @@ object IngestToApi {
   }
   def apply(conf: Ingest.QuineIngestConfiguration): Api.Oss.QuineIngestConfiguration =
     Api.Oss.QuineIngestConfiguration(
-      IngestToApi(conf.source),
-      conf.query,
-      conf.parameter,
-      conf.parallelism,
-      conf.maxPerSecond,
-      IngestToApi(conf.onRecordError),
-      IngestToApi(conf.onStreamError),
+      source = apply(conf.source),
+      query = conf.query,
+      parameter = conf.parameter,
+      parallelism = conf.parallelism,
+      maxPerSecond = conf.maxPerSecond,
+      onRecordError = apply(conf.onRecordError),
+      onStreamError = apply(conf.onStreamError),
     )
 }

@@ -5,6 +5,9 @@ import java.time.format.DateTimeFormatter
 
 import scala.collection.immutable.SortedMap
 
+import com.thatdot.common.util.ByteConversions
+import com.thatdot.quine.model.QuineValue
+
 trait DataFolderTo[A] {
   def nullValue: A
 
@@ -39,7 +42,7 @@ object DataFolderTo {
 
     def string(s: String): Json = Json.fromString(s)
 
-    def bytes(b: Array[Byte]): Json = Json.fromValues(b.map(byte => Json.fromInt(byte.toInt))) // base64 string instead?
+    def bytes(b: Array[Byte]): Json = Json.fromString(ByteConversions.formatHexBinary(b))
 
     def floating(f: Double): Json = Json.fromDoubleOrString(f)
 
@@ -112,6 +115,50 @@ object DataFolderTo {
       def add(key: String, value: cypher.Value): Unit = kvs += (key -> value)
 
       def finish(): cypher.Value = ce.Map(kvs.result())
+    }
+  }
+
+  implicit val quineValueFolder: DataFolderTo[QuineValue] = new DataFolderTo[QuineValue] {
+    private val QV = QuineValue
+
+    override def nullValue: QuineValue = QV.Null
+
+    override def trueValue: QuineValue = QV.True
+
+    override def falseValue: QuineValue = QV.False
+
+    override def integer(l: Long): QuineValue = QV.Integer(l)
+
+    override def string(s: String): QuineValue = QV.Str(s)
+
+    override def bytes(b: Array[Byte]): QuineValue = QV.Bytes(b)
+
+    override def floating(d: Double): QuineValue = QV.Floating(d)
+
+    override def date(d: LocalDate): QuineValue = QV.Date(d)
+
+    override def time(t: OffsetTime): QuineValue = QV.Time(t)
+
+    override def localTime(t: LocalTime): QuineValue = QV.LocalTime(t)
+
+    override def localDateTime(ldt: LocalDateTime): QuineValue = QV.LocalDateTime(ldt)
+
+    override def zonedDateTime(zdt: ZonedDateTime): QuineValue = QV.DateTime(zdt.toOffsetDateTime)
+
+    override def duration(d: Duration): QuineValue = QV.Duration(d)
+
+    override def vectorBuilder(): CollectionBuilder[QuineValue] = new CollectionBuilder[QuineValue] {
+      private val builder = Vector.newBuilder[QuineValue]
+      override def add(a: QuineValue): Unit = builder.addOne(a)
+
+      override def finish(): QuineValue = QuineValue.List(builder.result())
+    }
+
+    override def mapBuilder(): MapBuilder[QuineValue] = new MapBuilder[QuineValue] {
+      private val builder = Map.newBuilder[String, QuineValue]
+      override def add(key: String, value: QuineValue): Unit = builder.addOne((key, value))
+
+      override def finish(): QuineValue = QV.Map(builder.result())
     }
   }
 }

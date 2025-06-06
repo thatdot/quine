@@ -27,7 +27,6 @@ import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorStrin
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.app.model.ingest2.source.QuineValueIngestQuery
-import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters._
@@ -46,7 +45,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TUiNode,
 }
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
-import com.thatdot.quine.app.{BaseApp, BuildInfo}
+import com.thatdot.quine.app.{BaseApp, BuildInfo, SchemaCache}
 import com.thatdot.quine.exceptions.NamespaceNotFoundException
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{
@@ -62,9 +61,8 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, QuineValue}
 import com.thatdot.quine.persistor.PersistenceAgent
-import com.thatdot.quine.routes.{CypherQuery, MetricsReport, ShardInMemoryLimit}
 import com.thatdot.quine.util.SwitchMode
-import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model, routes}
+import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model, routes => V1}
 
 sealed trait ProductVersion
 object ProductVersion {
@@ -125,13 +123,13 @@ trait ApplicationApiMethods {
       Future.successful(m.view.mapValues(new String(_)).toMap)
     }
 
-  def metrics: MetricsReport = GenerateMetrics.metricsReport(graph)
+  def metrics: V1.MetricsReport = GenerateMetrics.metricsReport(graph)
 
-  def shardSizes(resizes: Map[Int, ShardInMemoryLimit]): Future[Map[Int, ShardInMemoryLimit]] =
+  def shardSizes(resizes: Map[Int, V1.ShardInMemoryLimit]): Future[Map[Int, V1.ShardInMemoryLimit]] =
     graph
       .shardInMemoryLimits(resizes.fmap(l => InMemoryNodeLimit(l.softLimit, l.hardLimit)))
       .map(_.collect { case (shardIdx, Some(InMemoryNodeLimit(soft, hard))) =>
-        shardIdx -> ShardInMemoryLimit(soft, hard)
+        shardIdx -> V1.ShardInMemoryLimit(soft, hard)
       })(ExecutionContext.parasitic)
 
   def requestNodeSleep(quineId: QuineId, namespaceId: NamespaceId): Future[Unit] =
@@ -149,7 +147,11 @@ import com.thatdot.quine.app.routes.{AlgorithmMethods => V1AlgorithmMethods}
 trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
 
   override val graph: BaseGraph with LiteralOpsGraph with StandingQueryOpsGraph with CypherOpsGraph with AlgorithmGraph
-  override val app: BaseApp with StandingQueryStoreV1 with IngestStreamState with QueryUiConfigurationState
+  override val app: BaseApp
+    with StandingQueryStoreV1
+    with IngestStreamState
+    with QueryUiConfigurationState
+    with SchemaCache
 
   // duplicated from, com.thatdot.quine.app.routes.IngestApiMethods
   private def stream2Info(
@@ -173,16 +175,19 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       case None => Future.successful(None)
       case Some(ingest: IngestStreamWithControl[UnifiedIngestConfiguration]) =>
         ingest.initialStatus match {
-          case routes.IngestStreamStatus.Completed => Future.failed(PauseOperationException.Completed)
-          case routes.IngestStreamStatus.Terminated => Future.failed(PauseOperationException.Terminated)
-          case routes.IngestStreamStatus.Failed => Future.failed(PauseOperationException.Failed)
+          case V1.IngestStreamStatus.Completed =>
+            Future.failed(IngestApiEntities.PauseOperationException.Completed)
+          case V1.IngestStreamStatus.Terminated =>
+            Future.failed(IngestApiEntities.PauseOperationException.Terminated)
+          case V1.IngestStreamStatus.Failed =>
+            Future.failed(IngestApiEntities.PauseOperationException.Failed)
           case _ =>
             val flippedValve = ingest.valve().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
             val ingestStatus = flippedValve.flatMap { _ =>
               // HACK: set the ingest's "initial status" to "Paused". `stream2Info` will use this as the stream status
               // when the valve is closed but the stream is not terminated. However, this assignment is not threadsafe,
               // and this directly violates the semantics of `initialStatus`. This should be fixed in a future refactor.
-              ingest.initialStatus = routes.IngestStreamStatus.Paused
+              ingest.initialStatus = V1.IngestStreamStatus.Paused
               stream2Info(ingest.copy(settings = V2IngestEntities.IngestSource(ingest.settings)))
             }(graph.nodeDispatcherEC)
             ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)
@@ -195,7 +200,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     case _: StreamDetachedException =>
       // A StreamDetachedException always occurs when the ingest has failed
       Left(BadRequest.apply(s"Cannot $operation a failed ingest."))
-    case e: PauseOperationException =>
+    case e: IngestApiEntities.PauseOperationException =>
       Left(BadRequest.apply(s"Cannot $operation a ${e.statusMsg} ingest."))
   }
 
@@ -220,13 +225,16 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
 
   def listAllStandingQueries: Future[List[StandingQuery.RegisteredStandingQuery]] = {
     implicit val executor: ExecutionContext = ExecutionContext.parasitic
-    Future.sequence(app.getNamespaces.map(app.getStandingQueries)).map(_.toList.flatten).map(_.map(StandingToApi.apply))
+    Future
+      .sequence(app.getNamespaces.map(app.getStandingQueries))
+      .map(_.toList.flatten)
+      .map(_.map(V1StandingToV2Api.apply))
   }
 
   // --------------------- Standing Query Endpoints ------------------------
   def listStandingQueries(namespaceId: NamespaceId): Future[List[StandingQuery.RegisteredStandingQuery]] =
     graph.requiredGraphIsReadyFuture {
-      app.getStandingQueries(namespaceId).map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)
+      app.getStandingQueries(namespaceId).map(_.map(V1StandingToV2Api.apply))(ExecutionContext.parasitic)
     }
 
   def propagateStandingQuery(
@@ -246,7 +254,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
   ): Option[NonEmptyList[ErrorString]] =
     outputDef match {
       case k: StandingQueryResultOutputUserDef.WriteToKafka =>
-        KafkaSettingsValidator.validateOutput(k.kafkaProperties)
+        KafkaSettingsValidator.validateProperties(k.kafkaProperties)
       case _ => None
     }
 
@@ -268,7 +276,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
 
         case _ =>
           app
-            .addStandingQueryOutput(name, outputName, namespaceId, ApiToStanding(sqResultOutput))
+            .addStandingQueryOutput(name, outputName, namespaceId, V2ApiToV1Standing(sqResultOutput))
             .map {
               case Some(false) => Left(asBadRequest(s"There is already a standing query output named '$outputName'"))
               case Some(true) => Right(())
@@ -305,7 +313,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       .removeStandingQueryOutput(name, outputName, namespaceId)
       .map(
         _.toRight(NotFound(s"Standing Query, $name, does not exists"))
-          .map(StandingToApi.apply),
+          .map(V1StandingToV2Api.apply),
       )
   }
 
@@ -319,12 +327,12 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     graph
       .requiredGraphIsReadyFuture {
         try app
-          .addStandingQuery(name, namespaceId, ApiToStanding(sq, shouldCalculateResultHashCode))
+          .addStandingQuery(name, namespaceId, V2ApiToV1Standing(sq, shouldCalculateResultHashCode))
           .flatMap {
             case false => Future.successful(Left(asBadRequest(s"There is already a standing query named '$name'")))
             case true =>
               app.getStandingQuery(name, namespaceId).map {
-                case Some(value) => Right(StandingToApi(value))
+                case Some(value) => Right(V1StandingToV2Api(value))
                 case None => sys.error("Standing Query not found after adding, this should not happen.")
               }
           } catch {
@@ -346,7 +354,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       .cancelStandingQuery(name, namespaceId)
       .map(
         _.toRight(NotFound(s"Standing Query, $name, does not exists"))
-          .map(StandingToApi.apply),
+          .map(V1StandingToV2Api.apply),
       )(ExecutionContext.parasitic)
 
   def getSQ(name: String, namespaceId: NamespaceId): Future[Either[NotFound, StandingQuery.RegisteredStandingQuery]] =
@@ -354,7 +362,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       .getStandingQuery(name, namespaceId)
       .map(
         _.toRight(NotFound(s"Standing Query, $name, does not exists"))
-          .map(StandingToApi.apply),
+          .map(V1StandingToV2Api.apply),
       )(ExecutionContext.parasitic)
 
   // --------------------- Cypher Endpoints ------------------------
@@ -384,7 +392,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       catchCypherException {
         val (columns, results, isReadOnly, _) =
           cypherMethods.queryCypherGeneric(
-            CypherQuery(query.text, query.parameters),
+            V1.CypherQuery(query.text, query.parameters),
             namespaceId,
             atTime,
           ) // TODO read canContainAllNodeScan
@@ -397,6 +405,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     }
 
   //private def ifNamespaceFound(namespaceId: NamespaceId) = ???
+
   def cypherNodesPost(
     atTime: Option[Milliseconds],
     timeout: FiniteDuration,
@@ -407,7 +416,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       catchCypherException {
         val (results, isReadOnly, _) =
           cypherMethods.queryCypherNodes(
-            CypherQuery(query.text, query.parameters),
+            V1.CypherQuery(query.text, query.parameters),
             namespaceId,
             atTime,
           ) // TODO read canContainAllNodeScan
@@ -429,7 +438,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       catchCypherException {
         val (results, isReadOnly, _) =
           cypherMethods.queryCypherEdges(
-            CypherQuery(query.text, query.parameters),
+            V1.CypherQuery(query.text, query.parameters),
             namespaceId,
             atTime,
           ) // TODO read canContainAllNodeScan
@@ -811,7 +820,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     graph.requiredGraphIsReadyFuture {
       app.getV2IngestStream(ingestName, namespaceId) match {
         case None => Future.successful(None)
-        case Some(stream) => stream2Info(stream).map(s => Some(s.withName(ingestName)))(graph.shardDispatcherEC)
+        case Some(stream) => stream2Info(stream).map(s => Some(s.withName(ingestName)))(ExecutionContext.parasitic)
       }
     }
 

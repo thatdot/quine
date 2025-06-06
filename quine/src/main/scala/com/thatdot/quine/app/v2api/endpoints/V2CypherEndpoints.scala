@@ -32,11 +32,11 @@ object V2CypherEndpointEntities {
 
   @title("Cypher Query Result")
   @description("""Cypher queries are designed to return data in a table format. This gets
-      |encoded into JSON with `columns` as the header row and each element in `results`
-      |being another row of results. As a consequence Consequently, every array element
-      |in `results` will have the same length, and all will have the same length as the
-      |`columns` array.
-      |""".stripMargin)
+                 |encoded into JSON with `columns` as the header row and each element in `results`
+                 |being another row of results. As a consequence Consequently, every array element
+                 |in `results` will have the same length, and all will have the same length as the
+                 |`columns` array.
+                 |""".stripMargin)
   case class TCypherQueryResult(
     @description("Return values of the Cypher query") columns: Seq[String],
     @description("Rows of results") results: Seq[Seq[Json]],
@@ -111,7 +111,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
   private val cypherNodesEndpoint = cypherQueryEndpoint
     .name("Cypher Query Return Nodes")
     .description(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
-                      |Queries that do not return nodes will fail with a type error.""".stripMargin)
+                    |Queries that do not return nodes will fail with a type error.""".stripMargin)
     .in("query-nodes")
     .in(atTimeParameter)
     .in(timeoutParameter)
@@ -131,7 +131,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
   private val cypherEdgesEndpoint = cypherQueryEndpoint
     .name("Cypher Query Return Edges")
     .description(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
-         |Queries that do not return edges will fail with a type error.""".stripMargin)
+                    |Queries that do not return edges will fail with a type error.""".stripMargin)
     .in("query-edges")
     .in(atTimeParameter)
     .in(timeoutParameter)

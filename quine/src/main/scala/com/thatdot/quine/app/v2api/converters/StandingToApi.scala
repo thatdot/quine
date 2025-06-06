@@ -1,10 +1,17 @@
 package com.thatdot.quine.app.v2api.converters
 
+import scala.annotation.unused
+
+import com.thatdot.quine.app.model.outputs2.query.{standing => Standing}
 import com.thatdot.quine.app.v2api.definitions.query.{standing => Api}
-import com.thatdot.quine.{routes => Standing}
+import com.thatdot.quine.{routes => V1}
 
+/** Conversions from internal models in [[com.thatdot.quine.app.model.outputs2.query.standing]]
+  * to API models in [[com.thatdot.quine.app.v2api.definitions.query.standing]].
+  */
+@unused
 object StandingToApi {
-
+  @unused
   private def apply(mode: Standing.StandingQueryPattern.StandingQueryMode): Api.StandingQueryPattern.StandingQueryMode =
     mode match {
       case Standing.StandingQueryPattern.StandingQueryMode.DistinctId =>
@@ -15,31 +22,65 @@ object StandingToApi {
         Api.StandingQueryPattern.StandingQueryMode.QuinePattern
     }
 
-  def apply(format: Standing.OutputFormat): Api.OutputFormat = format match {
-    case Standing.OutputFormat.JSON => Api.OutputFormat.JSON
-    case Standing.OutputFormat.Protobuf(schemaUrl, typeName) =>
-      Api.OutputFormat.Protobuf(schemaUrl, typeName)
-  }
+  @unused
+  private def apply(pattern: Standing.StandingQueryPattern): Api.StandingQueryPattern =
+    pattern match {
+      case Standing.StandingQueryPattern.Cypher(query, mode) =>
+        Api.StandingQueryPattern.Cypher(query, apply(mode))
+    }
+
+  @unused
+  private def apply(stats: Standing.StandingQueryStats): Api.StandingQueryStats =
+    Api.StandingQueryStats(
+      InternalToApi(stats.rates),
+      stats.startTime,
+      stats.totalRuntime,
+      stats.bufferSize,
+      stats.outputHashCode,
+    )
+
+  @unused
+  def apply(workflow: Standing.StandingQueryResultWorkflow): Api.StandingQueryResultWorkflow =
+    Api.StandingQueryResultWorkflow(
+      resultEnrichment = workflow.workflow.enrichmentQuery.map(QueryToApi.apply),
+      destinations = workflow.destinationStepsList.map(OutputToApi.apply),
+    )
+
+}
+
+// Shall be deleted when Outputs V2 is used in API V2
+object V1StandingToV2Api {
+
+  private def apply(mode: V1.StandingQueryPattern.StandingQueryMode): Api.StandingQueryPattern.StandingQueryMode =
+    mode match {
+      case V1.StandingQueryPattern.StandingQueryMode.DistinctId =>
+        Api.StandingQueryPattern.StandingQueryMode.DistinctId
+      case V1.StandingQueryPattern.StandingQueryMode.MultipleValues =>
+        Api.StandingQueryPattern.StandingQueryMode.MultipleValues
+      case V1.StandingQueryPattern.StandingQueryMode.QuinePattern =>
+        Api.StandingQueryPattern.StandingQueryMode.QuinePattern
+    }
+
   private def apply(
-    level: Standing.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel,
+    level: V1.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel,
   ): Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel = level match {
-    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Trace =>
+    case V1.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Trace =>
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Trace
-    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Debug =>
+    case V1.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Debug =>
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Debug
-    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Info =>
+    case V1.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Info =>
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Info
-    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Warn =>
+    case V1.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Warn =>
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Warn
-    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Error =>
+    case V1.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Error =>
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.Error
   }
   private def apply(
-    level: Standing.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode,
+    level: V1.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode,
   ): Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode = level match {
-    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.Complete =>
+    case V1.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.Complete =>
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.Complete
-    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.FastSampling =>
+    case V1.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.FastSampling =>
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.FastSampling
   }
 
@@ -59,21 +100,21 @@ object StandingToApi {
     case out: Api.StandingQueryResultOutputUserDef.ReactiveStream => out.copy(sequence = cypher +: out.sequence)
   }
 
-  def apply(structure: Standing.StandingQueryOutputStructure): Api.StandingQueryOutputStructure = structure match {
-    case Standing.StandingQueryOutputStructure.WithMetadata() => Api.StandingQueryOutputStructure.WithMetadata()
-    case Standing.StandingQueryOutputStructure.Bare() => Api.StandingQueryOutputStructure.Bare()
+  def apply(structure: V1.StandingQueryOutputStructure): Api.StandingQueryOutputStructure = structure match {
+    case V1.StandingQueryOutputStructure.WithMetadata() => Api.StandingQueryOutputStructure.WithMetadata()
+    case V1.StandingQueryOutputStructure.Bare() => Api.StandingQueryOutputStructure.Bare()
   }
 
-  def apply(sq: Standing.StandingQueryResultOutputUserDef): Api.StandingQueryResultOutputUserDef = sq match {
-    case Standing.StandingQueryResultOutputUserDef.PostToEndpoint(url, parallelism, onlyPositiveMatchData, structure) =>
+  def apply(sq: V1.StandingQueryResultOutputUserDef): Api.StandingQueryResultOutputUserDef = sq match {
+    case V1.StandingQueryResultOutputUserDef.PostToEndpoint(url, parallelism, onlyPositiveMatchData, structure) =>
       Api.StandingQueryResultOutputUserDef.PostToEndpoint(
         url,
         parallelism,
         onlyPositiveMatchData,
         List.empty,
-        StandingToApi(structure),
+        V1StandingToV2Api(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.WriteToKafka(
+    case V1.StandingQueryResultOutputUserDef.WriteToKafka(
           topic,
           bootstrapServers,
           format,
@@ -83,12 +124,12 @@ object StandingToApi {
       Api.StandingQueryResultOutputUserDef.WriteToKafka(
         topic,
         bootstrapServers,
-        StandingToApi(format),
+        format,
         kafkaProperties,
         List.empty,
-        StandingToApi(structure),
+        V1StandingToV2Api(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.WriteToKinesis(
+    case V1.StandingQueryResultOutputUserDef.WriteToKinesis(
           credentials,
           region,
           streamName,
@@ -100,42 +141,42 @@ object StandingToApi {
           structure,
         ) =>
       Api.StandingQueryResultOutputUserDef.WriteToKinesis(
-        credentials.map(IngestToApi.apply),
-        region.map(IngestToApi.apply),
+        credentials.map(InternalToApi.fromV1),
+        region.map(InternalToApi.fromV1),
         streamName,
-        StandingToApi(format),
+        format,
         kinesisParallelism,
         kinesisMaxBatchSize,
         kinesisMaxRecordsPerSecond,
         kinesisMaxBytesPerSecond,
         List.empty,
-        StandingToApi(structure),
+        V1StandingToV2Api(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic, structure) =>
+    case V1.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic, structure) =>
       Api.StandingQueryResultOutputUserDef.WriteToSNS(
-        credentials.map(IngestToApi.apply),
-        region.map(IngestToApi.apply),
+        credentials.map(InternalToApi.fromV1),
+        region.map(InternalToApi.fromV1),
         topic,
         List.empty,
-        StandingToApi(structure),
+        V1StandingToV2Api(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut(logLevel, logMode, structure) =>
+    case V1.StandingQueryResultOutputUserDef.PrintToStandardOut(logLevel, logMode, structure) =>
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut(
-        StandingToApi(logLevel),
-        StandingToApi(logMode),
+        V1StandingToV2Api(logLevel),
+        V1StandingToV2Api(logMode),
         List.empty,
-        StandingToApi(structure),
+        V1StandingToV2Api(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.WriteToFile(path, structure) =>
-      Api.StandingQueryResultOutputUserDef.WriteToFile(path, List.empty, StandingToApi(structure))
-    case Standing.StandingQueryResultOutputUserDef.PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds) =>
+    case V1.StandingQueryResultOutputUserDef.WriteToFile(path, structure) =>
+      Api.StandingQueryResultOutputUserDef.WriteToFile(path, List.empty, V1StandingToV2Api(structure))
+    case V1.StandingQueryResultOutputUserDef.PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds) =>
       Api.StandingQueryResultOutputUserDef.PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds, List.empty)
-    case Standing.StandingQueryResultOutputUserDef.Drop =>
+    case V1.StandingQueryResultOutputUserDef.Drop =>
       Api.StandingQueryResultOutputUserDef.Drop(List.empty)
-    case Standing.StandingQueryResultOutputUserDef.InternalQueue(_) =>
+    case V1.StandingQueryResultOutputUserDef.InternalQueue(_) =>
       // InternalQueue is for internal use, so it should never be exposed to the API
       Api.StandingQueryResultOutputUserDef.Drop(List.empty)
-    case Standing.StandingQueryResultOutputUserDef.CypherQuery(
+    case V1.StandingQueryResultOutputUserDef.CypherQuery(
           query,
           parameter,
           parallelism,
@@ -151,11 +192,11 @@ object StandingToApi {
         allowAllNodeScan,
         shouldRetry,
         List.empty,
-        StandingToApi(structure),
+        V1StandingToV2Api(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.ReactiveStream(address, port, _) =>
+    case V1.StandingQueryResultOutputUserDef.ReactiveStream(address, port, _) =>
       Api.StandingQueryResultOutputUserDef.ReactiveStream(address, port, List.empty)
-    case Standing.StandingQueryResultOutputUserDef.CypherQuery(
+    case V1.StandingQueryResultOutputUserDef.CypherQuery(
           query,
           parameter,
           parallelism,
@@ -171,33 +212,33 @@ object StandingToApi {
         allowAllNodeScan,
         shouldRetry,
       )
-      prependToOutputDef(cypherQuery, StandingToApi(andThen))
+      prependToOutputDef(cypherQuery, V1StandingToV2Api(andThen))
     case other => sys.error(s"API v2 doesn't support StandingQueryResultOutputUserDef: $other")
   }
-  private def apply(pattern: Standing.StandingQueryPattern): Api.StandingQueryPattern =
+  private def apply(pattern: V1.StandingQueryPattern): Api.StandingQueryPattern =
     pattern match {
-      case Standing.StandingQueryPattern.Cypher(query, mode) =>
-        Api.StandingQueryPattern.Cypher(query, StandingToApi(mode))
+      case V1.StandingQueryPattern.Cypher(query, mode) =>
+        Api.StandingQueryPattern.Cypher(query, V1StandingToV2Api(mode))
     }
 
-  private def apply(stats: Standing.StandingQueryStats): Api.StandingQueryStats =
+  private def apply(stats: V1.StandingQueryStats): Api.StandingQueryStats =
     Api.StandingQueryStats(
-      IngestToApi(stats.rates),
+      InternalToApi.fromV1(stats.rates),
       stats.startTime,
       stats.totalRuntime,
       stats.bufferSize,
       stats.outputHashCode,
     )
 
-  def apply(query: Standing.RegisteredStandingQuery): Api.StandingQuery.RegisteredStandingQuery =
+  def apply(query: V1.RegisteredStandingQuery): Api.StandingQuery.RegisteredStandingQuery =
     Api.StandingQuery.RegisteredStandingQuery(
       query.name,
       query.internalId,
-      query.pattern.map(StandingToApi.apply),
-      query.outputs.view.mapValues(StandingToApi.apply).toMap,
+      query.pattern.map(V1StandingToV2Api.apply),
+      query.outputs.view.mapValues(V1StandingToV2Api.apply).toMap,
       query.includeCancellations,
       query.inputBufferSize,
-      query.stats.view.mapValues(StandingToApi.apply).toMap,
+      query.stats.view.mapValues(V1StandingToV2Api.apply).toMap,
     )
 
 }

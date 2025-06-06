@@ -181,11 +181,16 @@ object StandingQueryResultOutput extends LazySafeLogging {
 
   sealed abstract class SlackSerializable {
     def slackJson: String
-    implicit def stringToJson(s: String): Json = Json.fromString(s)
-
   }
 
   object SlackSerializable {
+    implicit def stringToJson(s: String): Json = Json.fromString(s)
+
+    def jsonFromQuineValueMap(
+      map: Map[String, QuineValue],
+    )(implicit logConfig: LogConfig, idProvider: QuineIdProvider): Json =
+      Json.fromFields(map.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq)
+
     def apply(positiveOnly: Boolean, results: Seq[StandingQueryResult])(implicit
       idProvider: QuineIdProvider,
       logConfig: LogConfig,
@@ -211,84 +216,115 @@ object StandingQueryResultOutput extends LazySafeLogging {
           Some(MultipleUpdates(positiveResults, cancellations))
         } else None
     }
+
+    private def isInferredCancellation(json: Json): Boolean =
+      (json \\ "meta").exists(meta => (meta \\ "isPositiveMatch").contains(Json.False))
+
+    /** @param results TODO document shape of...may contain meta, may not...
+      * @return
+      */
+    def apply(results: Seq[Json]): Option[SlackSerializable] = results.partition(isInferredCancellation) match {
+      case (Nil, Nil) => None
+      case (singlePositive :: Nil, Nil) => Some(NewResult(singlePositive))
+      case (Nil, singleCancellation :: Nil) => Some(CancelledResult(singleCancellation))
+      case (positiveResults, cancellations) => Some(MultipleUpdates(positiveResults, cancellations))
+    }
   }
 
-  final case class NewResult(data: Map[String, QuineValue])(implicit idProvider: QuineIdProvider, logConfig: LogConfig)
-      extends SlackSerializable {
-    // pretty-printed JSON representing `data`. Note that since this is used as a value in another JSON object, it
-    // may not be perfectly escaped (for example, if the data contains a triple-backquote)
-    private val dataPrettyJson: String =
-      Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq).spaces2
+  final private case class NewResult(data: Json) extends SlackSerializable {
 
-    def slackBlock: Json =
-      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdwn", "text" -> s"```$dataPrettyJson```"))
+    import SlackSerializable.stringToJson
+
+    def slackBlock: Json = {
+      // May not be perfectly escaped (for example, if the data contains a triple-backquote)
+      val codeBlockContent = data.spaces2
+      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdwn", "text" -> s"```$codeBlockContent```"))
+    }
 
     override def slackJson: String = Json
       .obj(
         "text" -> "New Standing Query Result",
         "blocks" -> Json.arr(
-          Json
-            .obj("type" -> "header", "text" -> Json.obj("type" -> "plain_text", "text" -> "New Standing Query Result")),
+          NewResult.header,
+          slackBlock,
         ),
       )
       .noSpaces
+
   }
 
-  final case class CancelledResult(data: Map[String, QuineValue])(implicit
-    idProvider: QuineIdProvider,
-    protected val logConfig: LogConfig,
-  ) extends SlackSerializable {
-    // pretty-printed JSON representing `data`. Note that since this is used as a value in another JSON object, it
-    // may not be perfectly escaped (for example, if the data contains a triple-backquote)
-    private val dataPrettyJson: String =
-      Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq).spaces2
+  private object NewResult {
 
-    def slackBlock: Json =
-      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdwn", "text" -> s"```$dataPrettyJson```"))
+    import SlackSerializable._
+
+    def apply(data: Map[String, QuineValue])(implicit logConfig: LogConfig, idProvider: QuineIdProvider): NewResult =
+      NewResult(jsonFromQuineValueMap(data))
+
+    val header: Json = Json.obj(
+      "type" -> "header",
+      "text" -> Json.obj(
+        "type" -> "plain_text",
+        "text" -> "New Standing Query Result",
+      ),
+    )
+  }
+
+  final private case class CancelledResult(data: Json) extends SlackSerializable {
+
+    import SlackSerializable.stringToJson
+
+    def slackBlock: Json = {
+      // May not be perfectly escaped (for example, if the data contains a triple-backquote)
+      val codeBlockContent = data.spaces2
+      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdwn", "text" -> s"```$codeBlockContent```"))
+    }
 
     override def slackJson: String = Json
       .obj(
         "text" -> "Standing Query Result Cancelled",
-        "blocks" ->
-
-        Json.arr(
-          Json.obj(
-            "type" -> "header",
-            "text" -> Json.obj(
-              "type" -> "plain_text",
-              "text" -> "Standing Query Result Cancelled",
-            ),
-          ),
+        "blocks" -> Json.arr(
+          CancelledResult.header,
           slackBlock,
         ),
       )
       .noSpaces
   }
 
-  final case class MultipleUpdates(newResults: Seq[StandingQueryResult], newCancellations: Seq[StandingQueryResult])(
-    implicit
-    idProvider: QuineIdProvider,
-    logConfig: LogConfig,
+  private object CancelledResult {
+
+    import SlackSerializable._
+
+    def apply(
+      data: Map[String, QuineValue],
+    )(implicit logConfig: LogConfig, idProvider: QuineIdProvider): CancelledResult = CancelledResult(
+      jsonFromQuineValueMap(data),
+    )
+
+    val header: Json = Json.obj(
+      "type" -> "header",
+      "text" -> Json.obj(
+        "type" -> "plain_text",
+        "text" -> "Standing Query Result Cancelled",
+      ),
+    )
+  }
+
+  final private case class MultipleUpdates(
+    newResults: Seq[Json],
+    newCancellations: Seq[Json],
   ) extends SlackSerializable {
-    val newResultsBlocks: Vector[Json] = newResults match {
-      case Seq() => Vector.empty
-      case Seq(result) =>
+
+    import SlackSerializable._
+
+    private val newResultsBlocks: Vector[Json] = newResults match {
+      case Seq() =>
+        Vector.empty
+      case Seq(jData) =>
         Vector(
-          Json.obj(
-            "type" -> "header",
-            "text" -> Json.obj(
-              "type" -> "plain_text",
-              "text" -> "New Standing Query Result",
-            ),
-          ),
-          NewResult(result.data).slackBlock,
+          NewResult.header,
+          NewResult(jData).slackBlock,
         )
       case result +: remainingResults =>
-        val excessMetaData = remainingResults.map(_.meta.toString) // TODO: what here since no result ID?
-        val excessResultItems: Seq[String] =
-          if (excessMetaData.length <= 10) excessMetaData
-          else excessMetaData.take(9) :+ s"(${excessMetaData.length - 9} more)"
-
         Vector(
           Json.obj(
             "type" -> "header",
@@ -301,33 +337,17 @@ object StandingQueryResultOutput extends LazySafeLogging {
             "type" -> "section",
             "text" -> Json.obj(
               "type" -> "mrkdwn",
-              "text" -> "Latest result:",
+              // Note: "Latest" is a side effect of presumed list-prepending at batching call site
+              "text" -> s"Latest result of ${remainingResults.size}:",
             ),
           ),
-        ) ++ (NewResult(result.data).slackBlock +: Vector(
-          Json.obj(
-            "type" -> "section",
-            "text" -> Json.obj(
-              "type" -> "mrkdwn",
-              "text" -> "*Other New Result Meta Data:*",
-            ),
-          ),
-          Json.obj(
-            "type" -> "section",
-            "fields" -> Json.fromValues(excessResultItems.map { str =>
-              Json.obj(
-                "type" -> "mrkdwn",
-                "text" -> str,
-              )
-            }),
-          ),
-        ))
+        ) :+ (NewResult(result).slackBlock)
       case _ => throw new Exception(s"Unexpected value $newResults")
     }
 
-    val cancellationBlocks: Vector[Json] = newCancellations match {
+    private val cancellationBlocks: Vector[Json] = newCancellations match {
       case Seq() => Vector.empty
-      case Seq(cancellation) =>
+      case Seq(jData) =>
         Vector(
           Json.obj(
             "type" -> "header",
@@ -336,33 +356,20 @@ object StandingQueryResultOutput extends LazySafeLogging {
               "text" -> "Standing Query Result Cancelled",
             ),
           ),
-          CancelledResult(cancellation.data).slackBlock,
+          CancelledResult(jData).slackBlock,
         )
       case cancellations =>
-        val cancelledMetaData = cancellations.map(_.meta.toString)
-        val itemsCancelled: Seq[String] =
-          if (cancellations.length <= 10) cancelledMetaData
-          else cancelledMetaData.take(9) :+ s"(${cancellations.length - 9} more)"
-
         Vector(
           Json.obj(
             "type" -> "header",
             "text" -> Json.obj(
               "type" -> "plain_text",
-              "text" -> "Standing Query Results Cancelled",
+              "text" -> s"Standing Query Results Cancelled: ${cancellations.size}",
             ),
-          ),
-          Json.obj(
-            "type" -> "section",
-            "fields" -> Json.fromValues(itemsCancelled.map { str =>
-              Json.obj(
-                "type" -> "mrkdwn",
-                "text" -> str,
-              )
-            }),
           ),
         )
     }
+
     override def slackJson: String = Json
       .obj(
         "text" -> "New Standing Query Updates",
@@ -371,4 +378,21 @@ object StandingQueryResultOutput extends LazySafeLogging {
       .noSpaces
   }
 
+  private object MultipleUpdates {
+    import SlackSerializable.jsonFromQuineValueMap
+
+    def apply(
+      newResults: Seq[StandingQueryResult],
+      newCancellations: Seq[StandingQueryResult],
+    )(implicit logConfig: LogConfig, idProvider: QuineIdProvider): MultipleUpdates =
+      MultipleUpdates(
+        newResults = newResults.map(jsonFromStandingQueryResult),
+        newCancellations = newCancellations.map(jsonFromStandingQueryResult),
+      )
+
+    private def jsonFromStandingQueryResult(
+      result: StandingQueryResult,
+    )(implicit logConfig: LogConfig, idProvider: QuineIdProvider): Json = jsonFromQuineValueMap(result.data)
+
+  }
 }

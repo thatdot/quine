@@ -45,17 +45,19 @@ final case class StandingQueryResult(
 
   def toJson(
     structure: StandingQueryResultStructure,
-  )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Json = structure match {
-    case StandingQueryResultStructure.WithMetaData() =>
-      Json.fromFields(
-        Seq(
-          ("meta", meta.toJson),
-          ("data", Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq)),
-        ),
-      )
-    case StandingQueryResultStructure.Bare() =>
-      Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq)
-
+  )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Json = {
+    import StandingQueryResult.ResultDataConversions
+    structure match {
+      case StandingQueryResultStructure.WithMetaData() =>
+        Json.fromFields(
+          Seq(
+            ("meta", meta.toJson),
+            ("data", data.toJson),
+          ),
+        )
+      case StandingQueryResultStructure.Bare() =>
+        data.toJson
+    }
   }
 
   // TODO eliminate duplicated code below and in DomainGraphNode.scala
@@ -212,5 +214,13 @@ object StandingQueryResult {
         ("isPositiveMatch", Json.fromBoolean(isPositiveMatch)),
       ),
     )
+  }
+
+  private type ResultData = Map[String, QuineValue]
+  implicit final class ResultDataConversions(data: ResultData)(implicit
+    idProvider: QuineIdProvider,
+    logConfig: LogConfig,
+  ) {
+    def toJson: Json = Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq)
   }
 }

@@ -72,6 +72,7 @@ final class QuineApp(
     with V1.IngestSchemas
     with EncoderDecoder.DeriveEndpoints4s
     with com.thatdot.quine.routes.exts.CirceJsonAnySchema
+    with SchemaCache
     with LazySafeLogging {
 
   import QuineApp._
@@ -425,8 +426,8 @@ final class QuineApp(
       }(ec)
   }
 
-  private[this] val protobufSchemaCache: ProtobufSchemaCache = new ProtobufSchemaCache.AsyncLoading(graph.dispatchers)
-  private[this] val avroSchemaCache: AvroSchemaCache = new AvroSchemaCache.AsyncLoading(graph.dispatchers)
+  val protobufSchemaCache: ProtobufSchemaCache = new ProtobufSchemaCache.AsyncLoading(graph.dispatchers)
+  val avroSchemaCache: AvroSchemaCache = new AvroSchemaCache.AsyncLoading(graph.dispatchers)
 
   def addIngestStream(
     name: String,

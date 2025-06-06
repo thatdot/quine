@@ -6,6 +6,7 @@ import java.time.Instant
 import com.typesafe.scalalogging.LazyLogging
 import sttp.tapir.Schema.annotations.{default, description, title}
 
+import com.thatdot.quine.app.v2api.definitions.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.{routes => V1}
 
 object ApiIngest {
@@ -28,16 +29,6 @@ object ApiIngest {
   final case class IngestStreamWithStatus(
     config: IngestSource,
     status: Option[IngestStreamStatus],
-  )
-
-  @title("Rates Summary")
-  @description("Summary statistics about a metered rate (ie, count per second).")
-  final case class RatesSummary(
-    @description("Number of items metered") count: Long,
-    @description("Approximate rate per second in the last minute") oneMinute: Double,
-    @description("Approximate rate per second in the last five minutes") fiveMinute: Double,
-    @description("Approximate rate per second in the last fifteen minutes") fifteenMinute: Double,
-    @description("Approximate rate per second since the meter was started") overall: Double,
   )
 
   @title("Statistics About a Running Ingest Stream")
@@ -200,12 +191,6 @@ object ApiIngest {
     ) extends KafkaOffsetCommitting
   }
 
-  @title("AWS Region")
-  @description(
-    "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.",
-  )
-  final case class AwsRegion(region: String)
-
   sealed abstract class KafkaSecurityProtocol(val name: String)
 
   object KafkaSecurityProtocol {
@@ -235,12 +220,6 @@ object ApiIngest {
     @description("Only send data messages, no keepalives.")
     final case object NoKeepalive extends KeepaliveProtocol
   }
-
-  @title("AWS Credentials")
-  @description(
-    "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>.",
-  )
-  final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
 
   sealed abstract class RecordDecodingType
 

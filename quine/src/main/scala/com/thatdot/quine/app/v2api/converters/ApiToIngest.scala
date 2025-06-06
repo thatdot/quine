@@ -16,17 +16,14 @@ object ApiToIngest {
 
     implicit val quineIngestConfigurationOfApi
       : OfApiMethod[Ingest.QuineIngestConfiguration, Api.Oss.QuineIngestConfiguration] =
-      (b: Api.Oss.QuineIngestConfiguration) => ApiToIngest.apply(b)
+      (b: Api.Oss.QuineIngestConfiguration) => apply(b)
   }
-
-  def apply(rates: Api.RatesSummary): V1.RatesSummary =
-    V1.RatesSummary(rates.count, rates.oneMinute, rates.fiveMinute, rates.fifteenMinute, rates.overall)
 
   def apply(stats: Api.IngestStreamStats): V1.IngestStreamStats =
     V1.IngestStreamStats(
       stats.ingestedCount,
-      ApiToIngest(stats.rates),
-      ApiToIngest(stats.byteRates),
+      ApiToInternal.toV1(stats.rates),
+      ApiToInternal.toV1(stats.byteRates),
       stats.startTime,
       stats.totalRuntime,
     )
@@ -45,7 +42,7 @@ object ApiToIngest {
     case Api.IngestFormat.FileFormat.Line => Ingest.FileFormat.LineFormat
     case Api.IngestFormat.FileFormat.Json => Ingest.FileFormat.JsonFormat
     case Api.IngestFormat.FileFormat.Csv(headers, delimiter, quoteChar, escapeChar) =>
-      Ingest.FileFormat.CsvFormat(headers, ApiToIngest(delimiter), ApiToIngest(quoteChar), ApiToIngest(escapeChar))
+      Ingest.FileFormat.CsvFormat(headers, apply(delimiter), apply(quoteChar), apply(escapeChar))
   }
   def apply(format: Api.IngestFormat.StreamingFormat): Ingest.StreamingFormat = format match {
     case Api.IngestFormat.StreamingFormat.Json => Ingest.StreamingFormat.JsonFormat
@@ -73,8 +70,6 @@ object ApiToIngest {
       V1.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis)
     case Api.WebsocketSimpleStartupIngest.NoKeepalive => V1.WebsocketSimpleStartupIngest.NoKeepalive
   }
-  def apply(cred: Api.AwsCredentials): V1.AwsCredentials = V1.AwsCredentials(cred.accessKeyId, cred.secretAccessKey)
-  def apply(region: Api.AwsRegion): V1.AwsRegion = V1.AwsRegion(region.region)
   def apply(ingest: Api.IngestSource.Kinesis.IteratorType): V1.KinesisIngest.IteratorType = ingest match {
     case Api.IngestSource.Kinesis.IteratorType.Latest => V1.KinesisIngest.IteratorType.Latest
     case Api.IngestSource.Kinesis.IteratorType.TrimHorizon => V1.KinesisIngest.IteratorType.TrimHorizon
@@ -237,18 +232,18 @@ object ApiToIngest {
   def apply(src: Api.IngestSource): Ingest.IngestSource = src match {
     case src: Api.IngestSource.File =>
       Ingest.FileIngest(
-        ApiToIngest(src.format),
+        apply(src.format),
         src.path,
-        src.fileIngestMode.map(ApiToIngest.apply),
+        src.fileIngestMode.map(apply),
         src.maximumLineSize,
         src.startOffset,
         src.limit,
         src.characterEncoding,
-        src.recordDecoders.map(ApiToIngest.apply),
+        src.recordDecoders.map(apply),
       )
     case src: Api.IngestSource.StdInput =>
       Ingest.StdInputIngest(
-        ApiToIngest(src.format),
+        apply(src.format),
         src.maximumLineSize,
         src.characterEncoding,
       )
@@ -260,22 +255,22 @@ object ApiToIngest {
       )
     case src: Api.IngestSource.Websocket =>
       Ingest.WebsocketIngest(
-        ApiToIngest(src.format),
+        apply(src.format),
         src.url,
         src.initMessages,
-        ApiToIngest(src.keepAlive),
+        apply(src.keepAlive),
         src.characterEncoding,
       )
     case src: Api.IngestSource.Kinesis =>
       Ingest.KinesisIngest(
-        ApiToIngest(src.format),
+        apply(src.format),
         src.streamName,
         src.shardIds,
-        src.credentials.map(ApiToIngest.apply),
-        src.region.map(ApiToIngest.apply),
-        ApiToIngest(src.iteratorType),
+        src.credentials.map(ApiToInternal.toV1),
+        src.region.map(ApiToInternal.toV1),
+        apply(src.iteratorType),
         src.numRetries,
-        src.recordDecoders.map(ApiToIngest.apply),
+        src.recordDecoders.map(apply),
       )
     case Api.IngestSource.KinesisKCL(
           kinesisStreamName,
@@ -293,61 +288,61 @@ object ApiToIngest {
       Ingest.KinesisKclIngest(
         kinesisStreamName = kinesisStreamName,
         applicationName = applicationName,
-        format = ApiToIngest(format),
-        credentialsOpt = credentialsOpt.map(ApiToIngest.apply),
-        regionOpt = regionOpt.map(ApiToIngest.apply),
-        initialPosition = ApiToIngest(initialPosition),
+        format = apply(format),
+        credentialsOpt = credentialsOpt.map(ApiToInternal.toV1),
+        regionOpt = regionOpt.map(ApiToInternal.toV1),
+        initialPosition = apply(initialPosition),
         numRetries = numRetries,
-        recordDecoders = recordDecoders.map(ApiToIngest.apply),
+        recordDecoders = recordDecoders.map(apply),
         schedulerSourceSettings = schedulerSourceSettings
-          .map(ApiToIngest.apply)
+          .map(apply)
           .getOrElse(Ingest.KinesisSchedulerSourceSettings()),
-        checkpointSettings = checkpointSettings.map(ApiToIngest.apply).getOrElse(Ingest.KinesisCheckpointSettings()),
-        advancedSettings = advancedSettings.map(ApiToIngest.apply).getOrElse(Ingest.KCLConfiguration()),
+        checkpointSettings = checkpointSettings.map(apply).getOrElse(Ingest.KinesisCheckpointSettings()),
+        advancedSettings = advancedSettings.map(apply).getOrElse(Ingest.KCLConfiguration()),
       )
     case src: Api.IngestSource.ServerSentEvent =>
       Ingest.ServerSentEventIngest(
-        ApiToIngest(src.format),
+        apply(src.format),
         src.url,
-        src.recordDecoders.map(ApiToIngest.apply),
+        src.recordDecoders.map(apply),
       )
     case src: Api.IngestSource.SQS =>
       Ingest.SQSIngest(
-        ApiToIngest(src.format),
+        apply(src.format),
         src.queueUrl,
         src.readParallelism,
-        src.credentials.map(ApiToIngest.apply),
-        src.region.map(ApiToIngest.apply),
+        src.credentials.map(ApiToInternal.toV1),
+        src.region.map(ApiToInternal.toV1),
         src.deleteReadMessages,
-        src.recordDecoders.map(ApiToIngest.apply),
+        src.recordDecoders.map(apply),
       )
     case src: Api.IngestSource.Kafka =>
       Ingest.KafkaIngest(
-        ApiToIngest(src.format),
+        apply(src.format),
         src.topics,
         src.bootstrapServers,
         src.groupId,
-        ApiToIngest(src.securityProtocol),
-        src.offsetCommitting.map(ApiToIngest.apply),
-        ApiToIngest(src.autoOffsetReset),
+        apply(src.securityProtocol),
+        src.offsetCommitting.map(apply),
+        apply(src.autoOffsetReset),
         src.kafkaProperties,
         src.endingOffset,
-        src.recordDecoders.map(ApiToIngest.apply),
+        src.recordDecoders.map(apply),
       )
     case src: Api.IngestSource.S3 =>
       Ingest.S3Ingest(
-        ApiToIngest(src.format),
+        apply(src.format),
         src.bucket,
         src.key,
-        src.credentials.map(ApiToIngest.apply),
+        src.credentials.map(ApiToInternal.toV1),
         src.maximumLineSize,
         src.startOffset,
         src.limit,
         src.characterEncoding,
-        src.recordDecoders.map(ApiToIngest.apply),
+        src.recordDecoders.map(apply),
       )
     case Api.IngestSource.ReactiveStream(url, port, format) =>
-      Ingest.ReactiveStreamIngest(ApiToIngest(url), port, format)
+      Ingest.ReactiveStreamIngest(apply(url), port, format)
   }
   def apply(handler: Api.OnRecordErrorHandler): Ingest.OnRecordErrorHandler = handler match {
     case Api.LogRecordErrorHandler => Ingest.LogRecordErrorHandler
@@ -359,22 +354,22 @@ object ApiToIngest {
   }
   def apply(conf: Api.Oss.QuineIngestConfiguration): Ingest.QuineIngestConfiguration =
     Ingest.QuineIngestConfiguration(
-      ApiToIngest(conf.source),
+      apply(conf.source),
       conf.query,
       conf.parameter,
       conf.parallelism,
       conf.maxPerSecond,
-      ApiToIngest(conf.onRecordError),
-      ApiToIngest(conf.onStreamError),
+      apply(conf.onRecordError),
+      apply(conf.onStreamError),
     )
 
-  def apply(status: V1.IngestStreamStatus): Api.IngestStreamStatus = status match {
-    case V1.IngestStreamStatus.Completed => Api.IngestStreamStatus.Completed
-    case V1.IngestStreamStatus.Terminated => Api.IngestStreamStatus.Terminated
-    case V1.IngestStreamStatus.Failed => Api.IngestStreamStatus.Failed
-    case V1.IngestStreamStatus.Running => Api.IngestStreamStatus.Running
-    case V1.IngestStreamStatus.Paused => Api.IngestStreamStatus.Paused
-    case V1.IngestStreamStatus.Restored => Api.IngestStreamStatus.Restored
+  def apply(status: Api.IngestStreamStatus): V1.IngestStreamStatus = status match {
+    case Api.IngestStreamStatus.Completed => V1.IngestStreamStatus.Completed
+    case Api.IngestStreamStatus.Terminated => V1.IngestStreamStatus.Terminated
+    case Api.IngestStreamStatus.Failed => V1.IngestStreamStatus.Failed
+    case Api.IngestStreamStatus.Running => V1.IngestStreamStatus.Running
+    case Api.IngestStreamStatus.Paused => V1.IngestStreamStatus.Paused
+    case Api.IngestStreamStatus.Restored => V1.IngestStreamStatus.Restored
   }
 
 }

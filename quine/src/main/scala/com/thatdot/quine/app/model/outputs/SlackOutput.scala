@@ -18,6 +18,7 @@ import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, Stand
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.PostToSlack
+
 class SlackOutput(val config: PostToSlack)(implicit private val logConfig: LogConfig)
     extends OutputRuntime
     with LazySafeLogging {
@@ -35,7 +36,7 @@ class SlackOutput(val config: PostToSlack)(implicit private val logConfig: LogCo
     implicit val idProvider: QuineIdProvider = graph.idProvider
     val http = Http(graph.system)
 
-    // how often to send notifications (notifications will be batched by [[PostToSlack.SlackSerializable.apply]]
+    // how often to send notifications (notifications will be batched by [[PostToSlack.SlackSerializable.apply]])
     val rate = math.max(1, intervalSeconds).seconds
 
     Flow[StandingQueryResult]
@@ -78,7 +79,6 @@ class SlackOutput(val config: PostToSlack)(implicit private val logConfig: LogCo
           }(system.dispatcher)
           .map(_ => token)(system.dispatcher)
 
-        // TODO: principled error handling
         posted.recover { case err =>
           logger.error(log"Failed to POST standing query result" withException err)
           token

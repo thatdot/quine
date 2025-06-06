@@ -16,6 +16,7 @@ import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, StandingQueryResult
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKafka
 import com.thatdot.quine.util.Log.implicits._
+
 class KafkaOutput(val config: WriteToKafka)(implicit
   private val logConfig: LogConfig,
   private val protobufSchemaCache: ProtobufSchemaCache,

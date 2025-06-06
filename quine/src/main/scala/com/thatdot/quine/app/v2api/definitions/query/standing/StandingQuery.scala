@@ -17,7 +17,7 @@ object StandingQuery {
     @description("Whether or not to include cancellations in the results of this query")
     @default(false)
     includeCancellations: Boolean = false,
-    @description("how many standing query results to buffer before backpressuring")
+    @description("How many standing query results to buffer before backpressuring")
     @default(32)
     inputBufferSize: Int = 32, // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
   )
