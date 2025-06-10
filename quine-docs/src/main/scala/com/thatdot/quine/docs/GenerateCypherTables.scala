@@ -8,9 +8,9 @@ import scala.annotation.nowarn
 import org.pegdown.PegDownProcessor
 
 import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.compiler.cypher.CypherStandingWiretap
 import com.thatdot.quine.graph.cypher.{BuiltinFunc, Func, Proc, UserDefinedFunction, UserDefinedProcedure}
+import com.thatdot.quine.serialization.ProtobufSchemaCache
 
 object GenerateCypherTables extends App {
 

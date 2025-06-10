@@ -10,11 +10,11 @@ import org.apache.kafka.common.serialization.ByteArraySerializer
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.StandingQueryResultOutput.serialized
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKafka
+import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.Log.implicits._
 
 class KafkaOutput(val config: WriteToKafka)(implicit

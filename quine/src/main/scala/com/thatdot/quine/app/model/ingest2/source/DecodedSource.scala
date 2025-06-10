@@ -13,21 +13,22 @@ import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.data.DataFoldableFrom
+import com.thatdot.quine.app.data.QuineDataFoldersTo
 import com.thatdot.quine.app.model.ingest.QuineIngestSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest2.V1ToV2
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.model.ingest2.codec.FrameDecoder
-import com.thatdot.quine.app.model.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.model.ingest2.sources.S3Source.s3Source
 import com.thatdot.quine.app.model.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.model.ingest2.sources._
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
-import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
+import com.thatdot.quine.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.util.{BaseError, SwitchMode, Valve, ValveSwitch}
 import com.thatdot.quine.{routes => V1}
 
@@ -106,7 +107,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
                 .ingestQueryTimer(intoNamespace, name)
                 .time(
                   ingestQuery.apply {
-                    foldable.fold(t, DataFolderTo.cypherValueFolder)
+                    foldable.fold(t, QuineDataFoldersTo.cypherValueFolder)
                   },
                 )
             case Failure(e) => Future.failed(e)

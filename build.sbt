@@ -1,5 +1,5 @@
-import QuineSettings.*
 import Dependencies.*
+import QuineSettings.*
 
 ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/release/"
 
@@ -67,6 +67,23 @@ lazy val `quine-core`: Project = project
       BuildInfoKey.action("javaVersion")(scala.util.Properties.javaVersion),
     ),
     buildInfoPackage := "com.thatdot.quine",
+  )
+
+lazy val `quine-serialization`: Project = project
+  .settings(commonSettings)
+  .dependsOn(
+    `data`,
+    `quine-core` % "compile->compile;test->test",
+  )
+  .settings(
+    libraryDependencies ++= Seq(
+      "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
+      "com.google.protobuf" % "protobuf-java" % protobufV,
+      "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
+      "org.apache.avro" % "avro" % avroV,
+      "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
+      "org.endpoints4s" %%% "json-schema-circe" % endpoints4sCirceV,
+    ),
   )
 
 // MapDB implementation of a Quine persistor
@@ -176,7 +193,60 @@ lazy val `visnetwork-facade`: Project = project
     ),
   )
 
-// REST API specifications for `quine`-based applications
+lazy val `aws`: Project = project
+  .settings(commonSettings)
+  .settings(
+    libraryDependencies ++= Seq(
+      "com.thatdot" %% "quine-logging" % quineCommonV,
+      "software.amazon.awssdk" % "aws-core" % awsSdkV,
+    ),
+  )
+
+lazy val `data`: Project = project
+  .settings(commonSettings)
+  .settings(
+    libraryDependencies ++= Seq(
+      "com.thatdot" %% "quine-logging" % quineCommonV,
+      "com.thatdot" %% "quine-utils" % quineCommonV,
+      "com.google.protobuf" % "protobuf-java" % protobufV,
+      "io.circe" %% "circe-core" % circeV,
+      "org.apache.avro" % "avro" % avroV,
+      "org.scalatest" %% "scalatest" % scalaTestV % Test,
+    ),
+  )
+
+lazy val `api`: Project = project
+  .settings(commonSettings)
+  .dependsOn()
+  .settings(
+    libraryDependencies ++= Seq(
+      "com.softwaremill.sttp.tapir" %% "tapir-core" % tapirV,
+    ),
+  )
+
+lazy val `internal-models`: Project = project
+  .settings(commonSettings)
+  .dependsOn(`aws`, `data`, `quine-core`, `quine-serialization`)
+  .settings(
+    libraryDependencies ++= Seq(
+      "com.thatdot" %% "quine-logging" % quineCommonV,
+      "org.apache.pekko" %% "pekko-actor" % pekkoV,
+      "org.apache.pekko" %% "pekko-stream" % pekkoV,
+      "org.apache.pekko" %% "pekko-http" % pekkoHttpV,
+      "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,
+      "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV,
+      "org.apache.pekko" %% "pekko-connectors-sns" % pekkoConnectorsV,
+      "software.amazon.awssdk" % "netty-nio-client" % awsSdkV,
+      "com.google.protobuf" % "protobuf-java" % protobufV,
+      "io.rsocket" % "rsocket-core" % rsocketV,
+      "io.rsocket" % "rsocket-transport-netty" % rsocketV,
+      "org.scalatest" %% "scalatest" % scalaTestV % Test,
+      "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test,
+      "org.apache.pekko" %% "pekko-http-testkit" % pekkoHttpV % Test,
+    ),
+  )
+
+/** V1 API definitions (that may be used for internal modeling at times) for `quine`-based applications */
 lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Pure)
   .in(file("quine-endpoints"))
@@ -184,7 +254,7 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
   .settings(
     libraryDependencies ++= Seq(
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
-      "org.endpoints4s" %%% "json-schema-circe" % "2.6.1",
+      "org.endpoints4s" %%% "json-schema-circe" % endpoints4sCirceV,
       "io.circe" %% "circe-core" % circeV,
       "org.endpoints4s" %%% "openapi" % endpoints4sOpenapiV,
       "com.lihaoyi" %% "ujson-circe" % ujsonCirceV, // For the OpenAPI rendering
@@ -193,8 +263,20 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
     ),
   )
   .jsSettings(
-    // Provides an implementatAllows us to use java.time.Instant in Scala.js
+    // Provides an implementation that allows us to use java.time.Instant in Scala.js
     libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTimeV,
+  )
+
+/** Contains the common (among product needs) converters/conversions between
+  * the independent definitions of API models and internal models. Notably
+  * not versioned because versioning of API and internal models are independent.
+  */
+lazy val `model-converters`: Project = project
+  .settings(commonSettings)
+  .dependsOn(
+    `api`,
+    `internal-models`,
+    `quine-endpoints`.jvm,
   )
 
 // Quine web application
@@ -245,6 +327,10 @@ lazy val `quine`: Project = project
     `quine-core` % "compile->compile;test->test",
     `quine-cypher` % "compile->compile;test->test",
     `quine-endpoints`.jvm % "compile->compile;test->test",
+    `data` % "compile->compile;test->test",
+    `api`,
+    `model-converters`,
+    `internal-models` % "compile->compile;test->test",
     `quine-gremlin`,
     `quine-cassandra-persistor`,
     `quine-mapdb-persistor`,
@@ -273,7 +359,6 @@ lazy val `quine`: Project = project
       "com.softwaremill.sttp.tapir" %% "tapir-sttp-stub-server" % tapirV % Test,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "com.softwaremill.sttp.client3" %% "circe" % "3.10.3" % Test,
-      "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.1",
       "io.circe" %% "circe-generic-extras" % "0.14.4",

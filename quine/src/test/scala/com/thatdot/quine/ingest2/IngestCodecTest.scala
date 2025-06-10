@@ -11,6 +11,7 @@ import org.scalatest.Assertion
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.RecordDecodingType._
@@ -24,7 +25,6 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
   Oss,
   WebsocketSimpleStartupIngest,
 }
-import com.thatdot.quine.app.v2api.definitions.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 class IngestCodecTest

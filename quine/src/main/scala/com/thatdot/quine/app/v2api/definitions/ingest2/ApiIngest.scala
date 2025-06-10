@@ -6,7 +6,7 @@ import java.time.Instant
 import com.typesafe.scalalogging.LazyLogging
 import sttp.tapir.Schema.annotations.{default, description, title}
 
-import com.thatdot.quine.app.v2api.definitions.{AwsCredentials, AwsRegion, RatesSummary}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.{routes => V1}
 
 object ApiIngest {

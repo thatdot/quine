@@ -17,6 +17,8 @@ import org.scalatest.concurrent.ScalaFutures.convertScalaFuture
 import org.scalatest.funspec.AnyFunSpecLike
 import org.scalatest.matchers.should.Matchers
 
+import com.thatdot.data.DataFoldableFrom
+import com.thatdot.quine.app.data.QuineDataFoldersTo
 import com.thatdot.quine.app.ingest.serialization.ProtobufTest.{
   addressBookSchemaFile,
   bytesFromURL,
@@ -32,17 +34,16 @@ import com.thatdot.quine.app.ingest.serialization.ProtobufTest.{
   warcraftSchemaFile,
 }
 import com.thatdot.quine.app.model.ingest.serialization.ProtobufParser
-import com.thatdot.quine.app.model.ingest2.core.{DataFoldableFrom, DataFolderTo}
-import com.thatdot.quine.app.serialization.ProtobufSchemaError.{
+import com.thatdot.quine.graph.cypher.Expr.toQuineValue
+import com.thatdot.quine.graph.cypher.{CypherException, Expr, Value}
+import com.thatdot.quine.model.QuineValue
+import com.thatdot.quine.serialization.ProtobufSchemaError.{
   AmbiguousMessageType,
   InvalidProtobufSchema,
   NoSuchMessageType,
   UnreachableProtobufSchema,
 }
-import com.thatdot.quine.app.serialization.{ProtobufSchemaCache, ProtobufSchemaError, QuineValueToProtobuf}
-import com.thatdot.quine.graph.cypher.Expr.toQuineValue
-import com.thatdot.quine.graph.cypher.{CypherException, Expr, Value}
-import com.thatdot.quine.model.QuineValue
+import com.thatdot.quine.serialization.{ProtobufSchemaCache, ProtobufSchemaError, QuineValueToProtobuf}
 import com.thatdot.quine.util.MonadHelpers._
 
 // See also [[CypherParseProtobufTest]] for the UDP interface to this functionality
@@ -185,7 +186,7 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
       val protobufSerializer = new QuineValueToProtobuf(desc)
       val message = protobufSerializer.toProtobuf(testWritablePerson).value
       val foldableFrom = DataFoldableFrom.protobufDataFoldable
-      val asCypherValue: Value = foldableFrom.fold(message, DataFolderTo.cypherValueFolder)
+      val asCypherValue: Value = foldableFrom.fold(message, QuineDataFoldersTo.cypherValueFolder)
 
       testPerson.foreach { case (k, v) =>
         val folded: Value = asCypherValue.getField("")(k).getOrThrow

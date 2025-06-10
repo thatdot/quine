@@ -5,10 +5,11 @@ import scala.concurrent.Future
 
 import org.apache.pekko.dispatch.MessageDispatcher
 
+import com.thatdot.convert.{Api2ToModel1, Api2ToOutput2}
 import com.thatdot.quine.app.model.outputs2.query.{standing => Standing}
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.app.v2api.definitions.query.{standing => Api}
 import com.thatdot.quine.graph.{BaseGraph, NamespaceId}
+import com.thatdot.quine.serialization.ProtobufSchemaCache
 
 /** Conversions from API models in [[com.thatdot.quine.app.v2api.definitions.query.standing]]
   * to internal models in [[com.thatdot.quine.app.model.outputs2.query.standing]].
@@ -46,7 +47,7 @@ object ApiToStanding {
     implicit val ec: MessageDispatcher = graph.nodeDispatcherEC
 
     workflow.destinations
-      .traverse(ApiToOutput.apply)
+      .traverse(Api2ToOutput2.apply)
       .map(dests =>
         Standing.StandingQueryResultWorkflow(
           outputName = outputName,
@@ -149,8 +150,8 @@ object V2ApiToV1Standing {
             structure,
           ) =>
         V1Standing.StandingQueryResultOutputUserDef.WriteToKinesis(
-          credentials.map(ApiToInternal.toV1),
-          region.map(ApiToInternal.toV1),
+          credentials.map(Api2ToModel1.apply),
+          region.map(Api2ToModel1.apply),
           streamName,
           format,
           kinesisParallelism,
@@ -161,8 +162,8 @@ object V2ApiToV1Standing {
         )
       case Api.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic, _, structure) =>
         V1Standing.StandingQueryResultOutputUserDef.WriteToSNS(
-          credentials.map(ApiToInternal.toV1),
-          region.map(ApiToInternal.toV1),
+          credentials.map(Api2ToModel1.apply),
+          region.map(Api2ToModel1.apply),
           topic,
           V2ApiToV1Standing(structure),
         )

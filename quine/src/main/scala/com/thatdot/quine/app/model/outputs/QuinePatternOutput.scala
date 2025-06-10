@@ -7,7 +7,6 @@ import org.apache.pekko.stream.scaladsl.Flow
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.cypher.quinepattern.CypherAndQuineHelpers.quineValueToPatternValue
 import com.thatdot.quine.graph.cypher.quinepattern.QuinePatternHelpers.patternValueToCypherValue
@@ -18,6 +17,7 @@ import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, Stand
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.QuinePatternQuery
+import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.Log.implicits._
 
 class QuinePatternOutput(

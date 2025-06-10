@@ -4,8 +4,9 @@ import scala.util.{Success, Try}
 
 import org.apache.pekko.stream.scaladsl.Source
 
+import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.app.ShutdownSwitch
-import com.thatdot.quine.app.model.ingest2.core.DataFoldableFrom
+import com.thatdot.quine.app.data.QuineDataFoldablesFrom
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.cypher.{Expr, Value, Value => CypherValue}
@@ -18,7 +19,7 @@ case class NumberIteratorSource(
   def decodedSource: DecodedSource = new DecodedSource(ingestMeter) {
     type Decoded = CypherValue
     type Frame = CypherValue
-    override val foldable: DataFoldableFrom[Value] = DataFoldableFrom.cypherValueDataFoldable
+    override val foldable: DataFoldableFrom[Value] = QuineDataFoldablesFrom.cypherValueDataFoldable
 
     def stream: Source[(Try[CypherValue], CypherValue), ShutdownSwitch] = {
 

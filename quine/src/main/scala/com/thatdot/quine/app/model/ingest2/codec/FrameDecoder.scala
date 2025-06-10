@@ -16,17 +16,18 @@ import org.apache.avro.generic.{GenericDatumReader, GenericRecord}
 import org.apache.avro.io.DecoderFactory
 import org.apache.commons.csv.CSVFormat
 
+import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
+import com.thatdot.quine.app.data.QuineDataFoldablesFrom
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
   FileFormat,
   IngestFormat => V2IngestFormat,
   StreamingFormat,
 }
-import com.thatdot.quine.app.model.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.model.ingest2.sources.DEFAULT_CHARSET
-import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes._
+import com.thatdot.quine.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
 trait FrameDecoder[A] {
@@ -36,7 +37,7 @@ trait FrameDecoder[A] {
 }
 
 object CypherStringDecoder extends FrameDecoder[cypher.Value] {
-  val foldable: DataFoldableFrom[Value] = DataFoldableFrom.cypherValueDataFoldable
+  val foldable: DataFoldableFrom[Value] = QuineDataFoldablesFrom.cypherValueDataFoldable
 
   def decode(bytes: Array[Byte]): Try[cypher.Value] =
     Success(cypher.Expr.Str(new String(bytes, StandardCharsets.UTF_8)))
@@ -50,7 +51,7 @@ object StringDecoder extends FrameDecoder[String] {
 }
 
 object CypherRawDecoder extends FrameDecoder[cypher.Value] {
-  val foldable: DataFoldableFrom[Value] = DataFoldableFrom.cypherValueDataFoldable
+  val foldable: DataFoldableFrom[Value] = QuineDataFoldablesFrom.cypherValueDataFoldable
 
   def decode(bytes: Array[Byte]): Try[cypher.Value] =
     Success(cypher.Expr.Bytes(bytes))

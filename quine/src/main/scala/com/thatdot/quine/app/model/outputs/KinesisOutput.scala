@@ -16,10 +16,11 @@ import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig}
 import com.thatdot.quine.app.StandingQueryResultOutput.serialized
 import com.thatdot.quine.app.model.ingest.util.AwsOps
 import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKinesis
+import com.thatdot.quine.serialization.ProtobufSchemaCache
+
 class KinesisOutput(val config: WriteToKinesis)(implicit
   private val logConfig: LogConfig,
   private val protobufSchemaCache: ProtobufSchemaCache,

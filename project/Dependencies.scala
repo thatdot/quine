@@ -19,6 +19,7 @@ object Dependencies {
   val dropwizardMetricsV = "4.2.27"
   val embeddedCassandraV = "5.0.2"
   val endpoints4sDefaultV = "1.12.1"
+  val endpoints4sCirceV = "2.6.1"
   val endpoints4sHttpServerV = "2.0.1"
   val endpoints4sOpenapiV = "5.0.1"
   val endpoints4sXhrClientV = "5.3.0"

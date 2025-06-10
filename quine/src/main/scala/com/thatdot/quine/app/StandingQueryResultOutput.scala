@@ -26,7 +26,6 @@ import com.thatdot.quine.app.model.outputs.{
   SlackOutput,
   SnsOutput,
 }
-import com.thatdot.quine.app.serialization.{ConversionFailure, ProtobufSchemaCache, QuineValueToProtobuf}
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.{
   BaseGraph,
@@ -37,6 +36,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
+import com.thatdot.quine.serialization.{ConversionFailure, ProtobufSchemaCache, QuineValueToProtobuf}
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 object StandingQueryResultOutput extends LazySafeLogging {

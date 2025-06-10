@@ -11,9 +11,9 @@ import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.Metrics
+import com.thatdot.quine.app.data.QuineDataFoldersTo
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat
-import com.thatdot.quine.app.model.ingest2.core.DataFolderTo
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.model.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.model.ingest2.sources.{DEFAULT_CHARSET, DEFAULT_MAXIMUM_LINE_SIZE}
@@ -29,7 +29,7 @@ object IngestSourceTestSupport {
   def streamedCypherValues(src: DecodedSource)(implicit mat: Materializer): immutable.Iterable[Value] = {
     val results = src.stream
       .map {
-        case (Success(a), _) => src.foldable.fold(a, DataFolderTo.cypherValueFolder)
+        case (Success(a), _) => src.foldable.fold(a, QuineDataFoldersTo.cypherValueFolder)
         case (Failure(e), _) => throw e
       }
       .runWith(Sink.collection)

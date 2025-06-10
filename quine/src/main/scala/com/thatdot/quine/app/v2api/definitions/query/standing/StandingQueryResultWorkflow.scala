@@ -3,8 +3,8 @@ package com.thatdot.quine.app.v2api.definitions.query.standing
 import cats.data.NonEmptyList
 import sttp.tapir.Schema.annotations.{default, description, title}
 
-import com.thatdot.quine.app.v2api.definitions.CypherQuery
-import com.thatdot.quine.app.v2api.definitions.outputs2.DestinationSteps
+import com.thatdot.api.v2.outputs.DestinationSteps
+import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.CypherQuery
 
 @title(StandingQueryResultWorkflow.title)
 @description(

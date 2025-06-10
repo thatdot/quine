@@ -19,13 +19,13 @@ import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.model.ingest.{ContentDelimitedIngestSrcDef, IngestSrcDef}
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.app.{IngestTestGraph, QuineAppIngestControl, StdInStream, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, LiteralOpsGraph, MasterStream, NamespaceId, idFrom}
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
 import com.thatdot.quine.routes.{FileIngestFormat, NumberIteratorIngest, StandardInputIngest}
+import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.SwitchMode
 import com.thatdot.quine.util.TestLogging._
 

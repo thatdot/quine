@@ -6,8 +6,8 @@ import org.apache.pekko.stream.scaladsl.Flow
 import cats.data.NonEmptyList
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.model.ingest2.core.{DataFoldableFrom, DataFolderTo}
-import com.thatdot.quine.app.model.outputs2.definitions.DestinationSteps
+import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
+import com.thatdot.model.v2.outputs.DestinationSteps
 import com.thatdot.quine.app.model.outputs2.query.standing.StandingQueryResultWorkflow._
 import com.thatdot.quine.app.model.query.CypherQuery
 import com.thatdot.quine.graph.cypher.QueryContext
@@ -21,6 +21,8 @@ case class Workflow(
 
   def flow(outputName: String, namespaceId: NamespaceId)(implicit graph: CypherOpsGraph): BroadcastableFlow = {
     implicit val idProvider: QuineIdProvider = graph.idProvider
+    import com.thatdot.quine.app.data.QuineDataFoldersTo.cypherValueFolder
+
     val sqOrigin: BroadcastableFlow = new OriginFlow {
       override def foldableFrom: DataFoldableFrom[StandingQueryResult] = implicitly
     }
@@ -78,29 +80,32 @@ case class StandingQueryResultWorkflow(
 object StandingQueryResultWorkflow {
   val title = "Standing Query Result Workflow"
 
-  implicit def sqDataFoldableFrom(implicit quineIdProvider: QuineIdProvider): DataFoldableFrom[StandingQueryResult] =
+  implicit def sqDataFoldableFrom(implicit quineIdProvider: QuineIdProvider): DataFoldableFrom[StandingQueryResult] = {
+    import com.thatdot.quine.serialization.data.QuineSerializationFoldablesFrom.quineValueDataFoldableFrom
+
     new DataFoldableFrom[StandingQueryResult] {
       override def fold[B](value: StandingQueryResult, folder: DataFolderTo[B]): B = {
         val outerMap = folder.mapBuilder()
 
         val targetMetaBuilder = folder.mapBuilder()
         value.meta.toMap.foreach { case (k, v) =>
-          targetMetaBuilder.add(k, DataFoldableFrom.quineValueDataFoldableFrom.fold(v, folder))
+          targetMetaBuilder.add(k, quineValueDataFoldableFrom.fold(v, folder))
         }
         outerMap.add("meta", targetMetaBuilder.finish())
 
         val targetDataBuilder = folder.mapBuilder()
         value.data.foreach { case (k, v) =>
-          targetDataBuilder.add(k, DataFoldableFrom.quineValueDataFoldableFrom.fold(v, folder))
+          targetDataBuilder.add(k, quineValueDataFoldableFrom.fold(v, folder))
         }
         outerMap.add("data", targetDataBuilder.finish())
 
         outerMap.finish()
       }
     }
+  }
 
   implicit val queryContextFoldableFrom: DataFoldableFrom[QueryContext] = new DataFoldableFrom[QueryContext] {
-    import DataFoldableFrom.cypherValueDataFoldable
+    import com.thatdot.quine.app.data.QuineDataFoldablesFrom.cypherValueDataFoldable
 
     override def fold[B](value: QueryContext, folder: DataFolderTo[B]): B = {
       val builder = folder.mapBuilder()

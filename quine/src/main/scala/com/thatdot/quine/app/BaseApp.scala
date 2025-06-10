@@ -11,10 +11,10 @@ import endpoints4s.{Invalid, Valid, Validated}
 import io.circe.{Encoder, jawn}
 
 import com.thatdot.quine.app.QuineApp.{V2IngestStreamsKey, makeNamespaceMetaDataKey}
-import com.thatdot.quine.app.serialization.EncoderDecoder
 import com.thatdot.quine.exceptions
 import com.thatdot.quine.exceptions.NamespaceNotFoundException
 import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId}
+import com.thatdot.quine.serialization.EncoderDecoder
 import com.thatdot.quine.util.BaseError
 
 /** Applications running over top of Quine should define an application state that extends this.

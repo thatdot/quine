@@ -2,6 +2,7 @@ package com.thatdot.quine.app.v2api.converters
 
 import scala.annotation.unused
 
+import com.thatdot.convert.{Model1ToApi2, Model2ToApi2, Output2ToApi2}
 import com.thatdot.quine.app.model.outputs2.query.{standing => Standing}
 import com.thatdot.quine.app.v2api.definitions.query.{standing => Api}
 import com.thatdot.quine.{routes => V1}
@@ -32,7 +33,7 @@ object StandingToApi {
   @unused
   private def apply(stats: Standing.StandingQueryStats): Api.StandingQueryStats =
     Api.StandingQueryStats(
-      InternalToApi(stats.rates),
+      Model2ToApi2(stats.rates),
       stats.startTime,
       stats.totalRuntime,
       stats.bufferSize,
@@ -43,7 +44,7 @@ object StandingToApi {
   def apply(workflow: Standing.StandingQueryResultWorkflow): Api.StandingQueryResultWorkflow =
     Api.StandingQueryResultWorkflow(
       resultEnrichment = workflow.workflow.enrichmentQuery.map(QueryToApi.apply),
-      destinations = workflow.destinationStepsList.map(OutputToApi.apply),
+      destinations = workflow.destinationStepsList.map(Output2ToApi2.apply),
     )
 
 }
@@ -141,8 +142,8 @@ object V1StandingToV2Api {
           structure,
         ) =>
       Api.StandingQueryResultOutputUserDef.WriteToKinesis(
-        credentials.map(InternalToApi.fromV1),
-        region.map(InternalToApi.fromV1),
+        credentials.map(Model1ToApi2.apply),
+        region.map(Model1ToApi2.apply),
         streamName,
         format,
         kinesisParallelism,
@@ -154,8 +155,8 @@ object V1StandingToV2Api {
       )
     case V1.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic, structure) =>
       Api.StandingQueryResultOutputUserDef.WriteToSNS(
-        credentials.map(InternalToApi.fromV1),
-        region.map(InternalToApi.fromV1),
+        credentials.map(Model1ToApi2.apply),
+        region.map(Model1ToApi2.apply),
         topic,
         List.empty,
         V1StandingToV2Api(structure),
@@ -223,7 +224,7 @@ object V1StandingToV2Api {
 
   private def apply(stats: V1.StandingQueryStats): Api.StandingQueryStats =
     Api.StandingQueryStats(
-      InternalToApi.fromV1(stats.rates),
+      Model1ToApi2.apply(stats.rates),
       stats.startTime,
       stats.totalRuntime,
       stats.bufferSize,

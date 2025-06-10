@@ -12,7 +12,6 @@ import com.google.protobuf.InvalidProtocolBufferException
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.logging.Pretty._
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.cypher.{
   Expr,
   Parameters,
@@ -23,6 +22,7 @@ import com.thatdot.quine.graph.cypher.{
   UserDefinedProcedureSignature,
   Value,
 }
+import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
 /** Parse a protobuf message into a Cypher map according to a schema provided by a schema cache.

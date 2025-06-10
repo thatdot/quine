@@ -10,7 +10,6 @@ import org.apache.pekko.util.Timeout
 import cats.implicits.toFunctorOps
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig}
-import com.thatdot.quine.app.serialization.{ProtobufSchemaCache, QuineValueToProtobuf}
 import com.thatdot.quine.graph.cypher.{
   Expr,
   Parameters,
@@ -22,6 +21,7 @@ import com.thatdot.quine.graph.cypher.{
   Value,
 }
 import com.thatdot.quine.model.QuineValue
+import com.thatdot.quine.serialization.{ProtobufSchemaCache, QuineValueToProtobuf}
 import com.thatdot.quine.util.MonadHelpers._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 

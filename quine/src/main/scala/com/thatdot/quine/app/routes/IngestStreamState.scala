@@ -15,11 +15,11 @@ import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
   QuineIngestStreamWithStatus,
 }
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, QuineValueIngestQuery}
-import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.exceptions.{DuplicateIngestException, NamespaceNotFoundException}
 import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId, namespaceToString}
 import com.thatdot.quine.routes._
+import com.thatdot.quine.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.util.{BaseError, SwitchMode}
 
 /** Store ingests allowing for either v1 or v2 types. */

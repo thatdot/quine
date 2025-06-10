@@ -23,7 +23,6 @@ import com.thatdot.quine.app.model.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
 import com.thatdot.quine.app.model.ingest2.{V2IngestEntities, V2IngestEntityEncoderDecoders}
 import com.thatdot.quine.app.routes._
-import com.thatdot.quine.app.serialization.{AvroSchemaCache, EncoderDecoder, ProtobufSchemaCache}
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
@@ -48,6 +47,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PrimePersistor, Version}
+import com.thatdot.quine.serialization.{AvroSchemaCache, EncoderDecoder, ProtobufSchemaCache}
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.{BaseError, SwitchMode}
 import com.thatdot.quine.{routes => V1}

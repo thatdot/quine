@@ -11,23 +11,16 @@ import software.amazon.awssdk.auth.credentials.{
 import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
 import software.amazon.awssdk.regions.Region
 
+import com.thatdot.aws.{util => awsutil}
 import com.thatdot.common.logging.Log._
-import com.thatdot.quine.app.{model => V2}
 import com.thatdot.quine.{routes => V1}
 
 case object AwsOps extends LazySafeLogging {
   // the maximum number of simultaneous API requests any individual AWS client should make
   // invariant: all AWS clients using HTTP will set this as a maximum concurrency value
-  val httpConcurrencyPerClient = 100
+  val httpConcurrencyPerClient: Int = awsutil.AwsOps.httpConcurrencyPerClient
 
   def staticCredentialsProvider(credsOpt: Option[V1.AwsCredentials]): AwsCredentialsProvider =
-    credsOpt.fold[AwsCredentialsProvider](DefaultCredentialsProvider.create()) { credentials =>
-      StaticCredentialsProvider.create(
-        AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey),
-      )
-    }
-
-  def staticCredentialsProviderV2(credsOpt: Option[V2.AwsCredentials]): AwsCredentialsProvider =
     credsOpt.fold[AwsCredentialsProvider](DefaultCredentialsProvider.create()) { credentials =>
       StaticCredentialsProvider.create(
         AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey),
@@ -57,39 +50,15 @@ case object AwsOps extends LazySafeLogging {
       val creds = credsOpt.orElse {
         logger.info(
           safe"""No AWS credentials provided while building AWS client of type
-               |${Safe(classTag[Client].runtimeClass.getSimpleName)}. Defaulting
-               |to environmental credentials.""".cleanLines,
+                |${Safe(classTag[Client].runtimeClass.getSimpleName)}. Defaulting
+                |to environmental credentials.""".cleanLines,
         )
         None
       }
       builder.credentialsProvider(staticCredentialsProvider(creds))
     }
 
-    /** See [[credentials]]
-      */
-    def credentialsV2(credsOpt: Option[V2.AwsCredentials]): Builder = {
-      val creds = credsOpt.orElse {
-        logger.info(
-          safe"""No AWS credentials provided while building AWS client of type
-               |${Safe(classTag[Client].runtimeClass.getSimpleName)}. Defaulting
-               |to environmental credentials.""".cleanLines,
-        )
-        None
-      }
-      builder.credentialsProvider(staticCredentialsProviderV2(creds))
-    }
-
     def region(regionOpt: Option[V1.AwsRegion]): Builder =
-      regionOpt.fold {
-        logger.info(
-          safe"""No AWS region provided while building AWS client of type:
-                |${Safe(classTag[Client].runtimeClass.getSimpleName)}.
-                |Defaulting to environmental settings.""".cleanLines,
-        )
-        builder.applyMutation(_ => ()) // return the builder unmodified
-      }(region => builder.region(Region.of(region.region)))
-
-    def regionV2(regionOpt: Option[V2.AwsRegion]): Builder =
       regionOpt.fold {
         logger.info(
           safe"""No AWS region provided while building AWS client of type:

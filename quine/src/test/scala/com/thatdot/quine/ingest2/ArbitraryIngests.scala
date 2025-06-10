@@ -6,12 +6,12 @@ import scala.jdk.CollectionConverters._
 
 import org.scalacheck.{Arbitrary, Gen}
 
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.FileIngestMode.{NamedPipe, Regular}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.KafkaOffsetCommitting.ExplicitCommit
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.WebsocketSimpleStartupIngest.KeepaliveProtocol
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
-import com.thatdot.quine.app.v2api.definitions.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.randomString
 
 trait ArbitraryIngests {

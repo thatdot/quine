@@ -9,10 +9,10 @@ import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
 import org.apache.pekko.util.ByteString
 
+import com.thatdot.data.DataFoldableFrom
+import com.thatdot.data.DataFoldableFrom._
 import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.model.ingest2.core.DataFoldableFrom
-import com.thatdot.quine.app.model.ingest2.core.DataFoldableFrom._
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.model.ingest2.sources
 import com.thatdot.quine.app.routes.IngestMeter

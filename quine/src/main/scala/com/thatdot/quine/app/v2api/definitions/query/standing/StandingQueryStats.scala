@@ -4,7 +4,7 @@ import java.time.Instant
 
 import sttp.tapir.Schema.annotations.{description, title}
 
-import com.thatdot.quine.app.v2api.definitions.RatesSummary
+import com.thatdot.api.v2.RatesSummary
 
 @title(StandingQueryStats.title)
 final case class StandingQueryStats(

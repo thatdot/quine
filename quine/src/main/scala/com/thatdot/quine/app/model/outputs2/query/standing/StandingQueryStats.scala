@@ -2,7 +2,7 @@ package com.thatdot.quine.app.model.outputs2.query.standing
 
 import java.time.Instant
 
-import com.thatdot.quine.app.model.RatesSummary
+import com.thatdot.model.v2.RatesSummary
 
 final case class StandingQueryStats(
   rates: RatesSummary,

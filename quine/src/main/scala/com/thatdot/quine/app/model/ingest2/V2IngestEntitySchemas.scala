@@ -22,10 +22,10 @@ import sttp.tapir.{Codec, DecodeResult, Schema}
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.CsvFormat
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.StreamingFormat.ProtobufFormat
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
-import com.thatdot.quine.app.serialization.EncoderDecoder
 import com.thatdot.quine.app.v2api.endpoints.V2ApiConfiguration
 import com.thatdot.quine.routes.AwsCredentials
 import com.thatdot.quine.routes.CsvCharacter.{Backslash, Comma, DoubleQuote}
+import com.thatdot.quine.serialization.EncoderDecoder
 import com.thatdot.quine.{routes => V1}
 
 object V2IngestEntityEncoderDecoders extends V2IngestEntitySchemas {

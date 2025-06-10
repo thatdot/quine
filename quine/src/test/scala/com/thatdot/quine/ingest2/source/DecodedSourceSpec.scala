@@ -16,11 +16,11 @@ import com.thatdot.quine.app.IngestTestGraph
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.JsonFormat
 import com.thatdot.quine.app.model.ingest2.source.{IngestBounds, QuineValueIngestQuery}
 import com.thatdot.quine.app.model.ingest2.sources.DEFAULT_MAXIMUM_LINE_SIZE
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.compiler.{cypher => cyComp}
 import com.thatdot.quine.graph.cypher.RunningCypherQuery
 import com.thatdot.quine.graph.{GraphService, MasterStream, cypher}
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.{buildDecodedSource, srcFromString}
+import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.TestLogging._
 
 class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
