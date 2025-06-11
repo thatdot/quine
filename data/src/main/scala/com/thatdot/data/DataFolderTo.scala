@@ -57,7 +57,7 @@ object DataFolderTo {
 
     def date(d: LocalDate): Json = Json.fromString(d.format(DateTimeFormatter.ISO_LOCAL_DATE))
 
-    def time(t: OffsetTime): Json = Json.fromString(t.format(DateTimeFormatter.ISO_TIME))
+    def time(t: OffsetTime): Json = Json.fromString(t.format(DateTimeFormatter.ISO_OFFSET_TIME))
 
     def localTime(t: LocalTime): Json = Json.fromString(t.format(DateTimeFormatter.ISO_LOCAL_TIME))
 

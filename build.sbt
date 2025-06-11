@@ -1,4 +1,5 @@
 import Dependencies.*
+import InternalDependencies.graalV
 import QuineSettings.*
 
 ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/release/"
@@ -19,6 +20,7 @@ lazy val `quine-core`: Project = project
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= Seq(
+      "org.graalvm.js" % "js" % graalV,
       "com.chuusai" %% "shapeless" % shapelessV,
       "org.apache.pekko" %% "pekko-actor" % pekkoV,
       "org.apache.pekko" %% "pekko-stream" % pekkoV,
