@@ -101,15 +101,15 @@ object JavaScriptTransformation {
     */
   def makeInstance(
     jsText: String,
-  ): Either[String, JavaScriptTransformation] = {
+  ): Either[BaseError, JavaScriptTransformation] = {
 
     // Wrap in parentheses so both fat‑arrow and classic functions parse the same way
     val source = polyglot.Source.create("js", s"($jsText)")
-    catchPolyglotException(eval(source)).flatMap { compiled =>
+    catchPolyglotException(eval(source)).left.map(JavaScriptException.apply).flatMap { compiled =>
       Either.cond(
         compiled.canExecute,
         new JavaScriptTransformation(compiled),
-        s"'$jsText' must be a JavaScript function",
+        JavaScriptException(s"'$jsText' must be a JavaScript function"),
       )
     }
   }

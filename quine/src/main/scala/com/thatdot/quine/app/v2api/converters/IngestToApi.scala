@@ -400,11 +400,17 @@ object IngestToApi {
     case Ingest.LogRecordErrorHandler => Api.LogRecordErrorHandler
     case Ingest.DeadLetterErrorHandler => Api.DeadLetterErrorHandler
   }
+
+  def apply(transformation: Ingest.Transformation): Api.Transformation = transformation match {
+    case Ingest.Transformation.JavaScript(function) => Api.Transformation.JavaScript(function)
+  }
+
   def apply(conf: Ingest.QuineIngestConfiguration): Api.Oss.QuineIngestConfiguration =
     Api.Oss.QuineIngestConfiguration(
       source = apply(conf.source),
       query = conf.query,
       parameter = conf.parameter,
+      transformation = conf.transformation.map(apply),
       parallelism = conf.parallelism,
       maxPerSecond = conf.maxPerSecond,
       onRecordError = apply(conf.onRecordError),

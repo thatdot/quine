@@ -4,7 +4,7 @@ import java.nio.charset.{Charset, StandardCharsets}
 import java.time.Instant
 
 import com.typesafe.scalalogging.LazyLogging
-import sttp.tapir.Schema.annotations.{default, description, title}
+import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.{routes => V1}
@@ -251,6 +251,15 @@ object ApiIngest {
     val values: Seq[FileIngestMode] = Seq(Regular, NamedPipe)
   }
 
+  sealed trait Transformation
+  object Transformation {
+    case class JavaScript(
+      @description("JavaScript source code of the function. Must be callable.")
+      @encodedExample("that => that")
+      function: String,
+    ) extends Transformation
+  }
+
   object Oss {
     case class QuineIngestConfiguration(
       source: IngestSource,
@@ -259,6 +268,8 @@ object ApiIngest {
       @description("Name of the Cypher parameter to populate with the JSON value.")
       @default("that")
       parameter: String = "that",
+      @description("A function to be run before the cypher query is executed. Used to pre-process input.")
+      transformation: Option[Transformation] = None,
       @description("Maximum number of records to process at once.")
       @default(16)
       parallelism: Int = V1.IngestRoutes.defaultWriteParallelism,

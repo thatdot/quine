@@ -46,7 +46,7 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
 
       val ingestQuery = QuineValueIngestQuery.build(graph, "CREATE ($that)", "that", None).get
 
-      val ingestSource = decodedSource.toQuineIngestSource("test", ingestQuery, graph)
+      val ingestSource = decodedSource.toQuineIngestSource("test", ingestQuery, None, graph)
       val ingestStream: Source[MasterStream.IngestSrcExecToken, NotUsed] = ingestSource.stream(None, _ => ())
       ingestStream.runWith(graph.masterStream.ingestCompletionsSink)(graph.materializer)
       Thread.sleep(1000)

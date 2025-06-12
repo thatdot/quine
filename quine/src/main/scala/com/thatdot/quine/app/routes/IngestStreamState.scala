@@ -4,7 +4,7 @@ import scala.util.Try
 
 import org.apache.pekko.util.Timeout
 
-import cats.data.Validated.invalidNel
+import cats.data.Validated.{invalidNel, validNel}
 import cats.data.ValidatedNel
 
 import com.thatdot.common.logging.Log.LogConfig
@@ -13,8 +13,11 @@ import com.thatdot.quine.app.model.ingest2.V2IngestEntities
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
   QuineIngestConfiguration => V2IngestConfiguration,
   QuineIngestStreamWithStatus,
+  Transformation,
 }
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, QuineValueIngestQuery}
+import com.thatdot.quine.app.model.transformation.polyglot
+import com.thatdot.quine.app.model.transformation.polyglot.langauges.JavaScriptTransformation
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.exceptions.{DuplicateIngestException, NamespaceNotFoundException}
 import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId, namespaceToString}
@@ -142,30 +145,43 @@ trait IngestStreamState {
             logConfig,
           )
 
-        decodedSourceNel.map { (s: DecodedSource) =>
+        val validatedTransformation: ValidatedNel[BaseError, Option[polyglot.Transformation]] =
+          settings.transformation.fold(
+            validNel(Option.empty): ValidatedNel[BaseError, Option[polyglot.Transformation]],
+          ) { case Transformation.JavaScript(function) =>
+            JavaScriptTransformation.makeInstance(function) match {
+              case Left(err) => invalidNel(err)
+              case Right(value) => validNel(Some(value))
+            }
+          }
 
-          val quineIngestSource: QuineIngestSource = s.toQuineIngestSource(
-            name,
-            QuineValueIngestQuery.apply(settings, graph, intoNamespace),
-            graph,
-            initialValveSwitchMode,
-            settings.parallelism,
-            settings.maxPerSecond,
-          )
+        validatedTransformation.andThen { transformation =>
+          decodedSourceNel.map { (s: DecodedSource) =>
 
-          val streamDefWithControl: IngestStreamWithControl[UnifiedIngestConfiguration] =
-            IngestStreamWithControl(
-              UnifiedIngestConfiguration(Left(settings)),
-              metrics,
-              quineIngestSource,
-              initialStatus,
+            val quineIngestSource: QuineIngestSource = s.toQuineIngestSource(
+              name,
+              QuineValueIngestQuery.apply(settings, graph, intoNamespace),
+              transformation,
+              graph,
+              initialValveSwitchMode,
+              settings.parallelism,
+              settings.maxPerSecond,
             )
 
-          val newNamespaceIngests = ingests + (name -> streamDefWithControl)
-          //TODO this is blocking in QuineEnterpriseApp
-          ingestStreams += intoNamespace -> newNamespaceIngests
+            val streamDefWithControl: IngestStreamWithControl[UnifiedIngestConfiguration] =
+              IngestStreamWithControl(
+                UnifiedIngestConfiguration(Left(settings)),
+                metrics,
+                quineIngestSource,
+                initialStatus,
+              )
 
-          quineIngestSource
+            val newNamespaceIngests = ingests + (name -> streamDefWithControl)
+            //TODO this is blocking in QuineEnterpriseApp
+            ingestStreams += intoNamespace -> newNamespaceIngests
+
+            quineIngestSource
+          }
         }
     }
 

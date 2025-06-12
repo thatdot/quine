@@ -277,7 +277,7 @@ class QuineJavaScriptSpec extends AnyFunSuite with ScalaCheckPropertyChecks with
 
   test("reject syntax‑invalid JavaScript") {
     val res = JavaScriptTransformation.makeInstance("function ()")
-    assert(res.isLeft && res.left.value.toLowerCase.contains("syntax"))
+    assert(res.isLeft && res.left.value.getMessage.toLowerCase.contains("syntax"))
   }
 
   test("runtime error when attempting to mutate frozen globals") {

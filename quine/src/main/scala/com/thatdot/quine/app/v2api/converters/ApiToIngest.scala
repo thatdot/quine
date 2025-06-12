@@ -353,11 +353,17 @@ object ApiToIngest {
     case Api.RetryStreamError(retryCount) => Ingest.RetryStreamError(retryCount)
     case Api.LogStreamError => Ingest.LogStreamError
   }
+
+  def apply(transformation: Api.Transformation): Ingest.Transformation = transformation match {
+    case Api.Transformation.JavaScript(function) => Ingest.Transformation.JavaScript(function)
+  }
+
   def apply(conf: Api.Oss.QuineIngestConfiguration): Ingest.QuineIngestConfiguration =
     Ingest.QuineIngestConfiguration(
       apply(conf.source),
       conf.query,
       conf.parameter,
+      conf.transformation.map(apply),
       conf.parallelism,
       conf.maxPerSecond,
       apply(conf.onRecordError),
