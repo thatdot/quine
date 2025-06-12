@@ -3,15 +3,26 @@ package com.thatdot.quine.app.v2api.definitions.query.standing
 import cats.data.NonEmptyList
 import sttp.tapir.Schema.annotations.{default, description, title}
 
-import com.thatdot.api.v2.outputs.DestinationSteps
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.CypherQuery
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultTransform
+
+sealed trait QuineSupportedDestinationSteps
+
+object QuineSupportedDestinationSteps {
+  import com.thatdot.api.v2.outputs.{DestinationSteps => Core}
+  import com.thatdot.quine.app.v2api.definitions.outputs.{QuineDestinationSteps => Quine}
+
+  case class CoreDestinationSteps(steps: Core) extends QuineSupportedDestinationSteps
+  case class QuineAdditionalDestinationSteps(steps: Quine) extends QuineSupportedDestinationSteps
+}
 
 @title(StandingQueryResultWorkflow.title)
 @description(
   """A workflow comprising steps toward sending data derived from StandingQueryResults to destinations.
     |
-    |The workflow's steps are processed in order. When a Standing Query emits a StandingQueryResult, the
-    |StandingQueryResultWorkflow will first execute the optional `resultEnrichment` step, which may be a
+    |The workflow's steps are processed in order. When a Standing Query emits a StandingQueryResult, the steps are:
+    | 1.
+    |StandingQueryResultWorkflow will first execute the optional `filter` step, w `resultEnrichment` step, which may be a
     |CypherQuery that "enriches" the data provided by the StandingQueryResult. This CypherQuery must return
     |data. Second, the workflow will send the enriched results to all provided destinations.
     |
@@ -34,11 +45,15 @@ import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.Cyp
     |""".stripMargin,
 )
 case class StandingQueryResultWorkflow(
+  @description("A StandingQueryResult filter (one of any built-in options), which runs before any enrichment query.")
+  filter: Option[Predicate],
+  @description("Transformation function to apply to each result")
+  preEnrichmentTransform: Option[StandingQueryResultTransform],
   @description("A CypherQuery that returns data.")
   @default(None)
   resultEnrichment: Option[CypherQuery] = None,
   @description("The destinations to which the latest data passed through the workflow steps shall be delivered.")
-  destinations: NonEmptyList[DestinationSteps],
+  destinations: NonEmptyList[QuineSupportedDestinationSteps],
 )
 
 object StandingQueryResultWorkflow {

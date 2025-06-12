@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.model.outputs2
+package com.thatdot.quine.app.model.outputs2.destination
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
@@ -17,6 +17,7 @@ import io.circe.Json
 import com.thatdot.common.logging.Log._
 import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.app.StandingQueryResultOutput.SlackSerializable
+import com.thatdot.quine.app.model.outputs2.QuineResultDestination
 import com.thatdot.quine.app.util.QuineLoggables.LogStatusCode
 import com.thatdot.quine.graph.NamespaceId
 
@@ -27,6 +28,7 @@ final case class Slack(
 )(implicit system: ActorSystem)
     extends QuineResultDestination.FoldableData.Slack
     with LazySafeLogging {
+  override def slug: String = "slack"
 
   override def sink[A: DataFoldableFrom](name: String, inNamespace: NamespaceId)(implicit
     logConfig: LogConfig,
@@ -84,5 +86,6 @@ final case class Slack(
         }(system.dispatcher)
       }
       .to(Sink.ignore)
+      .named(sinkName(name))
   }
 }

@@ -20,6 +20,7 @@ final case class ReactiveStream(
   address: String = "localhost",
   port: Int,
 ) extends ResultDestination.Bytes.ReactiveStream {
+  override def slug: String = "reactive-stream"
   override def sink(name: String, inNamespace: NamespaceId)(implicit logConfig: LogConfig): Sink[Array[Byte], NotUsed] =
     Sink
       .asPublisher(fanout = false)
@@ -36,4 +37,5 @@ final case class ReactiveStream(
         NotUsed
       }
       .contramap[Array[Byte]](bytes => DefaultPayload.create(ByteBuffer.wrap(bytes)))
+      .named(sinkName(name))
 }

@@ -1,9 +1,9 @@
 package com.thatdot.quine.app.v2api.converters
 
-import com.thatdot.convert.Model1ToApi2
 import com.thatdot.quine.app.model.ingest2.{V2IngestEntities => Ingest}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
 import com.thatdot.quine.{routes => V1}
+import com.thatdot.{convert => ConvertCore}
 
 object IngestToApi {
 
@@ -31,8 +31,8 @@ object IngestToApi {
   def apply(stats: V1.IngestStreamStats): Api.IngestStreamStats =
     Api.IngestStreamStats(
       ingestedCount = stats.ingestedCount,
-      rates = Model1ToApi2.apply(stats.rates),
-      byteRates = Model1ToApi2.apply(stats.byteRates),
+      rates = ConvertCore.Model1ToApi2.apply(stats.rates),
+      byteRates = ConvertCore.Model1ToApi2.apply(stats.byteRates),
       startTime = stats.startTime,
       totalRuntime = stats.totalRuntime,
     )
@@ -277,7 +277,7 @@ object IngestToApi {
         format = apply(format),
         bucket = bucket,
         key = key,
-        credentials = credentials.map(Model1ToApi2.apply),
+        credentials = credentials.map(ConvertCore.Model1ToApi2.apply),
         maximumLineSize = maximumLineSize,
         startOffset = startOffset,
         limit = limit,
@@ -314,8 +314,8 @@ object IngestToApi {
         format = apply(format),
         streamName = streamName,
         shardIds = shardIds,
-        credentials = credentials.map(Model1ToApi2.apply),
-        region = region.map(Model1ToApi2.apply),
+        credentials = credentials.map(ConvertCore.Model1ToApi2.apply),
+        region = region.map(ConvertCore.Model1ToApi2.apply),
         iteratorType = apply(iteratorType),
         numRetries = numRetries,
         recordDecoders = recordDecoders.map(apply),
@@ -338,8 +338,8 @@ object IngestToApi {
         kinesisStreamName = kinesisStreamName,
         applicationName = applicationName,
         format = apply(format),
-        credentials = credentialsOpt.map(Model1ToApi2.apply),
-        regionOpt = regionOpt.map(Model1ToApi2.apply),
+        credentials = credentialsOpt.map(ConvertCore.Model1ToApi2.apply),
+        regionOpt = regionOpt.map(ConvertCore.Model1ToApi2.apply),
         initialPosition = apply(initialPosition),
         numRetries = numRetries,
         recordDecoders = recordDecoders.map(apply),
@@ -358,8 +358,8 @@ object IngestToApi {
         format = apply(format),
         queueUrl = queueUrl,
         readParallelism = readParallelism,
-        credentials = credentials.map(Model1ToApi2.apply),
-        region = region.map(Model1ToApi2.apply),
+        credentials = credentials.map(ConvertCore.Model1ToApi2.apply),
+        region = region.map(ConvertCore.Model1ToApi2.apply),
         deleteReadMessages = deleteReadMessages,
         recordDecoders = recordDecoders.map(apply),
       )

@@ -12,7 +12,7 @@ import com.thatdot.{api, model}
 /** Conversions from internal models in [[com.thatdot.model.v2.outputs]] and [[com.thatdot.quine.app.model.outputs2]]
   * to API models in [[com.thatdot.api.v2.outputs]].
   */
-object Api2ToOutput2 {
+object Api2ToOutputs2 {
 
   def apply(
     format: api.v2.outputs.OutputFormat,
@@ -79,7 +79,7 @@ object Api2ToOutput2 {
         )
       case api.v2.outputs.DestinationSteps.HttpEndpoint(url, parallelism) =>
         Future.successful(
-          model.v2.outputs.DestinationSteps.WithGenericFoldable(
+          model.v2.outputs.DestinationSteps.WithDataFoldable(
             destination = model.v2.outputs.destination.HttpEndpoint(
               url = url,
               parallelism = parallelism,

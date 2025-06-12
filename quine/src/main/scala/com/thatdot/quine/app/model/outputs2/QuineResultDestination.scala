@@ -1,26 +1,24 @@
 package com.thatdot.quine.app.model.outputs2
 
-import org.apache.pekko.NotUsed
-import org.apache.pekko.stream.scaladsl.Sink
+import com.thatdot.model.v2.outputs.{DataFoldableSink, SinkName}
 
-import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.data.DataFoldableFrom
-import com.thatdot.quine.graph.NamespaceId
-
-sealed trait QuineResultDestination
+sealed trait QuineResultDestination extends DataFoldableSink with SinkName
 
 object QuineResultDestination {
-  sealed trait FoldableData {
-    def sink[A: DataFoldableFrom](name: String, inNamespace: NamespaceId)(implicit
-      logConfig: LogConfig,
-    ): Sink[A, NotUsed]
-  }
+  sealed trait FoldableData extends QuineResultDestination
 
   object FoldableData {
     trait Slack extends FoldableData {
       def hookUrl: String
       def onlyPositiveMatchData: Boolean
       def intervalSeconds: Int
+    }
+    trait CypherQuery extends FoldableData {
+      def queryText: String
+      def parameter: String
+      def parallelism: Int
+      def allowAllNodeScan: Boolean
+      def shouldRetry: Boolean
     }
   }
 }

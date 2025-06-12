@@ -13,6 +13,7 @@ import com.thatdot.quine.graph.NamespaceId
 final case class File(
   path: String,
 ) extends ResultDestination.Bytes.File {
+  override def slug: String = "file"
 
   override def sink(name: String, inNamespace: NamespaceId)(implicit logConfig: LogConfig): Sink[Array[Byte], NotUsed] =
     FileIO
@@ -23,6 +24,4 @@ final case class File(
       .named(sinkName(name))
       .contramap[Array[Byte]](ByteString.fromArray)
       .mapMaterializedValue(_ => NotUsed)
-
-  private def sinkName(name: String): String = s"result-destination--file--$name"
 }

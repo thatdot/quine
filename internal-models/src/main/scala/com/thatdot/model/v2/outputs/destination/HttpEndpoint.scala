@@ -26,6 +26,7 @@ final case class HttpEndpoint(
 )(implicit system: ActorSystem)
     extends ResultDestination.FoldableData.HttpEndpoint
     with LazySafeLogging {
+  override def slug: String = "http"
 
   override def sink[A: DataFoldableFrom](name: String, inNamespace: NamespaceId)(implicit
     logConfig: LogConfig,
@@ -80,5 +81,6 @@ final case class HttpEndpoint(
         }(system.dispatcher)
       }
       .to(Sink.ignore)
+      .named(sinkName(name))
   }
 }

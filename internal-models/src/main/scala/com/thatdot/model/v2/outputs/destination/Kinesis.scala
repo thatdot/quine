@@ -28,6 +28,7 @@ final case class Kinesis(
   kinesisMaxRecordsPerSecond: Option[Int],
   kinesisMaxBytesPerSecond: Option[Int],
 ) extends ResultDestination.Bytes.Kinesis {
+  override def slug: String = "kinesis"
   override def sink(name: String, inNamespace: NamespaceId)(implicit
     logConfig: LogConfig,
   ): Sink[Array[Byte], NotUsed] = {
@@ -71,6 +72,4 @@ final case class Kinesis(
       }
       .to(lifecycleSink)
   }
-
-  private def sinkName(name: String): String = s"result-destination--kinesis--$name"
 }

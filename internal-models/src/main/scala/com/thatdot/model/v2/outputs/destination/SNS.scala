@@ -22,6 +22,8 @@ final case class SNS(
   region: Option[AwsRegion],
   topic: String,
 ) extends ResultDestination.Bytes.SNS {
+  override def slug: String = "sns"
+
   override def sink(name: String, inNamespace: NamespaceId)(implicit
     logConfig: LogConfig,
   ): Sink[Array[Byte], NotUsed] = {
@@ -54,6 +56,4 @@ final case class SNS(
       .mapMaterializedValue(_ => NotUsed)
       .to(lifecycleSink)
   }
-
-  private def sinkName(name: String): String = s"result-destination--sns--$name"
 }

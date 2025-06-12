@@ -1,49 +1,81 @@
 package com.thatdot.quine.app.model.outputs2.query.standing
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.stream.scaladsl.Flow
+import org.apache.pekko.stream.scaladsl.{Flow, Sink}
 
 import cats.data.NonEmptyList
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
-import com.thatdot.model.v2.outputs.DestinationSteps
-import com.thatdot.quine.app.model.outputs2.query.standing.StandingQueryResultWorkflow._
-import com.thatdot.quine.app.model.query.CypherQuery
+import com.thatdot.model.v2.outputs.DataFoldableSink
+import com.thatdot.quine.app.model.outputs2.query.CypherQuery
 import com.thatdot.quine.graph.cypher.QueryContext
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, StandingQueryResult, cypher}
 import com.thatdot.quine.model.QuineIdProvider
 
 case class Workflow(
+  filter: Option[Predicate],
+  /*
+  {"meta": {"isPositiveMatch": true}, "data": {"emailAddress": "i.am.a.user@gmail.com"}}
+   => {"username": "i.am.a.user", "removeDownstream": !meta.isPositiveMatch}
+     => Value: Map("username" -> String, "removeDownstream" -> Boolean)
+   => [1, 2, 3, 4]
+     => Value: [1, 2, 3, 4]
+   */
+  preEnrichmentTransform: Option[StandingQueryResultTransform],
+  /*
+   MATCH (u:User) WHERE id(u) = idFrom(that.username) RETURNING (<u.Products>, that.removeDownstream)
+   */
   enrichmentQuery: Option[CypherQuery],
 ) {
+  import StandingQueryResultWorkflow._
   import Workflow._
 
-  def flow(outputName: String, namespaceId: NamespaceId)(implicit graph: CypherOpsGraph): BroadcastableFlow = {
+  def flow(outputName: String, namespaceId: NamespaceId)(implicit
+    graph: CypherOpsGraph,
+    logConfig: LogConfig,
+  ): BroadcastableFlow = {
     implicit val idProvider: QuineIdProvider = graph.idProvider
     import com.thatdot.quine.app.data.QuineDataFoldersTo.cypherValueFolder
 
-    val sqOrigin: BroadcastableFlow = new OriginFlow {
+    val sqOrigin: StandingQueryResultFlow = new StandingQueryResultFlow {
       override def foldableFrom: DataFoldableFrom[StandingQueryResult] = implicitly
     }
+    val maybeThenFilter = filter.fold(identity[StandingQueryResultFlow] _) {
+      predicate => (sqFlow: StandingQueryResultFlow) =>
+        new StandingQueryResultFlow {
+          override def foldableFrom: DataFoldableFrom[StandingQueryResult] = sqFlow.foldableFrom
+          override def flow: Flow[StandingQueryResult, StandingQueryResult, NotUsed] =
+            sqFlow.flow.filter(predicate.apply)
+        }
+    }
+    val maybeThenPreEnrich = preEnrichmentTransform.fold((x: StandingQueryResultFlow) => x: BroadcastableFlow) {
+      // Right now, `preEnrichmentTransform` only supports built-in offerings, but this will need to change when
+      //  we want to support JS transformations here, too.
+      transform => (priorFlow: StandingQueryResultFlow) =>
+        new BroadcastableFlow {
+          override type Out = transform.Out
+          override def foldableFrom: DataFoldableFrom[Out] = transform.dataFoldableFrom
+          override def flow: Flow[StandingQueryResult, Out, NotUsed] = priorFlow.flow.map(transform.apply)
+        }
+    }
     val maybeThenEnrich = enrichmentQuery.fold(identity[BroadcastableFlow] _) {
-      enrichQuery => (originFlow: BroadcastableFlow) =>
+      enrichQuery => (priorFlow: BroadcastableFlow) =>
         new BroadcastableFlow {
           override type Out = cypher.QueryContext
           override def foldableFrom: DataFoldableFrom[Out] = implicitly
           override def flow: Flow[StandingQueryResult, Out, NotUsed] = {
-            val dataFold = originFlow.foldableFrom.to[cypher.Value]
-            originFlow.flow.map(dataFold).via(enrichQuery.flow(outputName, namespaceId))
+            val dataFold = priorFlow.foldableFrom.to[cypher.Value]
+            priorFlow.flow.map(dataFold).via(enrichQuery.flow(outputName, namespaceId))
           }
         }
     }
 
-    val workflowBroadcastableFlow: BroadcastableFlow =
-      Seq(
-        maybeThenEnrich,
-      ).foldLeft(sqOrigin: BroadcastableFlow)((acc, curF) => curF(acc))
+    val steps = maybeThenFilter
+      .andThen(maybeThenPreEnrich)
+      .andThen(maybeThenEnrich)
 
-    workflowBroadcastableFlow
+    steps(sqOrigin)
   }
 }
 
@@ -54,22 +86,37 @@ object Workflow {
     def flow: Flow[StandingQueryResult, Out, NotUsed]
   }
 
-  trait OriginFlow extends BroadcastableFlow {
+  trait StandingQueryResultFlow extends BroadcastableFlow {
     type Out = StandingQueryResult
     def foldableFrom: DataFoldableFrom[StandingQueryResult]
     def flow: Flow[StandingQueryResult, StandingQueryResult, NotUsed] = Flow[StandingQueryResult]
   }
 }
 
+sealed trait QuineSupportedDestinationSteps extends DataFoldableSink {
+  def underlying: DataFoldableSink
+  override def sink[A: DataFoldableFrom](name: String, inNamespace: NamespaceId)(implicit
+    logConfig: LogConfig,
+  ): Sink[A, NotUsed] = underlying.sink(name, inNamespace)
+}
+
+object QuineSupportedDestinationSteps {
+  import com.thatdot.model.v2.outputs.{DestinationSteps => Core}
+  import com.thatdot.quine.app.model.outputs2.{QuineDestinationSteps => Quine}
+
+  case class CoreDestinationSteps(underlying: Core) extends QuineSupportedDestinationSteps
+  case class QuineAdditionalFoldableDataResultDestinations(underlying: Quine) extends QuineSupportedDestinationSteps
+}
+
 case class StandingQueryResultWorkflow(
   outputName: String,
   namespaceId: NamespaceId,
   workflow: Workflow,
-  destinationStepsList: NonEmptyList[DestinationSteps],
+  destinationStepsList: NonEmptyList[QuineSupportedDestinationSteps],
 ) {
 
   def flow(graph: CypherOpsGraph)(implicit logConfig: LogConfig): Flow[StandingQueryResult, Unit, NotUsed] = {
-    val preBroadcastFlow = workflow.flow(outputName, namespaceId)(graph)
+    val preBroadcastFlow = workflow.flow(outputName, namespaceId)(graph, logConfig)
     val sinks = destinationStepsList
       .map(_.sink(outputName, namespaceId)(preBroadcastFlow.foldableFrom, logConfig))
       .toList

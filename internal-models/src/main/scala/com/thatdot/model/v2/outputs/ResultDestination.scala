@@ -1,22 +1,20 @@
 package com.thatdot.model.v2.outputs
 
-import org.apache.pekko.NotUsed
-import org.apache.pekko.stream.scaladsl.Sink
-
 import com.thatdot.aws.model.{AwsCredentials, AwsRegion}
-import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.data.DataFoldableFrom
-import com.thatdot.quine.graph.NamespaceId
+
+trait SinkName {
+  def slug: String
+  def sinkName(outputName: String): String = s"result-destination--$slug--$outputName"
+}
 
 /** The interface (despite the API needing an ADT) for result destinations,
   * which are adapters for sending/writing to a location.
   */
-sealed trait ResultDestination
+sealed trait ResultDestination extends SinkName
 
 object ResultDestination {
-  sealed trait Bytes extends ResultDestination {
-    def sink(name: String, inNamespace: NamespaceId)(implicit logConfig: LogConfig): Sink[Array[Byte], NotUsed]
-  }
+
+  sealed trait Bytes extends ResultDestination with ByteArraySink
 
   object Bytes {
     trait ReactiveStream extends Bytes {
@@ -51,11 +49,7 @@ object ResultDestination {
     }
   }
 
-  sealed trait FoldableData extends ResultDestination {
-    def sink[A: DataFoldableFrom](name: String, inNamespace: NamespaceId)(implicit
-      logConfig: LogConfig,
-    ): Sink[A, NotUsed]
-  }
+  sealed trait FoldableData extends ResultDestination with DataFoldableSink
 
   object FoldableData {
     trait HttpEndpoint extends FoldableData {
@@ -64,9 +58,7 @@ object ResultDestination {
     }
   }
 
-  sealed trait AnyData extends ResultDestination {
-    def sink(name: String, inNamespace: NamespaceId)(implicit logConfig: LogConfig): Sink[Any, NotUsed]
-  }
+  sealed trait AnyData extends ResultDestination with AnySink
 
   object AnyData {
     trait Drop extends AnyData
