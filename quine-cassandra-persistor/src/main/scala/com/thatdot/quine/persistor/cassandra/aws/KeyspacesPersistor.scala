@@ -163,7 +163,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
           val keyspaceExistsQuery = selectFrom("system_schema_mcs", "keyspaces")
             .column("replication")
             .whereColumn("keyspace_name")
-            .isEqualTo(literal(keyspace))
+            .isEqualTo(literal(keyspace.replace("\"", "")))
             .build
           while (!sess.execute(keyspaceExistsQuery).iterator.hasNext) {
             logger.info(safe"Keyspace ${Safe(keyspace)} does not yet exist, re-checking in 4s")
