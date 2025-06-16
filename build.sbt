@@ -1,6 +1,5 @@
 import Dependencies.*
 import scalajsbundler.util.JSON._
-import InternalDependencies.graalV
 import QuineSettings.*
 
 ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/release/"
