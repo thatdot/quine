@@ -177,7 +177,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
     def tableStatusQuery(tableName: CqlIdentifier): SimpleStatement = selectFrom("system_schema_mcs", "tables")
       .column("status")
       .whereColumn("keyspace_name")
-      .isEqualTo(literal(keyspace))
+      .isEqualTo(literal(keyspace.replace("\"", "")))
       .whereColumn("table_name")
       .isEqualTo(literal(tableName.asInternal))
       .build
