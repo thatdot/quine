@@ -7,11 +7,10 @@ import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.graph.NamespaceId
 
-sealed trait DestinationSteps {
+sealed trait DestinationSteps extends DataFoldableSink {
+  // TODO def post-enrichment transform
+  // def transform: Option[Core.PostEnrichmentTransform]
   def destination: ResultDestination
-  def sink[In: DataFoldableFrom](outputName: String, namespaceId: NamespaceId)(implicit
-    logConfig: LogConfig,
-  ): Sink[In, NotUsed]
 }
 
 object DestinationSteps {
@@ -19,7 +18,7 @@ object DestinationSteps {
     formatAndEncode: OutputEncoder,
     destination: ResultDestination.Bytes,
   ) extends DestinationSteps {
-    def sink[In: DataFoldableFrom](outputName: String, namespaceId: NamespaceId)(implicit
+    override def sink[In: DataFoldableFrom](outputName: String, namespaceId: NamespaceId)(implicit
       logConfig: LogConfig,
     ): Sink[In, NotUsed] = {
       val inToRepr = DataFoldableFrom[In].to(formatAndEncode.folderTo, formatAndEncode.reprTag)
@@ -28,7 +27,7 @@ object DestinationSteps {
     }
   }
 
-  case class WithGenericFoldable(destination: ResultDestination.FoldableData) extends DestinationSteps {
+  case class WithDataFoldable(destination: ResultDestination.FoldableData) extends DestinationSteps {
     override def sink[In: DataFoldableFrom](outputName: String, namespaceId: NamespaceId)(implicit
       logConfig: LogConfig,
     ): Sink[In, NotUsed] =

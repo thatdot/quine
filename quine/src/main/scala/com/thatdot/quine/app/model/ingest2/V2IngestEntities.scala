@@ -719,6 +719,14 @@ object V2IngestEntities {
     val onStreamError: OnStreamErrorHandler
   }
 
+  sealed trait Transformation
+  object Transformation {
+    case class JavaScript(
+      /* JavaScript source code of the function, must be callable */
+      function: String,
+    ) extends Transformation
+  }
+
   @title("Ingest Configuration")
   @description("A specification of a data source and rules for consuming data from that source.")
   case class QuineIngestConfiguration(
@@ -727,6 +735,8 @@ object V2IngestEntities {
     query: String,
     @description("Name of the Cypher parameter to populate with the JSON value.")
     parameter: String = "that",
+    @description("A function to be run before the cypher query is executed. Used to pre-process input.")
+    transformation: Option[Transformation] = None,
     @description("Maximum number of records to process at once.")
     parallelism: Int = V1.IngestRoutes.defaultWriteParallelism,
     @description("Maximum number of records to process per second.")

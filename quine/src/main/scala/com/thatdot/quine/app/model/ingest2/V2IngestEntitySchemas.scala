@@ -108,6 +108,9 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit lazy val kinesisCheckpointSettingsSchema: Schema[KinesisCheckpointSettings] = Schema.derived
   implicit lazy val kclConfigurationSchema: Schema[KCLConfiguration] = Schema.derived
 
+  implicit lazy val javaScriptScheme: Schema[Transformation.JavaScript] = Schema.derived
+  implicit lazy val transformationScheme: Schema[Transformation] = Schema.derived
+
   implicit lazy val ingestSourceTypeSchema: Schema[IngestSource] = Schema.derived
   implicit lazy val ingestSchema: Schema[QuineIngestConfiguration] = Schema.derived[QuineIngestConfiguration]
 

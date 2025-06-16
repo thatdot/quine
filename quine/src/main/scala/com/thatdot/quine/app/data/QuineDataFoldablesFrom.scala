@@ -3,6 +3,8 @@ package com.thatdot.quine.app.data
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
+import com.thatdot.quine.serialization.data.QuineSerializationFoldablesFrom
 
 object QuineDataFoldablesFrom {
   implicit val cypherValueDataFoldable: DataFoldableFrom[cypher.Value] = new DataFoldableFrom[cypher.Value] {
@@ -50,4 +52,6 @@ object QuineDataFoldablesFrom {
     }
   }
 
+  def quineValueDataFoldable(implicit idProvider: QuineIdProvider): DataFoldableFrom[QuineValue] =
+    QuineSerializationFoldablesFrom.quineValueDataFoldableFrom
 }

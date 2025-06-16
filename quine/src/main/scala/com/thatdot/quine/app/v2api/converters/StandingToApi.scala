@@ -2,10 +2,10 @@ package com.thatdot.quine.app.v2api.converters
 
 import scala.annotation.unused
 
-import com.thatdot.convert.{Model1ToApi2, Model2ToApi2, Output2ToApi2}
-import com.thatdot.quine.app.model.outputs2.query.{standing => Standing}
+import com.thatdot.quine.app.model.outputs2.query.standing
 import com.thatdot.quine.app.v2api.definitions.query.{standing => Api}
 import com.thatdot.quine.{routes => V1}
+import com.thatdot.{convert => ConvertCore}
 
 /** Conversions from internal models in [[com.thatdot.quine.app.model.outputs2.query.standing]]
   * to API models in [[com.thatdot.quine.app.v2api.definitions.query.standing]].
@@ -13,27 +13,27 @@ import com.thatdot.quine.{routes => V1}
 @unused
 object StandingToApi {
   @unused
-  private def apply(mode: Standing.StandingQueryPattern.StandingQueryMode): Api.StandingQueryPattern.StandingQueryMode =
+  private def apply(mode: standing.StandingQueryPattern.StandingQueryMode): Api.StandingQueryPattern.StandingQueryMode =
     mode match {
-      case Standing.StandingQueryPattern.StandingQueryMode.DistinctId =>
+      case standing.StandingQueryPattern.StandingQueryMode.DistinctId =>
         Api.StandingQueryPattern.StandingQueryMode.DistinctId
-      case Standing.StandingQueryPattern.StandingQueryMode.MultipleValues =>
+      case standing.StandingQueryPattern.StandingQueryMode.MultipleValues =>
         Api.StandingQueryPattern.StandingQueryMode.MultipleValues
-      case Standing.StandingQueryPattern.StandingQueryMode.QuinePattern =>
+      case standing.StandingQueryPattern.StandingQueryMode.QuinePattern =>
         Api.StandingQueryPattern.StandingQueryMode.QuinePattern
     }
 
   @unused
-  private def apply(pattern: Standing.StandingQueryPattern): Api.StandingQueryPattern =
+  private def apply(pattern: standing.StandingQueryPattern): Api.StandingQueryPattern =
     pattern match {
-      case Standing.StandingQueryPattern.Cypher(query, mode) =>
+      case standing.StandingQueryPattern.Cypher(query, mode) =>
         Api.StandingQueryPattern.Cypher(query, apply(mode))
     }
 
   @unused
-  private def apply(stats: Standing.StandingQueryStats): Api.StandingQueryStats =
+  private def apply(stats: standing.StandingQueryStats): Api.StandingQueryStats =
     Api.StandingQueryStats(
-      Model2ToApi2(stats.rates),
+      ConvertCore.Model2ToApi2(stats.rates),
       stats.startTime,
       stats.totalRuntime,
       stats.bufferSize,
@@ -41,12 +41,23 @@ object StandingToApi {
     )
 
   @unused
-  def apply(workflow: Standing.StandingQueryResultWorkflow): Api.StandingQueryResultWorkflow =
-    Api.StandingQueryResultWorkflow(
-      resultEnrichment = workflow.workflow.enrichmentQuery.map(QueryToApi.apply),
-      destinations = workflow.destinationStepsList.map(Output2ToApi2.apply),
-    )
+  private def apply(t: standing.StandingQueryResultTransform): Api.StandingQueryResultTransform = t match {
+    case standing.StandingQueryResultTransform.InlineData() => Api.StandingQueryResultTransform.InlineData
+  }
 
+  @unused
+  def apply(workflow: standing.StandingQueryResultWorkflow): Api.StandingQueryResultWorkflow =
+    Api.StandingQueryResultWorkflow(
+      filter = workflow.workflow.filter.map(Outputs2ToApi2.apply),
+      preEnrichmentTransform = workflow.workflow.preEnrichmentTransform.map(apply),
+      resultEnrichment = workflow.workflow.enrichmentQuery.map(Outputs2ToApi2.fromCypherQuery),
+      destinations = workflow.destinationStepsList.map {
+        case standing.QuineSupportedDestinationSteps.CoreDestinationSteps(underlying) =>
+          Api.QuineSupportedDestinationSteps.CoreDestinationSteps(ConvertCore.Outputs2ToApi2(underlying))
+        case standing.QuineSupportedDestinationSteps.QuineAdditionalFoldableDataResultDestinations(underlying) =>
+          Api.QuineSupportedDestinationSteps.QuineAdditionalDestinationSteps(Outputs2ToApi2(underlying))
+      },
+    )
 }
 
 // Shall be deleted when Outputs V2 is used in API V2
@@ -142,8 +153,8 @@ object V1StandingToV2Api {
           structure,
         ) =>
       Api.StandingQueryResultOutputUserDef.WriteToKinesis(
-        credentials.map(Model1ToApi2.apply),
-        region.map(Model1ToApi2.apply),
+        credentials.map(ConvertCore.Model1ToApi2.apply),
+        region.map(ConvertCore.Model1ToApi2.apply),
         streamName,
         format,
         kinesisParallelism,
@@ -155,8 +166,8 @@ object V1StandingToV2Api {
       )
     case V1.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic, structure) =>
       Api.StandingQueryResultOutputUserDef.WriteToSNS(
-        credentials.map(Model1ToApi2.apply),
-        region.map(Model1ToApi2.apply),
+        credentials.map(ConvertCore.Model1ToApi2.apply),
+        region.map(ConvertCore.Model1ToApi2.apply),
         topic,
         List.empty,
         V1StandingToV2Api(structure),
@@ -224,7 +235,7 @@ object V1StandingToV2Api {
 
   private def apply(stats: V1.StandingQueryStats): Api.StandingQueryStats =
     Api.StandingQueryStats(
-      Model1ToApi2.apply(stats.rates),
+      ConvertCore.Model1ToApi2.apply(stats.rates),
       stats.startTime,
       stats.totalRuntime,
       stats.bufferSize,

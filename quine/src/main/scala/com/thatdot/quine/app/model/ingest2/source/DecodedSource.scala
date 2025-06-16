@@ -9,6 +9,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, Source, SourceWithContext}
 import org.apache.pekko.{Done, NotUsed}
 
+import cats.data.Validated.{invalidNel, validNel}
 import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 
@@ -23,11 +24,17 @@ import com.thatdot.quine.app.model.ingest2.codec.FrameDecoder
 import com.thatdot.quine.app.model.ingest2.sources.S3Source.s3Source
 import com.thatdot.quine.app.model.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.model.ingest2.sources._
+import com.thatdot.quine.app.model.transformation.polyglot.langauges.JavaScriptTransformation
+import com.thatdot.quine.app.model.transformation.polyglot.{
+  PolyglotValueDataFoldableFrom,
+  PolyglotValueDataFolderTo,
+  Transformation,
+}
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
-import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 import com.thatdot.quine.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.util.{BaseError, SwitchMode, Valve, ValveSwitch}
 import com.thatdot.quine.{routes => V1}
@@ -51,6 +58,23 @@ abstract class DecodedSource(val meter: IngestMeter) {
 
   def onTermination(): Unit = ()
 
+  /** Converts the raw decoded value into the Cypher value that the ingest query expects */
+  private def preprocessToCypherValue(
+    decoded: Decoded,
+    transformationOpt: Option[Transformation],
+  ): Either[BaseError, cypher.Value] =
+    transformationOpt match {
+      // Just produce a cypher value if no transform.
+      case None => Right(foldable.fold(decoded, QuineDataFoldersTo.cypherValueFolder))
+
+      // Transform the input using provided transformation
+      case Some(transformation) =>
+        val polyglotInput = foldable.fold(decoded, PolyglotValueDataFolderTo)
+        transformation(polyglotInput).map { polyglotOutput =>
+          PolyglotValueDataFoldableFrom.fold(polyglotOutput, QuineDataFoldersTo.cypherValueFolder)
+        }
+    }
+
   /** Generate an [[QuineIngestSource]] from this decoded stream Source[(Try[A], Frame), ShutdownSwitch]
     * into a Source[IngestSrcExecToken,NotUsed]
     * applying
@@ -62,6 +86,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
     ingestName: String,
     /* A step ingesting cypher (query,parameters) => graph.*/
     ingestQuery: QuineIngestQuery,
+    transformation: Option[Transformation],
     cypherGraph: CypherOpsGraph,
     initialSwitchMode: SwitchMode = SwitchMode.Open,
     parallelism: Int = 1,
@@ -97,28 +122,31 @@ abstract class DecodedSource(val meter: IngestMeter) {
           .viaMat(Valve(initialSwitchMode))(Keep.both)
           .via(throttle(graph, maxPerSecond))
 
+      implicit val ctx: ExecutionContext = ExecutionContext.parasitic
       val src: Source[IngestSrcExecToken, Unit] =
         SourceWithContext
           .fromTuples(ingestStream)
           // TODO this is slower than mapAsyncUnordered and is only necessary for Kafka acking case
           .mapAsync(parallelism) {
-            case Success(t) =>
-              graph.metrics
-                .ingestQueryTimer(intoNamespace, name)
-                .time(
-                  ingestQuery.apply {
-                    foldable.fold(t, QuineDataFoldersTo.cypherValueFolder)
-                  },
-                )
-            case Failure(e) => Future.failed(e)
+            case Success(decoded) =>
+              preprocessToCypherValue(decoded, transformation) match {
+                case Left(err) => Future.failed(err)
+                case Right(cypherInput) =>
+                  graph.metrics
+                    .ingestQueryTimer(intoNamespace, name)
+                    .time(
+                      ingestQuery.apply(cypherInput),
+                    )
+              }
+            case Failure(ex) => Future.failed(ex)
           }
           .asSource
           .map { case (_, envelope) => envelope }
           .via(ack)
           .map(_ => token)
           .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
-            c.onComplete(_ => onTermination())(ExecutionContext.parasitic)
-            b.map(v => ControlSwitches(a, v, c))(ExecutionContext.parasitic)
+            c.onComplete(_ => onTermination())
+            b.map(v => ControlSwitches(a, v, c))
           }
           .mapMaterializedValue(c => setControl(c, initialSwitchMode, registerTerminationHooks))
           .named(name)
@@ -163,16 +191,30 @@ object DecodedSource extends LazySafeLogging {
     val query = QuineValueIngestQuery(settings, graph, intoNamespace)
     val decodedSource =
       DecodedSource(name, settings, meter, graph.system)(protobufSchemaCache, avroSchemaCache, logConfig)
-    decodedSource.map(
-      _.toQuineIngestSource(
-        name,
-        query,
-        graph,
-        valveSwitchMode,
-        settings.parallelism,
-        settings.maxPerSecond,
-      ),
-    )
+
+    val validatedTransformation: ValidatedNel[BaseError, Option[Transformation]] =
+      settings.transformation.fold(validNel(Option.empty): ValidatedNel[BaseError, Option[Transformation]]) {
+        case Transformation.JavaScript(function) =>
+          JavaScriptTransformation.makeInstance(function) match {
+            case Left(err) => invalidNel(err)
+            case Right(value) => validNel(Some(value))
+          }
+      }
+
+    validatedTransformation.andThen { transformation =>
+
+      decodedSource.map(
+        _.toQuineIngestSource(
+          name,
+          query,
+          transformation,
+          graph,
+          valveSwitchMode,
+          settings.parallelism,
+          settings.maxPerSecond,
+        ),
+      )
+    }
   }
 
   // build from v1 configuration

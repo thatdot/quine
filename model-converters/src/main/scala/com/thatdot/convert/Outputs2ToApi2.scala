@@ -5,7 +5,7 @@ import com.thatdot.{api, model}
 /** Conversions from API models in [[com.thatdot.api.v2.outputs]]
   * to internal models in [[com.thatdot.model.v2.outputs]].
   */
-object Output2ToApi2 {
+object Outputs2ToApi2 {
 
   private def apply(format: model.v2.outputs.OutputEncoder): api.v2.outputs.OutputFormat = format match {
     case model.v2.outputs.OutputEncoder.JSON(_) => api.v2.outputs.OutputFormat.JSON
@@ -92,7 +92,7 @@ object Output2ToApi2 {
               format = format,
             )
         }
-      case model.v2.outputs.DestinationSteps.WithGenericFoldable(destination) =>
+      case model.v2.outputs.DestinationSteps.WithDataFoldable(destination) =>
         destination match {
           case endpoint: model.v2.outputs.ResultDestination.FoldableData.HttpEndpoint =>
             api.v2.outputs.DestinationSteps.HttpEndpoint(

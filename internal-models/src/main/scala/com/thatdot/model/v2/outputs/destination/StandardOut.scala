@@ -13,6 +13,7 @@ final case class StandardOut(
   logLevel: StandardOut.LogLevel = StandardOut.LogLevel.Info,
   logMode: StandardOut.LogMode = StandardOut.LogMode.Complete,
 ) extends ResultDestination.Bytes.StandardOut {
+  override def slug: String = "standard-out"
   override def sink(name: String, inNamespace: NamespaceId)(implicit logConfig: LogConfig): Sink[Array[Byte], NotUsed] =
     Sink
       .foreach[Array[Byte]] { bytes =>
@@ -20,6 +21,7 @@ final case class StandardOut(
         System.out.write("\n".getBytes(StandardCharsets.UTF_8))
       }
       .mapMaterializedValue(_ => NotUsed)
+      .named(sinkName(name))
 }
 
 object StandardOut {

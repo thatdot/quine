@@ -22,6 +22,7 @@ final case class Kafka(
 )(implicit system: ActorSystem)
     extends ResultDestination.Bytes.Kafka
     with LazySafeLogging {
+  override def slug: String = "kafka"
   override def sink(name: String, inNamespace: NamespaceId)(implicit
     logConfig: Log.LogConfig,
   ): Sink[Array[Byte], NotUsed] = {
@@ -42,6 +43,4 @@ final case class Kafka(
       .via(KafkaProducer.flexiFlow(settings).named(sinkName(name)))
       .to(Sink.ignore)
   }
-
-  private def sinkName(name: String): String = s"result-destination--kafka--$name"
 }

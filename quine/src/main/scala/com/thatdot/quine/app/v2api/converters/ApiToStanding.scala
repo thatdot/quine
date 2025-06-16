@@ -5,11 +5,12 @@ import scala.concurrent.Future
 
 import org.apache.pekko.dispatch.MessageDispatcher
 
-import com.thatdot.convert.{Api2ToModel1, Api2ToOutput2}
-import com.thatdot.quine.app.model.outputs2.query.{standing => Standing}
+import com.thatdot.quine.app.model.outputs2.query.standing
 import com.thatdot.quine.app.v2api.definitions.query.{standing => Api}
-import com.thatdot.quine.graph.{BaseGraph, NamespaceId}
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
+import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.serialization.ProtobufSchemaCache
+import com.thatdot.{convert => ConvertCore}
 
 /** Conversions from API models in [[com.thatdot.quine.app.v2api.definitions.query.standing]]
   * to internal models in [[com.thatdot.quine.app.model.outputs2.query.standing]].
@@ -18,20 +19,27 @@ import com.thatdot.quine.serialization.ProtobufSchemaCache
 object ApiToStanding {
 
   @unused
-  private def apply(mode: Api.StandingQueryPattern.StandingQueryMode): Standing.StandingQueryPattern.StandingQueryMode =
+  private def apply(mode: Api.StandingQueryPattern.StandingQueryMode): standing.StandingQueryPattern.StandingQueryMode =
     mode match {
       case Api.StandingQueryPattern.StandingQueryMode.DistinctId =>
-        Standing.StandingQueryPattern.StandingQueryMode.DistinctId
+        standing.StandingQueryPattern.StandingQueryMode.DistinctId
       case Api.StandingQueryPattern.StandingQueryMode.MultipleValues =>
-        Standing.StandingQueryPattern.StandingQueryMode.MultipleValues
+        standing.StandingQueryPattern.StandingQueryMode.MultipleValues
       case Api.StandingQueryPattern.StandingQueryMode.QuinePattern =>
-        Standing.StandingQueryPattern.StandingQueryMode.QuinePattern
+        standing.StandingQueryPattern.StandingQueryMode.QuinePattern
     }
 
   @unused
-  private def apply(pattern: Api.StandingQueryPattern): Standing.StandingQueryPattern = pattern match {
+  private def apply(pattern: Api.StandingQueryPattern): standing.StandingQueryPattern = pattern match {
     case Api.StandingQueryPattern.Cypher(query, mode) =>
-      Standing.StandingQueryPattern.Cypher(query, apply(mode))
+      standing.StandingQueryPattern.Cypher(query, apply(mode))
+  }
+
+  @unused
+  private def apply(
+    t: Api.StandingQueryResultTransform,
+  )(implicit idProvider: QuineIdProvider): standing.StandingQueryResultTransform = t match {
+    case Api.StandingQueryResultTransform.InlineData => standing.StandingQueryResultTransform.InlineData()
   }
 
   @unused
@@ -40,20 +48,30 @@ object ApiToStanding {
     outputName: String,
     namespaceId: NamespaceId,
   )(implicit
-    graph: BaseGraph,
+    graph: CypherOpsGraph,
     protobufSchemaCache: ProtobufSchemaCache,
-  ): Future[Standing.StandingQueryResultWorkflow] = {
+  ): Future[standing.StandingQueryResultWorkflow] = {
     import cats.instances.future.catsStdInstancesForFuture
     implicit val ec: MessageDispatcher = graph.nodeDispatcherEC
+    implicit val idProvider: QuineIdProvider = graph.idProvider
 
     workflow.destinations
-      .traverse(Api2ToOutput2.apply)
+      .traverse {
+        case Api.QuineSupportedDestinationSteps.CoreDestinationSteps(steps) =>
+          ConvertCore.Api2ToOutputs2(steps).map(standing.QuineSupportedDestinationSteps.CoreDestinationSteps)
+        case Api.QuineSupportedDestinationSteps.QuineAdditionalDestinationSteps(steps) =>
+          Api2ToOutputs2(steps).map(
+            standing.QuineSupportedDestinationSteps.QuineAdditionalFoldableDataResultDestinations,
+          )
+      }
       .map(dests =>
-        Standing.StandingQueryResultWorkflow(
+        standing.StandingQueryResultWorkflow(
           outputName = outputName,
           namespaceId = namespaceId,
-          workflow = Standing.Workflow(
-            enrichmentQuery = workflow.resultEnrichment.map(ApiToQuery.apply),
+          workflow = standing.Workflow(
+            filter = workflow.filter.map(Api2ToOutputs2.apply),
+            preEnrichmentTransform = workflow.preEnrichmentTransform.map(apply),
+            enrichmentQuery = workflow.resultEnrichment.map(Api2ToOutputs2.toEnrichmentQuery),
           ),
           destinationStepsList = dests,
         ),
@@ -150,8 +168,8 @@ object V2ApiToV1Standing {
             structure,
           ) =>
         V1Standing.StandingQueryResultOutputUserDef.WriteToKinesis(
-          credentials.map(Api2ToModel1.apply),
-          region.map(Api2ToModel1.apply),
+          credentials.map(ConvertCore.Api2ToModel1.apply),
+          region.map(ConvertCore.Api2ToModel1.apply),
           streamName,
           format,
           kinesisParallelism,
@@ -162,8 +180,8 @@ object V2ApiToV1Standing {
         )
       case Api.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic, _, structure) =>
         V1Standing.StandingQueryResultOutputUserDef.WriteToSNS(
-          credentials.map(Api2ToModel1.apply),
-          region.map(Api2ToModel1.apply),
+          credentials.map(ConvertCore.Api2ToModel1.apply),
+          region.map(ConvertCore.Api2ToModel1.apply),
           topic,
           V2ApiToV1Standing(structure),
         )

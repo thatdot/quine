@@ -1,6 +1,7 @@
 package com.thatdot.quine.webapp.components
 
 import scala.scalajs.js
+import scala.scalajs.js.|
 
 import org.scalajs.dom
 import slinky.core.ExternalComponent
@@ -9,6 +10,14 @@ import slinky.core.annotations.react
 import js.annotation._
 
 @react object Plotly extends ExternalComponent {
+
+  @JSImport("plotly.js", JSImport.Namespace)
+  @js.native
+  object PlotlyJS extends js.Object
+
+  @JSImport("react-plotly.js/factory", JSImport.Default)
+  @js.native
+  def createPlotlyComponent: js.Function1[js.Object, js.Object] = js.native
 
   /* References:
    *
@@ -41,7 +50,7 @@ import js.annotation._
   @JSImport("react-plotly.js", JSImport.Default)
   object Plot extends js.Object
 
-  override val component = Plot
+  override val component: String | js.Object = createPlotlyComponent(PlotlyJS)
 }
 
 trait Figure extends js.Object {
