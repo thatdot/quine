@@ -15,6 +15,16 @@ import com.thatdot.{visnetwork => vis}
 
 package object webapp {
 
+  @JSImport("bootstrap/dist/css/bootstrap.min.css", JSImport.Namespace)
+  @js.native
+  object BootstrapCSS extends js.Object
+  BootstrapCSS
+
+  @JSImport("bootstrap/dist/js/bootstrap.bundle.min.js", JSImport.Namespace)
+  @js.native
+  object BootstrapBundle extends js.Object
+  BootstrapBundle
+
   @JSImport("resources/index.css", JSImport.Default)
   @js.native
   object IndexCss extends js.Object

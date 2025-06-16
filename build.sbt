@@ -1,4 +1,5 @@
 import Dependencies.*
+import scalajsbundler.util.JSON._
 import InternalDependencies.graalV
 import QuineSettings.*
 
@@ -304,9 +305,11 @@ lazy val `quine-browser`: Project = project
       "react-dom" -> reactV,
       "es6-shim" -> "0.35.7",
       "react-plotly.js" -> reactPlotlyV,
-      "plotly.js" -> plotlyV,
+      "plotly.js" -> s"npm:plotly.js-dist-min@${plotlyV}",
       "@stoplight/elements" -> stoplightElementsV,
       "mkdirp" -> "1.0.0",
+      "bootstrap" -> bootstrapV,
+      "@popperjs/core" -> "2.11.8",
     ),
     webpackNodeArgs := nodeLegacySslIfAvailable,
     // Scalajs-bundler 0.21.1 updates to webpack 5 but doesn't inform webpack that the scalajs-based file it emits is
@@ -389,11 +392,9 @@ lazy val `quine`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
       // WebJars (javascript dependencies masquerading as JARs)
-      "org.webjars" % "bootstrap" % bootstrapV,
       "org.webjars" % "ionicons" % ioniconsV,
       "org.webjars" % "jquery" % jqueryV,
       "org.webjars" % "webjars-locator" % webjarsLocatorV,
-      "org.webjars.bowergithub.plotly" % "plotly.js" % plotlyV,
       "org.webjars.npm" % "sugar-date" % sugarV,
       "org.webjars.npm" % "vis-network" % visNetworkV,
       "org.apache.avro" % "avro" % avroV,
