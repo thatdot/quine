@@ -39,10 +39,10 @@ import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
   *                      idempotent
   * @param initialStatus the status of the ingest stream when it was first created. This is `Running` for newly-created
   *                      ingests, but may have any value except `Terminated` for ingests restored from persistence.
-  *                      To get the ingest's current status, use `status` instead. This should be a val but it's
+  *                      To get the ingest's current status, use `status` instead. This should be a val, but it's
   *                      used to patch in a rendered status in setIngestStreamPauseState
   * @param close         Callback to request the ingest stream to stop. Once this is called, `terminated`'s inner future
-  *                      will eventually complete. This should be a val but it's constructed out of order by Novelty
+  *                      will eventually complete. This should be a val, but it's constructed out of order by Novelty
   *                      streams.
   * @param optWs         HACK: opaque stash of additional information for Novelty websocket streams. This should be
   *                      refactored out of this class.
