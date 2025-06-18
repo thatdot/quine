@@ -153,6 +153,8 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     with QueryUiConfigurationState
     with SchemaCache
 
+  def thisMemberIdx: Int
+
   // duplicated from, com.thatdot.quine.app.routes.IngestApiMethods
   private def stream2Info(
     conf: IngestStreamWithControl[V2IngestEntities.IngestSource],
@@ -203,8 +205,6 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     case e: IngestApiEntities.PauseOperationException =>
       Left(BadRequest.apply(s"Cannot $operation a ${e.statusMsg} ingest."))
   }
-
-  def thisMemberIdx: Int
 
   //  endpoint business logic functionality.
   def getProperties: Future[Map[String, String]] = {
