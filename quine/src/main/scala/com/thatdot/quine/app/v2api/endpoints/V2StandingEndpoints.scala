@@ -2,6 +2,7 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
+import cats.data.NonEmptyList
 import io.circe.generic.extras.auto._
 import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
@@ -9,13 +10,15 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{EndpointInput, emptyOutputAs, path, query, statusCode}
 
+import com.thatdot.api.v2.outputs.DestinationSteps.StandardOut
+import com.thatdot.api.v2.outputs.{DestinationSteps, OutputFormat}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
+import com.thatdot.quine.app.v2api.definitions.query.standing.QuineSupportedDestinationSteps.CoreDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode.MultipleValues
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern._
-import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultOutputUserDef
-import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultOutputUserDef.PrintToStandardOut
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultWorkflow
 import com.thatdot.quine.app.v2api.definitions.{ErrorResponse, SuccessEnvelope, V2QuineEndpointDefinitions}
 
 trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiSchemas with V2ApiConfiguration {
@@ -105,8 +108,13 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
         )((_: Unit) => SuccessEnvelope.Accepted())
       }
 
-  private val addSQOutputEndpoint = rawStandingQueryEndpoint
-    .name("Create Standing Query Output")
+  private val workflowExample: StandingQueryResultWorkflow =
+    StandingQueryResultWorkflow(destinations =
+      NonEmptyList.one(CoreDestinationSteps(StandardOut(format = OutputFormat.JSON))),
+    )
+
+  private val addSQOutputWorkflowEndpoint = rawStandingQueryEndpoint
+    .name("Create Standing Query Output Workflow")
     .description(
       "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed.",
     )
@@ -114,7 +122,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     .in("outputs")
     .in(sqOutputName)
     .in(namespaceParameter)
-    .in(jsonOrYamlBody[StandingQueryResultOutputUserDef](Some(StandingQueryResultOutputUserDef.PrintToStandardOut())))
+    .in(jsonOrYamlBody[StandingQueryResultWorkflow](Some(workflowExample)))
     .errorOut(badRequestError("Output is invalid", "There is another output with that name already"))
     .errorOutEither(notFoundError("No Standing Queries exist with the provided name."))
     .errorOutEither(serverError())
@@ -122,17 +130,26 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     .out(statusCode(StatusCode.Created))
     .out(emptyOutputAs[SuccessEnvelope.Created[Unit]](SuccessEnvelope.Created(())))
     .post
-    .serverLogic[Future] { case (sqName, sqOutputName, namespace, outputDef) =>
+    .serverLogic[Future] { case (sqName, sqOutputName, namespace, workflow) =>
       recoverServerErrorEither(
         appMethods
-          .addSQOutput(sqName, sqOutputName, namespaceFromParam(namespace), outputDef),
-      )((inp: Unit) => SuccessEnvelope.Created(inp))
+          .addSQOutput(sqName, sqOutputName, namespaceFromParam(namespace), workflow),
+      )(SuccessEnvelope.Created(_))
     }
 
   private val exPattern = """MATCH (n) WHERE n.num % 100 = 0 RETURN n.num"""
 
   private val createSqExample: StandingQueryDefinition =
-    StandingQueryDefinition(Cypher(exPattern, MultipleValues), Map.from(List("stdout" -> PrintToStandardOut())))
+    StandingQueryDefinition(
+      Cypher(exPattern, MultipleValues),
+      Map.from(
+        List(
+          "stdout" -> StandingQueryResultWorkflow(destinations =
+            NonEmptyList.one(CoreDestinationSteps(DestinationSteps.StandardOut(format = OutputFormat.JSON))),
+          ),
+        ),
+      ),
+    )
 
   private val createSQEndpoint: Full[Unit, Unit, (String, Option[String], Boolean, StandingQueryDefinition), Either[
     ServerError,
@@ -196,7 +213,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
   private val deleteSQOutputEndpoint: Full[Unit, Unit, (String, String, Option[String]), Either[
     ServerError,
     ErrorResponse.NotFound,
-  ], SuccessEnvelope.Ok[StandingQueryResultOutputUserDef], Any, Future] =
+  ], SuccessEnvelope.Ok[StandingQueryResultWorkflow], Any, Future] =
     standingQueryEndpoint
       .name("Delete Standing Query Output")
       .description("Remove an output from a standing query.")
@@ -206,7 +223,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
       .in(namespaceParameter)
       .delete
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[StandingQueryResultOutputUserDef]])
+      .out(jsonBody[SuccessEnvelope.Ok[StandingQueryResultWorkflow]])
       .errorOutEither(notFoundError("No Standing Queries exist with the provided name."))
       .serverLogic[Future] { case (sqName, sqOutputName, namespace) =>
         recoverServerErrorEitherFlat(appMethods.deleteSQOutput(sqName, sqOutputName, namespaceFromParam(namespace)))(
@@ -238,7 +255,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     getSqEndpoint,
     createSQEndpoint,
     propagateStandingQueryEndpoint,
-    addSQOutputEndpoint,
+    addSQOutputWorkflowEndpoint,
     deleteSQEndpoint,
     deleteSQOutputEndpoint,
   )

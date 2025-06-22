@@ -18,7 +18,7 @@ import com.thatdot.common.logging.Log._
 import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.app.StandingQueryResultOutput.SlackSerializable
 import com.thatdot.quine.app.model.outputs2.QuineResultDestination
-import com.thatdot.quine.app.util.QuineLoggables.LogStatusCode
+import com.thatdot.quine.app.util.QuineLoggables.logStatusCode
 import com.thatdot.quine.graph.NamespaceId
 
 final case class Slack(

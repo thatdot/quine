@@ -11,9 +11,9 @@ object StandingQuery {
   final case class StandingQueryDefinition(
     pattern: StandingQueryPattern,
     @description(
-      s"A map of named standing query outs - see the ${StandingQueryResultOutputUserDef.title} schema for the values",
+      s"A map of named standing query outs - see the ${StandingQueryResultWorkflow.title} schema for the values",
     )
-    outputs: Map[String, StandingQueryResultOutputUserDef],
+    outputs: Map[String, StandingQueryResultWorkflow],
     @description("Whether or not to include cancellations in the results of this query")
     @default(false)
     includeCancellations: Boolean = false,
@@ -31,9 +31,9 @@ object StandingQuery {
     @description("Query or pattern to answer in a standing fashion")
     pattern: Option[StandingQueryPattern], // TODO: remove Option once we remove DGB SQs
     @description(
-      s"output sinks into which all new standing query results should be enqueued - see ${StandingQueryResultOutputUserDef.title}",
+      s"output sinks into which all new standing query results should be enqueued - see ${StandingQueryResultWorkflow.title}",
     )
-    outputs: Map[String, StandingQueryResultOutputUserDef],
+    outputs: Map[String, StandingQueryResultWorkflow],
     @description("Whether or not to include cancellations in the results of this query")
     includeCancellations: Boolean,
     @description("how many standing query results to buffer on each host before backpressuring")

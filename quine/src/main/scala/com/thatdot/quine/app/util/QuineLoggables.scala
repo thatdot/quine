@@ -10,7 +10,7 @@ import com.thatdot.quine.serialization.ConversionFailure
 
 object QuineLoggables {
   implicit val logConversionFailure: Loggable[ConversionFailure] = toStringLoggable[ConversionFailure]
-  // implicit val logIngestStreamStatus : Loggable[IngestStreamStatus] = toStringLoggable[IngestStreamStatus]
+
   implicit val logIngestStreamConfiguration: AlwaysSafeLoggable[IngestStreamConfiguration] =
     _.toString
   implicit val logQuineIngestConfigurationApi: AlwaysSafeLoggable[ApiIngest.Oss.QuineIngestConfiguration] =
@@ -24,21 +24,30 @@ object QuineLoggables {
 
   implicit val logUnifiedIngestStreamConfiguration: AlwaysSafeLoggable[UnifiedIngestConfiguration] =
     _.config.fold(_.toString, _.toString)
-  implicit val LogStandingQueryDefinition: AlwaysSafeLoggable[com.thatdot.quine.routes.StandingQueryDefinition] =
+  implicit val logStandingQueryDefinition: AlwaysSafeLoggable[com.thatdot.quine.routes.StandingQueryDefinition] =
     _.toString
-  implicit val LogRegisteredStandingQuery: AlwaysSafeLoggable[com.thatdot.quine.routes.RegisteredStandingQuery] =
+  implicit val logStandingQueryDefinition2
+    : AlwaysSafeLoggable[com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.StandingQueryDefinition] =
     _.toString
-  implicit def kogStandingQueryOutput[OutputT <: com.thatdot.quine.routes.StandingQueryResultOutputUserDef]
-    : AlwaysSafeLoggable[OutputT] =
+  implicit val logRegisteredStandingQuery: AlwaysSafeLoggable[com.thatdot.quine.routes.RegisteredStandingQuery] =
     _.toString
-  implicit val LogStatusCode: AlwaysSafeLoggable[org.apache.pekko.http.scaladsl.model.StatusCode] = _.value
+  implicit val logRegisteredStandingQuery2
+    : AlwaysSafeLoggable[com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.RegisteredStandingQuery] =
+    _.toString
+
+  implicit def logStandingQueryOutput[OutputT <: com.thatdot.quine.routes.StandingQueryResultOutputUserDef]
+    : AlwaysSafeLoggable[OutputT] = _.toString
+  implicit val logStandingQueryResultWorkflow2
+    : AlwaysSafeLoggable[com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultWorkflow] =
+    _.toString
+  implicit val logStatusCode: AlwaysSafeLoggable[org.apache.pekko.http.scaladsl.model.StatusCode] = _.value
 
   implicit def logApiCommand[C <: ApiCommand]: AlwaysSafeLoggable[C] = _.toString
 
-  implicit val LogSampleQuery: AlwaysSafeLoggable[SampleQuery] =
+  implicit val logSampleQuery: AlwaysSafeLoggable[SampleQuery] =
     _.toString
-  implicit val LogUiNodeAppearance: AlwaysSafeLoggable[UiNodeAppearance] =
+  implicit val logUiNodeAppearance: AlwaysSafeLoggable[UiNodeAppearance] =
     _.toString
-  implicit val LogUiNodeQuickQuery: AlwaysSafeLoggable[com.thatdot.quine.routes.UiNodeQuickQuery] =
+  implicit val logUiNodeQuickQuery: AlwaysSafeLoggable[com.thatdot.quine.routes.UiNodeQuickQuery] =
     _.toString
 }

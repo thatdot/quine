@@ -49,7 +49,7 @@ case class CypherQuery(
             else
               graph.cypherOps
                 .query(
-                  compiledQuery,
+                  query = compiledQuery,
                   namespace = inNamespace,
                   atTime = None,
                   parameters = Map(parameter -> value),

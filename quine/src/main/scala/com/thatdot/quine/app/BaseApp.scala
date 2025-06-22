@@ -97,7 +97,7 @@ abstract class BaseApp(graph: BaseGraph) {
   /** Deserialize a value intended to be stored as metadata
     *
     * @param value the value serialized value as the UTF-8 bytes of its JSON representation to be deserialized
-    * @param schema an endpoints4s ujson schema derived to provide the string codec
+    * @param encoderDecoder a codec
     * @tparam A The type of the value to be encoded
     * @return The encoded value as a byte array
     */

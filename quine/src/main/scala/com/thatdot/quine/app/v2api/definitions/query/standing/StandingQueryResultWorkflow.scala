@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.v2api.definitions.query.standing
 
 import cats.data.NonEmptyList
-import sttp.tapir.Schema.annotations.{default, description, title}
+import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.CypherQuery
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultTransform
@@ -46,11 +46,10 @@ object QuineSupportedDestinationSteps {
 )
 case class StandingQueryResultWorkflow(
   @description("A StandingQueryResult filter (one of any built-in options), which runs before any enrichment query.")
-  filter: Option[Predicate],
+  filter: Option[Predicate] = None,
   @description("Transformation function to apply to each result")
-  preEnrichmentTransform: Option[StandingQueryResultTransform],
+  preEnrichmentTransform: Option[StandingQueryResultTransform] = None,
   @description("A CypherQuery that returns data.")
-  @default(None)
   resultEnrichment: Option[CypherQuery] = None,
   @description("The destinations to which the latest data passed through the workflow steps shall be delivered.")
   destinations: NonEmptyList[QuineSupportedDestinationSteps],

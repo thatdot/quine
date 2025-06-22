@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.model.outputs2.query.standing
 
-sealed abstract class StandingQueryPattern
+sealed abstract class StandingQueryPattern extends Product with Serializable
 object StandingQueryPattern {
 
   final case class Cypher(
@@ -8,7 +8,7 @@ object StandingQueryPattern {
     mode: StandingQueryMode = StandingQueryMode.DistinctId,
   ) extends StandingQueryPattern
 
-  sealed abstract class StandingQueryMode
+  sealed abstract class StandingQueryMode extends Product with Serializable
   object StandingQueryMode {
     // DomainGraphBranch interpreter
     case object DistinctId extends StandingQueryMode
