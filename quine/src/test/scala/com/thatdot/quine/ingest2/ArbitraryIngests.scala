@@ -86,7 +86,7 @@ trait ArbitraryIngests {
     IngestFormat.StreamingFormat.Avro("url"),
   )
 
-  implicit val genOnRecordError: Gen[OnRecordErrorHandler] = Gen.oneOf(LogRecordErrorHandler, DeadLetterErrorHandler)
+  implicit val genOnRecordError: Gen[OnRecordErrorHandler] = Gen.const(OnRecordErrorHandler())
   implicit val arbOnRecordError: Arbitrary[OnRecordErrorHandler] = Arbitrary(genOnRecordError)
 
   implicit val genOnStreamError: Gen[OnStreamErrorHandler] = Gen.oneOf(LogStreamError, RetryStreamError(1))

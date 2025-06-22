@@ -13,6 +13,7 @@ import cats.implicits.catsSyntaxValidatedId
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.model.ingest.NamedPipeSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
@@ -61,6 +62,7 @@ case class FramedFileSource(
       val meter: IngestMeter = ingestMeter
 
       def content(input: SrcFrame): Array[Byte] = input.toArrayUnsafe()
+      val foldableFrame: DataFoldableFrom[SrcFrame] = DataFoldableFrom.byteStringDataFoldable
 
     }
 

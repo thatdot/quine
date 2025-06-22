@@ -47,6 +47,7 @@ object DestinationSteps {
     bootstrapServers: String,
     @default(OutputFormat.JSON)
     format: OutputFormat = OutputFormat.JSON,
+    @default(Map.empty[String, String])
     @description(
       """Map of Kafka producer properties.
         |See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>""".stripMargin,

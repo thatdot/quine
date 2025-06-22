@@ -345,10 +345,7 @@ object ApiToIngest {
     case Api.IngestSource.ReactiveStream(url, port, format) =>
       Ingest.ReactiveStreamIngest(apply(url), port, format)
   }
-  def apply(handler: Api.OnRecordErrorHandler): Ingest.OnRecordErrorHandler = handler match {
-    case Api.LogRecordErrorHandler => Ingest.LogRecordErrorHandler
-    case Api.DeadLetterErrorHandler => Ingest.DeadLetterErrorHandler
-  }
+
   def apply(handler: Api.OnStreamErrorHandler): Ingest.OnStreamErrorHandler = handler match {
     case Api.RetryStreamError(retryCount) => Ingest.RetryStreamError(retryCount)
     case Api.LogStreamError => Ingest.LogStreamError
@@ -366,7 +363,7 @@ object ApiToIngest {
       conf.transformation.map(apply),
       conf.parallelism,
       conf.maxPerSecond,
-      apply(conf.onRecordError),
+      conf.onRecordError,
       apply(conf.onStreamError),
     )
 

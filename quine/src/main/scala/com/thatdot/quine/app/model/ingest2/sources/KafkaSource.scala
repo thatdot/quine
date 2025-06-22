@@ -1,6 +1,7 @@
 package com.thatdot.quine.app.model.ingest2.sources
 
 import scala.concurrent.duration.{Duration, FiniteDuration, MILLISECONDS}
+import scala.jdk.OptionConverters.RichOptional
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.kafka.scaladsl.{Committer, Consumer}
@@ -24,6 +25,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
 
+import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
@@ -120,6 +122,90 @@ object KafkaSource {
       .via(committer)
       .map(_ => Done)
   }
+
+  val withOffsetFoldable: DataFoldableFrom[WithOffset] = new DataFoldableFrom[WithOffset] {
+    def fold[B](value: WithOffset, folder: DataFolderTo[B]): B = {
+      val recordBuilder = folder.mapBuilder()
+      recordBuilder.add("value", folder.bytes(value.record.value()))
+      recordBuilder.add("key", folder.bytes(value.record.key()))
+      recordBuilder.add("topic", folder.string(value.record.topic()))
+      recordBuilder.add("partition", folder.integer(value.record.partition().toLong))
+      recordBuilder.add("offset", folder.integer(value.record.offset()))
+      recordBuilder.add("timestamp", folder.integer(value.record.timestamp()))
+      recordBuilder.add("timestampType", folder.string(value.record.timestampType().name()))
+      value.record.leaderEpoch().toScala.foreach { epoch =>
+        recordBuilder.add("leaderEpoch", folder.integer(epoch.toLong))
+      }
+
+      recordBuilder.add("serializedKeySize", folder.integer(value.record.serializedKeySize().toLong))
+      recordBuilder.add("serializedValueSize", folder.integer(value.record.serializedValueSize().toLong))
+
+      if (value.record.headers() != null && value.record.headers().iterator().hasNext) {
+        val headersBuilder = folder.mapBuilder()
+        val it = value.record.headers().iterator()
+        while (it.hasNext) {
+          val h = it.next()
+          headersBuilder.add(h.key(), folder.bytes(h.value()))
+        }
+        recordBuilder.add("headers", headersBuilder.finish())
+      }
+
+      val partitionBuilder = folder.mapBuilder()
+      val committableOffset = value.committableOffset
+
+      val partitionOffset = committableOffset.partitionOffset
+
+      partitionBuilder.add("topic", folder.string(partitionOffset.key.topic))
+      partitionBuilder.add("partition", folder.integer(partitionOffset.key.partition.toLong))
+      partitionBuilder.add("offset", folder.integer(partitionOffset.offset))
+
+      val committableOffsetBuilder = folder.mapBuilder()
+      committableOffsetBuilder.add("partitionOffset", partitionBuilder.finish())
+
+      committableOffset match {
+        case metadata: ConsumerMessage.CommittableOffsetMetadata =>
+          committableOffsetBuilder.add("metadata", folder.string(metadata.metadata))
+      }
+
+      val committableMessageBuilder = folder.mapBuilder()
+      committableMessageBuilder.add("record", recordBuilder.finish())
+      committableMessageBuilder.add("committableOffset", committableOffsetBuilder.finish())
+      committableMessageBuilder.finish()
+
+    }
+  }
+
+  val noOffsetFoldable: DataFoldableFrom[NoOffset] = new DataFoldableFrom[NoOffset] {
+    def fold[B](value: NoOffset, folder: DataFolderTo[B]): B = {
+      val builder = folder.mapBuilder()
+      builder.add("value", folder.bytes(value.value()))
+      builder.add("key", folder.bytes(value.key()))
+      builder.add("topic", folder.string(value.topic()))
+      builder.add("partition", folder.integer(value.partition().toLong))
+      builder.add("offset", folder.integer(value.offset()))
+      builder.add("timestamp", folder.integer(value.timestamp()))
+      builder.add("timestampType", folder.string(value.timestampType().name()))
+      value.leaderEpoch().toScala.foreach { epoch =>
+        builder.add("leaderEpoch", folder.integer(epoch.toLong))
+      }
+
+      builder.add("serializedKeySize", folder.integer(value.serializedKeySize().toLong))
+      builder.add("serializedValueSize", folder.integer(value.serializedValueSize().toLong))
+
+      if (value.headers() != null && value.headers().iterator().hasNext) {
+        val headersBuilder = folder.mapBuilder()
+        val it = value.headers().iterator()
+        while (it.hasNext) {
+          val h = it.next()
+          headersBuilder.add(h.key(), folder.bytes(h.value()))
+        }
+        builder.add("headers", headersBuilder.finish())
+      }
+
+      builder.finish()
+
+    }
+  }
 }
 
 case class KafkaSource(
@@ -170,18 +256,20 @@ case class KafkaSource(
             source,
             meter,
             input => input.record.value(),
+            withOffsetFoldable,
             ackFlow(explicitCommit, system),
           )
         }
 
       case None => // Non-committing source
+
         complaintsFromValidator.as {
           val consumer: Source[NoOffset, Consumer.Control] = Consumer.plainSource(consumerSettings, subs)
           val source = endingOffset
             .fold(consumer)(o => consumer.takeWhile(r => r.offset() <= o))
             .via(metered[NoOffset](meter, o => o.serializedValueSize()))
             .mapMaterializedValue(KafkaKillSwitch)
-          FramedSource[NoOffset](source, meter, noOffset => noOffset.value())
+          FramedSource[NoOffset](source, meter, noOffset => noOffset.value(), noOffsetFoldable)
         }
     }
   }

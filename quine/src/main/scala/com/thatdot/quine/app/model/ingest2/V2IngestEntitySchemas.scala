@@ -13,7 +13,6 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationDecoder,
   deriveEnumerationEncoder,
 }
-import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
@@ -36,6 +35,7 @@ object V2IngestEntityEncoderDecoders extends V2IngestEntitySchemas {
   // V2IngestSchemas, which is necessary for working with EncoderDecoders in an environment where
   // the implicits are already defined using Endpoints4s for V1 ingests
   object implicits {
+
     implicit def quineIngestStreamWithStatusSchema: EncoderDecoder[QuineIngestStreamWithStatus] =
       EncoderDecoder.ofEncodeDecode
     implicit val quineIngestConfigurationSchema: EncoderDecoder[QuineIngestConfiguration] =
@@ -50,11 +50,10 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit val csvCharacterSchema: Schema[V1.CsvCharacter] = Schema.derived[V1.CsvCharacter]
   implicit val recordDecodingTypeSchema: Schema[V1.RecordDecodingType] =
     Schema.derived[V1.RecordDecodingType]
-  implicit val onRecordErrorHandlerSchema: Schema[OnRecordErrorHandler] =
-    Schema.derived[OnRecordErrorHandler].description("Action to take on record error")
 
   implicit val onStreamErrorHandlerSchema: Schema[OnStreamErrorHandler] =
     Schema.derived[OnStreamErrorHandler].description("Action to take on stream error")
+
   implicit val ingestFormatTypeSchema: Schema[IngestFormat] =
     Schema.derived
       .description("Ingest format")
@@ -112,7 +111,7 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit lazy val transformationScheme: Schema[Transformation] = Schema.derived
 
   implicit lazy val ingestSourceTypeSchema: Schema[IngestSource] = Schema.derived
-  implicit lazy val ingestSchema: Schema[QuineIngestConfiguration] = Schema.derived[QuineIngestConfiguration]
+  //implicit lazy val ingestSchema: Schema[QuineIngestConfiguration] = Schema.derived[QuineIngestConfiguration]
 
   implicit val charsetEncoder: Encoder[Charset] = Encoder.encodeString.contramap(_.name)
   implicit val charsetDecoder: Decoder[Charset] = Decoder.decodeString.map(s => Charset.forName(s))
@@ -180,15 +179,8 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit lazy val StreamingFormatDecoder: Decoder[StreamingFormat] =
     deriveConfiguredDecoder[StreamingFormat]
 
-  implicit lazy val onRecordErrorHandlerEncoder: Encoder[OnRecordErrorHandler] =
-    deriveConfiguredEncoder[OnRecordErrorHandler]
-  implicit lazy val onRecordErrorHandlerDecoder: Decoder[OnRecordErrorHandler] =
-    deriveConfiguredDecoder[OnRecordErrorHandler]
   implicit lazy val OnStreamErrorHandlerEncoder: Encoder[OnStreamErrorHandler] =
     deriveConfiguredEncoder[OnStreamErrorHandler]
   implicit lazy val OnStreamErrorHandlerDecoder: Decoder[OnStreamErrorHandler] =
     deriveConfiguredDecoder[OnStreamErrorHandler]
-
-  implicit val encoder: Encoder.AsObject[QuineIngestConfiguration] = deriveEncoder[QuineIngestConfiguration]
-  implicit val decoder: Decoder[QuineIngestConfiguration] = deriveDecoder[QuineIngestConfiguration]
 }

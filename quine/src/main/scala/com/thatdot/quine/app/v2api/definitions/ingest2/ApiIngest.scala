@@ -3,7 +3,6 @@ package com.thatdot.quine.app.v2api.definitions.ingest2
 import java.nio.charset.{Charset, StandardCharsets}
 import java.time.Instant
 
-import com.typesafe.scalalogging.LazyLogging
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
@@ -276,8 +275,8 @@ object ApiIngest {
       @description("Maximum number of records to process per second.")
       maxPerSecond: Option[Int] = None,
       @description("Action to take on a single failed record")
-      @default(LogRecordErrorHandler)
-      onRecordError: OnRecordErrorHandler = LogRecordErrorHandler,
+      @default(OnRecordErrorHandler())
+      onRecordError: OnRecordErrorHandler = OnRecordErrorHandler(),
       @description("Action to take on a failure of the input stream")
       @default(LogStreamError)
       onStreamError: OnStreamErrorHandler = LogStreamError,
@@ -1047,21 +1046,39 @@ object ApiIngest {
   // --------------------
   // Stream Error Handler
   // --------------------
+
+  case class RecordRetrySettings(
+    @default(200)
+    @description("Minimum duration to backoff between issuing retries, in milliseconds.")
+    minBackoff: Int = 2000,
+    @description("Maximum duration to backoff between issuing retries, in seconds.")
+    @default(20)
+    maxBackoff: Int = 20,
+    @description("Adds jitter to the retry delay. Use 0 for no jitter.")
+    @default(0.2)
+    randomFactor: Double = 0.2,
+    @description("Total number of allowed retries, when reached the last result will be emitted even if unsuccessful")
+    @default(6)
+    maxRetries: Int = 6,
+  )
+
   /** Error handler defined for errors that affect only a single record. This is intended to handle errors in
     * a configurable way distinct from stream-level errors, where the entire stream fails - e.g. handling
     * a single corrupt record rather than a failure in the stream communication.
     */
-  sealed trait OnRecordErrorHandler
-
-  @title("Log Record Error Handler")
-  @description("Log a message for each message that encounters an error in processing")
-  case object LogRecordErrorHandler extends OnRecordErrorHandler with LazyLogging
-
-  @title("Dead-letter Record Error Handler")
+  @title("On Record Error Handler")
   @description(
-    """Preserve records that encounter an error in processing by forwarding them to a specified
-      |dead-letter destination (TBD)""".stripMargin,
+    "Settings for retrying failed record processing along with options for logging " +
+    "or forwarding failed records to dead letter queues.",
   )
-  case object DeadLetterErrorHandler extends OnRecordErrorHandler
-
+  case class OnRecordErrorHandler(
+    @description("Should record errors be retried.  Useful when targeting a decode schema that can change.")
+    retrySettings: Option[RecordRetrySettings] = None,
+    @description("Should records be logged in case of failure.")
+    @default(true)
+    logRecord: Boolean = true,
+    @description("Send failed records to a collection of dead letter queue destinations.")
+    @default(DeadLetterQueueSettings())
+    deadLetterQueueSettings: DeadLetterQueueSettings = DeadLetterQueueSettings(),
+  )
 }

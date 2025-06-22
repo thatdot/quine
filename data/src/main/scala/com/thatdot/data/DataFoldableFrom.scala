@@ -5,6 +5,8 @@ import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.util.Try
 
+import org.apache.pekko.util
+
 import com.google.protobuf.Descriptors.EnumValueDescriptor
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
 import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
@@ -16,8 +18,8 @@ import com.thatdot.common.logging.Log._
 trait DataFoldableFrom[A] extends LazySafeLogging {
   def fold[B](value: A, folder: DataFolderTo[B]): B
 
-  def fold[B, Frame](t: (Try[A], Frame), folder: DataFolderTo[B]): (Try[B], Frame) =
-    (t._1.map(a => fold(a, folder)), t._2)
+  def fold[B, Frame](t: (() => Try[A], Frame), folder: DataFolderTo[B]): (Try[B], Frame) =
+    (t._1().map(a => fold(a, folder)), t._2)
 
   def to[B: DataFolderTo: ClassTag]: A => B = {
     case b: B => b
@@ -27,6 +29,17 @@ trait DataFoldableFrom[A] extends LazySafeLogging {
 
 object DataFoldableFrom {
   def apply[A](implicit df: DataFoldableFrom[A]): DataFoldableFrom[A] = df
+
+  def contramap[A: DataFoldableFrom, B](f: B => A): DataFoldableFrom[B] =
+    new DataFoldableFrom[B] {
+      override def fold[C](value: B, folder: DataFolderTo[C]): C =
+        DataFoldableFrom[A].fold(f(value), folder)
+    }
+
+  implicit final class Ops[A](private val self: DataFoldableFrom[A]) extends AnyVal {
+    def contramap[B](f: B => A): DataFoldableFrom[B] =
+      DataFoldableFrom.contramap(f)(self)
+  }
 
   implicit val jsonDataFoldable: DataFoldableFrom[Json] = new DataFoldableFrom[Json] {
     def fold[B](value: Json, folder: DataFolderTo[B]): B =
@@ -52,6 +65,16 @@ object DataFoldableFrom {
           builder.finish()
         }
       })
+  }
+
+  implicit val byteStringDataFoldable: DataFoldableFrom[util.ByteString] = new DataFoldableFrom[util.ByteString] {
+    def fold[B](value: util.ByteString, folder: DataFolderTo[B]): B =
+      folder.bytes(value.toArrayUnsafe())
+  }
+
+  implicit val bytesDataFoldable: DataFoldableFrom[Array[Byte]] = new DataFoldableFrom[Array[Byte]] {
+    def fold[B](value: Array[Byte], folder: DataFolderTo[B]): B =
+      folder.bytes(value)
   }
 
   implicit val stringDataFoldable: DataFoldableFrom[String] = new DataFoldableFrom[String] {

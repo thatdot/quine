@@ -24,6 +24,7 @@ import software.amazon.awssdk.retries.StandardRetryStrategy
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
+import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest.util.AwsOps
 import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
@@ -148,12 +149,23 @@ case class KinesisSource(
       .via(kinesisRateLimiter)
   }
 
+  private val recordFolder: DataFoldableFrom[kinesisModel.Record] = new DataFoldableFrom[kinesisModel.Record] {
+    def fold[B](value: kinesisModel.Record, folder: DataFolderTo[B]): B = {
+      val builder = folder.mapBuilder()
+      builder.add("data", folder.bytes(value.data().asByteArrayUnsafe()))
+      builder.add("sequenceNumber", folder.string(value.sequenceNumber()))
+      builder.add("partitionKey", folder.string(value.partitionKey()))
+      builder.finish()
+    }
+  }
+
   def framedSource: ValidatedNel[BaseError, FramedSource] =
     shardIterator.map { si =>
       FramedSource[kinesisModel.Record](
         withKillSwitches(kinesisStream(si)),
         meter,
         record => ContentDecoder.decode(decoders, record.data().asByteArrayUnsafe()),
+        recordFolder,
         terminationHook = () => kinesisClient.close(),
       )
     }

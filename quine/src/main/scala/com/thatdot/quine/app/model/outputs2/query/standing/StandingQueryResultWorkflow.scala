@@ -101,7 +101,7 @@ sealed trait QuineSupportedDestinationSteps extends DataFoldableSink {
 }
 
 object QuineSupportedDestinationSteps {
-  import com.thatdot.model.v2.outputs.{DestinationSteps => Core}
+  import com.thatdot.model.v2.outputs.{FoldableDestinationSteps => Core}
   import com.thatdot.quine.app.model.outputs2.{QuineDestinationSteps => Quine}
 
   case class CoreDestinationSteps(underlying: Core) extends QuineSupportedDestinationSteps

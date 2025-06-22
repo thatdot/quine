@@ -93,7 +93,8 @@ case class ProtobufDecoder(schemaUrl: String, typeName: String)(implicit
 
   val foldable: DataFoldableFrom[DynamicMessage] = DataFoldableFrom.protobufDataFoldable
 
-  def decode(bytes: Array[Byte]): Try[DynamicMessage] = Try(DynamicMessage.parseFrom(messageDescriptor, bytes))
+  def decode(bytes: Array[Byte]): Try[DynamicMessage] =
+    Try(DynamicMessage.parseFrom(messageDescriptor, bytes))
 
 }
 

@@ -36,10 +36,13 @@ import com.thatdot.quine.app.routes.IngestMeter
 
 trait FramedSource {
   type SrcFrame
+
   val stream: Source[SrcFrame, ShutdownSwitch]
   val meter: IngestMeter
 
   def content(input: SrcFrame): Array[Byte]
+
+  def foldableFrame: DataFoldableFrom[SrcFrame]
 
   /** Note that the ack flow is only applied at the usage site (e.g. directly
     * in quine/novelty). This is because the ack is applied after the platform
@@ -60,15 +63,19 @@ trait FramedSource {
     new DecodedSource(meter) {
       type Decoded = DecodedA
       type Frame = SrcFrame
+
+      val foldableFrame: DataFoldableFrom[SrcFrame] = FramedSource.this.foldableFrame
       val foldable: DataFoldableFrom[Decoded] = decoder.foldable
+
+      override def content(input: SrcFrame): Array[Byte] = FramedSource.this.content(input)
 
       private val deserializationTimer = this.meter.unmanagedDeserializationTimer
 
-      def stream: Source[(Try[Decoded], Frame), ShutdownSwitch] =
+      def stream: Source[(() => Try[Decoded], Frame), ShutdownSwitch] =
         FramedSource.this.stream.map { envelope =>
           val timer = deserializationTimer.time()
-          val decoded = decoder.decode(content(envelope))
-          decoded.foreach(_ => timer.stop()) // only time successful deserializations
+          val decoded = () => decoder.decode(content(envelope))
+          decoded().foreach(_ => timer.stop()) // only time successful deserializations
           decoded -> envelope
         }
 
@@ -90,6 +97,7 @@ object FramedSource {
     source: Source[Frame, ShutdownSwitch],
     ingestMeter: IngestMeter,
     decodeFrame: Frame => Array[Byte],
+    foldableFrameInp: DataFoldableFrom[Frame],
     ackFlow: Flow[Frame, Done, NotUsed] = Flow.fromFunction[Frame, Done](_ => Done),
     terminationHook: () => Unit = () => (),
   ): FramedSource =
@@ -99,7 +107,7 @@ object FramedSource {
       val meter: IngestMeter = ingestMeter
 
       override def content(input: Frame): Array[Byte] = decodeFrame(input)
-
+      override val foldableFrame: DataFoldableFrom[SrcFrame] = foldableFrameInp
       override def onTermination(): Unit = terminationHook()
 
       override val ack = ackFlow

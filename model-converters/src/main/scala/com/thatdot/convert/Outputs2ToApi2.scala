@@ -39,9 +39,9 @@ object Outputs2ToApi2 {
         api.v2.outputs.DestinationSteps.StandardOut.LogMode.FastSampling
     }
 
-  def apply(destinationSteps: model.v2.outputs.DestinationSteps): api.v2.outputs.DestinationSteps =
+  def apply(destinationSteps: model.v2.outputs.FoldableDestinationSteps): api.v2.outputs.DestinationSteps =
     destinationSteps match {
-      case model.v2.outputs.DestinationSteps.WithByteEncoding(formatAndEncode, destination) =>
+      case model.v2.outputs.FoldableDestinationSteps.WithByteEncoding(formatAndEncode, destination) =>
         val format = apply(formatAndEncode)
         destination match {
           case endpoint: model.v2.outputs.ResultDestination.FoldableData.HttpEndpoint =>
@@ -92,7 +92,7 @@ object Outputs2ToApi2 {
               format = format,
             )
         }
-      case model.v2.outputs.DestinationSteps.WithDataFoldable(destination) =>
+      case model.v2.outputs.FoldableDestinationSteps.WithDataFoldable(destination) =>
         destination match {
           case endpoint: model.v2.outputs.ResultDestination.FoldableData.HttpEndpoint =>
             api.v2.outputs.DestinationSteps.HttpEndpoint(
@@ -100,7 +100,7 @@ object Outputs2ToApi2 {
               endpoint.parallelism,
             )
         }
-      case model.v2.outputs.DestinationSteps.WithAny(destination) =>
+      case model.v2.outputs.FoldableDestinationSteps.WithAny(destination) =>
         destination match {
           case _: model.v2.outputs.ResultDestination.AnyData.Drop => api.v2.outputs.DestinationSteps.Drop
         }

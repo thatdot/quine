@@ -60,15 +60,19 @@ case class CsvFileSource(
       type Decoded = T
       type Frame = ByteString
 
-      def stream: Source[(Try[T], Frame), ShutdownSwitch] = {
+      override val foldableFrame: DataFoldableFrom[ByteString] = byteStringDataFoldable
 
-        val csvStream: Source[Success[T], NotUsed] = src
+      override def content(input: ByteString): Array[Byte] = input.toArrayUnsafe()
+
+      def stream: Source[(() => Try[T], Frame), ShutdownSwitch] = {
+
+        val csvStream: Source[() => Success[T], NotUsed] = src
           .via(decompressingFlow(decoders))
           .via(csvLineParser)
           .via(boundingFlow(ingestBounds))
           .wireTap(bs => meter.mark(bs.map(_.length).sum))
           .via(parsingFlow)
-          .map(scala.util.Success(_)) //TODO meaningfully extract errors
+          .map(value => () => scala.util.Success(value)) //TODO meaningfully extract errors
 
         withKillSwitches(csvStream.zipWith(src)(Keep.both))
       }

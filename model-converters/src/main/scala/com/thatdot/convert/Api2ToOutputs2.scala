@@ -58,19 +58,19 @@ object Api2ToOutputs2 {
     graph: BaseGraph,
     ec: ExecutionContext,
     protobufSchemaCache: ProtobufSchemaCache,
-  ): Future[model.v2.outputs.DestinationSteps] = {
+  ): Future[model.v2.outputs.FoldableDestinationSteps] = {
     implicit val system: ActorSystem = graph.system
 
     destinationSteps match {
       case api.v2.outputs.DestinationSteps.Drop =>
         Future.successful(
-          model.v2.outputs.DestinationSteps.WithAny(
+          model.v2.outputs.FoldableDestinationSteps.WithAny(
             destination = model.v2.outputs.destination.Drop,
           ),
         )
       case api.v2.outputs.DestinationSteps.File(path, format) =>
         apply(format).map(enc =>
-          model.v2.outputs.DestinationSteps.WithByteEncoding(
+          model.v2.outputs.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
             destination = model.v2.outputs.destination.File(
               path = path,
@@ -79,7 +79,7 @@ object Api2ToOutputs2 {
         )
       case api.v2.outputs.DestinationSteps.HttpEndpoint(url, parallelism) =>
         Future.successful(
-          model.v2.outputs.DestinationSteps.WithDataFoldable(
+          model.v2.outputs.FoldableDestinationSteps.WithDataFoldable(
             destination = model.v2.outputs.destination.HttpEndpoint(
               url = url,
               parallelism = parallelism,
@@ -88,7 +88,7 @@ object Api2ToOutputs2 {
         )
       case api.v2.outputs.DestinationSteps.Kafka(topic, bootstrapServers, format, kafkaProperties) =>
         apply(format).map(enc =>
-          model.v2.outputs.DestinationSteps.WithByteEncoding(
+          model.v2.outputs.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
             destination = model.v2.outputs.destination.Kafka(
               topic = topic,
@@ -108,7 +108,7 @@ object Api2ToOutputs2 {
             kinesisMaxBytesPerSecond,
           ) =>
         apply(format).map(enc =>
-          model.v2.outputs.DestinationSteps.WithByteEncoding(
+          model.v2.outputs.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
             destination = model.v2.outputs.destination.Kinesis(
               credentials = credentials.map(Api2ToModel2.apply),
@@ -123,7 +123,7 @@ object Api2ToOutputs2 {
         )
       case api.v2.outputs.DestinationSteps.ReactiveStream(address, port, format) =>
         apply(format).map(enc =>
-          model.v2.outputs.DestinationSteps.WithByteEncoding(
+          model.v2.outputs.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
             destination = model.v2.outputs.destination.ReactiveStream(
               address = address,
@@ -133,7 +133,7 @@ object Api2ToOutputs2 {
         )
       case api.v2.outputs.DestinationSteps.SNS(credentials, region, topic, format) =>
         apply(format).map(enc =>
-          model.v2.outputs.DestinationSteps.WithByteEncoding(
+          model.v2.outputs.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
             destination = model.v2.outputs.destination.SNS(
               credentials = credentials.map(Api2ToModel2.apply),
@@ -144,7 +144,7 @@ object Api2ToOutputs2 {
         )
       case api.v2.outputs.DestinationSteps.StandardOut(logLevel, logMode, format) =>
         apply(format).map(enc =>
-          model.v2.outputs.DestinationSteps.WithByteEncoding(
+          model.v2.outputs.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
             destination = model.v2.outputs.destination.StandardOut(
               logLevel = apply(logLevel),

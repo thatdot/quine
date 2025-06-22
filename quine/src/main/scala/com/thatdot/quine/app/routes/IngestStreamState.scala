@@ -158,6 +158,9 @@ trait IngestStreamState {
         validatedTransformation.andThen { transformation =>
           decodedSourceNel.map { (s: DecodedSource) =>
 
+            val errorOutputs =
+              s.getDeadLetterQueues(settings.onRecordError.deadLetterQueueSettings)(protobufCache, graph.system)
+
             val quineIngestSource: QuineIngestSource = s.toQuineIngestSource(
               name,
               QuineValueIngestQuery.apply(settings, graph, intoNamespace),
@@ -166,6 +169,10 @@ trait IngestStreamState {
               initialValveSwitchMode,
               settings.parallelism,
               settings.maxPerSecond,
+              onDecodeError = errorOutputs,
+              retrySettings = settings.onRecordError.retrySettings,
+              logRecordError = settings.onRecordError.logRecord,
+              onStreamErrorHandler = settings.onStreamError,
             )
 
             val streamDefWithControl: IngestStreamWithControl[UnifiedIngestConfiguration] =

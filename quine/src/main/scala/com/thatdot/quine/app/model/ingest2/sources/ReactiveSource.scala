@@ -9,6 +9,7 @@ import io.rsocket.transport.netty.client.TcpClientTransport
 import io.rsocket.util.DefaultPayload
 import reactor.util.retry.Retry
 
+import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.app.RSocketKillSwitch
 import com.thatdot.quine.app.model.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
@@ -44,6 +45,7 @@ case class ReactiveSource(
       source,
       meter,
       frame => frame,
+      DataFoldableFrom.bytesDataFoldable,
     )
     Validated.valid(framedSource)
   }

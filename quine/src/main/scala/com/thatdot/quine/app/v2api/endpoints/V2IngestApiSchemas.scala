@@ -21,8 +21,6 @@ trait V2IngestApiSchemas extends V2ApiConfiguration {
 
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] =
     Schema.derived[RecordDecodingType]
-  implicit val onRecordErrorHandlerSchema: Schema[OnRecordErrorHandler] =
-    Schema.derived[OnRecordErrorHandler].description("Action to take on record error")
 
   implicit val ingestFormatTypeSchema: Schema[IngestFormat] =
     Schema.derived

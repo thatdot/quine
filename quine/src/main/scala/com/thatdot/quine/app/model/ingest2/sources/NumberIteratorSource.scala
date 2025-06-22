@@ -1,15 +1,16 @@
 package com.thatdot.quine.app.model.ingest2.sources
 
+import java.nio.ByteBuffer
+
 import scala.util.{Success, Try}
 
 import org.apache.pekko.stream.scaladsl.Source
 
-import com.thatdot.data.DataFoldableFrom
+import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.ShutdownSwitch
-import com.thatdot.quine.app.data.QuineDataFoldablesFrom
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.graph.cypher.{Expr, Value, Value => CypherValue}
+import com.thatdot.quine.graph.cypher.Expr
 
 case class NumberIteratorSource(
   bounds: IngestBounds = IngestBounds(),
@@ -17,11 +18,20 @@ case class NumberIteratorSource(
 ) {
 
   def decodedSource: DecodedSource = new DecodedSource(ingestMeter) {
-    type Decoded = CypherValue
-    type Frame = CypherValue
-    override val foldable: DataFoldableFrom[Value] = QuineDataFoldablesFrom.cypherValueDataFoldable
+    type Decoded = Expr.Integer
+    type Frame = Expr.Integer
 
-    def stream: Source[(Try[CypherValue], CypherValue), ShutdownSwitch] = {
+    private val integerFold: DataFoldableFrom[Expr.Integer] = new DataFoldableFrom[Expr.Integer] {
+      def fold[B](value: Expr.Integer, folder: DataFolderTo[B]): B = folder.integer(value.long)
+    }
+
+    override val foldable: DataFoldableFrom[Expr.Integer] = integerFold
+    override val foldableFrame: DataFoldableFrom[Expr.Integer] = integerFold
+
+    override def content(input: Expr.Integer): Array[Byte] =
+      ByteBuffer.allocate(8).putLong(input.long).array()
+
+    def stream: Source[(() => Try[Expr.Integer], Expr.Integer), ShutdownSwitch] = {
 
       val sourceBase = Source.unfold(bounds.startAtOffset)(ln => Some(ln + 1 -> Expr.Integer(ln)))
 
@@ -29,8 +39,8 @@ case class NumberIteratorSource(
 
       withKillSwitches(
         bounded
-          .via(metered[Value](meter, _ => 1)) //TODO this counts values not bytes
-          .map(sum => (Success(sum), sum)),
+          .via(metered[Expr.Integer](meter, _ => 1)) //TODO this counts values not bytes
+          .map(sum => (() => Success(sum), sum)),
       )
     }
   }

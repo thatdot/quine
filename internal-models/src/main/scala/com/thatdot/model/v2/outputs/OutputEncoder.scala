@@ -18,6 +18,16 @@ sealed trait OutputEncoder {
   def bytes(value: Repr): Array[Byte]
 }
 
+sealed trait BytesOutputEncoder[Repr] {
+  def bytes(value: Repr): Array[Byte]
+}
+
+object BytesOutputEncoder {
+  def apply[A](f: A => Array[Byte]): BytesOutputEncoder[A] = new BytesOutputEncoder[A] {
+    override def bytes(value: A): Array[Byte] = f(value)
+  }
+}
+
 object OutputEncoder {
   case class JSON(charset: Charset = StandardCharsets.UTF_8) extends OutputEncoder {
 

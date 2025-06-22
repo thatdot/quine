@@ -28,6 +28,7 @@ object IngestSourceTestSupport {
   /** Collect generated cypher values from a decoded source. Assumes all values are a success. */
   def streamedCypherValues(src: DecodedSource)(implicit mat: Materializer): immutable.Iterable[Value] = {
     val results = src.stream
+      .map { case (triedDecoded, frame) => (triedDecoded(), frame) }
       .map {
         case (Success(a), _) => src.foldable.fold(a, QuineDataFoldersTo.cypherValueFolder)
         case (Failure(e), _) => throw e

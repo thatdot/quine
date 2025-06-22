@@ -24,15 +24,16 @@ case class StandardInputSource(
   decoders: Seq[ContentDecoder] = Seq(),
 ) {
 
-  def decodedSource: ValidatedNel[BaseError, DecodedSource] = decodedSourceFromFileStream(
-    stdInSource,
-    format,
-    charset,
-    maximumLineSize,
-    IngestBounds(),
-    meter,
-    decoders,
-  )
+  def decodedSource: ValidatedNel[BaseError, DecodedSource] =
+    decodedSourceFromFileStream(
+      stdInSource,
+      format,
+      charset,
+      maximumLineSize,
+      IngestBounds(),
+      meter,
+      decoders,
+    )
 
 }
 

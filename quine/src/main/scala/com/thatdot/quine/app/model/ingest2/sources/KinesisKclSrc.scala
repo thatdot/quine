@@ -30,6 +30,7 @@ import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
 import software.amazon.awssdk.services.dynamodb.model.BillingMode
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
+import software.amazon.awssdk.services.kinesis.model.EncryptionType
 import software.amazon.kinesis.common.{ConfigsBuilder, InitialPositionInStream, InitialPositionInStreamExtended}
 import software.amazon.kinesis.coordinator.CoordinatorConfig.ClientVersionConfig
 import software.amazon.kinesis.coordinator.Scheduler
@@ -39,6 +40,7 @@ import software.amazon.kinesis.processor.{ShardRecordProcessorFactory, SingleStr
 import software.amazon.kinesis.retrieval.fanout.FanOutConfig
 import software.amazon.kinesis.retrieval.polling.PollingConfig
 
+import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest.util.AwsOps
 import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
@@ -325,6 +327,7 @@ final case class KinesisKclSrc(
       withKillSwitches(source),
       meter,
       record => ContentDecoder.decode(decoders, recordBufferToArray(record.record.data())),
+      committableRecordFolder,
       terminationHook = () => {
         Seq(kinesisClient, dynamoClient, cloudWatchClient).foreach { client =>
           client.close()
@@ -398,4 +401,41 @@ object KinesisKclSrc {
       )
       .build
   }
+
+  protected val committableRecordFolder: DataFoldableFrom[CommittableRecord] = new DataFoldableFrom[CommittableRecord] {
+    def fold[B](value: CommittableRecord, folder: DataFolderTo[B]): B = {
+      val builder = folder.mapBuilder()
+      builder.add("data", folder.bytes(recordBufferToArray(value.record.data())))
+      builder.add("sequenceNumber", folder.string(value.record.sequenceNumber()))
+      builder.add("approximateArrivalTimestamp", folder.string(value.record.approximateArrivalTimestamp().toString))
+      builder.add("partitionKey", folder.string(value.record.partitionKey()))
+      builder.add(
+        "encryptionType",
+        value.record.encryptionType() match {
+          case EncryptionType.NONE => folder.string(EncryptionType.NONE.toString)
+          case EncryptionType.KMS => folder.string(EncryptionType.KMS.toString)
+          case EncryptionType.UNKNOWN_TO_SDK_VERSION => folder.nullValue
+        },
+      )
+      builder.add("subSequenceNumber", folder.integer(value.record.subSequenceNumber()))
+      builder.add("explicitHashKey", folder.string(value.record.explicitHashKey()))
+      builder.add(
+        "aggregated",
+        value.record.aggregated() match {
+          case true => folder.trueValue
+          case false => folder.falseValue
+        },
+      )
+
+      val schemaBuilder = folder.mapBuilder()
+      schemaBuilder.add("schemaName", folder.string(value.record.schema().getSchemaName))
+      schemaBuilder.add("schemaDefinition", folder.string(value.record.schema().getSchemaDefinition))
+      schemaBuilder.add("dataFormat", folder.string(value.record.schema().getDataFormat))
+
+      builder.add("schema", schemaBuilder.finish())
+
+      builder.finish()
+    }
+  }
+
 }

@@ -5,11 +5,11 @@ import java.time.Instant
 
 import scala.util.{Failure, Success, Try}
 
-import com.typesafe.scalalogging.LazyLogging
 import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.OnRecordErrorHandler
 import com.thatdot.quine.{routes => V1}
 
 object V2IngestEntities {
@@ -678,34 +678,6 @@ object V2IngestEntities {
   // --------------------
   // Stream Error Handler
   // --------------------
-  /** Error handler defined for errors that affect only a single record. This is intended to handle errors in
-    * a configurable way distinct from stream-level errors, where the entire stream fails - e.g. handling
-    * a single corrupt record rather than a failure in the stream communication.
-    */
-  sealed trait OnRecordErrorHandler {
-    def handleError[A, Frame](processRecordAttempt: (Try[A], Frame)): Unit =
-      processRecordAttempt match {
-        case (Failure(e), frame) => onError(e, frame)
-        case _ => ()
-      }
-
-    def onError[Frame](e: Throwable, frame: Frame): Unit
-  }
-
-  @title("Log Record Error Handler")
-  @description("Log a message for each message that encounters an error in processing")
-  case object LogRecordErrorHandler extends OnRecordErrorHandler with LazyLogging {
-    def onError[Frame](e: Throwable, frame: Frame): Unit =
-      logger.warn(s"error decoding: $frame: ${e.getMessage}")
-  }
-
-  @title("Dead-letter Record Error Handler")
-  @description(
-    "Preserve records that encounter an error in processing by forwarding them to a specified dead-letter destination (TBD)",
-  )
-  case object DeadLetterErrorHandler extends OnRecordErrorHandler {
-    override def onError[Frame](e: Throwable, frame: Frame): Unit = ()
-  }
 
   /** Enforce shared structure between quine and novelty ingest usages.
     * Novelty ingests are identical to quine ingests with the exception
@@ -742,7 +714,7 @@ object V2IngestEntities {
     @description("Maximum number of records to process per second.")
     maxPerSecond: Option[Int] = None,
     @description("Action to take on a single failed record")
-    onRecordError: OnRecordErrorHandler = LogRecordErrorHandler,
+    onRecordError: OnRecordErrorHandler = OnRecordErrorHandler(),
     @description("Action to take on a failure of the input stream")
     onStreamError: OnStreamErrorHandler = LogStreamError,
   ) extends V2IngestConfiguration

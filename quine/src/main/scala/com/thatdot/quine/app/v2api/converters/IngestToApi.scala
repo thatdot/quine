@@ -396,11 +396,6 @@ object IngestToApi {
     case Ingest.LogStreamError => Api.LogStreamError
   }
 
-  def apply(handler: Ingest.OnRecordErrorHandler): Api.OnRecordErrorHandler = handler match {
-    case Ingest.LogRecordErrorHandler => Api.LogRecordErrorHandler
-    case Ingest.DeadLetterErrorHandler => Api.DeadLetterErrorHandler
-  }
-
   def apply(transformation: Ingest.Transformation): Api.Transformation = transformation match {
     case Ingest.Transformation.JavaScript(function) => Api.Transformation.JavaScript(function)
   }
@@ -413,7 +408,7 @@ object IngestToApi {
       transformation = conf.transformation.map(apply),
       parallelism = conf.parallelism,
       maxPerSecond = conf.maxPerSecond,
-      onRecordError = apply(conf.onRecordError),
+      onRecordError = conf.onRecordError,
       onStreamError = apply(conf.onStreamError),
     )
 }

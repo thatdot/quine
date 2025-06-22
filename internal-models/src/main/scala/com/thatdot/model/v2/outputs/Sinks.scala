@@ -13,6 +13,12 @@ trait DataFoldableSink {
   ): Sink[In, NotUsed]
 }
 
+trait DataNonFoldableSink {
+  def sink[In: BytesOutputEncoder](outputName: String, namespaceId: NamespaceId)(implicit
+    logConfig: LogConfig,
+  ): Sink[In, NotUsed]
+}
+
 trait ByteArraySink {
   def sink(name: String, inNamespace: NamespaceId)(implicit logConfig: LogConfig): Sink[Array[Byte], NotUsed]
 }

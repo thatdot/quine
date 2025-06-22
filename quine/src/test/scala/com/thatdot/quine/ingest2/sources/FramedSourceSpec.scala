@@ -10,6 +10,7 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 
+import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.app.model.ingest2.codec.StringDecoder
 import com.thatdot.quine.app.model.ingest2.source.FramedSource
 import com.thatdot.quine.app.model.ingest2.sources.withKillSwitches
@@ -35,7 +36,8 @@ case class TestSource(values: Iterable[TestFrame]) {
   def framedSource: FramedSource = FramedSource[TestFrame](
     source,
     meter,
-    _.value.getBytes, //source extracts bytes from the value member of TestFrame
+    _.value.getBytes, //source extracts bytes from the value member of TestFrame,
+    DataFoldableFrom.stringDataFoldable.contramap(_.value),
   )
 
 }

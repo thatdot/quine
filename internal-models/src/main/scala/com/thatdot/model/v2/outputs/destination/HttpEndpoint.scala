@@ -42,7 +42,7 @@ final case class HttpEndpoint(
           uri = url,
           entity = HttpEntity(
             contentType = `application/json`,
-            json.noSpaces,
+            json.noSpaces.getBytes,
           ),
         )
 

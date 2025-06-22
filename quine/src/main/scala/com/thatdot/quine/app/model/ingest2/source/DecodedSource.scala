@@ -2,42 +2,66 @@ package com.thatdot.quine.app.model.ingest2.source
 
 import java.nio.charset.Charset
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, Source, SourceWithContext}
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, RetryFlow, Sink, Source, SourceWithContext}
 import org.apache.pekko.{Done, NotUsed}
 
-import cats.data.Validated.{invalidNel, validNel}
 import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.data.DataFoldableFrom
+import com.thatdot.convert.Api2ToModel2
+import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
+import com.thatdot.model.v2.outputs.FoldableDestinationSteps.{WithByteEncoding, WithDataFoldable}
+import com.thatdot.model.v2.outputs.NonFoldableDestinationSteps.WithRawBytes
+import com.thatdot.model.v2.outputs.OutputEncoder.{JSON, Protobuf}
+import com.thatdot.model.v2.outputs.destination.HttpEndpoint
+import com.thatdot.model.v2.outputs.{
+  BytesOutputEncoder,
+  DestinationSteps,
+  FoldableDestinationSteps,
+  NonFoldableDestinationSteps,
+  ResultDestination,
+  destination,
+}
 import com.thatdot.quine.app.data.QuineDataFoldersTo
 import com.thatdot.quine.app.model.ingest.QuineIngestSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.model.ingest2.V1ToV2
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.model.ingest2.codec.FrameDecoder
 import com.thatdot.quine.app.model.ingest2.sources.S3Source.s3Source
 import com.thatdot.quine.app.model.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.model.ingest2.sources._
-import com.thatdot.quine.app.model.transformation.polyglot.langauges.JavaScriptTransformation
+import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities}
 import com.thatdot.quine.app.model.transformation.polyglot.{
   PolyglotValueDataFoldableFrom,
   PolyglotValueDataFolderTo,
   Transformation,
 }
-import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
+import com.thatdot.quine.app.routes.IngestMeter
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.RecordRetrySettings
+import com.thatdot.quine.app.v2api.definitions.ingest2.{DeadLetterQueueOutput, DeadLetterQueueSettings, OutputFormat}
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 import com.thatdot.quine.serialization.{AvroSchemaCache, ProtobufSchemaCache}
+import com.thatdot.quine.util.StringInput.filenameOrUrl
 import com.thatdot.quine.util.{BaseError, SwitchMode, Valve, ValveSwitch}
 import com.thatdot.quine.{routes => V1}
+
+final case class DlqEnvelope[Frame, Decoded](
+  /** The original input data type. */
+  frame: Frame,
+  /** The type of decoded data to be forwarded to the dlq. */
+  decoded: Option[Decoded] = None,
+  /** An optional message describing the error that occurred. */
+  message: String,
+)
 
 /** A decoded source represents a source of interpreted values, that is, values that have
   * been translated from raw formats as supplied by their ingest source.
@@ -49,10 +73,14 @@ abstract class DecodedSource(val meter: IngestMeter) {
   type Decoded
   type Frame
 
+  val foldableFrame: DataFoldableFrom[Frame]
+
   val foldable: DataFoldableFrom[Decoded]
 
+  def content(input: Frame): Array[Byte]
+
   /** Stream of decoded values. This stream must already be metered. */
-  def stream: Source[(Try[Decoded], Frame), ShutdownSwitch]
+  def stream: Source[(() => Try[Decoded], Frame), ShutdownSwitch]
 
   def ack: Flow[Frame, Done, NotUsed] = Flow.fromFunction(_ => Done)
 
@@ -75,7 +103,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
         }
     }
 
-  /** Generate an [[QuineIngestSource]] from this decoded stream Source[(Try[A], Frame), ShutdownSwitch]
+  /** Generate an [[QuineIngestSource]] from this decoded stream Source[(() => Try[A], Frame), ShutdownSwitch]
     * into a Source[IngestSrcExecToken,NotUsed]
     * applying
     * RestartSettings | switch | valve | throttle | writeToGraph | Error Handler | Ack | Termination Hooks |
@@ -91,7 +119,11 @@ abstract class DecodedSource(val meter: IngestMeter) {
     initialSwitchMode: SwitchMode = SwitchMode.Open,
     parallelism: Int = 1,
     maxPerSecond: Option[Int] = None,
-  ): QuineIngestSource = new QuineIngestSource {
+    onDecodeError: List[(DestinationSteps, Boolean)] = Nil,
+    retrySettings: Option[RecordRetrySettings] = None,
+    logRecordError: Boolean = false,
+    onStreamErrorHandler: OnStreamErrorHandler = LogStreamError,
+  )(implicit logConfig: LogConfig): QuineIngestSource = new QuineIngestSource {
 
     val name: String = ingestName
     implicit val graph: CypherOpsGraph = cypherGraph
@@ -115,33 +147,54 @@ abstract class DecodedSource(val meter: IngestMeter) {
 
       val token = IngestSrcExecToken(name)
       // TODO error handler should be settable from a config, e.g. DeadLetterErrorHandler
-      val decodeErrorHandler = LogRecordErrorHandler
       val ingestStream =
         DecodedSource.this.stream
-          .wireTap(v => decodeErrorHandler.handleError[Decoded, Frame](v))
           .viaMat(Valve(initialSwitchMode))(Keep.both)
           .via(throttle(graph, maxPerSecond))
 
-      implicit val ctx: ExecutionContext = ExecutionContext.parasitic
+      implicit val ex: ExecutionContext = ExecutionContext.parasitic
+      implicit val toBytesFrame: BytesOutputEncoder[Frame] = BytesOutputEncoder(content)
+
+      val dlqSinks = DecodedSource.getDlqSinks(name, intoNamespace, onDecodeError)(
+        toBytesFrame,
+        foldableFrame = foldableFrame,
+        foldable = foldable,
+        logConfig = logConfig,
+      )
+
       val src: Source[IngestSrcExecToken, Unit] =
         SourceWithContext
           .fromTuples(ingestStream)
+          .asSource
+          .via(DecodedSource.optionallyRetryDecodeStep[Frame, Decoded](logRecordError, retrySettings))
           // TODO this is slower than mapAsyncUnordered and is only necessary for Kafka acking case
           .mapAsync(parallelism) {
-            case Success(decoded) =>
-              preprocessToCypherValue(decoded, transformation) match {
-                case Left(err) => Future.failed(err)
+            case Right((t, frame)) =>
+              preprocessToCypherValue(t, transformation) match {
+                case Left(value) =>
+                  Future.successful(Left(DlqEnvelope(frame, Some(t), value.getMessage)))
                 case Right(cypherInput) =>
                   graph.metrics
                     .ingestQueryTimer(intoNamespace, name)
-                    .time(
-                      ingestQuery.apply(cypherInput),
-                    )
+                    .time(ingestQuery.apply(cypherInput))
+                    .map(_ => Right((t, frame)))
               }
-            case Failure(ex) => Future.failed(ex)
+
+            case other => Future.successful(other)
           }
-          .asSource
-          .map { case (_, envelope) => envelope }
+          .alsoToAll(
+            dlqSinks.map { sink =>
+              Flow[Either[DlqEnvelope[Frame, Decoded], (Decoded, Frame)]]
+                .collect { case Left(env) => env }
+                .to {
+                  sink
+                }
+            }: _*,
+          )
+          .map {
+            case Right((_, frame)) => frame
+            case Left(env) => env.frame
+          }
           .via(ack)
           .map(_ => token)
           .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
@@ -151,14 +204,186 @@ abstract class DecodedSource(val meter: IngestMeter) {
           .mapMaterializedValue(c => setControl(c, initialSwitchMode, registerTerminationHooks))
           .named(name)
 
-      RestartSource.onFailuresWithBackoff(restartSettings) { () =>
-        src
+      onStreamErrorHandler match {
+        case RetryStreamError(retryCount) =>
+          RestartSource.onFailuresWithBackoff(
+            // TODO: Actually lift these
+            // described in IngestSrcDef or expose these settings at the api level.
+            restartSettings.withMaxRestarts(retryCount, restartSettings.maxRestartsWithin),
+          ) { () =>
+            src.mapMaterializedValue(_ => NotUsed)
+          }
+        case V2IngestEntities.LogStreamError =>
+          src.mapMaterializedValue(_ => NotUsed)
       }
+
     }
+
   }
+
+  private def outputFormatToDestinationBytes(outputFormat: OutputFormat, bytesDestination: ResultDestination.Bytes)(
+    implicit protobufSchemaCache: ProtobufSchemaCache,
+  ): (DestinationSteps, Boolean) =
+    outputFormat match {
+      case OutputFormat.Bytes =>
+        (WithRawBytes(bytesDestination), false)
+      case OutputFormat.JSON(withMetaData) =>
+        (WithByteEncoding(JSON(), bytesDestination), withMetaData)
+      case OutputFormat.Protobuf(schemaUrl, typeName, withMetaData) =>
+        val messageDescriptor = Await.result(
+          protobufSchemaCache.getMessageDescriptor(filenameOrUrl(schemaUrl), typeName, flushOnFail = true),
+          10.seconds,
+        )
+        (
+          WithByteEncoding(Protobuf(schemaUrl, typeName, messageDescriptor), bytesDestination),
+          withMetaData,
+        )
+    }
+
+  def getDeadLetterQueues(
+    dlq: DeadLetterQueueSettings,
+  )(implicit protobufSchemaCache: ProtobufSchemaCache, system: ActorSystem): List[(DestinationSteps, Boolean)] =
+    dlq.destinations.map {
+
+      case DeadLetterQueueOutput.HttpEndpoint(url, parallelism, OutputFormat.JSON(withMetaData)) =>
+        (WithDataFoldable(HttpEndpoint(url, parallelism)), withMetaData)
+
+      case DeadLetterQueueOutput.File(path, outputFormat) =>
+        outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = destination.File(path))
+
+      case DeadLetterQueueOutput.Kafka(topic, bootstrapServers, kafkaProperties, outputFormat) =>
+        val kafkaDestination = destination.Kafka(topic, bootstrapServers, kafkaProperties)
+        outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = kafkaDestination)
+
+      case DeadLetterQueueOutput.Kinesis(
+            credentials,
+            region,
+            streamName,
+            kinesisParallelism,
+            kinesisMaxBatchSize,
+            kinesisMaxRecordsPerSecond,
+            kinesisMaxBytesPerSecond,
+            outputFormat,
+          ) =>
+        val kinesisDestination = destination.Kinesis(
+          credentials = credentials.map(Api2ToModel2.apply),
+          region = region.map(Api2ToModel2.apply),
+          streamName = streamName,
+          kinesisParallelism = kinesisParallelism,
+          kinesisMaxBatchSize = kinesisMaxBatchSize,
+          kinesisMaxRecordsPerSecond = kinesisMaxRecordsPerSecond,
+          kinesisMaxBytesPerSecond = kinesisMaxBytesPerSecond,
+        )
+        outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = kinesisDestination)
+
+      case DeadLetterQueueOutput.ReactiveStream(address, port, outputFormat) =>
+        val bytesDestination = destination.ReactiveStream(address, port)
+        outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = bytesDestination)
+
+      case DeadLetterQueueOutput.SNS(credentials, region, topic, outputFormat) =>
+        val bytesDestination =
+          destination.SNS(
+            credentials = credentials.map(Api2ToModel2.apply),
+            region = region.map(Api2ToModel2.apply),
+            topic = topic,
+          )
+        outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = bytesDestination)
+      case DeadLetterQueueOutput.StandardOut(logLevel, logMode, outputFormat) =>
+        val bytesDestination = destination.StandardOut(
+          logLevel = destination.StandardOut.LogLevel.Info,
+          logMode = destination.StandardOut.LogMode.Complete,
+        )
+        outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = bytesDestination)
+    }
+
 }
 
 object DecodedSource extends LazySafeLogging {
+
+  def dlqFold[Frame, Decoded](implicit
+    foldableFrame: DataFoldableFrom[Frame],
+    foldable: DataFoldableFrom[Decoded],
+  ): DataFoldableFrom[DlqEnvelope[Frame, Decoded]] = new DataFoldableFrom[DlqEnvelope[Frame, Decoded]] {
+    def fold[B](value: DlqEnvelope[Frame, Decoded], folder: DataFolderTo[B]): B = {
+      val builder = folder.mapBuilder()
+      builder.add("frame", foldableFrame.fold(value.frame, folder))
+      value.decoded.foreach(decoded => builder.add("decoded", foldable.fold(decoded, folder)))
+      builder.add("message", folder.string(value.message))
+      builder.finish()
+    }
+  }
+
+  def getDlqSinks[Frame: BytesOutputEncoder, Decoded](
+    name: String,
+    intoNamespace: NamespaceId,
+    onDecodeError: List[(DestinationSteps, Boolean)],
+  )(implicit
+    foldableFrame: DataFoldableFrom[Frame],
+    foldable: DataFoldableFrom[Decoded],
+    logConfig: LogConfig,
+  ): List[Sink[DlqEnvelope[Frame, Decoded], NotUsed]] =
+    onDecodeError.map {
+      case (steps: FoldableDestinationSteps, true) =>
+        Flow[DlqEnvelope[Frame, Decoded]]
+          .to(
+            steps.sink(
+              s"$name-errors",
+              intoNamespace,
+            )(DecodedSource.dlqFold(foldableFrame, foldable), logConfig),
+          )
+      case (steps: FoldableDestinationSteps, false) =>
+        Flow[DlqEnvelope[Frame, Decoded]]
+          .map(_.frame)
+          .to(
+            steps.sink(
+              s"$name-errors",
+              intoNamespace,
+            )(foldableFrame, logConfig),
+          )
+      case (sink: NonFoldableDestinationSteps, _) =>
+        Flow[DlqEnvelope[Frame, Decoded]]
+          .map(_.frame)
+          .to(
+            sink.sink(
+              s"$name-errors",
+              intoNamespace,
+            ),
+          )
+    }
+
+  private def decodedFlow[Frame, Decoded](
+    logRecord: Boolean,
+  ): Flow[(() => Try[Decoded], Frame), Either[DlqEnvelope[Frame, Decoded], (Decoded, Frame)], NotUsed] =
+    Flow[(() => Try[Decoded], Frame)].map { case (decoded, frame) =>
+      decoded() match {
+        case Success(d) => Right((d, frame))
+        case Failure(ex) =>
+          if (logRecord) {
+            logger.warn(safe"error decoding: ${Safe(ex.getMessage)}")
+          }
+          Left(DlqEnvelope.apply[Frame, Decoded](frame, None, ex.getMessage))
+      }
+    }
+
+  def optionallyRetryDecodeStep[Frame, Decoded](
+    logRecord: Boolean,
+    retrySettings: Option[RecordRetrySettings],
+  ): Flow[(() => Try[Decoded], Frame), Either[DlqEnvelope[Frame, Decoded], (Decoded, Frame)], NotUsed] =
+    retrySettings match {
+      case Some(settings) =>
+        RetryFlow
+          .withBackoff(
+            minBackoff = settings.minBackoff.millis,
+            maxBackoff = settings.maxBackoff.seconds,
+            randomFactor = settings.randomFactor,
+            maxRetries = settings.maxRetries,
+            decodedFlow[Frame, Decoded](logRecord),
+          ) {
+            case (in @ (_, _), Left(_)) => Some(in)
+            case _ => None
+          }
+      case None => decodedFlow[Frame, Decoded](logRecord)
+    }
 
   /** Convenience to extract parallelism from v1 configuration types w/o altering v1 configurations */
   def parallelism(config: V1.IngestStreamConfiguration): Int = config match {
@@ -173,48 +398,6 @@ object DecodedSource extends LazySafeLogging {
     case n: V1.NumberIteratorIngest => n.parallelism
     case other => throw new NoSuchElementException(s"Ingest type $other not supported")
 
-  }
-
-  def quineIngestSource(
-    name: String,
-    settings: QuineIngestConfiguration,
-    intoNamespace: NamespaceId,
-    valveSwitchMode: SwitchMode,
-  )(implicit
-    graph: CypherOpsGraph,
-    protobufSchemaCache: ProtobufSchemaCache,
-    avroSchemaCache: AvroSchemaCache,
-    logConfig: LogConfig,
-  ): ValidatedNel[BaseError, QuineIngestSource] = {
-    logger.info(safe"using v2 ingest to create ingest ${Safe(name)}")
-    val meter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
-    val query = QuineValueIngestQuery(settings, graph, intoNamespace)
-    val decodedSource =
-      DecodedSource(name, settings, meter, graph.system)(protobufSchemaCache, avroSchemaCache, logConfig)
-
-    val validatedTransformation: ValidatedNel[BaseError, Option[Transformation]] =
-      settings.transformation.fold(validNel(Option.empty): ValidatedNel[BaseError, Option[Transformation]]) {
-        case Transformation.JavaScript(function) =>
-          JavaScriptTransformation.makeInstance(function) match {
-            case Left(err) => invalidNel(err)
-            case Right(value) => validNel(Some(value))
-          }
-      }
-
-    validatedTransformation.andThen { transformation =>
-
-      decodedSource.map(
-        _.toQuineIngestSource(
-          name,
-          query,
-          transformation,
-          graph,
-          valveSwitchMode,
-          settings.parallelism,
-          settings.maxPerSecond,
-        ),
-      )
-    }
   }
 
   // build from v1 configuration

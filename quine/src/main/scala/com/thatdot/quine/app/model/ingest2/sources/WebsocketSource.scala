@@ -17,6 +17,7 @@ import org.apache.pekko.util.ByteString
 import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxValidatedId
 
+import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.app.model.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
 import com.thatdot.quine.app.model.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
@@ -96,6 +97,7 @@ case class WebsocketSource(
       withKillSwitches(source.via(transcodingFlow(charset))),
       meter,
       bs => bs.toArrayUnsafe(),
+      DataFoldableFrom.byteStringDataFoldable,
     ).valid
   }
 
