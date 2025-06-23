@@ -154,6 +154,9 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
     val createKeyspaceStatement: SimpleStatement =
       createKeyspace(keyspace).ifNotExists.withReplicationOptions(singletonMap("class", "SingleRegionStrategy")).build
 
+    // Use the id generated when creating the keyspace. createKeyspace sets getKeyspace upon creation.
+    val keyspaceInternalId: CqlIdentifier = createKeyspaceStatement.getKeyspace
+
     val session: CqlSession =
       try createQualifiedSession
       catch {
@@ -163,7 +166,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
           val keyspaceExistsQuery = selectFrom("system_schema_mcs", "keyspaces")
             .column("replication")
             .whereColumn("keyspace_name")
-            .isEqualTo(literal(keyspace))
+            .isEqualTo(literal(keyspaceInternalId))
             .build
           while (!sess.execute(keyspaceExistsQuery).iterator.hasNext) {
             logger.info(safe"Keyspace ${Safe(keyspace)} does not yet exist, re-checking in 4s")
@@ -177,7 +180,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
     def tableStatusQuery(tableName: CqlIdentifier): SimpleStatement = selectFrom("system_schema_mcs", "tables")
       .column("status")
       .whereColumn("keyspace_name")
-      .isEqualTo(literal(keyspace))
+      .isEqualTo(literal(keyspaceInternalId))
       .whereColumn("table_name")
       .isEqualTo(literal(tableName.asInternal))
       .build
