@@ -75,7 +75,6 @@ class QuineAppRoutes(
   override def namespaceExists(namespace: String): Boolean =
     graph.getNamespaces.contains(namespaceFromString(namespace))
 
-  /** Serves up the static assets from resources and for JS/CSS dependencies */
   lazy val staticFilesRoute: Route = {
     Directives.pathEndOrSingleSlash {
       getFromResource("web/quine-ui.html")

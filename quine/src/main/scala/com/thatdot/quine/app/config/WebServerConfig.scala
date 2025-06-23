@@ -41,6 +41,8 @@ object WebServerBindConfig {
 final case class WebserverAdvertiseConfig(
   address: Host,
   port: Port,
+  path: Option[String] = None,
 ) {
-  def url(protocol: String): URL = new URL(protocol, address.asString, port.asInt, "")
+  def url(protocol: String): URL =
+    new URL(protocol, address.asString, port.asInt, path.getOrElse(""))
 }
