@@ -429,6 +429,7 @@ lazy val `quine`: Project = project
     buildInfoKeys := Seq[BuildInfoKey](version, startupMessage),
     buildInfoPackage := "com.thatdot.quine.app",
   )
+  .settings(DashOHelpers.settings: _*)
 
 lazy val `quine-docs`: Project = {
   val docJson = Def.setting((Compile / sourceManaged).value / "reference" / "openapi.json")
