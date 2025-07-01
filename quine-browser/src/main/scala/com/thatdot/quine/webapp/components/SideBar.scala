@@ -13,7 +13,7 @@ import com.thatdot.quine.webapp.Styles
 
 /** Structure of a page in [[PageWithSideBar]]
   *
-  * @param icon Ionicon class name for an icon
+  * @param icon class name for an icon from Ionicons
   * @param name Title of the page (visible when the hamburger is clicked or on hover)
   * @param path URL path associated with this page
   * @param page context of the page
@@ -62,12 +62,33 @@ final case class Tab(
   }
 
   def initialState: com.thatdot.quine.webapp.components.PageWithSideBar.State = {
-    val initialTab = props.children.view.zipWithIndex
-      .find(t => t._1.path == window.location.pathname)
-      .fold(0)(_._2)
-    props.children.toList.lift(initialTab).foreach(_.mountFunction.foreach(_()))
-    val visited = Vector.tabulate(props.children.length)(_ == initialTab)
-    State(isOpen = false, initialTab, visited)
+    val slashSafetyWindowPath = window.location.pathname.stripPrefix("/").stripSuffix("/")
+    val initialTabIndex = {
+      val found = props.children.indexWhere { tab =>
+        val theoreticalTabURI = tab.baseURI + tab.path
+        val saferTabURI = theoreticalTabURI.replace("//", "/")
+        val slashSafetyTabURI = saferTabURI.stripPrefix("/").stripSuffix("/")
+        slashSafetyTabURI == slashSafetyWindowPath
+      }
+      // Default to Explorer
+      scalajs.js.Math.max(0, found)
+    }
+    props.children.toList.lift(initialTabIndex).foreach(_.mountFunction.foreach(_()))
+    val visited = Vector.tabulate(props.children.length)(_ == initialTabIndex)
+
+    val pageIndexState = new PageIndexState {
+      val pageIdx = initialTabIndex
+    }
+    // Set the window state for the tab that is loaded initially.  Makes it so that going directly to a tab by url
+    // doesn't break the back and forward navigation.
+    window.history
+      .replaceState(
+        pageIndexState,
+        "",
+        props.children(initialTabIndex).baseURI.stripSuffix("/") + props.children(initialTabIndex).path,
+      )
+    State(isOpen = false, initialTabIndex, visited)
+
   }
 
   override def componentDidMount(): Unit = {

@@ -16,6 +16,18 @@ function parseMillis(atTime) {
 var network = undefined;
 var urlParams = new URLSearchParams(window.location.search);
 
+var apiPaths = ["dashboard", "v2docs", "docs"];
+
+function deriveProxySafeBaseURI() {
+    return apiPaths.reduce((incrementalDerivationString, terminalPath) => {
+        var regexA = new RegExp(`${terminalPath}$`);
+        var regexB = new RegExp(`${terminalPath}\/$`);
+        return incrementalDerivationString.replace(regexA,"").replace(regexB,"");
+    }, window.location.pathname);
+};
+
+var derivedBaseURI = deriveProxySafeBaseURI();
+
 window.onload = function() {
     quineBrowser.quineAppMount(document.getElementById("root"), {
         initialQuery: decodeURIComponent(window.location.hash.replace(/^#/, "")),
@@ -26,10 +38,10 @@ window.onload = function() {
         onNetworkCreate: function(n) {
             network = n;
         },
-        documentationUrl: document.baseURI + "docs/openapi.json?relative=true",
-        documentationV2Url: document.baseURI + "api/v2/openapi.json",
-        baseURI: document.baseURI,
-        serverUrl: document.baseURI.replace(/\/$/, ""),
+        documentationUrl: "docs/openapi.json?relative=true",
+        documentationV2Url: "api/v2/openapi.json",
+        baseURI: derivedBaseURI,
+        serverUrl: derivedBaseURI.replace(/\/$/, ""),
         isQuineOSS: true,
     });
 };

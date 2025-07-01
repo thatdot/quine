@@ -9,7 +9,7 @@ import js.annotation._
 
 @react object StoplightElements extends ExternalComponent {
 
-  /** See <https://github.com/stoplightio/elements/blob/main/docs/getting-started/elements/elements-options.md> */
+  /** See [[https://github.com/stoplightio/elements/blob/main/docs/getting-started/elements/elements-options.md]] */
   case class Props(
     apiDescriptionUrl: String,
     layout: String = "sidebar",

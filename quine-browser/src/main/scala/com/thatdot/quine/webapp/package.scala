@@ -86,7 +86,8 @@ package object webapp {
           "Interactive Docs",
           "/docs",
           StoplightElements(
-            options.documentationUrl,
+            apiDescriptionUrl = options.documentationUrl,
+            basePath = "/docs",
             logo = options.baseURI + (if (options.isQuineOSS) "favicon.ico" else "thatdot-t.ico"),
           ),
           options.baseURI,
@@ -96,7 +97,8 @@ package object webapp {
           "Interactive Docs v2",
           "/v2docs",
           StoplightElements(
-            options.documentationV2Url,
+            apiDescriptionUrl = options.documentationV2Url,
+            basePath = "/v2docs",
             logo = options.baseURI + (if (options.isQuineOSS) "favicon.ico" else "thatdot-t.ico"),
           ),
           options.baseURI,
