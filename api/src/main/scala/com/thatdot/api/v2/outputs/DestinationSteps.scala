@@ -50,7 +50,7 @@ object DestinationSteps {
     @default(Map.empty[String, String])
     @description(
       """Map of Kafka producer properties.
-        |See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>""".stripMargin,
+        |See <https://kafka.apache.org/documentation.html#producerconfigs>""".stripMargin,
     )
     kafkaProperties: Map[String, String] = Map.empty[String, String],
   ) extends DestinationSteps

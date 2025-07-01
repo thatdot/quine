@@ -82,7 +82,7 @@ final case class Slack(
           }(system.dispatcher)
 
         posted.recover { case err =>
-          logger.error(log"Failed to POST standing query result" withException err)
+          logger.error(log"Failed to POST result" withException err)
         }(system.dispatcher)
       }
       .to(Sink.ignore)
