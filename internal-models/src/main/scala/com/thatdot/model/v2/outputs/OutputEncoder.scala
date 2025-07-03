@@ -1,5 +1,6 @@
 package com.thatdot.model.v2.outputs
 
+import java.nio.ByteBuffer
 import java.nio.charset.{Charset, StandardCharsets}
 
 import scala.reflect.ClassTag
@@ -29,6 +30,15 @@ object BytesOutputEncoder {
 }
 
 object OutputEncoder {
+
+  /** A JSON encoder for a [[charset]] that yields a byte array of a JSON value with a new line character appended.
+    *
+    * *NOTE* We do not currently allow the [[charset]] to be set via the API, but when we do, we will need
+    * to adapt [[com.thatdot.model.v2.outputs.ResultDestination.Bytes.File]] to also accommodate the `charset`
+    * (right now, it assumes UTF_8, since that's the default here)!
+    *
+    * @param charset the character set to use in encoding the [[io.circe.Json]] value to {{{Array[Byte]}}}
+    */
   case class JSON(charset: Charset = StandardCharsets.UTF_8) extends OutputEncoder {
 
     import io.circe.{Json, Printer}
@@ -38,9 +48,26 @@ object OutputEncoder {
 
     override def folderTo: DataFolderTo[Repr] = DataFolderTo.jsonFolder
 
+    private val printer = Printer.noSpaces
+
+    private val newline: Array[Byte] = {
+      val buf = charset.encode("\n")
+      val arr = Array.ofDim[Byte](buf.limit() - buf.position())
+      buf.get(arr)
+      arr
+    }
+
     override def bytes(value: Repr): Array[Byte] = {
-      val printer = Printer.noSpaces
-      printer.printToByteBuffer(value, charset).array()
+      val buffer = printer.printToByteBuffer(value, charset)
+      val bufSize = buffer.limit() - buffer.position()
+      val arr = Array.ofDim[Byte](bufSize + newline.length)
+
+      // Add the JSON bytes to the array
+      buffer.get(arr, 0, bufSize)
+
+      // Add the newline bytes after the JSON bytes
+      ByteBuffer.wrap(newline).get(arr, bufSize, newline.length)
+      arr
     }
   }
 
