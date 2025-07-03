@@ -21,7 +21,7 @@ case object AwsOps extends LazySafeLogging {
   val httpConcurrencyPerClient: Int = awsutil.AwsOps.httpConcurrencyPerClient
 
   def staticCredentialsProvider(credsOpt: Option[V1.AwsCredentials]): AwsCredentialsProvider =
-    credsOpt.fold[AwsCredentialsProvider](DefaultCredentialsProvider.create()) { credentials =>
+    credsOpt.fold[AwsCredentialsProvider](DefaultCredentialsProvider.builder().build()) { credentials =>
       StaticCredentialsProvider.create(
         AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey),
       )

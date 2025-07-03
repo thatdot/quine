@@ -126,7 +126,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
     val credsProvider: AwsCredentialsProvider with SdkAutoCloseable = awsRoleArn match {
       case None =>
         // TODO: support passing in key and secret explicitly, instead of getting from environment?
-        DefaultCredentialsProvider.create
+        DefaultCredentialsProvider.builder().build()
       case Some(roleArn) =>
         val sessionName = "quine-keyspaces"
         val stsClient = StsClient.builder.region(region).build
