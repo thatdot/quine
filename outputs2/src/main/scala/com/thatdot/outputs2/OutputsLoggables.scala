@@ -1,4 +1,4 @@
-package com.thatdot.model.v2.outputs
+package com.thatdot.outputs2
 
 import com.thatdot.common.logging.Log.AlwaysSafeLoggable
 

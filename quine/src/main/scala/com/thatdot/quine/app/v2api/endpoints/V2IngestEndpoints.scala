@@ -34,7 +34,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
 
   private val ingestExample = ApiIngest.Oss.QuineIngestConfiguration(
     ApiIngest.IngestSource.NumberIterator(0, None),
-    query = "MATCH (n) WHERE id(n) = idFrom($that) SET n.num = $that ",
+    query = "MATCH (n) WHERE id(n) = idFrom($that) SET n.num = $that",
     onStreamError = ApiIngest.LogStreamError,
     maxPerSecond = Some(100),
   )

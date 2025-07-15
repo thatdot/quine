@@ -26,6 +26,7 @@ import com.thatdot.quine.app.model.outputs.{
   SlackOutput,
   SnsOutput,
 }
+import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiV2Standing}
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.{
   BaseGraph,
@@ -39,9 +40,18 @@ import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
 import com.thatdot.quine.serialization.{ConversionFailure, ProtobufSchemaCache, QuineValueToProtobuf}
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
+import com.thatdot.quine.{routes => RoutesV1}
 object StandingQueryResultOutput extends LazySafeLogging {
 
   import StandingQueryResultOutputUserDef._
+
+  sealed trait OutputTarget
+  object OutputTarget {
+    case class V1(definition: RoutesV1.StandingQueryResultOutputUserDef, killSwitch: UniqueKillSwitch)
+        extends OutputTarget
+    case class V2(definition: ApiV2Standing.StandingQueryResultWorkflow, killSwitch: UniqueKillSwitch)
+        extends OutputTarget
+  }
 
   private def resultHandlingFlow(
     name: String,

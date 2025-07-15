@@ -1,4 +1,4 @@
-package com.thatdot.model.v2.outputs.destination
+package com.thatdot.outputs2.destination
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
@@ -11,7 +11,7 @@ import org.apache.kafka.common.serialization.ByteArraySerializer
 
 import com.thatdot.common.logging.Log
 import com.thatdot.common.logging.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
-import com.thatdot.model.v2.outputs.ResultDestination
+import com.thatdot.outputs2.ResultDestination
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.util.Log.implicits._
 

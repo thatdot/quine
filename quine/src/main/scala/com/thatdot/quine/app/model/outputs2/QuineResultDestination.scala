@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.model.outputs2
 
-import com.thatdot.model.v2.outputs.{DataFoldableSink, SinkName}
+import com.thatdot.outputs2.{DataFoldableSink, SinkName}
 
 sealed trait QuineResultDestination extends DataFoldableSink with SinkName
 

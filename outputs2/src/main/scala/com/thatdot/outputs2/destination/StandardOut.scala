@@ -1,4 +1,4 @@
-package com.thatdot.model.v2.outputs.destination
+package com.thatdot.outputs2.destination
 
 import java.nio.charset.StandardCharsets
 
@@ -6,7 +6,7 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Sink
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.model.v2.outputs.ResultDestination
+import com.thatdot.outputs2.ResultDestination
 import com.thatdot.quine.graph.NamespaceId
 
 final case class StandardOut(

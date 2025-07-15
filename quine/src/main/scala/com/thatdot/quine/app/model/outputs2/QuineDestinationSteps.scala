@@ -5,7 +5,7 @@ import org.apache.pekko.stream.scaladsl.Sink
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.data.DataFoldableFrom
-import com.thatdot.model.v2.outputs.DataFoldableSink
+import com.thatdot.outputs2.DataFoldableSink
 import com.thatdot.quine.graph.NamespaceId
 
 sealed trait QuineDestinationSteps extends DataFoldableSink {

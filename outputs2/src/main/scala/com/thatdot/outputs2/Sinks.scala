@@ -1,4 +1,4 @@
-package com.thatdot.model.v2.outputs
+package com.thatdot.outputs2
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Sink

@@ -65,7 +65,6 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, QuineValue}
 import com.thatdot.quine.persistor.PersistenceAgent
-import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.SwitchMode
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model, routes => V1}
 
@@ -234,13 +233,12 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     Future
       .sequence(app.getNamespaces.map(app.getStandingQueriesV2))
       .map(_.toList.flatten)
-      .map(_.map(StandingToApi.apply))
   }
 
   // --------------------- Standing Query Endpoints ------------------------
   def listStandingQueries(namespaceId: NamespaceId): Future[List[ApiStanding.StandingQuery.RegisteredStandingQuery]] =
     graph.requiredGraphIsReadyFuture {
-      app.getStandingQueriesV2(namespaceId).map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)
+      app.getStandingQueriesV2(namespaceId)
     }
 
   def propagateStandingQuery(
@@ -288,31 +286,26 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     outputName: String,
     namespaceId: NamespaceId,
     workflow: ApiStanding.StandingQueryResultWorkflow,
-  ): Future[Either[ErrSq, Unit]] = {
-    implicit val ex: ExecutionContext = ExecutionContext.parasitic
-    implicit val ops: CypherOpsGraph = graph
-    implicit val protobufSchemaCache: ProtobufSchemaCache = app.protobufSchemaCache
+  ): Future[Either[ErrSq, Unit]] =
     graph.requiredGraphIsReadyFuture {
       validateWorkflow(workflow) match {
         case Some(errors) =>
           Future.successful(Left(asBadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}")))
 
         case _ =>
-          ApiToStanding(workflow, outputName, namespaceId) flatMap { internalWorkflow =>
-            app
-              .addStandingQueryOutputV2(name, outputName, namespaceId, internalWorkflow)
-              .map {
-                case StandingQueryInterfaceV2.Result.Success =>
-                  Right(())
-                case StandingQueryInterfaceV2.Result.AlreadyExists(name) =>
-                  Left(asBadRequest(s"There is already a standing query output named '$name'"))
-                case StandingQueryInterfaceV2.Result.NotFound(queryName) =>
-                  Left(asBadRequest(s"No Standing Query named '$queryName' can be found."))
-              }(graph.shardDispatcherEC)
-          }
+          app
+            .addStandingQueryOutputV2(name, outputName, namespaceId, workflow)
+            .map {
+              case StandingQueryInterfaceV2.Result.Success =>
+                Right(())
+              case StandingQueryInterfaceV2.Result.AlreadyExists(name) =>
+                Left(asBadRequest(s"There is already a standing query output named '$name'"))
+              case StandingQueryInterfaceV2.Result.NotFound(queryName) =>
+                Left(asBadRequest(s"No Standing Query named '$queryName' can be found."))
+            }(graph.shardDispatcherEC)
+
       }
     }
-  }
 
   def getSamplesQueries(implicit ctx: ExecutionContext): Future[Vector[SampleQuery]] =
     graph.requiredGraphIsReadyFuture(app.getSampleQueries).map(_.map(UiStylingToApi.apply))
@@ -341,8 +334,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     app
       .removeStandingQueryOutputV2(name, outputName, namespaceId)
       .map(
-        _.toRight(NotFound(s"Standing Query, $name, does not exist"))
-          .map(StandingToApi.apply),
+        _.toRight(NotFound(s"Standing Query, $name, does not exist")),
       )
   }
 
@@ -355,21 +347,19 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     implicit val ctx: ExecutionContext = graph.nodeDispatcherEC
     graph
       .requiredGraphIsReadyFuture {
-        try ApiToStanding(sq, namespaceId)(ctx, graph, app.protobufSchemaCache).flatMap { internalSQ =>
-          app
-            .addStandingQueryV2(name, namespaceId, internalSQ)
-            .flatMap {
-              case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
-                Future.successful(Left(asBadRequest(s"There is already a standing query named '$name'")))
-              case StandingQueryInterfaceV2.Result.NotFound(_) =>
-                Future.successful(Left(asBadRequest(s"Namespace not found: $namespaceId")))
-              case StandingQueryInterfaceV2.Result.Success =>
-                app.getStandingQueryV2(name, namespaceId).map {
-                  case Some(value) => Right(StandingToApi(value))
-                  case None => sys.error("Standing Query not found after adding, this should not happen.")
-                }
-            }
-        } catch {
+        try app
+          .addStandingQueryV2(name, namespaceId, sq)
+          .flatMap {
+            case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
+              Future.successful(Left(asBadRequest(s"There is already a standing query named '$name'")))
+            case StandingQueryInterfaceV2.Result.NotFound(_) =>
+              Future.successful(Left(asBadRequest(s"Namespace not found: $namespaceId")))
+            case StandingQueryInterfaceV2.Result.Success =>
+              app.getStandingQueryV2(name, namespaceId).map {
+                case Some(value) => Right(value)
+                case None => sys.error("Standing Query not found after adding, this should not happen.")
+              }
+          } catch {
           case iqp: InvalidQueryPattern => Future.successful(Left(asBadRequest(iqp.message)))
           case cypherException: CypherException =>
             Future.successful(Left(asBadRequest(ErrorType.CypherError(cypherException.pretty))))
@@ -387,8 +377,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     app
       .cancelStandingQueryV2(name, namespaceId)
       .map(
-        _.toRight(NotFound(s"Standing Query, $name, does not exist"))
-          .map(StandingToApi.apply),
+        _.toRight(NotFound(s"Standing Query, $name, does not exist")),
       )(ExecutionContext.parasitic)
 
   def getSQ(
@@ -398,8 +387,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     app
       .getStandingQueryV2(name, namespaceId)
       .map(
-        _.toRight(NotFound(s"Standing Query, $name, does not exist"))
-          .map(StandingToApi.apply),
+        _.toRight(NotFound(s"Standing Query, $name, does not exist")),
       )(ExecutionContext.parasitic)
 
   // --------------------- Cypher Endpoints ------------------------

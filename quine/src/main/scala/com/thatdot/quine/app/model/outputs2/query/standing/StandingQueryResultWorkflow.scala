@@ -7,7 +7,7 @@ import cats.data.NonEmptyList
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
-import com.thatdot.model.v2.outputs.DataFoldableSink
+import com.thatdot.outputs2.DataFoldableSink
 import com.thatdot.quine.app.model.outputs2.query.CypherQuery
 import com.thatdot.quine.graph.cypher.QueryContext
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, StandingQueryResult, cypher}
@@ -101,7 +101,7 @@ sealed trait QuineSupportedDestinationSteps extends DataFoldableSink {
 }
 
 object QuineSupportedDestinationSteps {
-  import com.thatdot.model.v2.outputs.{FoldableDestinationSteps => Core}
+  import com.thatdot.outputs2.{FoldableDestinationSteps => Core}
   import com.thatdot.quine.app.model.outputs2.{QuineDestinationSteps => Quine}
 
   case class CoreDestinationSteps(underlying: Core) extends QuineSupportedDestinationSteps

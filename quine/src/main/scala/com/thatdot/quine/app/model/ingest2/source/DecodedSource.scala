@@ -14,13 +14,13 @@ import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.convert.Api2ToModel2
+import com.thatdot.convert.Api2ToAws
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
-import com.thatdot.model.v2.outputs.FoldableDestinationSteps.{WithByteEncoding, WithDataFoldable}
-import com.thatdot.model.v2.outputs.NonFoldableDestinationSteps.WithRawBytes
-import com.thatdot.model.v2.outputs.OutputEncoder.{JSON, Protobuf}
-import com.thatdot.model.v2.outputs.destination.HttpEndpoint
-import com.thatdot.model.v2.outputs.{
+import com.thatdot.outputs2.FoldableDestinationSteps.{WithByteEncoding, WithDataFoldable}
+import com.thatdot.outputs2.NonFoldableDestinationSteps.WithRawBytes
+import com.thatdot.outputs2.OutputEncoder.{JSON, Protobuf}
+import com.thatdot.outputs2.destination.HttpEndpoint
+import com.thatdot.outputs2.{
   BytesOutputEncoder,
   DestinationSteps,
   FoldableDestinationSteps,
@@ -266,8 +266,8 @@ abstract class DecodedSource(val meter: IngestMeter) {
             outputFormat,
           ) =>
         val kinesisDestination = destination.Kinesis(
-          credentials = credentials.map(Api2ToModel2.apply),
-          region = region.map(Api2ToModel2.apply),
+          credentials = credentials.map(Api2ToAws.apply),
+          region = region.map(Api2ToAws.apply),
           streamName = streamName,
           kinesisParallelism = kinesisParallelism,
           kinesisMaxBatchSize = kinesisMaxBatchSize,
@@ -283,8 +283,8 @@ abstract class DecodedSource(val meter: IngestMeter) {
       case DeadLetterQueueOutput.SNS(credentials, region, topic, outputFormat) =>
         val bytesDestination =
           destination.SNS(
-            credentials = credentials.map(Api2ToModel2.apply),
-            region = region.map(Api2ToModel2.apply),
+            credentials = credentials.map(Api2ToAws.apply),
+            region = region.map(Api2ToAws.apply),
             topic = topic,
           )
         outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = bytesDestination)

@@ -1,4 +1,4 @@
-package com.thatdot.model.v2.outputs.destination
+package com.thatdot.outputs2.destination
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -15,10 +15,9 @@ import io.circe.Json
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.data.DataFoldableFrom
-import com.thatdot.model.v2.outputs.OutputsLoggables.LogStatusCode
-import com.thatdot.model.v2.outputs.ResultDestination
+import com.thatdot.outputs2.OutputsLoggables.LogStatusCode
+import com.thatdot.outputs2.ResultDestination
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.util.Log.implicits._
 
 final case class HttpEndpoint(
   url: String,

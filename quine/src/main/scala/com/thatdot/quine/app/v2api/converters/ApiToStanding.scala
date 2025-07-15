@@ -126,7 +126,7 @@ object ApiToStanding {
     stats: Api.StandingQueryStats,
   ): standing.StandingQueryStats =
     standing.StandingQueryStats(
-      rates = ConvertCore.Api2ToModel2(stats.rates),
+      rates = stats.rates,
       startTime = stats.startTime,
       totalRuntime = stats.totalRuntime,
       bufferSize = stats.bufferSize,

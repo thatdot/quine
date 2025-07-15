@@ -133,15 +133,15 @@ object IngestStreamWithControl {
     initialStatus: IngestStreamStatus,
   )(implicit logConfig: LogConfig): IngestStreamWithControl[Conf] =
     IngestStreamWithControl(
-      conf,
-      metrics,
-      () => quineIngestSource.getControl.map(_.valveHandle)(ExecutionContext.parasitic),
-      () => quineIngestSource.getControl.map(_.termSignal)(ExecutionContext.parasitic),
+      settings = conf,
+      metrics = metrics,
+      valve = () => quineIngestSource.getControl.map(_.valveHandle)(ExecutionContext.parasitic),
+      terminated = () => quineIngestSource.getControl.map(_.termSignal)(ExecutionContext.parasitic),
       close = () => {
         quineIngestSource.getControl.flatMap(c => c.terminate())(ExecutionContext.parasitic)
         () // Intentional fire and forget
       },
-      initialStatus,
+      initialStatus = initialStatus,
     )
 }
 

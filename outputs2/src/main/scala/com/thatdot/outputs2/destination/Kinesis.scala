@@ -1,4 +1,4 @@
-package com.thatdot.model.v2.outputs.destination
+package com.thatdot.outputs2.destination
 
 import scala.util.{Failure, Random, Success}
 
@@ -16,7 +16,7 @@ import com.thatdot.aws.model.{AwsCredentials, AwsRegion}
 import com.thatdot.aws.util.AwsOps
 import com.thatdot.aws.util.AwsOps.AwsBuilderOps
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.model.v2.outputs.ResultDestination
+import com.thatdot.outputs2.ResultDestination
 import com.thatdot.quine.graph.NamespaceId
 
 final case class Kinesis(

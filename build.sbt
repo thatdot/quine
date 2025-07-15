@@ -226,7 +226,7 @@ lazy val `api`: Project = project
     ),
   )
 
-lazy val `internal-models`: Project = project
+lazy val `outputs2`: Project = project
   .settings(commonSettings)
   .dependsOn(`aws`, `data`, `quine-core`, `quine-serialization`)
   .settings(
@@ -277,7 +277,7 @@ lazy val `model-converters`: Project = project
   .settings(commonSettings)
   .dependsOn(
     `api`,
-    `internal-models`,
+    `outputs2`,
     `quine-endpoints`.jvm,
   )
 
@@ -334,7 +334,7 @@ lazy val `quine`: Project = project
     `data` % "compile->compile;test->test",
     `api`,
     `model-converters`,
-    `internal-models` % "compile->compile;test->test",
+    `outputs2` % "compile->compile;test->test",
     `quine-gremlin`,
     `quine-cassandra-persistor`,
     `quine-mapdb-persistor`,
