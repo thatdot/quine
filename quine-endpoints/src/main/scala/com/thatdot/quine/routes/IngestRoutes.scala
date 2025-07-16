@@ -1147,7 +1147,7 @@ object FileIngestFormat {
     @docs("name of the Cypher parameter holding the JSON value") parameter: String = "that",
   ) extends FileIngestFormat
 
-  @title("CypherJson")
+  @title("QuinePatternJson")
   @unnamed()
   @docs("""|TODO Add some docs here
   """.stripMargin.replace('\n', ' '))
@@ -1156,7 +1156,7 @@ object FileIngestFormat {
     @docs("name of the QuinePattern parameter holding the JSON value") parameter: String = "that",
   ) extends FileIngestFormat
 
-  @title("QuinePatternCSV")
+  @title("QuinePatternCsv")
   @unnamed()
   @docs("""blah blah blah""")
   final case class QuinePatternCsv(
@@ -1186,7 +1186,7 @@ object FileIngestFormat {
   }
 
   /** Create using a cypher query, expecting each line to be a single row CSV record */
-  @title("CypherCSV")
+  @title("CypherCsv")
   @unnamed()
   @docs("""For every row in a CSV file, the given Cypher query will be re-executed with the parameter in the query set
           |to the parsed row. Rows are parsed into either a Cypher List of strings or a Map, depending on whether a
