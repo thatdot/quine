@@ -8,7 +8,7 @@ object Dependencies {
   val betterMonadicForV = "0.3.1"
   val boopickleV = "1.4.0"
   val bootstrapV = "5.3.6"
-  val caffeineV = "3.2.0"
+  val caffeineV = "3.2.2"
   val cassandraClientV = "4.19.0"
   val catsV = "2.13.0"
   val catsEffectV = "3.6.1"
