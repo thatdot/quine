@@ -1,7 +1,7 @@
 object Dependencies {
   val antlrV = "4.9.2"
   val amazonKinesisClientV = "3.0.3"
-  val apacheCommonsCsvV = "1.13.0"
+  val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.0"
   val awsSdkV = "2.31.78"
   val amazonGlueV = "1.1.23"
