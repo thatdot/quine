@@ -56,6 +56,7 @@ object QuineValue {
   ): QuineValue = Id(v)
 
   def fromBoolean(b: Boolean): QuineValue = if (b) True else False
+
   final case class Str(string: String) extends QuineValue {
     type JvmType = String
 
