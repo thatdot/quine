@@ -1,6 +1,6 @@
 package com.thatdot.api.v2.outputs
 
-import sttp.tapir.Schema.annotations.{default, description, title}
+import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 
@@ -22,6 +22,7 @@ object DestinationSteps {
       |For the format of the result, see "Standing Query Result Output".""".stripMargin,
   )
   final case class File(
+    @encodedExample("/temp/results.out")
     path: String,
     format: OutputFormat,
   ) extends DestinationSteps
@@ -32,6 +33,7 @@ object DestinationSteps {
     "Makes an HTTP[S] POST for each result. For the format of the result, see \"Standing Query Result Output\".",
   )
   final case class HttpEndpoint(
+    @encodedExample("https://results.example.com/result-type")
     url: String,
     @default(8)
     parallelism: Int = 8,
@@ -43,7 +45,9 @@ object DestinationSteps {
       |For the format of the result record, see "Standing Query Result Output".""".stripMargin,
   )
   final case class Kafka(
+    @encodedExample("example-topic")
     topic: String,
+    @encodedExample("kafka.svc.cluster.local:9092")
     bootstrapServers: String,
     @default(OutputFormat.JSON)
     format: OutputFormat = OutputFormat.JSON,
@@ -64,6 +68,7 @@ object DestinationSteps {
   final case class Kinesis(
     credentials: Option[AwsCredentials],
     region: Option[AwsRegion],
+    @encodedExample("example-stream")
     streamName: String,
     @default(OutputFormat.JSON)
     format: OutputFormat = OutputFormat.JSON,
@@ -103,6 +108,7 @@ object DestinationSteps {
     credentials: Option[AwsCredentials],
     region: Option[AwsRegion],
     @description("ARN of the topic to publish to")
+    @encodedExample("example-topic")
     topic: String,
     format: OutputFormat,
   ) extends DestinationSteps

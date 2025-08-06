@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.v2api.definitions.outputs
 
-import sttp.tapir.Schema.annotations.{default, description, title}
+import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
 @title("Destination Steps")
 @description("Steps that transform results on their way to a destination.")
@@ -22,6 +22,7 @@ object QuineDestinationSteps {
   )
   final case class CypherQuery(
     @description(CypherQuery.queryDescription)
+    @encodedExample("MATCH (n) WHERE $that.id = n.id RETURN (n)")
     query: String,
     @description("Name of the Cypher parameter holding the standing query result")
     @default("that")
@@ -60,6 +61,7 @@ object QuineDestinationSteps {
     "Sends a message to Slack via a configured webhook URL. See <https://api.slack.com/messaging/webhooks>.",
   )
   final case class Slack(
+    @encodedExample("https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX")
     hookUrl: String,
     @default(false)
     onlyPositiveMatchData: Boolean = false,
