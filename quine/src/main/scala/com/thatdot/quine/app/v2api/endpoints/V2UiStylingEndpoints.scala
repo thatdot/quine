@@ -8,20 +8,20 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{emptyOutputAs, statusCode}
 
+import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.serverError
 import com.thatdot.quine.app.v2api.definitions.{SuccessEnvelope, V2QuineEndpointDefinitions}
 
-trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions {
+trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
 
   private def uiStylingEndpoint =
     rawEndpoint("query-ui")
       .tag("UI Styling")
       .description(
-        """Operations for customizing parts of the Query UI. These options are generally useful
-                  |for tailoring the UI to a particular domain or data model (eg. to customize the
-                  |icon, color, size, context-menu queries, etc. for nodes based on their contents).
-                  |""".stripMargin,
+        """Operations for customizing parts of the Query UI. These options are generally useful for tailoring the UI
+          |to a particular domain or data model (e.g. to customize the icon, color, size, context-menu queries, etc.
+          |for nodes based on their contents).""".asOneLine,
       )
       .errorOut(serverError())
 
@@ -36,9 +36,7 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions {
 
   private val queryUiSampleQueries = uiStylingEndpoint
     .name("List Sample Queries")
-    .description(
-      """Queries provided here will be available via a drop-down menu from the Quine UI search bar.""".stripMargin,
-    )
+    .description("Queries provided here will be available via a drop-down menu from the Quine UI search bar.")
     .get
     .in("sample-queries")
     .out(statusCode(StatusCode.Ok))
@@ -52,9 +50,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions {
   private val updateQueryUiSampleQueries = uiStylingEndpoint
     .name("Replace Sample Queries")
     .description(
-      """Queries provided here will be available via a drop-down menu from the Quine UI search bar.
-        |
-        |Queries applied here will replace any currently existing sample queries.""".stripMargin,
+      "Queries provided here will be available via a drop-down menu from the Quine UI search bar.\n\n" +
+      "Queries applied here will replace any currently existing sample queries.",
     )
     .put
     .in("sample-queries")
@@ -68,9 +65,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions {
   private val queryUiAppearance = uiStylingEndpoint
     .name("List Node Appearances ")
     .description(
-      "When rendering a node in the UI, a node's style is decided by " +
-      "picking the first style in this list whose `predicate` matches " +
-      "the node.",
+      """When rendering a node in the UI, a node's style is decided by picking the first style in this list whose
+        |`predicate` matches the node.""".asOneLine,
     )
     .get
     .in("node-appearances")
@@ -84,9 +80,7 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions {
 
   private val updateQueryUiAppearance = uiStylingEndpoint
     .name("Replace Node Appearances")
-    .description(
-      "For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)",
-    )
+    .description("For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)")
     .put
     .in("node-appearances")
     .in(jsonOrYamlBody[Vector[UiNodeAppearance]](Some(UiNodeAppearance.defaults)))
@@ -99,10 +93,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions {
   private val queryUiQuickQueries = uiStylingEndpoint
     .name("List Quick Queries")
     .description(
-      """Quick queries are queries that appear when right-clicking
-        |a node in the UI.
-        |Nodes will only display quick queries that satisfy any
-        |provided predicates.""".stripMargin,
+      """Quick queries are queries that appear when right-clicking a node in the UI.
+        |Nodes will only display quick queries that satisfy any provided predicates.""".asOneLine,
     )
     .get
     .in("quick-queries")
@@ -117,10 +109,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions {
   private val updateQueryUiQuickQueries = uiStylingEndpoint
     .name("Replace Quick Queries")
     .description(
-      """Quick queries are queries that appear when right-clicking
-        |a node in the UI.
-        |Queries applied here will replace any currently existing quick queries.
-        |""".stripMargin,
+      """Quick queries are queries that appear when right-clicking a node in the UI.
+        |Queries applied here will replace any currently existing quick queries.""".asOneLine,
     )
     .put
     .in("quick-queries")

@@ -14,6 +14,7 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Codec, DecodeResult, Endpoint, Schema, oneOfBody, statusCode}
 
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, serverError}
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
@@ -24,29 +25,31 @@ import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
 }
 
 object V2CypherEndpointEntities {
+  import StringOps.syntax._
+
   @title("Cypher Query")
   final case class TCypherQuery(
-    @description("Text of the query to execute") text: String,
-    @description("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty,
+    @description("Text of the query to execute.") text: String,
+    @description("Parameters the query expects, if any.") parameters: Map[String, Json] = Map.empty,
   )
 
   @title("Cypher Query Result")
-  @description("""Cypher queries are designed to return data in a table format. This gets
-                 |encoded into JSON with `columns` as the header row and each element in `results`
-                 |being another row of results. As a consequence Consequently, every array element
-                 |in `results` will have the same length, and all will have the same length as the
-                 |`columns` array.
-                 |""".stripMargin)
+  @description(
+    """Cypher queries are designed to return data in a table format.
+      |This gets encoded into JSON with `columns` as the header row and each element in `results` being another row
+      |of results. Consequently, every array element in `results` will have the same length, and all will have the
+      |same length as the `columns` array.""".asOneLine,
+  )
   case class TCypherQueryResult(
-    @description("Return values of the Cypher query") columns: Seq[String],
-    @description("Rows of results") results: Seq[Seq[Json]],
+    @description("Return values of the Cypher query.") columns: Seq[String],
+    @description("Rows of results.") results: Seq[Seq[Json]],
   )
 
   case class TUiNode(id: QuineId, hostIndex: Int, label: String, properties: Map[String, Json])
 
   case class TUiEdge(from: QuineId, edgeType: String, to: QuineId, isDirected: Boolean = true)
 }
-trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
+trait V2CypherEndpoints extends V2QuineEndpointDefinitions with StringOps {
 
   implicit val cypherQuerySchema: Schema[TCypherQuery] = Schema
     .derived[TCypherQuery]
@@ -86,7 +89,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
   private val cypherEndpoint =
     cypherQueryEndpoint
       .name("Cypher Query")
-      .description(s"Execute an arbitrary [Cypher]($cypherLanguageUrl) query")
+      .description(s"Execute an arbitrary [Cypher]($cypherLanguageUrl) query.")
       .in("query-graph")
       .in(atTimeParameter)
       .in(timeoutParameter)
@@ -110,8 +113,10 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
 
   private val cypherNodesEndpoint = cypherQueryEndpoint
     .name("Cypher Query Return Nodes")
-    .description(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
-                    |Queries that do not return nodes will fail with a type error.""".stripMargin)
+    .description(
+      s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
+        |Queries that do not return nodes will fail with a type error.""".asOneLine,
+    )
     .in("query-nodes")
     .in(atTimeParameter)
     .in(timeoutParameter)
@@ -130,8 +135,10 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
 
   private val cypherEdgesEndpoint = cypherQueryEndpoint
     .name("Cypher Query Return Edges")
-    .description(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
-                    |Queries that do not return edges will fail with a type error.""".stripMargin)
+    .description(
+      s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
+         |Queries that do not return edges will fail with a type error.""".asOneLine,
+    )
     .in("query-edges")
     .in(atTimeParameter)
     .in(timeoutParameter)

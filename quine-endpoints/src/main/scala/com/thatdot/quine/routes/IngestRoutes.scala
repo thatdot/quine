@@ -127,15 +127,15 @@ final case class IngestStreamInfo(
 final case class IngestStreamStats(
   // NB this is duplicated by rates.count -- maybe remove one?
   @docs("Number of source records (or lines) ingested so far")
-  @description("Number of source records (or lines) ingested so far") ingestedCount: Long,
+  @description("Number of source records (or lines) ingested so far.") ingestedCount: Long,
   @docs("Records/second over different time periods")
-  @description("Records/second over different time periods") rates: RatesSummary,
+  @description("Records/second over different time periods.") rates: RatesSummary,
   @docs("Bytes/second over different time periods")
-  @description("Bytes/second over different time periods") byteRates: RatesSummary,
+  @description("Bytes/second over different time periods.") byteRates: RatesSummary,
   @docs("Time (in ISO-8601 UTC time) when the ingestion was started")
-  @description("Time (in ISO-8601 UTC time) when the ingestion was started") startTime: Instant,
+  @description("Time (in ISO-8601 UTC time) when the ingestion was started.") startTime: Instant,
   @docs("Time (in milliseconds) that that the ingest has been running")
-  @description("Time (in milliseconds) that that the ingest has been running") totalRuntime: Long,
+  @description("Time (in milliseconds) that that the ingest has been running.") totalRuntime: Long,
 )
 object IngestStreamStats {
   val example: IngestStreamStats = IngestStreamStats(
@@ -317,17 +317,17 @@ object KafkaIngest {
 @title("Record encoding")
 @ttitle("Record encoding")
 @docs("Record encoding format")
-@description("Record encoding format")
+@description("Record encoding format.")
 sealed abstract class RecordDecodingType
 object RecordDecodingType {
   @docs("Zlib compression")
-  @description("Zlib compression")
+  @description("Zlib compression.")
   case object Zlib extends RecordDecodingType
   @docs("Gzip compression")
-  @description("Gzip compression")
+  @description("Gzip compression.")
   case object Gzip extends RecordDecodingType
   @docs("Base64 encoding")
-  @description("Base64 encoding")
+  @description("Base64 encoding.")
   case object Base64 extends RecordDecodingType
 
   val values: Seq[RecordDecodingType] = Seq(Zlib, Gzip, Base64)

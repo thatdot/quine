@@ -10,16 +10,17 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{EndpointInput, path, statusCode}
 
+import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.{SuccessEnvelope, V2QuineEndpointDefinitions}
-trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
+trait V2IngestEndpoints extends V2QuineEndpointDefinitions with StringOps {
 
   import com.thatdot.quine.app.v2api.converters.ApiToIngest.OssConversions._
 
   private val ingestStreamNameElement: EndpointInput.PathCapture[String] =
-    path[String]("name").description("Ingest stream name").example("NumbersStream")
+    path[String]("name").description("Ingest Stream name.").example("NumbersStream")
 
   private def ingestEndpoint =
     rawEndpoint("ingests")
@@ -44,22 +45,23 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
   private val createIngestEndpoint =
     ingestEndpoint
       .name("Create Ingest Stream")
-      .description("""Create an [ingest stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
-          |that connects a streaming event source to Quine and loads data into the graph.
-          |
-          |An ingest stream is defined by selecting a source `type`, then an appropriate data `format`,
-          |and must be created with a unique name. Many ingest stream types allow a Cypher query to operate
-          |on the event stream data to create nodes and relationships in the graph.""".stripMargin)
+      .description(
+        """Create an [Ingest Stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
+          |that connects a streaming event source to Quine and loads data into the graph.""".asOneLine + "\n\n" +
+        """An Ingest Stream is defined by selecting a source `type`, then an appropriate data `format`,
+          |and must be created with a unique name. Many Ingest Stream types allow a Cypher query to operate
+          |on the event stream data to create nodes and relationships in the graph.""".asOneLine,
+      )
       .in(ingestStreamNameElement)
       .in(namespaceParameter)
       .in(jsonOrYamlBody[ApiIngest.Oss.QuineIngestConfiguration](Some(ingestExample)))
       .post
-      .out(statusCode(StatusCode.Created).description("Ingest Stream Created"))
+      .out(statusCode(StatusCode.Created).description("Ingest Stream created."))
       .out(jsonBody[SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName]])
       .errorOutEither(
         badRequestError(
-          "Ingest Stream with that name already exists",
-          "Ingest Stream creation failed with config errors",
+          "Ingest Stream with that name already exists.",
+          "Ingest Stream creation failed with config errors.",
         ),
       )
       .serverLogic[Future] { case (ingestStreamName, ns, ingestStreamConfig) =>
@@ -77,13 +79,13 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
     ApiIngest.IngestStreamInfoWithName,
   ], Any, Future] = rawIngestEndpoint
     .name("Pause Ingest Stream")
-    .description("Temporarily pause processing new events by the named ingest stream.")
+    .description("Temporarily pause processing new events by the named Ingest Stream.")
     .in(ingestStreamNameElement)
     .in("pause")
     .in(namespaceParameter)
     .post
-    .errorOut(notFoundError("Ingest stream with that name does not exist"))
-    .errorOutEither(badRequestError("The Ingest has failed"))
+    .errorOut(notFoundError("Ingest Stream with that name does not exist."))
+    .errorOutEither(badRequestError("The Ingest has failed."))
     .errorOutEither(serverError())
     .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Ok))
@@ -115,13 +117,13 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
     ApiIngest.IngestStreamInfoWithName,
   ], Any, Future] = rawIngestEndpoint
     .name("Unpause Ingest Stream")
-    .description("Resume processing new events by the named ingest stream.")
+    .description("Resume processing new events by the named Ingest Stream.")
     .in(ingestStreamNameElement)
     .in("start")
     .in(namespaceParameter)
     .post
-    .errorOut(notFoundError("Ingest stream with that name does not exist"))
-    .errorOutEither(badRequestError("The Ingest has failed"))
+    .errorOut(notFoundError("Ingest Stream with that name does not exist."))
+    .errorOutEither(badRequestError("The Ingest has failed."))
     .errorOutEither(serverError())
     .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Ok))
@@ -134,7 +136,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
             case None =>
               Left(
                 Coproduct[NotFound :+: BadRequest :+: CNil](
-                  NotFound(s"Ingest Stream $ingestStreamName does not exist"),
+                  NotFound(s"Ingest Stream $ingestStreamName does not exist."),
                 ),
               )
             case Some(streamInfo) => Right(streamInfo)
@@ -144,14 +146,15 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
 
   private val deleteIngestEndpoint = ingestEndpoint
     .name("Delete Ingest Stream")
-    .description("""Immediately halt and remove the named ingest stream from Quine.
-                    |
-                    |The ingest stream will complete any pending operations and return stream information
-                    |once the operation is complete.""".stripMargin)
+    .description(
+      "Immediately halt and remove the named Ingest Stream from Quine.\n\n" +
+      """The Ingest Stream will complete any pending operations and return stream
+        |information once the operation is complete.""".asOneLine,
+    )
     .in(ingestStreamNameElement)
     .in(namespaceParameter)
     .delete
-    .errorOutEither(notFoundError("Ingest stream with that name does not exist"))
+    .errorOutEither(notFoundError("Ingest Stream with that name does not exist."))
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
     .serverLogic[Future] { case (ingestStreamName, ns) =>
@@ -167,11 +170,11 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
 
   private val ingestStatusEndpoint = ingestEndpoint
     .name("Ingest Stream Status")
-    .description("Return the ingest stream status information for a configured ingest stream by name.")
+    .description("Return the Ingest Stream status information for a configured Ingest Stream by name.")
     .in(ingestStreamNameElement)
     .in(namespaceParameter)
     .get
-    .errorOutEither(notFoundError("Ingest stream with that name does not exist"))
+    .errorOutEither(notFoundError("Ingest Stream with that name does not exist."))
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
     .serverLogic[Future] { case (ingestStreamName, ns) =>
@@ -191,8 +194,8 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
   private val listIngestEndpoint = ingestEndpoint
     .name("List Ingest Streams")
     .description(
-      """Return a JSON object containing the configured [ingest streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
-        |and their associated stream metrics keyed by the stream name. """.stripMargin,
+      """Return a JSON object containing the configured [Ingest Streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
+        |and their associated stream metrics keyed by the stream name.""".asOneLine,
     )
     .in(namespaceParameter)
     .get

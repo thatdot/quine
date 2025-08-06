@@ -31,7 +31,7 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
   val appMethods: ApplicationApiMethods
   // ------- parallelism -----------
   val parallelismParameter: EndpointInput.Query[Int] = query[Int](name = "parallelism")
-    .description(s"Operations to execute simultaneously")
+    .description(s"Number of operations to execute simultaneously.")
     .default(IngestRoutes.defaultWriteParallelism)
   // ------- atTime ----------------
 
@@ -43,7 +43,7 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
   protected def toAtTime(rawTime: Long): DecodeResult[AtTime] = {
     val now = System.currentTimeMillis
     if (rawTime > now)
-      DecodeResult.Error(rawTime.toString, new IllegalArgumentException(s"Times in the future are not supported"))
+      DecodeResult.Error(rawTime.toString, new IllegalArgumentException(s"Times in the future are not supported."))
     else Value(Milliseconds(rawTime))
   }
 
@@ -53,7 +53,7 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
   val atTimeParameter: EndpointInput.Query[Option[AtTime]] =
     query[Option[AtTime]]("atTime")
       .description(
-        "An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query",
+        "An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query.",
       )
 
   // ------- id ----------------
@@ -77,16 +77,14 @@ trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
 
   val timeoutParameter: EndpointInput.Query[FiniteDuration] =
     query[FiniteDuration]("timeout")
-      .description(
-        "Milliseconds to wait before the HTTP request times out",
-      )
+      .description("Milliseconds to wait before the HTTP request times out.")
       .default(FiniteDuration.apply(20, TimeUnit.SECONDS))
 
   type EndpointBase = Endpoint[Unit, Unit, ServerError, Unit, Any]
 
   /** Base for api/v2 endpoints with common errors
     *
-    * @param basePaths Provided base Paths will be appended in order, i.e `endpoint("a","b") == /api/v2/a/b`
+    * @param basePaths Provided base Paths will be appended in order, i.e. `endpoint("a","b") == /api/v2/a/b`
     */
   def rawEndpoint(
     basePaths: String*,

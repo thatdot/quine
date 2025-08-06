@@ -4,16 +4,13 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.actor.ActorSystem
 
-import com.thatdot
-
-import com.thatdot.outputs2.destination.HttpEndpoint
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.StringInput
 import com.thatdot.{api, outputs2}
 
-/** Conversions from internal models in [[outputs2]] and [[com.thatdot.quine.app.model.outputs2]]
-  * to API models in [[com.thatdot.api.v2.outputs]].
+/** Conversions from API models in [[api.v2.outputs]]
+  * to internal models in [[outputs2]] and [[com.thatdot.quine.app.model.outputs2]].
   */
 object Api2ToOutputs2 {
 
@@ -22,11 +19,11 @@ object Api2ToOutputs2 {
   )(implicit protobufSchemaCache: ProtobufSchemaCache, ec: ExecutionContext): Future[outputs2.OutputEncoder] =
     format match {
       case api.v2.outputs.OutputFormat.JSON =>
-        Future.successful(thatdot.outputs2.OutputEncoder.JSON())
+        Future.successful(outputs2.OutputEncoder.JSON())
       case api.v2.outputs.OutputFormat.Protobuf(schemaUrl, typeName) =>
         protobufSchemaCache
           .getMessageDescriptor(StringInput.filenameOrUrl(schemaUrl), typeName, flushOnFail = true)
-          .map(desc => thatdot.outputs2.OutputEncoder.Protobuf(schemaUrl, typeName, desc))
+          .map(desc => outputs2.OutputEncoder.Protobuf(schemaUrl, typeName, desc))
     }
 
   private def apply(
@@ -34,15 +31,15 @@ object Api2ToOutputs2 {
   ): outputs2.destination.StandardOut.LogLevel =
     logLevel match {
       case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Trace =>
-        thatdot.outputs2.destination.StandardOut.LogLevel.Trace
+        outputs2.destination.StandardOut.LogLevel.Trace
       case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Debug =>
-        thatdot.outputs2.destination.StandardOut.LogLevel.Debug
+        outputs2.destination.StandardOut.LogLevel.Debug
       case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Info =>
-        thatdot.outputs2.destination.StandardOut.LogLevel.Info
+        outputs2.destination.StandardOut.LogLevel.Info
       case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Warn =>
-        thatdot.outputs2.destination.StandardOut.LogLevel.Warn
+        outputs2.destination.StandardOut.LogLevel.Warn
       case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Error =>
-        thatdot.outputs2.destination.StandardOut.LogLevel.Error
+        outputs2.destination.StandardOut.LogLevel.Error
     }
 
   private def apply(
@@ -50,9 +47,9 @@ object Api2ToOutputs2 {
   ): outputs2.destination.StandardOut.LogMode =
     logMode match {
       case api.v2.outputs.DestinationSteps.StandardOut.LogMode.Complete =>
-        thatdot.outputs2.destination.StandardOut.LogMode.Complete
+        outputs2.destination.StandardOut.LogMode.Complete
       case api.v2.outputs.DestinationSteps.StandardOut.LogMode.FastSampling =>
-        thatdot.outputs2.destination.StandardOut.LogMode.FastSampling
+        outputs2.destination.StandardOut.LogMode.FastSampling
     }
 
   def apply(
@@ -67,23 +64,23 @@ object Api2ToOutputs2 {
     destinationSteps match {
       case api.v2.outputs.DestinationSteps.Drop =>
         Future.successful(
-          thatdot.outputs2.FoldableDestinationSteps.WithAny(
-            destination = thatdot.outputs2.destination.Drop,
+          outputs2.FoldableDestinationSteps.WithAny(
+            destination = outputs2.destination.Drop,
           ),
         )
-      case api.v2.outputs.DestinationSteps.File(path, format) =>
-        apply(format).map(enc =>
-          thatdot.outputs2.FoldableDestinationSteps.WithByteEncoding(
-            formatAndEncode = enc,
-            destination = thatdot.outputs2.destination.File(
+      case api.v2.outputs.DestinationSteps.File(path) =>
+        Future.successful(
+          outputs2.FoldableDestinationSteps.WithByteEncoding(
+            formatAndEncode = outputs2.OutputEncoder.JSON(),
+            destination = outputs2.destination.File(
               path = path,
             ),
           ),
         )
       case api.v2.outputs.DestinationSteps.HttpEndpoint(url, parallelism) =>
         Future.successful(
-          thatdot.outputs2.FoldableDestinationSteps.WithDataFoldable(
-            destination = HttpEndpoint(
+          outputs2.FoldableDestinationSteps.WithDataFoldable(
+            destination = outputs2.destination.HttpEndpoint(
               url = url,
               parallelism = parallelism,
             ),
@@ -91,12 +88,12 @@ object Api2ToOutputs2 {
         )
       case api.v2.outputs.DestinationSteps.Kafka(topic, bootstrapServers, format, kafkaProperties) =>
         apply(format).map(enc =>
-          thatdot.outputs2.FoldableDestinationSteps.WithByteEncoding(
+          outputs2.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
-            destination = thatdot.outputs2.destination.Kafka(
+            destination = outputs2.destination.Kafka(
               topic = topic,
               bootstrapServers = bootstrapServers,
-              kafkaProperties = kafkaProperties,
+              kafkaProperties = kafkaProperties.view.mapValues(_.toString).toMap,
             ),
           ),
         )
@@ -111,9 +108,9 @@ object Api2ToOutputs2 {
             kinesisMaxBytesPerSecond,
           ) =>
         apply(format).map(enc =>
-          thatdot.outputs2.FoldableDestinationSteps.WithByteEncoding(
+          outputs2.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
-            destination = thatdot.outputs2.destination.Kinesis(
+            destination = outputs2.destination.Kinesis(
               credentials = credentials.map(Api2ToAws.apply),
               region = region.map(Api2ToAws.apply),
               streamName = streamName,
@@ -126,9 +123,9 @@ object Api2ToOutputs2 {
         )
       case api.v2.outputs.DestinationSteps.ReactiveStream(address, port, format) =>
         apply(format).map(enc =>
-          thatdot.outputs2.FoldableDestinationSteps.WithByteEncoding(
+          outputs2.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
-            destination = thatdot.outputs2.destination.ReactiveStream(
+            destination = outputs2.destination.ReactiveStream(
               address = address,
               port = port,
             ),
@@ -136,9 +133,9 @@ object Api2ToOutputs2 {
         )
       case api.v2.outputs.DestinationSteps.SNS(credentials, region, topic, format) =>
         apply(format).map(enc =>
-          thatdot.outputs2.FoldableDestinationSteps.WithByteEncoding(
+          outputs2.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
-            destination = thatdot.outputs2.destination.SNS(
+            destination = outputs2.destination.SNS(
               credentials = credentials.map(Api2ToAws.apply),
               region = region.map(Api2ToAws.apply),
               topic = topic,
@@ -147,9 +144,9 @@ object Api2ToOutputs2 {
         )
       case api.v2.outputs.DestinationSteps.StandardOut(logLevel, logMode, format) =>
         apply(format).map(enc =>
-          thatdot.outputs2.FoldableDestinationSteps.WithByteEncoding(
+          outputs2.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
-            destination = thatdot.outputs2.destination.StandardOut(
+            destination = outputs2.destination.StandardOut(
               logLevel = apply(logLevel),
               logMode = apply(logMode),
             ),

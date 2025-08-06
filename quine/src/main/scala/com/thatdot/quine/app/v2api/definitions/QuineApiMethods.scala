@@ -258,7 +258,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
   ): Option[NonEmptyList[ErrorString]] =
     destinationSteps.steps match {
       case k: DestinationSteps.Kafka =>
-        KafkaSettingsValidator.validateProperties(k.kafkaProperties)
+        KafkaSettingsValidator.validateProperties(k.kafkaProperties.view.mapValues(_.toString).toMap)
       case _ => None
     }
 
@@ -299,7 +299,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
               case StandingQueryInterfaceV2.Result.Success =>
                 Right(())
               case StandingQueryInterfaceV2.Result.AlreadyExists(name) =>
-                Left(asBadRequest(s"There is already a standing query output named '$name'"))
+                Left(asBadRequest(s"There is already a Standing Query output named '$name'"))
               case StandingQueryInterfaceV2.Result.NotFound(queryName) =>
                 Left(asBadRequest(s"No Standing Query named '$queryName' can be found."))
             }(graph.shardDispatcherEC)
@@ -351,7 +351,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
           .addStandingQueryV2(name, namespaceId, sq)
           .flatMap {
             case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
-              Future.successful(Left(asBadRequest(s"There is already a standing query named '$name'")))
+              Future.successful(Left(asBadRequest(s"There is already a Standing Query named '$name'")))
             case StandingQueryInterfaceV2.Result.NotFound(_) =>
               Future.successful(Left(asBadRequest(s"Namespace not found: $namespaceId")))
             case StandingQueryInterfaceV2.Result.Success =>

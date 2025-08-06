@@ -143,14 +143,15 @@ object ErrorText {
 
   private def badRequestDoc =
     s"""Bad Request
-
-  Something in your request is invalid, and could not be processed.
-  Review your request and attempt to submit it again.
-
-  %s
-
-  Contact support if you continue to have issues.
-  """.stripMargin
+      |
+      |  Something in your request is invalid, and could not be processed.
+      |  Review your request and attempt to submit it again.
+      |
+      |  %s
+      |
+      |  Contact support if you continue to have issues.
+      |
+      |""".stripMargin
 
   private val serverErrorDoc =
     s"""Internal Server Error
@@ -159,7 +160,9 @@ object ErrorText {
       |
       |  %s
       |
-      |  Contact support if you continue to have issues.""".stripMargin
+      |  Contact support if you continue to have issues.
+      |
+      |""".stripMargin
 
   /** Manually generate a markdown bullet list from the list of message strings. */
   private def buildErrorMessage(docs: String, messages: Seq[String]): String =

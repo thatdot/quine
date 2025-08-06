@@ -50,7 +50,7 @@ object V2IngestEntities {
   @title("File Ingest")
   @description("An active stream of data being ingested from a file on this Quine host.")
   case class FileIngest(
-    @description("format used to decode each incoming line from a file")
+    @description("Format used to decode each incoming line from a file.")
     format: FileFormat,
     @description("Local file path.")
     path: String,
@@ -86,12 +86,12 @@ object V2IngestEntities {
       .replace('\n', ' '),
   )
   case class S3Ingest(
-    @description("format used to decode each incoming line from a file in S3")
+    @description("Format used to decode each incoming line from a file in S3.")
     format: FileFormat,
     bucket: String,
-    @description("S3 file name")
+    @description("S3 file name.")
     key: String,
-    @description("AWS credentials to apply to this request")
+    @description("AWS credentials to apply to this request.")
     credentials: Option[V1.AwsCredentials],
     @description("Maximum size (in bytes) of any line in the file.")
     maximumLineSize: Option[Int] = None,
@@ -125,7 +125,7 @@ object V2IngestEntities {
   @title("Standard Input Ingest Stream")
   @description("An active stream of data being ingested from standard input to this Quine process.")
   case class StdInputIngest(
-    @description("format used to decode each incoming line from stdIn")
+    @description("Format used to decode each incoming line from stdIn.")
     format: FileFormat,
     @description("Maximum size (in bytes) of any line in the file.")
     maximumLineSize: Option[Int] = None,
@@ -177,9 +177,9 @@ object V2IngestEntities {
       "Shards IDs within the named kinesis stream to ingest; if empty or excluded, all shards on the stream are processed.",
     )
     shardIds: Option[Set[String]],
-    @description("AWS credentials for this Kinesis stream")
+    @description("AWS credentials for this Kinesis stream.")
     credentials: Option[V1.AwsCredentials],
-    @description("AWS region for this Kinesis stream")
+    @description("AWS region for this Kinesis stream.")
     region: Option[V1.AwsRegion],
     @description("Shard iterator type.") iteratorType: V1.KinesisIngest.IteratorType =
       V1.KinesisIngest.IteratorType.Latest,
@@ -192,7 +192,7 @@ object V2IngestEntities {
       with IngestDecompressionSupport
 
   @title("Kinesis Data Stream Using Kcl lib")
-  @description("A stream of data being ingested from Kinesis")
+  @description("A stream of data being ingested from Kinesis.")
   case class KinesisKclIngest(
     /** The name of the stream that this application processes records from. */
     kinesisStreamName: String,
@@ -668,7 +668,7 @@ object V2IngestEntities {
   sealed trait OnStreamErrorHandler
 
   @title("Retry Stream Error Handler")
-  @description("Retry the stream on failure")
+  @description("Retry the stream on failure.")
   case class RetryStreamError(retryCount: Int) extends OnStreamErrorHandler
 
   @title("Log Stream Error Handler")

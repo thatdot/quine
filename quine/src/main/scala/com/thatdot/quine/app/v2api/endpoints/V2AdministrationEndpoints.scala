@@ -14,6 +14,7 @@ import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Schema, emptyOutputAs, path, statusCode}
 
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{ServerError, ServiceUnavailable}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.serverError
 import com.thatdot.quine.app.v2api.definitions.SuccessEnvelope.NoContent
@@ -21,99 +22,96 @@ import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities._
 import com.thatdot.quine.routes._
 
-/** Objects mapping to endpoints4s annotated objects appearing in [[com.thatdot.quine.routes.AdministrationRoutes]] . These
-  * objects require parallel tapir annotations.
-  *
-  * Parallel Tapir objects are prefixed with "T" for disambiguation.
+/** Objects mapping to endpoints4s-annotated objects appearing in [[com.thatdot.quine.routes.AdministrationRoutes]].
+  *  These objects require parallel Tapir annotations.
   */
 object V2AdministrationEndpointEntities {
 
   import shapeless._
+  import StringOps.syntax._
 
   @title("Graph hash code")
   case class TGraphHashCode(
-    @description("Hash value derived from the state of the graph (nodes, properties, and edges)")
+    @description("Hash value derived from the state of the graph (nodes, properties, and edges).")
     value: Long,
-    @description("Time value used to derive the graph hash code")
+    @description("Time value used to derive the graph hash code.")
     atTime: Long,
   )
 
   @title("System Build Information")
   @description("Information collected when this version of the system was compiled.")
   final case class TQuineInfo(
-    @description("Quine version") version: String,
-    @description("Current build git commit") gitCommit: Option[String],
-    @description("Current build commit date") gitCommitDate: Option[String],
-    @description("Java compilation version") javaVersion: String,
-    @description("Java runtime version") javaRuntimeVersion: String,
-    @description("Java number of cores available") javaAvailableProcessors: Int,
-    @description("Java max head size in bytes") javaMaxMemory: Long,
-    @description("Persistence data format version") persistenceWriteVersion: String,
-    @description("Quine Type") quineType: String,
+    @description("Quine version.") version: String,
+    @description("Current build git commit.") gitCommit: Option[String],
+    @description("Current build commit date.") gitCommitDate: Option[String],
+    @description("Java compilation version.") javaVersion: String,
+    @description("Java runtime version.") javaRuntimeVersion: String,
+    @description("Java number of cores available.") javaAvailableProcessors: Int,
+    @description("Java max head size in bytes.") javaMaxMemory: Long,
+    @description("Persistence data format version.") persistenceWriteVersion: String,
+    @description("Quine Type.") quineType: String,
   )
 
   @title("Metrics Counter")
-  @description("Counters record a single shared count, and give that count a name")
+  @description("Counters record a single shared count, and give that count a name.")
   final case class TCounter(
-    @description("Name of the metric being reported") name: String,
-    @description("The value tracked by this counter") count: Long,
+    @description("Name of the metric being reported.") name: String,
+    @description("The value tracked by this counter.") count: Long,
   )
 
   @title("Metrics Numeric Gauge")
-  @description("Gauges provide a single point-in-time measurement, and give that measurement a name")
+  @description("Gauges provide a single point-in-time measurement, and give that measurement a name.")
   final case class TNumericGauge(
-    @description("Name of the metric being reported") name: String,
-    @description("The latest measurement recorded by this gauge") value: Double,
+    @description("Name of the metric being reported.") name: String,
+    @description("The latest measurement recorded by this gauge.") value: Double,
   )
 
   @title("Metrics Timer Summary")
   @description(
-    """A rough cumulative histogram of times recorded by a timer, as well as the average rate at which that timer is
-      |used to take new measurements. All times in milliseconds.""".stripMargin.replace('\n', ' '),
+    """A rough cumulative histogram of times recorded by a timer, as well as the average rate at which
+      |that timer is used to take new measurements. All times in milliseconds.""".asOneLine,
   )
   final case class TTimerSummary(
-    @description("Name of the metric being reported") name: String,
+    @description("Name of the metric being reported.") name: String,
     // standard metrics
-    @description("Fastest recorded time") min: Double,
-    @description("Slowest recorded time") max: Double,
-    @description("Median recorded time") median: Double,
-    @description("Average recorded time") mean: Double,
-    @description("First-quartile time") q1: Double,
-    @description("Third-quartile time") q3: Double,
-    @description(
-      "Average per-second rate of new events over the last one minute",
-    ) oneMinuteRate: Double,
-    @description("90th percentile time") `90`: Double,
-    @description("99th percentile time") `99`: Double,
+    @description("Fastest recorded time.") min: Double,
+    @description("Slowest recorded time.") max: Double,
+    @description("Median recorded time.") median: Double,
+    @description("Average recorded time.") mean: Double,
+    @description("First-quartile time.") q1: Double,
+    @description("Third-quartile time.") q3: Double,
+    @description("Average per-second rate of new events over the last one minute.") oneMinuteRate: Double,
+    @description("90th percentile time.") `90`: Double,
+    @description("99th percentile time.") `99`: Double,
     // pareto principle thresholds
-    @description("80th percentile time") `80`: Double,
-    @description("20th percentile time") `20`: Double,
-    @description("10th percentile time") `10`: Double,
+    @description("80th percentile time.") `80`: Double,
+    @description("20th percentile time.") `20`: Double,
+    @description("10th percentile time.") `10`: Double,
   )
 
   @title("Metrics Report")
-  @description("""A selection of metrics registered by Quine, its libraries, and the JVM. Reported metrics may change
-                 |based on which ingests and standing queries have been running since Quine startup, as well as the JVM distribution
-                 |running Quine and the packaged version of any dependencies.""".stripMargin.replace('\n', ' '))
-  final case class TMetricsReport(
-    @description("A UTC Instant at which the returned metrics were collected") atTime: java.time.Instant,
-    @description("General-purpose counters for single numerical values") counters: Seq[TCounter],
-    @description(
-      "Timers which measure how long an operation takes and how often that operation was timed, in milliseconds. " +
-      "These are measured with wall time, and hence may be skewed by other system events outside our control like " +
-      "GC pauses or system load.",
-    ) timers: Seq[
-      TTimerSummary,
-    ],
-    @description("Gauges which report an instantaneously-sampled reading of a particular metric") gauges: Seq[
-      TNumericGauge,
-    ],
+  @description(
+    """A selection of metrics registered by Quine, its libraries, and the JVM. Reported metrics may change
+      |based on which ingests and Standing Queries have been running since Quine startup, as well as the JVM distribution
+      |running Quine and the packaged version of any dependencies.""".asOneLine,
   )
-
+  final case class TMetricsReport(
+    @description("A UTC Instant at which the returned metrics were collected.") atTime: java.time.Instant,
+    @description("General-purpose counters for single numerical values.")
+    counters: Seq[TCounter],
+    @description(
+      """Timers which measure how long an operation takes and how often that operation was timed, in milliseconds.
+        |These are measured with wall time, and hence may be skewed by other system events outside our control like GC
+        |pauses or system load.""".asOneLine,
+    )
+    timers: Seq[TTimerSummary],
+    @description("Gauges which report an instantaneously-sampled reading of a particular metric.")
+    gauges: Seq[TNumericGauge],
+  )
   @title("Shard In-Memory Limits")
   final case class TShardInMemoryLimit(
-    @description("Number of in-memory nodes past which shards will try to shut down nodes") softLimit: Int,
-    @description("Number of in-memory nodes past which shards will not load in new nodes") hardLimit: Int,
+    @description("Number of in-memory nodes past which shards will try to shut down nodes.") softLimit: Int,
+    @description("Number of in-memory nodes past which shards will not load in new nodes.") hardLimit: Int,
   )
 
   private val genCounter = Generic[Counter]
@@ -133,7 +131,7 @@ object V2AdministrationEndpointEntities {
 
 }
 
-trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
+trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration with StringOps {
 
   implicit lazy val graphHashCodeSchema: Schema[TGraphHashCode] =
     Schema.derived[TGraphHashCode].description("Graph Hash Code").encodedExample(TGraphHashCode(1000L, 12345L).asJson)
@@ -169,15 +167,14 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiCon
     : ServerEndpoint.Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[Json], Any, Future] =
     adminEndpoint("config")
       .name("Running Configuration")
-      .description("""Fetch the full configuration of the running system. "Full" means that this
-every option value is specified including all specified config files, command line
-options, and default values.
-
-This does _not_ include external options, for example, the
-Pekko HTTP option `org.apache.pekko.http.server.request-timeout` can be used to adjust the web
-server request timeout of this REST API, but it won't show up in the response of this
-endpoint.
-""").get
+      .description(
+        """Fetch the full configuration of the running system.
+          |"Full" means that this every option value is specified including all specified config files,
+          |command line options, and default values.""".asOneLine + "\n\n" +
+        """This does <em>not</em> include external options, for example, the Pekko HTTP option
+          |`org.apache.pekko.http.server.request-timeout` can be used to adjust the web server request timeout of this
+          |REST API, but it won't show up in the response of this endpoint.""".asOneLine,
+      )
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[Json]])
       .serverLogic[Future] { _ =>
@@ -189,15 +186,14 @@ endpoint.
   protected val graphHashCodeEndpoint
     : Full[Unit, Unit, (Option[AtTime], Option[String]), ServerError, SuccessEnvelope.Ok[TGraphHashCode], Any, Future] =
     adminEndpoint("graph-hash-code")
-      .description("""Generate a hash of the state of the graph at the provided timestamp.
-                   |
-                   |This is done by materializing readonly/historical versions of all nodes at a particular timestamp and
-                   |generating a checksum based on their (serialized) properties and edges.
-                   |
-                   |The timestamp defaults to the server's current clock time if not provided.
-                   |
-                   |Because this relies on historical nodes, results may be inconsistent if running on a configuration with
-                   |journals disabled.""".stripMargin)
+      .description(
+        "Generate a hash of the state of the graph at the provided timestamp.\n\n" +
+        """This is done by materializing readonly/historical versions of all nodes at a particular timestamp and
+          |generating a checksum based on their (serialized) properties and edges.""".asOneLine + "\n" +
+        "The timestamp defaults to the server's current clock time if not provided.\n\n" +
+        """Because this relies on historical nodes, results may be inconsistent if running on a configuration with
+          |journals disabled.""".asOneLine,
+      )
       .name("Graph Hashcode")
       .in(atTimeParameter)
       .in(namespaceParameter)
@@ -213,10 +209,12 @@ endpoint.
   protected val livenessEndpoint: Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.NoContent.type, Any, Future] =
     adminEndpoint("liveness")
       .name("Process Liveness")
-      .description("""This is a basic no-op endpoint for use when checking if the system is hung or responsive.
-                     | The intended use is for a process manager to restart the process if the app is hung (non-responsive).
-                     | It does not otherwise indicate readiness to handle data requests or system health.
-                     | Returns a 204 response.""")
+      .description(
+        """This is a basic no-op endpoint for use when checking if the system is hung or responsive.
+          |The intended use is for a process manager to restart the process if the app is hung (non-responsive).
+          |It does not otherwise indicate readiness to handle data requests or system health.
+          |Returns a 204 response.""".asOneLine,
+      )
       .get
       .out(statusCode(StatusCode.NoContent).description("System is live").and(emptyOutputAs(SuccessEnvelope.NoContent)))
       .serverLogic[Future](_ => recoverServerError(Future.successful(()))(_ => SuccessEnvelope.NoContent))
@@ -229,10 +227,12 @@ endpoint.
   ], SuccessEnvelope.NoContent.type, Any, Future] =
     adminEndpoint("readiness")
       .name("Process Readiness")
-      .description("""This indicates whether the system is fully up and ready to service user requests.
-The intended use is for a load balancer to use this to know when the instance is
-up ready and start routing user requests to it.
-""").get
+      .description(
+        """This indicates whether the system is fully up and ready to service user requests.
+          |The intended use is for a load balancer to use this to know when the instance is
+          |up ready and start routing user requests to it.""".asOneLine,
+      )
+      .get
       .out(statusCode(StatusCode.NoContent).description("System is ready to serve requests"))
       .out(emptyOutputAs(NoContent))
       .errorOutEither {
@@ -259,7 +259,8 @@ up ready and start routing user requests to it.
     adminEndpoint("shutdown")
       .name("Graceful Shutdown")
       .description(
-        "Initiate a graceful graph shutdown. Final shutdown may take a little longer. `200` indicates a shutdown has been successfully initiated.",
+        """Initiate a graceful graph shutdown. Final shutdown may take a little longer.
+          |`200` indicates a shutdown has been successfully initiated.""".asOneLine,
       )
       .post
       .out(statusCode(StatusCode.Accepted).description("Shutdown initiated"))
@@ -271,9 +272,9 @@ up ready and start routing user requests to it.
   protected val metaDataEndpoint: ServerEndpoint.Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[
     Map[String, String],
   ], Any, Future] =
-    adminEndpoint("meta-data")
-      .name("Persisted Meta-Data")
-      .summary("Meta-data")
+    adminEndpoint("meta-data") // TODO Decide whether to remove this hyphen in V2 (would be inconsistent with V1)
+      .name("Persisted Metadata")
+      .summary("Metadata")
       .get
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[Map[String, String]]])
@@ -291,9 +292,9 @@ up ready and start routing user requests to it.
       .summary("Metrics Summary")
       .description(
         """Returns a JSON object containing metrics data used in the Quine
-        |[Monitoring](https://docs.quine.io/core-concepts/operational-considerations.html#monitoring)
-        |dashboard. The selection of metrics is based on current configuration and execution environment, and is
-        |subject to change. A few metrics of note include:""".stripMargin.replace('\n', ' ') +
+          |[Monitoring](https://docs.quine.io/core-concepts/operational-considerations.html#monitoring)
+          |dashboard. The selection of metrics is based on current configuration and execution environment, and is
+          |subject to change. A few metrics of note include:""".asOneLine +
         """
           |
           |Counters
@@ -313,8 +314,7 @@ up ready and start routing user requests to it.
           | - `memory.heap.*`: JVM heap usage
           | - `memory.total`: JVM combined memory usage
           | - `shared.valve.ingest`: Number of current requests to slow ingest for another part of Quine to catch up
-          | - `dgn-reg.count`: Number of in-memory registered DomainGraphNodes
-          |""".stripMargin,
+          | - `dgn-reg.count`: Number of in-memory registered DomainGraphNodes""".stripMargin,
       )
       .get
       .out(statusCode(StatusCode.Ok))
@@ -331,13 +331,14 @@ up ready and start routing user requests to it.
     ], Any, Future] =
     adminEndpoint("shards").put
       .name("Shard Sizes")
-      .description("""Get and update the in-memory node limits.
-                   |
-                   |Sending a request containing an empty json object will return the current in-memory node settings.
-                   |
-                   |To apply different values, apply your edits to the returned document and sent those values in
-                   |a new PUT request.
-                   |""".stripMargin)
+      .description(
+        """Get and update the in-memory node limits.
+          |
+          |Sending a request containing an empty JSON object will return the current in-memory node settings.""".stripMargin +
+        "\n\n" +
+        """To apply different values, apply your edits to the returned document and send those values in a new
+          |PUT request.""".asOneLine,
+      )
       .in("size-limits")
       .in(jsonOrYamlBody[Map[Int, TShardInMemoryLimit]](Some(exampleShardMap)))
       .out(statusCode(StatusCode.Ok))
@@ -363,9 +364,11 @@ up ready and start routing user requests to it.
   ] =
     adminEndpoint("nodes").post
       .name("Sleep Node")
-      .description("""Attempt to put the specified node to sleep.
-                   |
-                   |This behavior is not guaranteed. Activity on the node will supersede this request""".stripMargin)
+      .description(
+        """Attempt to put the specified node to sleep.
+          |
+          |This behavior is not guaranteed. Activity on the node will supersede this request.""".stripMargin,
+      )
       .in(path[QuineId]("nodeIdSegment"))
       .in("request-sleep")
       .in(namespaceParameter)

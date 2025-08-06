@@ -23,7 +23,7 @@ trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigur
     : ServerEndpoint.Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[List[String]], Any, Future] =
     namespaceEndpoint.get
       .name("List Namespaces")
-      .description("Retrieve the list of all existing namespaces")
+      .description("Retrieve the list of all existing namespaces.")
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[List[String]]])
       .serverLogic(_ => recoverServerError(appMethods.getNamespaces)((inp: List[String]) => SuccessEnvelope.Ok(inp)))
@@ -32,14 +32,14 @@ trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigur
     : ServerEndpoint.Full[Unit, Unit, String, ServerError, CreatedOrNoContent[String], Any, Future] =
     namespaceEndpoint
       .name("Create Namespace")
-      .description("Create the requested namespace")
+      .description("Create the requested namespace.")
       .in(path[String]("namespace"))
       .put
       .out(
         oneOf[CreatedOrNoContent[String]](
           oneOfVariantFromMatchType(
             statusCode(StatusCode.Created).and(
-              jsonBody[SuccessEnvelope.Created[String]].description("Namespace Created"),
+              jsonBody[SuccessEnvelope.Created[String]].description("Namespace created."),
             ),
           ),
           oneOfVariantFromMatchType(
@@ -61,7 +61,7 @@ trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiConfigur
     : ServerEndpoint.Full[Unit, Unit, String, ServerError, SuccessEnvelope.Ok[String], Any, Future] =
     namespaceEndpoint
       .name("Delete Namespace")
-      .description("Delete the requested namespace")
+      .description("Delete the requested namespace.")
       .in(path[String]("namespace"))
       .delete
       .out(statusCode(StatusCode.Ok))

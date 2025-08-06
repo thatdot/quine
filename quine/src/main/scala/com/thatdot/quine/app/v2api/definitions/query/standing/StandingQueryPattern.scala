@@ -6,13 +6,14 @@ import sttp.tapir.Schema.annotations.{default, description, title}
 @description("A declarative structural graph pattern.")
 sealed abstract class StandingQueryPattern
 object StandingQueryPattern {
+  import com.thatdot.quine.app.util.StringOps.syntax._
 
   @title("Cypher")
   final case class Cypher(
     @description(
-      """Cypher query describing the standing query pattern. This must take the form of
-        |MATCH <pattern> WHERE <condition> RETURN <columns>. When the `mode` is `DistinctId`,
-        |the `RETURN` must also be `DISTINCT`.""".stripMargin,
+      """Cypher query describing the Standing Query pattern. This must take the form of
+        |`MATCH <pattern> WHERE <condition> RETURN <columns>`. When the `mode` is `DistinctId`,
+        |the `RETURN` must also be `DISTINCT`.""".asOneLine,
     )
     query: String,
     @default(StandingQueryMode.DistinctId)

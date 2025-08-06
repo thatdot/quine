@@ -3,7 +3,7 @@ package com.thatdot.api.v2
 import sttp.tapir.Schema.annotations.{description, title}
 
 @title("Rates Summary")
-@description("Summary statistics about a metered rate (ie, count per second).")
+@description("Summary statistics about a metered rate.")
 final case class RatesSummary(
   @description("Number of items metered") count: Long,
   @description("Approximate rate per second in the last minute") oneMinute: Double,

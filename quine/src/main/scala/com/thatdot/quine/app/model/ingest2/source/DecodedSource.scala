@@ -248,8 +248,9 @@ abstract class DecodedSource(val meter: IngestMeter) {
       case DeadLetterQueueOutput.HttpEndpoint(url, parallelism, OutputFormat.JSON(withMetaData)) =>
         (WithDataFoldable(HttpEndpoint(url, parallelism)), withMetaData)
 
-      case DeadLetterQueueOutput.File(path, outputFormat) =>
-        outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = destination.File(path))
+      case DeadLetterQueueOutput.File(path) =>
+        // Update this when non-JSON outputs are supported for File (or to support including the info envelope)
+        (WithByteEncoding(JSON(), destination.File(path)), false)
 
       case DeadLetterQueueOutput.Kafka(topic, bootstrapServers, kafkaProperties, outputFormat) =>
         val kafkaDestination = destination.Kafka(topic, bootstrapServers, kafkaProperties)

@@ -4,6 +4,7 @@ import io.circe.Json
 import sttp.tapir.Schema.annotations.{description, title}
 
 object ApiUiStyling {
+  import com.thatdot.quine.app.util.StringOps.syntax._
 
   /** Enumeration for the kinds of queries we can issue */
   sealed abstract class QuerySort
@@ -22,17 +23,19 @@ object ApiUiStyling {
     * @param edgeLabel virtual edge label (only relevant on node queries)
     */
   @title("Quick Query Action")
-  @description("Query that gets executed starting at some node (eg. by double-clicking or right-clicking).")
+  @description("Query that gets executed starting at some node (e.g. by double-clicking or right-clicking).")
   final case class QuickQuery(
-    @description("Name of the quick query. This is the name that will appear in the node drop-down menu")
+    @description("Name of the quick query. This is the name that will appear in the node drop-down menu.")
     name: String,
-    @description("Suffix of a traversal query (eg, `.values('someKey')` for Gremlin or `RETURN n.someKey` for Cypher)")
+    @description(
+      "Suffix of a traversal query (e.g. `.values('someKey')` for Gremlin or `RETURN n.someKey` for Cypher).",
+    )
     querySuffix: String,
-    @description("Whether the query returns node or text results")
+    @description("Whether the query returns node or text results.")
     sort: QuerySort,
     @description(
       """If this label is set and the query is configured to return nodes, each of the nodes returned
-                                   |will have an additional dotted edge which connect to the source node of the quick query""".stripMargin,
+        |will have an additional dotted edge which connect to the source node of the quick query""".asOneLine,
     )
     edgeLabel: Option[String],
   ) {
@@ -96,43 +99,43 @@ object ApiUiStyling {
   @title("Graph Node")
   @description("Information needed by the Query UI to display a node in the graph.")
   final case class UiNode[Id](
-    @description("node id") id: Id,
-    @description("index of the cluster host responsible for this node") hostIndex: Int,
-    @description("categorical classification") label: String,
-    @description("properties on the node") properties: Map[String, Json],
+    @description("Node ID.") id: Id,
+    @description("Index of the cluster host responsible for this node.") hostIndex: Int,
+    @description("Categorical classification.") label: String,
+    @description("Properties on the node.") properties: Map[String, Json],
   )
 
   @title("Graph Edge")
   @description("Information needed by the Query UI to display an edge in the graph.")
   final case class UiEdge[Id](
-    @description("Node at the start of the edge") from: Id,
-    @description("Name of the edge") edgeType: String,
-    @description("Node at the end of the edge") to: Id,
-    @description("Whether the edge is directed or undirected") isDirected: Boolean = true,
+    @description("Node at the start of the edge.") from: Id,
+    @description("Name of the edge.") edgeType: String,
+    @description("Node at the end of the edge.") to: Id,
+    @description("Whether the edge is directed or undirected.") isDirected: Boolean = true,
   )
 
   @title("Cypher Query Result")
-  @description("""Cypher queries are designed to return data in a table format. This gets
-          |encoded into JSON with `columns` as the header row and each element in `results`
-          |being another row of results. As a consequence Consequently, every array element
-          |in `results` will have the same length, and all will have the same length as the
-          |`columns` array.
-          |""".stripMargin)
+  @description(
+    """Cypher queries are designed to return data in a table format.
+      |This gets encoded into JSON with `columns` as the header row and each element in `results` being another row
+      |of results. Consequently, every array element in `results` will have the same length, and all will have the
+      |same length as the `columns` array.""".asOneLine,
+  )
   final case class CypherQueryResult(
-    @description("Return values of the Cypher query") columns: Seq[String],
-    @description("Rows of results") results: Seq[Seq[Json]],
+    @description("Return values of the Cypher query.") columns: Seq[String],
+    @description("Rows of results.") results: Seq[Seq[Json]],
   )
 
   @title("Cypher Query")
   final case class CypherQuery(
-    @description("Text of the query to execute") text: String,
-    @description("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty,
+    @description("Text of the query to execute.") text: String,
+    @description("Parameters the query expects, if any.") parameters: Map[String, Json] = Map.empty,
   )
 
   @title("Gremlin Query")
   final case class GremlinQuery(
-    @description("Text of the query to execute") text: String,
-    @description("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty,
+    @description("Text of the query to execute.") text: String,
+    @description("Parameters the query expects, if any.") parameters: Map[String, Json] = Map.empty,
   )
 
   @title("Sample Query")
@@ -158,14 +161,14 @@ object ApiUiStyling {
 
   /** Abstract predicate for filtering nodes */
   @title("UI Node Predicate")
-  @description("Predicate by which nodes to apply this style to may be filtered")
+  @description("Predicate by which nodes to apply this style to may be filtered.")
   final case class UiNodePredicate(
-    @description("Properties the node must have to apply this style") propertyKeys: Vector[String],
-    @description("Properties with known constant values the node must have to apply this style") knownValues: Map[
+    @description("Properties the node must have to apply this style.") propertyKeys: Vector[String],
+    @description("Properties with known constant values the node must have to apply this style.") knownValues: Map[
       String,
       Json,
     ],
-    @description("Label the node must have to apply this style") dbLabel: Option[String],
+    @description("Label the node must have to apply this style.") dbLabel: Option[String],
   ) {
     def matches(node: UiNode[String]): Boolean = {
       def hasRightLabel = dbLabel.forall(_ == node.label)
@@ -188,15 +191,15 @@ object ApiUiStyling {
   @description("Instructions for how to style the appearance of a node.")
   final case class UiNodeAppearance(
     predicate: UiNodePredicate,
-    @description("(Optional) size of this icon in pixels")
+    @description("Size of this icon in pixels.")
     size: Option[Double],
     @description(
-      "(Optional) name of the icon character to use. For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)",
+      "Name of the icon character to use. For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html).",
     )
     icon: Option[String],
-    @description("(Optional) color to use, specified as a hex value")
+    @description("The color to use, specified as a hex value.")
     color: Option[String],
-    @description("(Optional) node label to use")
+    @description("The node label to use.")
     label: Option[UiNodeLabel],
   )
 
@@ -236,7 +239,7 @@ object ApiUiStyling {
     ) extends UiNodeLabel
 
     @title("Property Value Label")
-    @description("Use the value of a property as a label, with an optional prefix")
+    @description("Use the value of a property as a label, with an optional prefix.")
     final case class Property(
       key: String,
       prefix: Option[String],
@@ -244,11 +247,11 @@ object ApiUiStyling {
   }
 
   @title("Quick Query")
-  @description("A query that can show up in the context menu brought up by right-clicking a node")
+  @description("A query that can show up in the context menu brought up by right-clicking a node.")
   final case class UiNodeQuickQuery(
-    @description("Condition that a node must satisfy for this query to be in the context menu")
+    @description("Condition that a node must satisfy for this query to be in the context menu.")
     predicate: UiNodePredicate,
-    @description("Query to run when the context menu entry is selected")
+    @description("Query to run when the context menu entry is selected.")
     quickQuery: QuickQuery,
   )
 

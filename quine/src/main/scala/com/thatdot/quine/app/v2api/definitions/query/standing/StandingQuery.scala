@@ -7,38 +7,45 @@ import sttp.tapir.Schema.annotations.{default, description, title}
 object StandingQuery {
 
   @title("Standing Query")
-  @description("Standing Query")
+  @description("Standing Query.")
   final case class StandingQueryDefinition(
     pattern: StandingQueryPattern,
+    // Cannot get `@default` to work here, despite a working example in `DestinationSteps.Kafka#kafkaProperties`.
     @description(
-      s"A map of named standing query outs - see the ${StandingQueryResultWorkflow.title} schema for the values",
+      s"""A map of ${StandingQueryResultWorkflow.apiTitle}s as named outputs. Defaults to an empty map (`{}`).
+         |The values are each:
+         |${StandingQueryResultWorkflow.apiDescription}""".stripMargin,
     )
-    outputs: Map[String, StandingQueryResultWorkflow],
-    @description("Whether or not to include cancellations in the results of this query")
+    outputs: Map[String, StandingQueryResultWorkflow] = Map.empty,
+    @description("Whether or not to include cancellations in the results of this query.")
     @default(false)
     includeCancellations: Boolean = false,
-    @description("How many standing query results to buffer before backpressuring")
+    @description("How many Standing Query results to buffer before backpressuring.")
     @default(32)
-    inputBufferSize: Int = 32, // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
+    /** @see [[com.thatdot.quine.graph.StandingQueryInfo.DefaultQueueBackpressureThreshold]] */
+    inputBufferSize: Int = 32,
   )
 
   @title("Registered Standing Query")
   @description("Registered Standing Query.")
   final case class RegisteredStandingQuery(
     name: String,
-    @description("Unique identifier for the query, generated when the query is registered")
+    @description("Unique identifier for the query, generated when the query is registered.")
     internalId: UUID,
-    @description("Query or pattern to answer in a standing fashion")
+    @description("Query or pattern to answer in a standing fashion.")
     pattern: Option[StandingQueryPattern], // TODO: remove Option once we remove DGB SQs
+    // Cannot get `@default` to work here, despite a working example in `DestinationSteps.Kafka#kafkaProperties`.
     @description(
-      s"output sinks into which all new standing query results should be enqueued - see ${StandingQueryResultWorkflow.title}",
+      s"""A map of ${StandingQueryResultWorkflow.apiTitle}s as named outputs. Defaults to an empty map (`{}`).
+         |The values are each:
+         |${StandingQueryResultWorkflow.apiDescription}""".stripMargin,
     )
-    outputs: Map[String, StandingQueryResultWorkflow],
-    @description("Whether or not to include cancellations in the results of this query")
+    outputs: Map[String, StandingQueryResultWorkflow] = Map.empty,
+    @description("Whether or not to include cancellations in the results of this query.")
     includeCancellations: Boolean,
-    @description("how many standing query results to buffer on each host before backpressuring")
+    @description("How many Standing Query results to buffer on each host before backpressuring.")
     inputBufferSize: Int,
-    @description(s"Statistics on progress of running the standing query, per host - see ${StandingQueryStats.title}")
+    @description(s"Statistics on progress of running the Standing Query, per host - see ${StandingQueryStats.title}")
     stats: Map[String, StandingQueryStats],
   )
 

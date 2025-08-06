@@ -11,6 +11,11 @@ object OutputFormat {
   case object JSON extends OutputFormat
 
   @title("Protobuf")
+  @encodedExample("""{
+      |  "type": "Protobuf",
+      |  "schemaUrl": "conf/protobuf-schemas/example_schema.desc",
+      |  "typeName": "ExampleType"
+      |}""".stripMargin)
   final case class Protobuf(
     @description(
       "URL (or local filename) of the Protobuf .desc file to load that contains the desired typeName to serialize to",

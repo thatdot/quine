@@ -8,15 +8,15 @@ import com.thatdot.api.v2.RatesSummary
 
 @title(StandingQueryStats.title)
 final case class StandingQueryStats(
-  @description("Results per second over different time periods")
+  @description("Results per second over different time periods.")
   rates: RatesSummary,
-  @description("Time (in ISO-8601 UTC time) when the standing query was started")
+  @description("Time (in ISO-8601 UTC time) when the Standing Query was started.")
   startTime: Instant,
-  @description("Time (in milliseconds) that that the standing query has been running")
+  @description("Time (in milliseconds) that that the Standing Query has been running.")
   totalRuntime: Long,
-  @description("How many standing query results are buffered and waiting to be emitted")
+  @description("How many Standing Query Results are buffered and waiting to be emitted.")
   bufferSize: Int,
-  @description("Accumulated output hash code")
+  @description("Accumulated output hash code.")
   outputHashCode: Long,
 )
 

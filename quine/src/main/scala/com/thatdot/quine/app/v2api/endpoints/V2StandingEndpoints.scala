@@ -2,7 +2,6 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
-import cats.data.NonEmptyList
 import io.circe.generic.extras.auto._
 import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
@@ -10,26 +9,32 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{EndpointInput, emptyOutputAs, path, query, statusCode}
 
-import com.thatdot.api.v2.outputs.DestinationSteps.StandardOut
-import com.thatdot.api.v2.outputs.{DestinationSteps, OutputFormat}
+import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
-import com.thatdot.quine.app.v2api.definitions.query.standing.QuineSupportedDestinationSteps.CoreDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode.MultipleValues
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultWorkflow
 import com.thatdot.quine.app.v2api.definitions.{ErrorResponse, SuccessEnvelope, V2QuineEndpointDefinitions}
 
-trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiSchemas with V2ApiConfiguration {
+trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiSchemas with StringOps {
+
+  /** `io.circe.generic.extras.auto._` appears to require a local reference to a
+    * Configuration in order to find implicit Encoders through a mixed-in TapirJsonCirce
+    * (here provided via V2StandingApiSchemas->V2ApiConfiguration), even though such
+    * a Configuration is also available in a mixin or ancestor. Thus, a trait-named
+    * config that refers to our standard config.
+    */
+  implicit val v2StandingEndpointsConfig: Configuration = typeDiscriminatorConfig
 
   /** SQ Name path element */
   private val sqName: EndpointInput.PathCapture[String] =
-    path[String]("standing-query-name").description("Unique name for a standing query")
+    path[String]("standing-query-name").description("Unique name for a Standing Query.")
 
   /** SQ Output Name path element */
   private val sqOutputName: EndpointInput.PathCapture[String] =
-    path[String]("standing-query-output-name").description("Unique name for a standing query output")
+    path[String]("standing-query-output-name").description("Unique name for a Standing Query Output.")
 
   /** SQ Base path */
   private def standingQueryEndpoint =
@@ -46,16 +51,15 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
   ], ServerError, SuccessEnvelope.Ok[List[RegisteredStandingQuery]], Any, Future] =
     standingQueryEndpoint
       .name("List Standing Queries")
-      .description("""|Individual standing queries are issued into the graph one time;
-                      |result outputs are produced as new data is written into Quine and matches are found.
-                      |
-                      |Compared to traditional queries, standing queries are less imperative
-                      |and more declarative - it doesn't matter what order parts of the pattern match,
-                      |only that the composite structure exists.
-                      |
-                      |Learn more about writing
-                      |[standing queries](https://docs.quine.io/components/writing-standing-queries.html)
-                      |in the docs.""".stripMargin)
+      .description(
+        """Individual Standing Queries are issued into the graph one time;
+          |result outputs are produced as new data is written into Quine and matches are found.""".asOneLine + "\n\n" +
+        """Compared to traditional queries, Standing Queries are less imperative
+          |and more declarative — it doesn't matter in what order the parts of the pattern match,
+          |only that the composite structure exists.""".asOneLine + "\n\n" +
+        """Learn more about writing [Standing Queries](https://docs.quine.io/components/writing-standing-queries.html)
+          |in the docs.""".asOneLine,
+      )
       .in(namespaceParameter)
       .get
       .out(statusCode(StatusCode.Ok))
@@ -77,25 +81,22 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
   ] =
     standingQueryEndpoint
       .name("Propagate Standing Queries")
-      .description("""When a new standing query is registered in the system, it gets automatically
-                     |registered on new nodes (or old nodes that are loaded back into the cache). This
-                     |behavior is the default because pro-actively setting the standing query on all
-                     |existing data might be quite costly depending on how much historical data there is.
-                     |
-                     |However, sometimes there is a legitimate use-case for eagerly propagating standing
-                     |queries across the graph, for instance:
-                     |
-                     |  * When interactively constructing a standing query for already-ingested data
-                     |  * When creating a new standing query that needs to be applied to recent data
-                     |""".stripMargin)
+      .description(
+        """When a new Standing Query is registered in the system, it gets automatically
+          |registered on new nodes (or old nodes that are loaded back into the cache). This behavior
+          |is the default because pro-actively setting the Standing Query on all
+          |existing data might be quite costly depending on how much historical data there is.""".asOneLine + "\n\n" +
+        """However, sometimes there is a legitimate use-case for eagerly propagating standing queries across the graph, for instance:
+          |
+          |  * When interactively constructing a Standing Query for already-ingested data
+          |  * When creating a new Standing Query that needs to be applied to recent data""".stripMargin,
+      )
       .in("control")
       .in("propagate")
       .in(
         query[Boolean]("include-sleeping")
           .default(false)
-          .description(
-            "Propagate to all sleeping nodes. Setting to true can be costly if there is lot of data.",
-          ),
+          .description("Propagate to all sleeping nodes. Setting to true can be costly if there is lot of data."),
       )
       .in(namespaceParameter)
       .in(query[Int]("wake-up-parallelism").default(4))
@@ -108,22 +109,17 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
         )((_: Unit) => SuccessEnvelope.Accepted())
       }
 
-  private val workflowExample: StandingQueryResultWorkflow =
-    StandingQueryResultWorkflow(destinations =
-      NonEmptyList.one(CoreDestinationSteps(StandardOut(format = OutputFormat.JSON))),
-    )
-
   private val addSQOutputWorkflowEndpoint = rawStandingQueryEndpoint
     .name("Create Standing Query Output Workflow")
     .description(
-      "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed.",
+      "Each Standing Query can have any number of destinations to which `StandingQueryResults` will be routed.",
     )
     .in(sqName)
     .in("outputs")
     .in(sqOutputName)
     .in(namespaceParameter)
-    .in(jsonOrYamlBody[StandingQueryResultWorkflow](Some(workflowExample)))
-    .errorOut(badRequestError("Output is invalid", "There is another output with that name already"))
+    .in(jsonOrYamlBody[StandingQueryResultWorkflow](Some(exampleStandingQueryResultWorkflowToStandardOut)))
+    .errorOut(badRequestError("Output is invalid.", "There is another output with that name already."))
     .errorOutEither(notFoundError("No Standing Queries exist with the provided name."))
     .errorOutEither(serverError())
     .mapErrorOut(err => err.swap)(err => err.swap)
@@ -137,47 +133,39 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
       )(SuccessEnvelope.Created(_))
     }
 
-  private val exPattern = """MATCH (n) WHERE n.num % 100 = 0 RETURN n.num"""
+  private val exPattern = "MATCH (n) WHERE n.num % 100 = 0 RETURN n.num"
 
-  private val createSqExample: StandingQueryDefinition =
-    StandingQueryDefinition(
-      Cypher(exPattern, MultipleValues),
-      Map.from(
-        List(
-          "stdout" -> StandingQueryResultWorkflow(destinations =
-            NonEmptyList.one(CoreDestinationSteps(DestinationSteps.StandardOut(format = OutputFormat.JSON))),
-          ),
-        ),
-      ),
-    )
+  private val createSqExample: StandingQueryDefinition = StandingQueryDefinition(
+    pattern = Cypher(exPattern, MultipleValues),
+    outputs = exampleStandingQueryResultWorkflowMap,
+  )
 
   private val createSQEndpoint: Full[Unit, Unit, (String, Option[String], Boolean, StandingQueryDefinition), Either[
     ServerError,
     Either[BadRequest, NotFound],
   ], SuccessEnvelope.Created[RegisteredStandingQuery], Any, Future] = rawStandingQueryEndpoint
     .name("Create Standing Query")
-    .description("""|Individual standing queries are issued into the graph one time;
-                     |result outputs are produced as new data is written into Quine and matches are found.
-                     |
-                     |Compared to traditional queries, standing queries are less imperative
-                     |and more declarative - it doesn't matter what order parts of the pattern match,
-                     |only that the composite structure exists.
-                     |
-                     |Learn more about writing
-                     |[standing queries](https://docs.quine.io/components/writing-standing-queries.html)
-                     |in the docs.""".stripMargin)
+    .description(
+      """Individual Standing Queries are issued into the graph one time;
+        |result outputs are produced as new data is written into Quine and matches are found.""".asOneLine + "\n\n" +
+      """Compared to traditional queries, Standing Queries are less imperative
+        |and more declarative - it doesn't matter what order parts of the pattern match,
+        |only that the composite structure exists.""".asOneLine + "\n\n" +
+      """Learn more about writing [Standing Queries](https://docs.quine.io/components/writing-standing-queries.html)
+        |in the docs.""".asOneLine,
+    )
     .in(sqName)
     .in(namespaceParameter)
     .in(
       query[Boolean]("shouldCalculateResultHashCode")
-        .description("For debug and test only")
+        .description("For debug and test only.")
         .default(false)
         .schema(_.hidden(true)),
     )
     .in(jsonOrYamlBody[StandingQueryDefinition](Some(createSqExample)))
     .post
     .errorOut(
-      badRequestError("A standing query with that name already exists", "There is an issue with the query"),
+      badRequestError("A Standing Query with that name already exists.", "There is an issue with the query."),
     )
     .errorOutEither(notFoundError())
     .errorOutEither(serverError())
@@ -197,7 +185,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     ], Any, Future] =
     standingQueryEndpoint
       .name("Delete Standing Query")
-      .description("Immediately halt and remove the named standing query from Quine.")
+      .description("Immediately halt and remove the named Standing Query from Quine.")
       .in(sqName)
       .in(namespaceParameter)
       .delete
@@ -216,7 +204,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
   ], SuccessEnvelope.Ok[StandingQueryResultWorkflow], Any, Future] =
     standingQueryEndpoint
       .name("Delete Standing Query Output")
-      .description("Remove an output from a standing query.")
+      .description("Remove an output from a Standing Query.")
       .in(sqName)
       .in("outputs")
       .in(sqOutputName)
@@ -237,7 +225,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     ], Any, Future] =
     standingQueryEndpoint
       .name("Standing Query Status")
-      .description("Return the status information for a configured standing query by name.")
+      .description("Return the status information for a configured Standing Query by name.")
       .in(sqName)
       .in(namespaceParameter)
       .get

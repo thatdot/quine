@@ -13,12 +13,15 @@ import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, EndpointInput, path, query, statusCode}
 
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ErrorResponse.ServerError
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.serverError
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 
 object V2DebugEndpointEntities {
+  import com.thatdot.quine.app.util.StringOps.syntax._
+
   sealed abstract class TEdgeDirection
   object TEdgeDirection {
     case object Outgoing extends TEdgeDirection
@@ -31,37 +34,34 @@ object V2DebugEndpointEntities {
   @title("Node Data")
   @description("Data locally available on a node in the graph.")
   final case class TLiteralNode[ID](
-    @title(
+    @description(
       """Properties on the node; note that values are represented as closely as possible
-                                        |to how they would be emitted by
-                                        |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post)
-                                        |""".stripMargin.replace('\n', ' ').trim,
+        |to how they would be emitted by
+        |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post).""".asOneLine,
     )
     properties: Map[String, Json],
     edges: Seq[TRestHalfEdge[ID]],
   )
 
   @title("Half Edge")
-  @description("""
-One "half" of an edge. A full logical graph edge exists in a Quine graph if and only if
-the two nodes at the edge's endpoints contain half edges that:
-
-  * Point to each other
-
-  * Have the same label
-
-  * Have opposite directions (eg. one side is incoming and the other is outgoing,
-    or else both sides are undirected)
-""")
+  @description(
+    """One "half" of an edge. A full logical graph edge exists in a Quine graph if and only if
+      |the two nodes at the edge's endpoints contain half edges that:""".asOneLine +
+    """
+      |  * Point to each other
+      |  * Have the same label
+      |  * Have opposite directions """.stripMargin + """(e.g. one side is incoming and the other is outgoing,
+      |    or else both sides are undirected)""".asOneLine,
+  )
   final case class TRestHalfEdge[ID](
-    @description("Label of the edge") edgeType: String,
+    @description("Label of the edge.") edgeType: String,
     direction: TEdgeDirection,
-    @description("Id of node at the other end of the edge") other: ID,
+    @description("Id of node at the other end of the edge.") other: ID,
   )
 
 }
 
-trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
+trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration with StringOps {
 
   implicit val tEdgeDirectionCodec: Codec[String, TEdgeDirection, TextPlain] = {
 
@@ -75,48 +75,51 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
     Codec.string.mapDecode(fromString)(_.toString)
   }
 
-  val idPathElement: EndpointInput.PathCapture[QuineId] = path[QuineId]("id").description("Node id")
+  val idPathElement: EndpointInput.PathCapture[QuineId] = path[QuineId]("id").description("Node ID.")
   val propKeyParameter: EndpointInput.Query[String] =
-    query[String]("key").description(
-      "Name of a property",
-    )
+    query[String]("key").description("Name of a property")
 
   val edgeTypeOptParameter: EndpointInput.Query[Option[String]] =
-    query[Option[String]]("type").description(
-      "Edge type",
-    )
+    query[Option[String]]("type").description("Edge type")
 
   val otherOptParameter: EndpointInput.Query[Option[QuineId]] =
-    query[Option[QuineId]]("other").description(
-      "Other edge endpoint",
-    )
+    query[Option[QuineId]]("other").description("Other edge endpoint")
 
   val limitParameter: EndpointInput.Query[Option[Int]] =
-    query[Option[Int]]("limit").description("Maximum number of results to return")
+    query[Option[Int]]("limit").description("Maximum number of results to return.")
+
   val fullEdgeParameter: EndpointInput.Query[Option[Boolean]] =
-    query[Option[Boolean]]("onlyFull").description("Only return full edges")
+    query[Option[Boolean]]("onlyFull").description("Only return full edges.")
+
   val edgeDirOptParameter: EndpointInput.Query[Option[TEdgeDirection]] =
-    query[Option[TEdgeDirection]]("direction").description("Edge direction. One of: Incoming, Outgoing, Undirected")
+    query[Option[TEdgeDirection]]("direction").description("Edge direction. One of: Incoming, Outgoing, Undirected.")
+
   /*
     final val edgeType: QueryString[String] = qs[String]("type", docs = Some("Edge type"))
     final val propKey: QueryString[String] = qs[String]("key", docs = Some("Name of a property"))
     final val other: QueryString[Id] = qs[Id]("other", docs = Some("Other edge endpoint"))
    // final val otherOpt: QueryString[Option[Id]] = qs[Option[Id]]("other", docs = Some("Other edge endpoint"))
-
    */
-  /** Generate an endpoint at  /api/ v2/admin/$path */
+
+  /** Generate an endpoint at `/api/v2/admin/$path` */
   private def debugEndpoint = rawEndpoint("debug", "nodes")
     .tag("Debug Node Operations")
     .errorOut(serverError())
+
+  private val debugEndpointIntentionAddendum = "\n\n" +
+    """This endpoint's usage, including the structure of the values returned, are implementation-specific and
+      |subject to change without warning. This endpoint is not intended for consumption by automated clients.
+      |The information returned by this endpoint is formatted for human consumption and is intended to assist the
+      |operator(s) of Quine in inspecting specific parts of the internal Quine graph state.""".asOneLine
 
   private val debugOpsPropertyGetEndpoint =
     debugEndpoint
       .name("Get Property")
       .description(
-        """Retrieve a single property from the node; note that values are represented as
-closely as possible to how they would be emitted by
-[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post)."""
-        + "\n\nThis endpoint's usage, including the structure of the values returned, are implementation-specific and subject to change without warning. This endpoint is not intended for consumption by automated clients. The information returned by this endpoint is formatted for human consumption and is intended to assist the operator[s] of Quine in inspecting specific parts of the internal Quine graph state.",
+        """Retrieve a single property from the node; note that values are represented as closely as possible to how they
+          |would be emitted by
+          |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post).""".asOneLine +
+        debugEndpointIntentionAddendum,
       )
       .in(idPathElement)
       .in("props")
@@ -140,10 +143,7 @@ closely as possible to how they would be emitted by
     ], Any, Future] =
     debugEndpoint
       .name("List Properties/Edges")
-      .description(
-        "Retrieve a node's list of properties and list of edges." +
-        "\n\nThis endpoint's usage, including the structure of the values returned, are implementation-specific and subject to change without warning. This endpoint is not intended for consumption by automated clients. The information returned by this endpoint is formatted for human consumption and is intended to assist the operator[s] of Quine in inspecting specific parts of the internal Quine graph state.",
-      )
+      .description(s"Retrieve a node's list of properties and list of edges." + debugEndpointIntentionAddendum)
       .in(idPathElement)
       .in(atTimeParameter)
       .in(namespaceParameter)
@@ -159,10 +159,7 @@ closely as possible to how they would be emitted by
   //TODO temporarily outputs string
   private val debugOpsVerboseEndpoint = debugEndpoint
     .name("List Node State (Verbose)")
-    .description(
-      "Returns information relating to the node's internal state." +
-      "\n\nThis endpoint's usage, including the structure of the values returned, are implementation-specific and subject to change without warning. This endpoint is not intended for consumption by automated clients. The information returned by this endpoint is formatted for human consumption and is intended to assist the operator[s] of Quine in inspecting specific parts of the internal Quine graph state.",
-    )
+    .description(s"Returns information relating to the node's internal state." + debugEndpointIntentionAddendum)
     .in(idPathElement)
     .in("verbose")
     .in(atTimeParameter)
@@ -175,14 +172,10 @@ closely as possible to how they would be emitted by
         SuccessEnvelope.Ok.apply(inp),
       )
     }
-
   private val debugOpsEdgesGetEndpoint =
     debugEndpoint
       .name("List Edges")
-      .description(
-        "Retrieve all node edges." +
-        "\n\nThis endpoint's usage, including the structure of the values returned, are implementation-specific and subject to change without warning. This endpoint is not intended for consumption by automated clients. The information returned by this endpoint is formatted for human consumption and is intended to assist the operator[s] of Quine in inspecting specific parts of the internal Quine graph state.",
-      )
+      .description(s"Retrieve all node edges." + debugEndpointIntentionAddendum)
       .in(idPathElement)
       .in("edges")
       .in(atTimeParameter)
