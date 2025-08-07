@@ -24,7 +24,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
 
-import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.logging.Log.{LogConfig, SafeLoggableInterpolator}
 import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.model.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
@@ -54,8 +54,9 @@ object KafkaSrcDef {
   )(implicit graph: CypherOpsGraph): ConsumerSettings[Array[Byte], Try[Value]] = {
 
     val deserializer: Deserializer[Try[Value]] =
-      (_: String, data: Array[Byte]) =>
+      (_: String, data: Array[Byte]) => {
         format.importMessageSafeBytes(ContentDecoder.decode(decoders, data), isSingleHost, deserializationTimer)
+      }
 
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
@@ -195,6 +196,16 @@ object KafkaSrcDef {
         .fold(kafkaConsumer)(o => kafkaConsumer.takeWhile(r => r.offset() <= o))
         .wireTap((o: NoOffset) => meter.mark(o.serializedValueSize()))
         .mapMaterializedValue(KafkaKillSwitch)
+        .wireTap((o: NoOffset) =>
+          if (o.value() == null) {
+            logger.info(log"Dropping empty value from Kafka ingest($name) with offset=${o.offset().toString}")
+          },
+        )
+        // Empty value()'s can show up in kafka from a tombstone message, and kafka doesn't call the provided
+        //   deserializer instead forwarding a null instead of a Try[CypherValue]
+        // We should handle this because downstream processing assumes that the value of `output` is of type Try
+        // The choice we decided on was to drop such messages.
+        .filter(_.value() != null)
         .map((o: NoOffset) => (o.value(), o))
 
   }
@@ -221,11 +232,22 @@ object KafkaSrcDef {
         intoNamespace,
       ) {
     type InputType = WithOffset
+
     override def sourceWithShutdown(): Source[TryDeserialized, KafkaKillSwitch] =
       endingOffset
         .fold(kafkaConsumer)(o => kafkaConsumer.takeWhile(r => r.record.offset() <= o))
         .wireTap((o: WithOffset) => meter.mark(o.record.serializedValueSize()))
         .mapMaterializedValue(KafkaKillSwitch)
+        .wireTap((o: WithOffset) =>
+          if (o.record.value() == null) {
+            logger.info(log"Dropping empty value from Kafka ingest($name) with offset=${o.record.offset().toString}")
+          },
+        )
+        // Empty record.value()'s can show up in kafka from a tombstone message, and kafka doesn't call the provided
+        //   deserializer instead forwarding a null instead of a Try[CypherValue]
+        // We should handle this because downstream processing assumes that the value of `output` is of type Try
+        // The choice we decided on was to drop such messages.
+        .filter(_.record.value() != null)
         .map((o: WithOffset) => (o.record.value(), o))
 
     /** For ack-ing source override the default mapAsyncUnordered behavior.
