@@ -38,7 +38,10 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
         case GetHalfEdgesCommand(Some(edgeType), None, Some(id), _, _) => edges.matching(edgeType, id)
         case GetHalfEdgesCommand(Some(edgeType), Some(dir), Some(id), _, _) => edges.matching(edgeType, dir, id)
       }
-      c ?! Source(matchingEdges.map(HalfEdgeMessage).toList)
+      c.withLimit match {
+        case Some(limit) => c ?! Source(matchingEdges.take(limit).map(HalfEdgeMessage).toList)
+        case None => c ?! Source(matchingEdges.map(HalfEdgeMessage).toList)
+      }
 
     case a @ AddHalfEdgeCommand(he, _) => a ?! processEdgeEvents(EdgeAdded(he) :: Nil)
 
