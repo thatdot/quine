@@ -64,7 +64,6 @@ package object webapp {
         case "graph" | _ => NetworkLayout.Graph
       },
       queryMethod = if (useWs) QueryMethod.WebSocket else QueryMethod.Restful,
-      isQuineOSS = options.isQuineOSS,
     )
   }
 
@@ -88,7 +87,7 @@ package object webapp {
           StoplightElements(
             apiDescriptionUrl = options.documentationUrl,
             basePath = "/docs",
-            logo = options.baseURI + (if (options.isQuineOSS) "favicon.ico" else "thatdot-t.ico"),
+            logo = options.baseURI + "favicon.ico",
           ),
           options.baseURI,
         ),
@@ -99,7 +98,7 @@ package object webapp {
           StoplightElements(
             apiDescriptionUrl = options.documentationV2Url,
             basePath = "/v2docs",
-            logo = options.baseURI + (if (options.isQuineOSS) "favicon.ico" else "thatdot-t.ico"),
+            logo = options.baseURI + "favicon.ico",
           ),
           options.baseURI,
           hidden = true,
@@ -167,7 +166,5 @@ package webapp {
     /** call this when creating a `vis` network */
     val onNetworkCreate: js.UndefOr[js.Function1[vis.Network, js.Any]] = js.undefined
 
-    /** Boolean flagging which product is being launched */
-    val isQuineOSS: Boolean
   }
 }

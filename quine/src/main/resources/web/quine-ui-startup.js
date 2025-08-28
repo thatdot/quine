@@ -42,6 +42,5 @@ window.onload = function() {
         documentationV2Url: "api/v2/openapi.json",
         baseURI: derivedBaseURI,
         serverUrl: derivedBaseURI.replace(/\/$/, ""),
-        isQuineOSS: true,
     });
 };

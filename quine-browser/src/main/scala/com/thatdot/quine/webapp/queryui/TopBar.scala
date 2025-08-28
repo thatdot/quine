@@ -7,7 +7,7 @@ import slinky.core.annotations.react
 import slinky.web.html._
 
 import com.thatdot.quine.routes.SampleQuery
-import com.thatdot.quine.webapp.{QuineLogo, Styles, ThatDotLogo}
+import com.thatdot.quine.webapp.{QuineLogo, Styles}
 
 /** Blue bar at the top of the page which contains the logo, query input,
   * navigation buttons, and counters
@@ -26,7 +26,6 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles, ThatDotLogo}
     cancelButton: () => Unit,
     navButtons: HistoryNavigationButtons.Props,
     downloadSvg: () => Unit,
-    isQuineOSS: Boolean,
   )
 
   val component: FunctionalComponent[TopBar.Props] = FunctionalComponent[Props] { props =>
@@ -43,7 +42,7 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles, ThatDotLogo}
     div(className := Styles.navBar)(
       div(style := jsObj(flex = "0 1 auto", minWidth = "128px"))(
         img(
-          src := (if (props.isQuineOSS) QuineLogo.toString else ThatDotLogo.toString),
+          src := QuineLogo.toString,
           className := Styles.navBarLogo,
           onClick := (e => if (e.shiftKey) props.downloadSvg()),
         ),
