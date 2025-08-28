@@ -35,14 +35,14 @@ object ErrorType {
   case class CypherError(message: String) extends ErrorType
 }
 
-trait HasErrors {
+trait HasErrors extends Product with Serializable {
   def errors: List[ErrorType]
 }
 
 /** Provides the types of error codes that the api can give back to a user.
   *
-  *  Maps directly to http error codes( 400s to 500s)
-  *  They are combined with Coproduct from shapeless where used.  This should be updated to Union in scala 3
+  *  Maps directly to http error codes (400s to 500s)
+  *  They are combined with Coproduct from shapeless where used. This should be updated to Union in scala 3.
   */
 object ErrorResponse {
   case class ServerError(errors: List[ErrorType]) extends HasErrors
@@ -78,6 +78,11 @@ object ErrorResponse {
     def apply(error: ErrorType): NotFound = NotFound(List(error))
     def apply(error: BaseError): NotFound = NotFound(List(ErrorType.ApiError(error.getMessage)))
     def ofErrors(errors: List[BaseError]): NotFound = NotFound(errors.map(err => ErrorType.ApiError(err.getMessage)))
+  }
+
+  object Unauthorized {
+    def apply(reason: String): Unauthorized = Unauthorized(List(ErrorType.ApiError(reason)))
+    def apply(reason: ErrorType) = new Unauthorized(List(reason))
   }
 
   object ServiceUnavailable {
@@ -128,6 +133,16 @@ object ErrorResponseHelpers {
         .description(ErrorText.notFoundDescription(possibleReasons: _*))
     }
 
+  def unauthorizedError(possibleReasons: String*)(implicit
+    enc: Encoder[ErrorResponse.Unauthorized],
+    dec: Decoder[ErrorResponse.Unauthorized],
+    sch: Schema[ErrorResponse.Unauthorized],
+  ): EndpointOutput[ErrorResponse.Unauthorized] =
+    statusCode(StatusCode.Unauthorized).and {
+      jsonBody[ErrorResponse.Unauthorized]
+        .description(ErrorText.unauthorizedErrorDescription(possibleReasons: _*))
+    }
+
 }
 
 object ErrorText {
@@ -164,6 +179,15 @@ object ErrorText {
       |
       |""".stripMargin
 
+  private val unauthorizedDoc =
+    s"""Unauthorized
+       |
+       |Permission to access a protected resource not found
+       |
+       |%s
+       |
+       |""".stripMargin
+
   /** Manually generate a markdown bullet list from the list of message strings. */
   private def buildErrorMessage(docs: String, messages: Seq[String]): String =
     if (messages.isEmpty) docs.format("")
@@ -181,4 +205,7 @@ object ErrorText {
 
   def serverErrorDescription(messages: String*): String =
     buildErrorMessage(serverErrorDoc, messages)
+
+  def unauthorizedErrorDescription(messages: String*): String =
+    buildErrorMessage(unauthorizedDoc, messages)
 }

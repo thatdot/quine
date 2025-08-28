@@ -50,6 +50,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
 }
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 import com.thatdot.quine.app.{BaseApp, BuildInfo, SchemaCache}
+import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.exceptions.NamespaceNotFoundException
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{
@@ -290,7 +291,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     graph.requiredGraphIsReadyFuture {
       validateWorkflow(workflow) match {
         case Some(errors) =>
-          Future.successful(Left(asBadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}")))
+          Future.successful(Left(asBadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(", ")}")))
 
         case _ =>
           app
@@ -860,4 +861,5 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
         .map(_.toMap)(graph.shardDispatcherEC)
     }
 
+  def isReadOnly(queryText: String): Boolean = cypher.compile(queryText).isReadOnly
 }

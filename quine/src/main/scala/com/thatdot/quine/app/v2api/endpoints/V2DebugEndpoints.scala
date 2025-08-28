@@ -10,13 +10,13 @@ import sttp.tapir.Schema.annotations.{description, title}
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{Codec, DecodeResult, EndpointInput, path, query, statusCode}
+import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, path, query, statusCode}
 
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ErrorResponse.ServerError
 import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.serverError
-import com.thatdot.quine.app.v2api.definitions._
+import com.thatdot.quine.app.v2api.definitions.{SuccessEnvelope, _}
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 
 object V2DebugEndpointEntities {
@@ -75,23 +75,24 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
     Codec.string.mapDecode(fromString)(_.toString)
   }
 
-  val idPathElement: EndpointInput.PathCapture[QuineId] = path[QuineId]("id").description("Node ID.")
-  val propKeyParameter: EndpointInput.Query[String] =
+  private val idPathElement: EndpointInput.PathCapture[QuineId] = path[QuineId]("id").description("Node ID.")
+
+  private val propKeyParameter: EndpointInput.Query[String] =
     query[String]("key").description("Name of a property")
 
-  val edgeTypeOptParameter: EndpointInput.Query[Option[String]] =
+  private val edgeTypeOptParameter: EndpointInput.Query[Option[String]] =
     query[Option[String]]("type").description("Edge type")
 
-  val otherOptParameter: EndpointInput.Query[Option[QuineId]] =
+  private val otherOptParameter: EndpointInput.Query[Option[QuineId]] =
     query[Option[QuineId]]("other").description("Other edge endpoint")
 
-  val limitParameter: EndpointInput.Query[Option[Int]] =
+  private val limitParameter: EndpointInput.Query[Option[Int]] =
     query[Option[Int]]("limit").description("Maximum number of results to return.")
 
-  val fullEdgeParameter: EndpointInput.Query[Option[Boolean]] =
+  private val fullEdgeParameter: EndpointInput.Query[Option[Boolean]] =
     query[Option[Boolean]]("onlyFull").description("Only return full edges.")
 
-  val edgeDirOptParameter: EndpointInput.Query[Option[TEdgeDirection]] =
+  private val edgeDirOptParameter: EndpointInput.Query[Option[TEdgeDirection]] =
     query[Option[TEdgeDirection]]("direction").description("Edge direction. One of: Incoming, Outgoing, Undirected.")
 
   /*
@@ -101,63 +102,100 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
    // final val otherOpt: QueryString[Option[Id]] = qs[Option[Id]]("other", docs = Some("Other edge endpoint"))
    */
 
-  /** Generate an endpoint at `/api/v2/admin/$path` */
-  private def debugEndpoint = rawEndpoint("debug", "nodes")
+  /** Generate an endpoint at `/api/v2/debug/nodes` */
+  private def debugBase: EndpointBase = rawEndpoint("debug", "nodes")
     .tag("Debug Node Operations")
     .errorOut(serverError())
 
-  private val debugEndpointIntentionAddendum = "\n\n" +
+  private val debugEndpointIntentionAddendum: String = "\n\n" +
     """This endpoint's usage, including the structure of the values returned, are implementation-specific and
       |subject to change without warning. This endpoint is not intended for consumption by automated clients.
       |The information returned by this endpoint is formatted for human consumption and is intended to assist the
       |operator(s) of Quine in inspecting specific parts of the internal Quine graph state.""".asOneLine
 
-  private val debugOpsPropertyGetEndpoint =
-    debugEndpoint
-      .name("Get Property")
-      .description(
-        """Retrieve a single property from the node; note that values are represented as closely as possible to how they
+  protected[endpoints] val debugOpsPropertyGet: Endpoint[
+    Unit,
+    (QuineId, String, Option[AtTime], Option[String]),
+    ServerError,
+    SuccessEnvelope.Ok[Option[Json]],
+    Any,
+  ] = debugBase
+    .name("Get Property")
+    .description(
+      """Retrieve a single property from the node; note that values are represented as closely as possible to how they
           |would be emitted by
           |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post).""".asOneLine +
-        debugEndpointIntentionAddendum,
-      )
-      .in(idPathElement)
-      .in("props")
-      .in(propKeyParameter)
-      .in(atTimeParameter)
-      .in(namespaceParameter)
-      .get
-      .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[Option[Json]]])
-      .serverLogic[Future] { case (id, propKey, atime, ns) =>
-        recoverServerError(appMethods.debugOpsPropertyGet(id, propKey, atime, namespaceFromParam(ns)))(
-          (inp: Option[Json]) => SuccessEnvelope.Ok.apply(inp),
-        )
-      }
+      debugEndpointIntentionAddendum,
+    )
+    .in(idPathElement)
+    .in("props")
+    .in(propKeyParameter)
+    .in(atTimeParameter)
+    .in(namespaceParameter)
+    .get
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[Option[Json]]])
 
-  private val debugOpsGetEndpoint
-    : Full[Unit, Unit, (QuineId, Option[AtTime], Option[String]), ServerError, SuccessEnvelope.Ok[
-      TLiteralNode[
-        QuineId,
-      ],
-    ], Any, Future] =
-    debugEndpoint
-      .name("List Properties/Edges")
-      .description(s"Retrieve a node's list of properties and list of edges." + debugEndpointIntentionAddendum)
-      .in(idPathElement)
-      .in(atTimeParameter)
-      .in(namespaceParameter)
-      .get
-      .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[TLiteralNode[QuineId]]])
-      .serverLogic[Future] { case (id, atime, ns) =>
-        recoverServerError(appMethods.debugOpsGet(id, atime, namespaceFromParam(ns)))((inp: TLiteralNode[QuineId]) =>
-          SuccessEnvelope.Ok.apply(inp),
-        )
-      }
+  protected[endpoints] val debugOpsPropertyGetLogic: ((QuineId, String, Option[AtTime], Option[String])) => Future[
+    Either[ServerError, SuccessEnvelope.Ok[Option[Json]]],
+  ] = { case (id, propKey, atime, ns) =>
+    recoverServerError(appMethods.debugOpsPropertyGet(id, propKey, atime, namespaceFromParam(ns)))(
+      (inp: Option[Json]) => SuccessEnvelope.Ok.apply(inp),
+    )
+  }
+
+  private val debugOpsPropertyGetServerEndpoint: Full[
+    Unit,
+    Unit,
+    (QuineId, String, Option[AtTime], Option[String]),
+    ServerError,
+    SuccessEnvelope.Ok[Option[Json]],
+    Any,
+    Future,
+  ] = debugOpsPropertyGet.serverLogic[Future](debugOpsPropertyGetLogic)
+
+  protected[endpoints] val debugOpsGet: Endpoint[
+    Unit,
+    (QuineId, Option[AtTime], Option[String]),
+    ServerError,
+    SuccessEnvelope.Ok[TLiteralNode[QuineId]],
+    Any,
+  ] = debugBase
+    .name("List Properties/Edges")
+    .description(s"Retrieve a node's list of properties and list of edges." + debugEndpointIntentionAddendum)
+    .in(idPathElement)
+    .in(atTimeParameter)
+    .in(namespaceParameter)
+    .get
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[TLiteralNode[QuineId]]])
+
+  protected[endpoints] val debugOpsGetLogic: ((QuineId, Option[AtTime], Option[String])) => Future[
+    Either[ServerError, SuccessEnvelope.Ok[TLiteralNode[QuineId]]],
+  ] = { case (id, atime, ns) =>
+    recoverServerError(appMethods.debugOpsGet(id, atime, namespaceFromParam(ns)))(
+      SuccessEnvelope.Ok.apply(_: TLiteralNode[QuineId]),
+    )
+  }
+
+  private val debugOpsGetServerEndpoint: Full[
+    Unit,
+    Unit,
+    (QuineId, Option[AtTime], Option[String]),
+    ServerError,
+    SuccessEnvelope.Ok[TLiteralNode[QuineId]],
+    Any,
+    Future,
+  ] = debugOpsGet.serverLogic[Future](debugOpsGetLogic)
 
   //TODO temporarily outputs string
-  private val debugOpsVerboseEndpoint = debugEndpoint
+  protected[endpoints] val debugOpsVerbose: Endpoint[
+    Unit,
+    (QuineId, Option[AtTime], Option[String]),
+    ServerError,
+    SuccessEnvelope.Ok[String],
+    Any,
+  ] = debugBase
     .name("List Node State (Verbose)")
     .description(s"Returns information relating to the node's internal state." + debugEndpointIntentionAddendum)
     .in(idPathElement)
@@ -167,13 +205,40 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
     .get
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[String]])
-    .serverLogic[Future] { case (id, atime, ns) =>
-      recoverServerError(appMethods.debugOpsVerbose(id, atime, namespaceFromParam(ns)))((inp: String) =>
-        SuccessEnvelope.Ok.apply(inp),
-      )
-    }
-  private val debugOpsEdgesGetEndpoint =
-    debugEndpoint
+
+  protected[endpoints] val debugOpsVerboseLogic
+    : ((QuineId, Option[AtTime], Option[String])) => Future[Either[ServerError, SuccessEnvelope.Ok[String]]] = {
+    case (id, atime, ns) =>
+      recoverServerError(appMethods.debugOpsVerbose(id, atime, namespaceFromParam(ns)))(SuccessEnvelope.Ok(_))
+  }
+
+  private val debugOpsVerboseServerEndpoint: Full[
+    Unit,
+    Unit,
+    (QuineId, Option[AtTime], Option[String]),
+    ServerError,
+    SuccessEnvelope.Ok[String],
+    Any,
+    Future,
+  ] = debugOpsVerbose.serverLogic[Future](debugOpsVerboseLogic)
+
+  protected[endpoints] val debugOpsEdgesGet: Endpoint[
+    Unit,
+    (
+      QuineId,
+      Option[AtTime],
+      Option[Int],
+      Option[TEdgeDirection],
+      Option[QuineId],
+      Option[String],
+      Option[Boolean],
+      Option[String],
+    ),
+    ServerError,
+    SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]],
+    Any,
+  ] =
+    debugBase
       .name("List Edges")
       .description(s"Retrieve all node edges." + debugEndpointIntentionAddendum)
       .in(idPathElement)
@@ -188,20 +253,52 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
       .get
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]]])
-      .serverLogic[Future] { case (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, fullOnly, ns) =>
-        recoverServerError(
-          if (fullOnly.getOrElse(true))
-            appMethods.debugOpsEdgesGet(id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns))
-          else
-            appMethods.debugOpsHalfEdgesGet(id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
-        )((inp: Vector[TRestHalfEdge[QuineId]]) => SuccessEnvelope.Ok.apply(inp))
-      }
+
+  protected[endpoints] val debugOpsEdgesGetLogic: (
+    (
+      QuineId,
+      Option[AtTime],
+      Option[Int],
+      Option[TEdgeDirection],
+      Option[QuineId],
+      Option[String],
+      Option[Boolean],
+      Option[String],
+    ),
+  ) => Future[Either[ServerError, SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]]]] = {
+    case (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, fullOnly, ns) =>
+      recoverServerError(
+        if (fullOnly.getOrElse(true))
+          appMethods.debugOpsEdgesGet(id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns))
+        else
+          appMethods.debugOpsHalfEdgesGet(id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
+      )((inp: Vector[TRestHalfEdge[QuineId]]) => SuccessEnvelope.Ok.apply(inp))
+  }
+
+  private val debugOpsEdgesGetServerEndpoint: Full[
+    Unit,
+    Unit,
+    (
+      QuineId,
+      Option[AtTime],
+      Option[Int],
+      Option[TEdgeDirection],
+      Option[QuineId],
+      Option[String],
+      Option[Boolean],
+      Option[String],
+    ),
+    ServerError,
+    SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]],
+    Any,
+    Future,
+  ] = debugOpsEdgesGet.serverLogic[Future](debugOpsEdgesGetLogic)
 
   val debugEndpoints: List[ServerEndpoint[Any, Future]] = List(
-    debugOpsPropertyGetEndpoint,
-    debugOpsGetEndpoint,
-    debugOpsVerboseEndpoint,
-    debugOpsEdgesGetEndpoint,
+    debugOpsPropertyGetServerEndpoint,
+    debugOpsGetServerEndpoint,
+    debugOpsVerboseServerEndpoint,
+    debugOpsEdgesGetServerEndpoint,
   )
 
 }

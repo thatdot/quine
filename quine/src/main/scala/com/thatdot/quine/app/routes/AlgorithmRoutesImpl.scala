@@ -20,6 +20,7 @@ import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherException, Location}
 import com.thatdot.quine.graph.{AlgorithmGraph, NamespaceId}
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.AlgorithmRoutes
+
 trait AlgorithmMethods {
   def compileWalkQuery(queryOpt: Option[String]): CompiledQuery[Location.OnNode] = {
     val queryText = queryOpt.fold(AlgorithmGraph.defaults.walkQuery)(AlgorithmGraph.defaults.walkPrefix + _)
