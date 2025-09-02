@@ -4,9 +4,9 @@ import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
 import endpoints4s.generic.title
-import io.circe.Json
 import io.circe.generic.extras.auto._
 import io.circe.syntax.EncoderOps
+import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.Schema.annotations.description
@@ -53,6 +53,15 @@ object V2CypherEndpointEntities {
   case class TUiEdge(from: QuineId, edgeType: String, to: QuineId, isDirected: Boolean = true)
 }
 trait V2CypherEndpoints extends V2QuineEndpointDefinitions with StringOps {
+
+  // QuineId JSON serialization support for UI APIv2 handling
+  implicit val quineIdEncoder: Encoder[QuineId] = Encoder.encodeString.contramap(idProvider.qidToPrettyString)
+  implicit val quineIdDecoder: Decoder[QuineId] = Decoder.decodeString.emap { str =>
+    idProvider.qidFromPrettyString(str).toEither.left.map(_.getMessage)
+  }
+  implicit val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
+  implicit val tuiNodeSchema: Schema[TUiNode] = Schema.derived[TUiNode]
+  implicit val tuiEdgeSchema: Schema[TUiEdge] = Schema.derived[TUiEdge]
 
   implicit val cypherQuerySchema: Schema[TCypherQuery] = Schema
     .derived[TCypherQuery]

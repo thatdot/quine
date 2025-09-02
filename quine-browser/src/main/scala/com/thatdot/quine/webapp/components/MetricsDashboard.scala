@@ -19,6 +19,7 @@ import slinky.web.html._
 import com.thatdot.quine.routes.{ClientRoutes, Counter, MetricsReport, ShardInMemoryLimit}
 import com.thatdot.quine.webapp.SlinkyReadWriteInstances._
 import com.thatdot.quine.webapp.components.dashboard._
+import com.thatdot.quine.webapp.queryui.QueryMethod
 object MetricsDashboard {
   def extractShardIds(counters: Seq[Counter]): SortedSet[Int] = SortedSet(counters.collect {
     case Counter(ShardInfoCard.ShardCounterName(shardId, _, _), _) => shardId.toInt
@@ -26,7 +27,7 @@ object MetricsDashboard {
 }
 @react class MetricsDashboard extends Component {
 
-  case class Props(routes: ClientRoutes)
+  case class Props(routes: ClientRoutes, queryMethod: QueryMethod)
   case class State(
     refresh: Option[SetTimeoutHandle],
     errorMessage: Option[String],
@@ -52,8 +53,27 @@ object MetricsDashboard {
     state.refresh.foreach(handle => clearTimeout(handle))
 
   def pollMetrics(): SetTimeoutHandle = setTimeout(2.seconds) {
-    val metricsF = props.routes.metrics(()).future
-    val shardSizesF = props.routes.shardSizes(Map.empty).future
+    val (metricsF, shardSizesF) = props.queryMethod match {
+      case QueryMethod.RestfulV2 =>
+        val metricsF = props.routes.metricsV2(()).future.map {
+          case Right(Some(metrics)) => metrics
+          case Right(None) => MetricsReport.empty
+          case Left(_) => throw new RuntimeException("Failed to get metrics from V2 API")
+        }
+        val shardSizesF = props.routes.shardSizesV2(Map.empty).future.map {
+          case Right(Some(shardSizes)) => shardSizes
+          case Right(None) => Map.empty[Int, ShardInMemoryLimit]
+          case Left(_) => throw new RuntimeException("Failed to get shard sizes from V2 API")
+        }
+        (metricsF, shardSizesF)
+
+      case QueryMethod.Restful | QueryMethod.WebSocket =>
+        // Use V1 API endpoints
+        val metricsF = props.routes.metrics(()).future
+        val shardSizesF = props.routes.shardSizes(Map.empty).future
+        (metricsF, shardSizesF)
+    }
+
     metricsF.zip(shardSizesF).onComplete {
       case Failure(exception) =>
         val errorMsg = if (exception.getMessage.isEmpty) {

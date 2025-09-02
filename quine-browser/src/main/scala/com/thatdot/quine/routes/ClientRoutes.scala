@@ -7,15 +7,20 @@ import endpoints4s.xhr.EndpointsSettings
 import io.circe
 import org.scalajs.dom.{WebSocket, XMLHttpRequest, window}
 
+import com.thatdot.quine.v2api.routes.{V2MetricsRoutes, V2QueryUiConfigurationRoutes, V2QueryUiRoutes}
+
 /** Client for calling Quine's API server endpoints
   *
   * @param baseUrl host for REST API calls (useful for remote Quine server)
   */
 class ClientRoutes(baseUrl: js.UndefOr[String])
     extends QueryUiRoutes
+    with V2QueryUiRoutes
     with exts.ClientQuineEndpoints
     with QueryUiConfigurationRoutes
+    with V2QueryUiConfigurationRoutes
     with AdministrationRoutes
+    with V2MetricsRoutes
     with DebugOpsRoutes
     with AlgorithmRoutes
     with endpoints4s.circe.JsonSchemas

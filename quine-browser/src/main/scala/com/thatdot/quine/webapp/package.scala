@@ -47,7 +47,8 @@ package object webapp {
       override val nodes = nodeSet
       override val edges = edgeSet
     }
-    val useWs = options.queriesOverWs.getOrElse(true)
+
+    val queryMethod = QueryMethod.parseQueryMethod(options)
 
     QueryUi(
       routes = routes,
@@ -63,7 +64,7 @@ package object webapp {
         case "tree" => NetworkLayout.Tree
         case "graph" | _ => NetworkLayout.Graph
       },
-      queryMethod = if (useWs) QueryMethod.WebSocket else QueryMethod.Restful,
+      queryMethod = queryMethod,
     )
   }
 
@@ -75,6 +76,9 @@ package object webapp {
   @JSExportTopLevel("quineAppMount")
   def quineAppMount(target: dom.Element, options: QuineUiOptions): ReactInstance = {
     val clientRoutes = new ClientRoutes(options.serverUrl)
+
+    val queryMethod = QueryMethod.parseQueryMethod(options)
+
     val component = if (!options.isQueryBarVisible.getOrElse(true)) {
       makeQueryUi(options, clientRoutes)
     } else {
@@ -103,7 +107,13 @@ package object webapp {
           options.baseURI,
           hidden = true,
         ),
-        Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes), options.baseURI),
+        Tab(
+          DashboardIcon,
+          "System Dashboard",
+          "/dashboard",
+          MetricsDashboard(clientRoutes, queryMethod),
+          options.baseURI,
+        ),
         // Tab(ExplorerIcon, "Interactive Client - TS", "/client-ts", InteractiveClient(), options.baseURI)
       )
     }
@@ -150,6 +160,9 @@ package webapp {
 
     /** should we run queries over a WebSocket connection or with multiple REST API calls */
     val queriesOverWs: js.UndefOr[Boolean] = js.undefined
+
+    /** should we use API v2 REST endpoints instead of v1 when not using WebSocket */
+    val queriesOverV2Api: js.UndefOr[Boolean] = js.undefined
 
     /** should the layout be in tree form or graph? */
     val layout: js.UndefOr[String] = js.undefined

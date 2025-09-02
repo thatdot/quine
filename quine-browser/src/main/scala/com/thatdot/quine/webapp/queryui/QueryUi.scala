@@ -23,9 +23,9 @@ import com.thatdot.quine.Util.{escapeHtml, renderJsonResultValue}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
 import com.thatdot.quine.routes.exts.NamespaceParameter.defaultNamespaceParameter
-import com.thatdot.quine.webapp.History
 import com.thatdot.quine.webapp.SlinkyReadWriteInstances._
 import com.thatdot.quine.webapp.components._
+import com.thatdot.quine.webapp.{History, QueryUiOptions}
 import com.thatdot.{visnetwork => vis}
 
 /** Interactive Query UI */
@@ -213,23 +213,44 @@ import com.thatdot.{visnetwork => vis}
     if (props.queryMethod == QueryMethod.WebSocket) getWebSocketClient()
 
     // Populate node appearances, and only after that submit a possible initial query
-    props.routes
-      .queryUiAppearance(())
-      .future
-      .map(nas => setState(_.copy(uiNodeAppearances = nas)))
-      .onComplete(_ => if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node))
+    props.queryMethod match {
+      case QueryMethod.WebSocket | QueryMethod.Restful =>
+        props.routes
+          .queryUiAppearance(())
+          .future
+          .map(nas => setState(_.copy(uiNodeAppearances = nas)))
+          .onComplete(_ => if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node))
 
-    // Populate the sample queries
-    props.routes
-      .queryUiSampleQueries(())
-      .future
-      .foreach(sqs => setState(_.copy(sampleQueries = sqs)))
+        // Populate the sample queries
+        props.routes
+          .queryUiSampleQueries(())
+          .future
+          .foreach(sqs => setState(_.copy(sampleQueries = sqs)))
 
-    // Populate quick queries
-    props.routes
-      .queryUiQuickQueries(())
-      .future
-      .foreach(qqs => setState(_.copy(uiNodeQuickQueries = qqs)))
+        // Populate quick queries
+        props.routes
+          .queryUiQuickQueries(())
+          .future
+          .foreach(qqs => setState(_.copy(uiNodeQuickQueries = qqs)))
+      case QueryMethod.RestfulV2 =>
+        props.routes
+          .queryUiAppearanceV2(())
+          .future
+          .map(nas => setState(_.copy(uiNodeAppearances = nas)))
+          .onComplete(_ => if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node))
+
+        // Populate the sample queries
+        props.routes
+          .queryUiSampleQueriesV2(())
+          .future
+          .foreach(sqs => setState(_.copy(sampleQueries = sqs)))
+
+        // Populate quick queries
+        props.routes
+          .queryUiQuickQueriesV2(())
+          .future
+          .foreach(qqs => setState(_.copy(uiNodeQuickQueries = qqs)))
+    }
   }
 
   /** Convert a [[UiNode]] to a `vis` one
@@ -553,6 +574,14 @@ import com.thatdot.{visnetwork => vis}
             props.routes.cypherNodesPost((atTime, None, namespace, CypherQuery(query))).future
         }).map(Some(_))
 
+      case QueryMethod.RestfulV2 =>
+        mergeEndpointErrorsIntoFuture(language match {
+          case QueryLanguage.Gremlin =>
+            props.routes.gremlinNodesPost((atTime, None, namespace, GremlinQuery(query))).future
+          case QueryLanguage.Cypher =>
+            props.routes.cypherNodesPostV2((atTime, None, namespace, CypherQuery(query))).future
+        }).map(Some(_))
+
       case QueryMethod.WebSocket =>
         val nodeCallback = new QueryCallbacks.CollectNodesToFuture()
         // Note: Streaming query currently does not support namespaces
@@ -582,6 +611,14 @@ import com.thatdot.{visnetwork => vis}
             props.routes.gremlinEdgesPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
           case QueryLanguage.Cypher =>
             props.routes.cypherEdgesPost((atTime, None, namespace, CypherQuery(query, parameters))).future
+        }).map(Some(_))
+
+      case QueryMethod.RestfulV2 =>
+        mergeEndpointErrorsIntoFuture(language match {
+          case QueryLanguage.Gremlin =>
+            props.routes.gremlinEdgesPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
+          case QueryLanguage.Cypher =>
+            props.routes.cypherEdgesPostV2((atTime, None, namespace, CypherQuery(query, parameters))).future
         }).map(Some(_))
 
       case QueryMethod.WebSocket =>
@@ -618,6 +655,20 @@ import com.thatdot.{visnetwork => vis}
 
       case (QueryMethod.Restful, QueryLanguage.Cypher) =>
         val cypherResults = props.routes.cypherPost((atTime, None, namespace, CypherQuery(query, parameters))).future
+        mergeEndpointErrorsIntoFuture(cypherResults).map { results =>
+          updateResults(Right(results))
+          Some(())
+        }
+
+      case (QueryMethod.RestfulV2, QueryLanguage.Gremlin) =>
+        val gremlinResults = props.routes.gremlinPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
+        mergeEndpointErrorsIntoFuture(gremlinResults).map { results =>
+          updateResults(Left(results))
+          Some(())
+        }
+
+      case (QueryMethod.RestfulV2, QueryLanguage.Cypher) =>
+        val cypherResults = props.routes.cypherPostV2((atTime, None, namespace, CypherQuery(query, parameters))).future
         mergeEndpointErrorsIntoFuture(cypherResults).map { results =>
           updateResults(Right(results))
           Some(())
@@ -1394,6 +1445,9 @@ import com.thatdot.{visnetwork => vis}
 
       case QueryMethod.Restful =>
         window.alert("You cannot cancel queries when issuing queries throught the REST api")
+
+      case QueryMethod.RestfulV2 =>
+        window.alert("You cannot cancel queries when issuing queries throught the REST api")
     }
 
   def render(): ReactElement = {
@@ -1524,7 +1578,21 @@ object NetworkLayout {
 sealed abstract class QueryMethod
 object QueryMethod {
   case object Restful extends QueryMethod
+  case object RestfulV2 extends QueryMethod
   case object WebSocket extends QueryMethod
+
+  def parseQueryMethod(options: QueryUiOptions): QueryMethod = {
+    val useWs = options.queriesOverWs.getOrElse(false)
+    val useV2Api = options.queriesOverV2Api.getOrElse(true)
+
+    if (useV2Api) {
+      QueryMethod.RestfulV2
+    } else if (useWs) {
+      QueryMethod.WebSocket
+    } else {
+      QueryMethod.Restful
+    }
+  }
 }
 
 /** This is what we actually store in the `vis` mutable node set. We have

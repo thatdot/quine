@@ -34,6 +34,7 @@ window.onload = function() {
         isQueryBarVisible: urlParams.get("interactive") != "false",
         layout: urlParams.get("layout") || "graph",
         queriesOverWs: urlParams.get("wsQueries") != "false",
+        queriesOverV2Api: urlParams.get("v2Api") == "true",
         queryHistoricalTime: parseMillis(urlParams.get("atTime")),
         onNetworkCreate: function(n) {
             network = n;
