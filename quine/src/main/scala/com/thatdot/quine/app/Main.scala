@@ -267,7 +267,7 @@ object Main extends App with LazySafeLogging {
           binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)
           statusLines.info(log"Quine web server available at ${Safe(resolvableUrl.toString)}")
           if (config.api2Enabled) {
-            statusLines.info(log"Api v2 enabled")
+            statusLines.info(log"API V2 enabled")
           }
           quineApp.notifyWebServerStarted()
         case Failure(_) => // pekko will have logged a stacktrace to the debug logger
