@@ -9,9 +9,7 @@ import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.StringInput
 import com.thatdot.{api, outputs2}
 
-/** Conversions from API models in [[api.v2.outputs]]
-  * to internal models in [[outputs2]] and [[com.thatdot.quine.app.model.outputs2]].
-  */
+/** Conversions from API models in [[api.v2.outputs]] to internal models in [[outputs2]]. */
 object Api2ToOutputs2 {
 
   def apply(
@@ -24,32 +22,6 @@ object Api2ToOutputs2 {
         protobufSchemaCache
           .getMessageDescriptor(StringInput.filenameOrUrl(schemaUrl), typeName, flushOnFail = true)
           .map(desc => outputs2.OutputEncoder.Protobuf(schemaUrl, typeName, desc))
-    }
-
-  private def apply(
-    logLevel: api.v2.outputs.DestinationSteps.StandardOut.LogLevel,
-  ): outputs2.destination.StandardOut.LogLevel =
-    logLevel match {
-      case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Trace =>
-        outputs2.destination.StandardOut.LogLevel.Trace
-      case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Debug =>
-        outputs2.destination.StandardOut.LogLevel.Debug
-      case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Info =>
-        outputs2.destination.StandardOut.LogLevel.Info
-      case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Warn =>
-        outputs2.destination.StandardOut.LogLevel.Warn
-      case api.v2.outputs.DestinationSteps.StandardOut.LogLevel.Error =>
-        outputs2.destination.StandardOut.LogLevel.Error
-    }
-
-  private def apply(
-    logMode: api.v2.outputs.DestinationSteps.StandardOut.LogMode,
-  ): outputs2.destination.StandardOut.LogMode =
-    logMode match {
-      case api.v2.outputs.DestinationSteps.StandardOut.LogMode.Complete =>
-        outputs2.destination.StandardOut.LogMode.Complete
-      case api.v2.outputs.DestinationSteps.StandardOut.LogMode.FastSampling =>
-        outputs2.destination.StandardOut.LogMode.FastSampling
     }
 
   def apply(
@@ -71,6 +43,7 @@ object Api2ToOutputs2 {
       case api.v2.outputs.DestinationSteps.File(path) =>
         Future.successful(
           outputs2.FoldableDestinationSteps.WithByteEncoding(
+            // Update this when non-JSON outputs are supported for File
             formatAndEncode = outputs2.OutputEncoder.JSON(),
             destination = outputs2.destination.File(
               path = path,
@@ -142,14 +115,11 @@ object Api2ToOutputs2 {
             ),
           ),
         )
-      case api.v2.outputs.DestinationSteps.StandardOut(logLevel, logMode, format) =>
+      case api.v2.outputs.DestinationSteps.StandardOut(format) =>
         apply(format).map(enc =>
           outputs2.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
-            destination = outputs2.destination.StandardOut(
-              logLevel = apply(logLevel),
-              logMode = apply(logMode),
-            ),
+            destination = outputs2.destination.StandardOut,
           ),
         )
     }

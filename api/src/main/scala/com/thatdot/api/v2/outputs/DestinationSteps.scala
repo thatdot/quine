@@ -109,40 +109,11 @@ object DestinationSteps {
   ) extends DestinationSteps
       with Format
 
-  @title("Log JSON to Console")
-  @description("Prints each result as a single-line JSON object to stdout on the Quine server.")
+  @title("Log to Console")
+  @description("Prints each result as a single line to stdout on the Quine server.")
   final case class StandardOut(
-    @default(StandardOut.LogLevel.Info)
-    logLevel: StandardOut.LogLevel = StandardOut.LogLevel.Info,
-    @default(StandardOut.LogMode.Complete)
-    logMode: StandardOut.LogMode = StandardOut.LogMode.Complete,
-    format: OutputFormat, // May be removable, depending on QU-2305
+    format: OutputFormat,
   ) extends DestinationSteps
       with Format
 
-  // May be removable, depending on QU-2305
-  object StandardOut {
-
-    /** @see [[StandingQuerySchemas.logModeSchema]]
-      */
-    sealed abstract class LogMode
-
-    object LogMode {
-      case object Complete extends LogMode
-      case object FastSampling extends LogMode
-
-      val modes: Seq[LogMode] = Vector(Complete, FastSampling)
-    }
-
-    sealed abstract class LogLevel
-    object LogLevel {
-      case object Trace extends LogLevel
-      case object Debug extends LogLevel
-      case object Info extends LogLevel
-      case object Warn extends LogLevel
-      case object Error extends LogLevel
-
-      val levels: Seq[LogLevel] = Vector(Trace, Debug, Info, Warn, Error)
-    }
-  }
 }

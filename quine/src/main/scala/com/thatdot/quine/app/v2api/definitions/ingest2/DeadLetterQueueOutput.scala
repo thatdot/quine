@@ -44,9 +44,7 @@ object DeadLetterQueueOutput {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
   @title("POST to HTTP[S] Webhook")
-  @description(
-    "Makes an HTTP[S] POST for each result. For the format of the result, see \"Standing Query Result Output\".",
-  )
+  @description("Makes an HTTP[S] POST for each message.")
   final case class HttpEndpoint(
     url: String,
     @default(8)
@@ -74,10 +72,7 @@ object DeadLetterQueueOutput {
   ) extends DeadLetterQueueOutput
 
   @title("Publish to Kinesis Data Stream")
-  @description(
-    """Publishes a JSON record for each result to the provided Kinesis stream.
-      |For the format of the result record, see `StandingQueryResult`.""".asOneLine,
-  )
+  @description("Publishes each message to the provided Kinesis stream.")
   final case class Kinesis(
     credentials: Option[AwsCredentials],
     region: Option[AwsRegion],
@@ -105,7 +100,7 @@ object DeadLetterQueueOutput {
 
   @title("Publish to SNS Topic")
   @description(
-    """Publishes an AWS SNS record to the provided topic containing JSON for each result.
+    """Publishes an AWS SNS record to the provided topic for each message.
       |⚠️ <b><em>Double check your credentials and topic ARN!</em></b> If writing to SNS fails, the write will
       |be retried indefinitely. If the error is unfixable (e.g., the topic or credentials
       |cannot be found), the outputs will never be emitted and the Standing Query this output
@@ -119,79 +114,19 @@ object DeadLetterQueueOutput {
     outputFormat: OutputFormat,
   ) extends DeadLetterQueueOutput
 
-  @title("Log JSON to Console")
-  @description("Prints each result as a single-line JSON object to stdout on the Quine server.")
+  @title("Log to Console")
+  @description("Prints each message as a single line to stdout on the Quine server.")
   final case class StandardOut(
-    @default(StandardOut.LogLevel.Info)
-    logLevel: StandardOut.LogLevel = StandardOut.LogLevel.Info,
-    @default(StandardOut.LogMode.Complete)
-    logMode: StandardOut.LogMode = StandardOut.LogMode.Complete,
     outputFormat: OutputFormat,
   ) extends DeadLetterQueueOutput
 
-  object StandardOut {
-
-    /** @see [[StandingQuerySchemas.logModeSchema]]
-      */
-    sealed abstract class LogMode
-
-    object LogMode {
-      case object Complete extends LogMode
-
-      case object FastSampling extends LogMode
-
-      val modes: Seq[LogMode] = Vector(Complete, FastSampling)
-    }
-
-    sealed abstract class LogLevel
-
-    object LogLevel {
-      case object Trace extends LogLevel
-
-      case object Debug extends LogLevel
-
-      case object Info extends LogLevel
-
-      case object Warn extends LogLevel
-
-      case object Error extends LogLevel
-
-      val levels: Seq[LogLevel] = Vector(Trace, Debug, Info, Warn, Error)
-    }
-  }
+  object StandardOut {}
 
   private def formatMatchesOutput(outputFormat: OutputFormats): OutputFormat = outputFormat match {
     case OutputFormats.JSON => OutputFormat.JSON()
     case OutputFormats.Protobuf(schemaUrl, typeName) =>
       OutputFormat.Protobuf(schemaUrl, typeName)
   }
-
-  private def dlqLogLevelMatchesOutputs(
-    level: DestinationSteps.StandardOut.LogLevel,
-  ): DeadLetterQueueOutput.StandardOut.LogLevel =
-    level match {
-      case DestinationSteps.StandardOut.LogLevel.Trace =>
-        DeadLetterQueueOutput.StandardOut.LogLevel.Trace
-      case DestinationSteps.StandardOut.LogLevel.Debug =>
-        DeadLetterQueueOutput.StandardOut.LogLevel.Debug
-      case DestinationSteps.StandardOut.LogLevel.Info =>
-        DeadLetterQueueOutput.StandardOut.LogLevel.Info
-      case DestinationSteps.StandardOut.LogLevel.Warn =>
-        DeadLetterQueueOutput.StandardOut.LogLevel.Warn
-      case DestinationSteps.StandardOut.LogLevel.Error =>
-        DeadLetterQueueOutput.StandardOut.LogLevel.Error
-    }
-
-  /** Convert a DestinationSteps `LogMode` to its DLQ counterpart */
-  private def dlqLogModeMatchesOutputs(
-    mode: DestinationSteps.StandardOut.LogMode,
-  ): DeadLetterQueueOutput.StandardOut.LogMode =
-    mode match {
-      case DestinationSteps.StandardOut.LogMode.Complete =>
-        DeadLetterQueueOutput.StandardOut.LogMode.Complete
-      case DestinationSteps.StandardOut.LogMode.FastSampling =>
-        DeadLetterQueueOutput.StandardOut.LogMode.FastSampling
-    }
 
   /** The intention for this function is to throw warnings for any output format that is not supported
     * as a dead letter queue output.  Please consider whether that really should be the case and update the outputs
@@ -213,10 +148,8 @@ object DeadLetterQueueOutput {
     case DestinationSteps.ReactiveStream(address, port, format) =>
       DeadLetterQueueOutput.ReactiveStream(address, port, formatMatchesOutput(format))
 
-    case DestinationSteps.StandardOut(logLevel, logMode, format) =>
+    case DestinationSteps.StandardOut(format) =>
       DeadLetterQueueOutput.StandardOut(
-        dlqLogLevelMatchesOutputs(logLevel),
-        dlqLogModeMatchesOutputs(logMode),
         formatMatchesOutput(format),
       )
 

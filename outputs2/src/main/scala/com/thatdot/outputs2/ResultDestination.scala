@@ -21,10 +21,7 @@ object ResultDestination {
       def address: String
       def port: Int
     }
-    trait StandardOut extends Bytes {
-      def logLevel: destination.StandardOut.LogLevel
-      def logMode: destination.StandardOut.LogMode
-    }
+    trait StandardOut extends Bytes
     trait SNS extends Bytes {
       def credentials: Option[AwsCredentials]
       def region: Option[AwsRegion]

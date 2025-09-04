@@ -289,14 +289,11 @@ abstract class DecodedSource(val meter: IngestMeter) {
             topic = topic,
           )
         outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = bytesDestination)
-      case DeadLetterQueueOutput.StandardOut(_, _, outputFormat) =>
-        val bytesDestination = destination.StandardOut(
-          logLevel = destination.StandardOut.LogLevel.Info,
-          logMode = destination.StandardOut.LogMode.Complete,
-        )
+      case DeadLetterQueueOutput.StandardOut(outputFormat) =>
+        val bytesDestination = destination.StandardOut
         outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = bytesDestination)
-    }
 
+    }
 }
 
 object DecodedSource extends LazySafeLogging {
