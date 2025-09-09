@@ -11,7 +11,8 @@ import sttp.tapir.server.interceptor.decodefailure.{DecodeFailureHandler, Defaul
 import sttp.tapir.server.model.ValuedEndpointOutput
 import sttp.tapir.{DecodeResult, headers, statusCode}
 
-import com.thatdot.quine.app.v2api.definitions.ErrorType.{ApiError, DecodeError}
+import com.thatdot.api.v2.ErrorResponse
+import com.thatdot.api.v2.ErrorType.{ApiError, DecodeError}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 trait TapirDecodeErrorHandler extends V2IngestApiSchemas {

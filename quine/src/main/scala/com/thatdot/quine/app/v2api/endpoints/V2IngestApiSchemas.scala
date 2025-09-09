@@ -13,6 +13,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
+import com.thatdot.api.v2.configuration.V2ApiConfiguration
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 

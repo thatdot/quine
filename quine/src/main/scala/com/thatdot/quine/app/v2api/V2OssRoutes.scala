@@ -9,11 +9,11 @@ import sttp.tapir.{EndpointInput, query}
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.{
-  V2AdministrationEndpoints,
   V2AlgorithmEndpoints,
   V2CypherEndpoints,
   V2DebugEndpoints,
   V2IngestEndpoints,
+  V2QuineAdministrationEndpoints,
   V2StandingEndpoints,
   V2UiStylingEndpoints,
 }
@@ -23,7 +23,7 @@ import com.thatdot.quine.app.v2api.endpoints.{
 class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfig: LogConfig)
     extends TapirRoutes
     with V2UiStylingEndpoints
-    with V2AdministrationEndpoints
+    with V2QuineAdministrationEndpoints
     with V2StandingEndpoints
     with V2CypherEndpoints
     with V2AlgorithmEndpoints

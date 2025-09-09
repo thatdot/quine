@@ -9,6 +9,8 @@ import sttp.client3.testing.SttpBackendStub
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.server.stub.TapirStubInterpreter
 
+import com.thatdot.api.v2.SuccessEnvelope
+
 /** Support for providing Endpoint stubs for testing. */
 trait V2ApiSpec {
 

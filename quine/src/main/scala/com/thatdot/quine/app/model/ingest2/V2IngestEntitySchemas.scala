@@ -18,10 +18,10 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
+import com.thatdot.api.v2.configuration.V2ApiConfiguration
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.CsvFormat
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.StreamingFormat.ProtobufFormat
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
-import com.thatdot.quine.app.v2api.endpoints.V2ApiConfiguration
 import com.thatdot.quine.routes.AwsCredentials
 import com.thatdot.quine.routes.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.serialization.EncoderDecoder

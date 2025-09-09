@@ -79,6 +79,7 @@ object Dependencies {
   val tapirV = "1.11.33"
   val ujsonCirceV = "3.3.1"
   val circeV = "0.14.12"
+  val circeGenericExtrasV = "0.14.4"
   val circeOpticsV = "0.15.0"
   val visNetworkV = "8.2.0"
   val webjarsLocatorV = "0.52"

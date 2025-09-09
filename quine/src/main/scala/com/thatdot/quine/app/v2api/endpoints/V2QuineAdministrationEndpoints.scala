@@ -13,10 +13,12 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Endpoint, Schema, emptyOutputAs, path, statusCode}
 
+import com.thatdot.api.v2.ErrorResponse.{ServerError, ServiceUnavailable}
+import com.thatdot.api.v2.ErrorResponseHelpers.serverError
+import com.thatdot.api.v2.SuccessEnvelope
+import com.thatdot.api.v2.configuration.V2ApiConfiguration
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{ServerError, ServiceUnavailable}
-import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.serverError
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities._
 import com.thatdot.quine.routes._
@@ -131,7 +133,7 @@ object V2AdministrationEndpointEntities {
 
 }
 
-trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration with StringOps {
+trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration with StringOps {
 
   implicit lazy val graphHashCodeSchema: Schema[TGraphHashCode] =
     Schema.derived[TGraphHashCode].description("Graph Hash Code").encodedExample(TGraphHashCode(1000L, 12345L).asJson)
@@ -188,7 +190,7 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiCon
   protected[endpoints] val configLogic: Unit => Future[Either[ServerError, SuccessEnvelope.Ok[Json]]] = _ =>
     recoverServerError(Future.successful(appMethods.config.loadedConfigJson))((inp: Json) => SuccessEnvelope.Ok(inp))
 
-  val configServerEndpoint: Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[Json], Any, Future] =
+  private val configServerEndpoint: Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[Json], Any, Future] =
     configE.serverLogic[Future](configLogic)
 
   protected[endpoints] val graphHashCode
@@ -242,7 +244,7 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiCon
   protected[endpoints] val livenessLogic: Unit => Future[Either[ServerError, SuccessEnvelope.NoContent.type]] = _ =>
     recoverServerError(Future.successful(()))(_ => SuccessEnvelope.NoContent)
 
-  val livenessServerEndpoint: Full[
+  private val livenessServerEndpoint: Full[
     Unit,
     Unit,
     Unit,
@@ -292,7 +294,7 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiCon
           ),
       )(identity)
 
-  val readinessServerEndpoint: Full[
+  private val readinessServerEndpoint: Full[
     Unit,
     Unit,
     Unit,
@@ -307,7 +309,7 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiCon
       .name("Graceful Shutdown")
       .description(
         """Initiate a graceful graph shutdown. Final shutdown may take a little longer.
-          |`200` indicates a shutdown has been successfully initiated.""".asOneLine,
+          |`202` indicates a shutdown has been successfully initiated.""".asOneLine,
       )
       .post
       .out(statusCode(StatusCode.Accepted).description("Shutdown initiated"))
@@ -404,12 +406,10 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiCon
       recoverServerError(
         appMethods
           .shardSizes(resizes.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
-          .map(f => f.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(
-            ExecutionContext.parasitic,
-          ),
+          .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
       )((inp: Map[Int, TShardInMemoryLimit]) => SuccessEnvelope.Ok(inp))
 
-  val shardSizesServerEndpoint: Full[
+  private val shardSizesServerEndpoint: Full[
     Unit,
     Unit,
     Map[Int, TShardInMemoryLimit],

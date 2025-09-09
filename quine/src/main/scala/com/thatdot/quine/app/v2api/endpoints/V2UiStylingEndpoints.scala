@@ -9,10 +9,11 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Endpoint, emptyOutputAs, statusCode}
 
+import com.thatdot.api.v2.ErrorResponseHelpers.serverError
+import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope}
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
-import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.serverError
-import com.thatdot.quine.app.v2api.definitions.{ErrorResponse, SuccessEnvelope, V2QuineEndpointDefinitions}
+import com.thatdot.quine.app.v2api.definitions.V2QuineEndpointDefinitions
 
 trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
 

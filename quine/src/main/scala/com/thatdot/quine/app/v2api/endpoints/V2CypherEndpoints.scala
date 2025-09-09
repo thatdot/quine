@@ -15,9 +15,10 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, Endpoint, Schema, oneOfBody, statusCode}
 
+import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
+import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, serverError}
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TCypherQuery,

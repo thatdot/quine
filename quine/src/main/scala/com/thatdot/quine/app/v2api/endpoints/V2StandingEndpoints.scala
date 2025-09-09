@@ -9,14 +9,15 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Endpoint, EndpointInput, emptyOutputAs, path, query, statusCode}
 
+import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
+import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
+import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope}
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, NotFound, ServerError}
-import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
+import com.thatdot.quine.app.v2api.definitions.V2QuineEndpointDefinitions
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode.MultipleValues
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultWorkflow
-import com.thatdot.quine.app.v2api.definitions.{ErrorResponse, SuccessEnvelope, V2QuineEndpointDefinitions}
 
 trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiSchemas with StringOps {
 

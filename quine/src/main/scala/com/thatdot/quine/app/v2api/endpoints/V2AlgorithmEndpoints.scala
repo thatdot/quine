@@ -18,10 +18,12 @@ import sttp.tapir.generic.auto.schemaForCaseClass
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 
+import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
+import com.thatdot.api.v2.configuration.V2ApiConfiguration
+import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, serverError}
-import com.thatdot.quine.app.v2api.definitions.{ErrorResponse, SuccessEnvelope, V2QuineEndpointDefinitions}
+import com.thatdot.quine.app.v2api.definitions.V2QuineEndpointDefinitions
 
 object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
   /* WARNING: these values duplicate `AlgorithmGraph.defaults.walkPrefix` and `walkSuffix` from the

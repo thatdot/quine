@@ -7,6 +7,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.generic.auto._
 
+import com.thatdot.api.v2.configuration.V2ApiConfiguration
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.{DestinationSteps, OutputFormat}
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps

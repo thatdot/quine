@@ -219,10 +219,16 @@ lazy val `data`: Project = project
 
 lazy val `api`: Project = project
   .settings(commonSettings)
-  .dependsOn()
+  .dependsOn(
+    `quine-serialization`,
+  )
   .settings(
     libraryDependencies ++= Seq(
       "com.softwaremill.sttp.tapir" %% "tapir-core" % tapirV,
+      "com.softwaremill.sttp.tapir" %% "tapir-json-circe" % tapirV,
+      "io.circe" %% "circe-core" % circeV,
+      "io.circe" %% "circe-generic-extras" % circeGenericExtrasV,
+      "io.circe" %% "circe-yaml" % circeYamlV,
     ),
   )
 
@@ -365,7 +371,7 @@ lazy val `quine`: Project = project
       "com.softwaremill.sttp.client3" %% "circe" % "3.10.3" % Test,
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.1",
-      "io.circe" %% "circe-generic-extras" % "0.14.4",
+      "io.circe" %% "circe-generic-extras" % circeGenericExtrasV,
       "io.circe" %% "circe-yaml-v12" % "0.16.0",
       "io.circe" %% "circe-core" % circeV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,

@@ -19,6 +19,9 @@ import cats.implicits.toFunctorOps
 import io.circe.Json
 import shapeless.{:+:, CNil, Coproduct}
 
+import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
+import com.thatdot.api.v2.ErrorResponseHelpers.toServerError
+import com.thatdot.api.v2.ErrorType
 import com.thatdot.api.v2.outputs.DestinationSteps
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
@@ -32,8 +35,6 @@ import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters._
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
-import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, NotFound, ServerError}
-import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.toServerError
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.query.standing.QuineSupportedDestinationSteps.{
   CoreDestinationSteps,

@@ -10,12 +10,13 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Endpoint, EndpointInput, path, statusCode}
 
+import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
+import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
+import com.thatdot.api.v2.SuccessEnvelope
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.ErrorResponse.{BadRequest, NotFound, ServerError}
-import com.thatdot.quine.app.v2api.definitions.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
+import com.thatdot.quine.app.v2api.definitions.V2QuineEndpointDefinitions
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.Oss
-import com.thatdot.quine.app.v2api.definitions.{SuccessEnvelope, V2QuineEndpointDefinitions}
 
 trait V2IngestEndpoints extends V2QuineEndpointDefinitions with StringOps {
 
@@ -35,7 +36,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with StringOps {
       .tag("Ingest Streams")
       .description("Sources of streaming data ingested into the graph interpreter.")
 
-  private val ingestBase: Endpoint[Unit, Unit, ServerError, Unit, Any] = rawIngest.errorOut(serverError())
+  private val ingestBase: EndpointBase = rawIngest.errorOut(serverError())
 
   private val ingestExample = ApiIngest.Oss.QuineIngestConfiguration(
     ApiIngest.IngestSource.NumberIterator(0, None),

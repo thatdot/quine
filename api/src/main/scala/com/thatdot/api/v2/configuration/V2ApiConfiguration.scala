@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.v2api.endpoints
+package com.thatdot.api.v2.configuration
 
 import io.circe.generic.extras.{Configuration => CirceConfig}
 import io.circe.{Decoder, Encoder, Json, Printer}

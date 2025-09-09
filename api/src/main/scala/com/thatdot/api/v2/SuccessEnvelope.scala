@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.v2api.definitions
+package com.thatdot.api.v2
 
 sealed trait SuccessEnvelope[+Content]
 sealed trait CreatedOrNoContent[+Content] extends SuccessEnvelope[Content]

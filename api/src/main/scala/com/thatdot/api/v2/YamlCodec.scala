@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.v2api.definitions
+package com.thatdot.api.v2
 
 import io.circe._
 import io.circe.syntax._
@@ -19,11 +19,11 @@ object YamlCodec {
     new Codec[String, T, YamlCodecFormat] {
       override def rawDecode(s: String): DecodeResult[T] =
         yaml.parser.parse(s).flatMap(_.as[T]) match {
-          case Left(fail: io.circe.Error) => DecodeResult.Error(s, fail)
+          case Left(fail: Error) => DecodeResult.Error(s, fail)
           case Right(t) => DecodeResult.Value[T](t)
         }
 
-      override def encode(h: T): String = io.circe.yaml.Printer(dropNullKeys = true).pretty(h.asJson)
+      override def encode(h: T): String = yaml.Printer(dropNullKeys = true).pretty(h.asJson)
       override def schema: Schema[T] = tSchema
       override def format = YamlCodecFormat()
     }
