@@ -115,10 +115,11 @@ object Api2ToOutputs2 {
             ),
           ),
         )
-      case api.v2.outputs.DestinationSteps.StandardOut(format) =>
-        apply(format).map(enc =>
+      case api.v2.outputs.DestinationSteps.StandardOut =>
+        Future.successful(
           outputs2.FoldableDestinationSteps.WithByteEncoding(
-            formatAndEncode = enc,
+            // Update this when non-JSON outputs are supported for StandardOut
+            formatAndEncode = outputs2.OutputEncoder.JSON(),
             destination = outputs2.destination.StandardOut,
           ),
         )

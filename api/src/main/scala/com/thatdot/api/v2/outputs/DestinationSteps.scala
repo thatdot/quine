@@ -109,11 +109,8 @@ object DestinationSteps {
   ) extends DestinationSteps
       with Format
 
-  @title("Log to Console")
-  @description("Prints each result as a single line to stdout on the Quine server.")
-  final case class StandardOut(
-    format: OutputFormat,
-  ) extends DestinationSteps
-      with Format
+  @title("Log JSON to Console")
+  @description("Prints each result as a single-line JSON object to stdout on the Quine server.")
+  final case object StandardOut extends DestinationSteps
 
 }

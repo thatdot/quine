@@ -289,9 +289,9 @@ abstract class DecodedSource(val meter: IngestMeter) {
             topic = topic,
           )
         outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = bytesDestination)
-      case DeadLetterQueueOutput.StandardOut(outputFormat) =>
-        val bytesDestination = destination.StandardOut
-        outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = bytesDestination)
+      case DeadLetterQueueOutput.StandardOut =>
+        // Update this when non-JSON outputs are supported for StandardOut (or to support including the info envelope)
+        (WithByteEncoding(JSON(), destination.StandardOut), false)
 
     }
 }

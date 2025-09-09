@@ -114,13 +114,9 @@ object DeadLetterQueueOutput {
     outputFormat: OutputFormat,
   ) extends DeadLetterQueueOutput
 
-  @title("Log to Console")
-  @description("Prints each message as a single line to stdout on the Quine server.")
-  final case class StandardOut(
-    outputFormat: OutputFormat,
-  ) extends DeadLetterQueueOutput
-
-  object StandardOut {}
+  @title("Log JSON to Console")
+  @description("Prints each message as a single-line JSON object to stdout on the Quine server.")
+  final case object StandardOut extends DeadLetterQueueOutput
 
   private def formatMatchesOutput(outputFormat: OutputFormats): OutputFormat = outputFormat match {
     case OutputFormats.JSON => OutputFormat.JSON()
@@ -148,10 +144,8 @@ object DeadLetterQueueOutput {
     case DestinationSteps.ReactiveStream(address, port, format) =>
       DeadLetterQueueOutput.ReactiveStream(address, port, formatMatchesOutput(format))
 
-    case DestinationSteps.StandardOut(format) =>
-      DeadLetterQueueOutput.StandardOut(
-        formatMatchesOutput(format),
-      )
+    case DestinationSteps.StandardOut =>
+      DeadLetterQueueOutput.StandardOut
 
     // ──────────────── mappings with reordered params ────────────────
     case DestinationSteps.Kafka(topic, bootstrapServers, format, kafkaProperties) =>

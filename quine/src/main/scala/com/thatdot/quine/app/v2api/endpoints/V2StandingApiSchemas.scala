@@ -8,8 +8,8 @@ import sttp.tapir.Schema
 import sttp.tapir.generic.auto._
 
 import com.thatdot.api.v2.configuration.V2ApiConfiguration
+import com.thatdot.api.v2.outputs.DestinationSteps
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
-import com.thatdot.api.v2.outputs.{DestinationSteps, OutputFormat}
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.Predicate.OnlyPositiveMatch
 import com.thatdot.quine.app.v2api.definitions.query.standing.QuineSupportedDestinationSteps.CoreDestinationSteps
@@ -37,7 +37,7 @@ trait V2StandingApiSchemas extends V2ApiConfiguration {
     filter = Some(OnlyPositiveMatch),
     preEnrichmentTransform = Some(InlineData),
     resultEnrichment = Some(QuineDestinationSteps.CypherQuery(QuineDestinationSteps.CypherQuery.exampleQuery)),
-    destinations = NonEmptyList.one(CoreDestinationSteps(DestinationSteps.StandardOut(format = OutputFormat.JSON))),
+    destinations = NonEmptyList.one(CoreDestinationSteps(DestinationSteps.StandardOut)),
   )
   val exampleStandingQueryResultWorkflowMap: Map[String, StandingQueryResultWorkflow] = Map(
     "stdout" -> exampleStandingQueryResultWorkflowToStandardOut,
