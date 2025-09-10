@@ -31,7 +31,7 @@ lazy val `quine-core`: Project = project
       "org.msgpack" % "msgpack-core" % msgPackV,
       "org.apache.commons" % "commons-text" % commonsTextV,
       "com.github.blemale" %% "scaffeine" % scaffeineV,
-      "io.github.hakky54" % "sslcontext-kickstart" % sslContextKickstartV,
+      "io.github.hakky54" % "ayza" % ayzaV,
       "org.typelevel" %% "cats-core" % catsV,
       "org.typelevel" %% "cats-effect" % catsEffectV,
       "com.thatdot" %% "query-language" % quineQueryV,
