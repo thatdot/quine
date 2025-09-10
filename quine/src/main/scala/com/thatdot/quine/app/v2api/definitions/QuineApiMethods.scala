@@ -768,5 +768,5 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
         )(ExecutionContext.parasitic)
     }
 
-  def isReadOnly(queryText: String): Boolean = cypher.compile(queryText).isReadOnly
+  def isReadOnly(queryText: String, parameters: Seq[String]): Boolean = cypher.compile(queryText, parameters).isReadOnly
 }
