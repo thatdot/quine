@@ -5,6 +5,8 @@ import java.nio.charset.StandardCharsets.UTF_8
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Try}
 
+import org.apache.pekko.stream.Materializer
+
 import cats.data.Validated.invalidNel
 import cats.data.ValidatedNel
 import endpoints4s.{Invalid, Valid, Validated}
@@ -24,6 +26,9 @@ import com.thatdot.quine.util.BaseError
   * @param graph reference to the underlying graph
   */
 abstract class BaseApp(graph: BaseGraph) {
+
+  val defaultExecutionContext: ExecutionContext = graph.nodeDispatcherEC
+  implicit val materializer: Materializer = graph.materializer
 
   /** Store a key-value pair that is relevant only for one particular app instance (i.e. "local")
     *

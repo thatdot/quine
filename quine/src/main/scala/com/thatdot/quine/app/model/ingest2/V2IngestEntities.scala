@@ -14,9 +14,62 @@ import com.thatdot.quine.{routes => V1}
 
 object V2IngestEntities {
 
+  /** Ingest definition and status representation used for persistence */
   final case class QuineIngestStreamWithStatus(
     config: QuineIngestConfiguration,
     status: Option[V1.IngestStreamStatus],
+  )
+
+  case class IngestStreamInfo(
+    status: IngestStreamStatus,
+    message: Option[String],
+    settings: IngestSource,
+    stats: IngestStreamStats,
+  ) {
+    def withName(name: String): IngestStreamInfoWithName =
+      IngestStreamInfoWithName(name, status, message, settings, stats)
+  }
+
+  case class IngestStreamInfoWithName(
+    name: String,
+    status: IngestStreamStatus,
+    message: Option[String],
+    settings: IngestSource,
+    stats: IngestStreamStats,
+  )
+
+  sealed trait IngestStreamStatus
+
+  object IngestStreamStatus {
+    case object Running extends IngestStreamStatus
+    case object Paused extends IngestStreamStatus
+    case object Restored extends IngestStreamStatus
+    case object Completed extends IngestStreamStatus
+    case object Terminated extends IngestStreamStatus
+    case object Failed extends IngestStreamStatus
+  }
+
+  sealed trait ValvePosition
+
+  object ValvePosition {
+    case object Open extends ValvePosition
+    case object Closed extends ValvePosition
+  }
+
+  case class IngestStreamStats(
+    ingestedCount: Long,
+    rates: RatesSummary,
+    byteRates: RatesSummary,
+    startTime: Instant,
+    totalRuntime: Long,
+  )
+
+  case class RatesSummary(
+    count: Long,
+    oneMinute: Double,
+    fiveMinute: Double,
+    fifteenMinute: Double,
+    overall: Double,
   )
 
   /** Ingest supports charset specification. */
@@ -32,19 +85,19 @@ object V2IngestEntities {
 
   /** Ingest supports decompression (e.g. Base64, gzip, zip) */
   trait IngestDecompressionSupport {
-    val recordDecoders: Seq[V1.RecordDecodingType]
+    def recordDecoders: Seq[V1.RecordDecodingType]
   }
 
   @title("Ingest source")
   sealed trait IngestSource {
-    val format: IngestFormat
+    def format: IngestFormat
   }
 
   sealed trait FileIngestSource extends IngestSource {
-    val format: FileFormat
+    def format: FileFormat
   }
   sealed trait StreamingIngestSource extends IngestSource {
-    val format: StreamingFormat
+    def format: StreamingFormat
   }
 
   @title("File Ingest")

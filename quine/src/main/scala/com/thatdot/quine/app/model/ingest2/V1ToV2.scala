@@ -194,4 +194,28 @@ object V1ToV2 {
       V2.InitialPosition.AtTimestamp(year, month, day, hour, minute, second)
   }
 
+  def apply(stats: V1.IngestStreamStats): V2.IngestStreamStats = V2.IngestStreamStats(
+    ingestedCount = stats.ingestedCount,
+    rates = apply(stats.rates),
+    byteRates = apply(stats.byteRates),
+    startTime = stats.startTime,
+    totalRuntime = stats.totalRuntime,
+  )
+
+  def apply(summary: V1.RatesSummary): V2.RatesSummary = V2.RatesSummary(
+    count = summary.count,
+    oneMinute = summary.oneMinute,
+    fiveMinute = summary.fiveMinute,
+    fifteenMinute = summary.fifteenMinute,
+    overall = summary.overall,
+  )
+
+  def apply(status: V1.IngestStreamStatus): V2.IngestStreamStatus = status match {
+    case V1.IngestStreamStatus.Running => V2.IngestStreamStatus.Running
+    case V1.IngestStreamStatus.Paused => V2.IngestStreamStatus.Paused
+    case V1.IngestStreamStatus.Restored => V2.IngestStreamStatus.Restored
+    case V1.IngestStreamStatus.Completed => V2.IngestStreamStatus.Completed
+    case V1.IngestStreamStatus.Terminated => V2.IngestStreamStatus.Terminated
+    case V1.IngestStreamStatus.Failed => V2.IngestStreamStatus.Failed
+  }
 }

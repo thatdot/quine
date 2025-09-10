@@ -9,7 +9,6 @@ import scala.jdk.CollectionConverters.CollectionHasAsScala
 import scala.util.control.NonFatal
 import scala.util.{Either, Failure, Success, Try}
 
-import org.apache.pekko.Done
 import org.apache.pekko.stream.scaladsl.Sink
 import org.apache.pekko.stream.{Materializer, StreamDetachedException}
 import org.apache.pekko.util.Timeout
@@ -28,11 +27,9 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorString
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.app.model.ingest2.source.QuineValueIngestQuery
 import com.thatdot.quine.app.routes._
-import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters._
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
@@ -61,13 +58,13 @@ import com.thatdot.quine.graph.{
   InMemoryNodeLimit,
   InvalidQueryPattern,
   LiteralOpsGraph,
+  MemberIdx,
   NamespaceId,
   StandingQueryOpsGraph,
   namespaceToString,
 }
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, QuineValue}
 import com.thatdot.quine.persistor.PersistenceAgent
-import com.thatdot.quine.util.SwitchMode
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model, routes => V1}
 
 sealed trait ProductVersion
@@ -129,7 +126,8 @@ trait ApplicationApiMethods {
       Future.successful(m.view.mapValues(new String(_)).toMap)
     }
 
-  def metrics: V1.MetricsReport = GenerateMetrics.metricsReport(graph)
+  def metrics(memberIdx: Option[MemberIdx]): Future[V1.MetricsReport] =
+    Future.successful(GenerateMetrics.metricsReport(graph))
 
   def shardSizes(resizes: Map[Int, V1.ShardInMemoryLimit]): Future[Map[Int, V1.ShardInMemoryLimit]] =
     graph
@@ -161,47 +159,6 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     with SchemaCache
 
   def thisMemberIdx: Int
-
-  // duplicated from, com.thatdot.quine.app.routes.IngestApiMethods
-  private def stream2Info(
-    conf: IngestStreamWithControl[V2IngestEntities.IngestSource],
-  ): Future[ApiIngest.IngestStreamInfo] =
-    conf.status.map { status =>
-      ApiIngest.IngestStreamInfo(
-        IngestToApi(status),
-        conf.terminated().value collect { case Failure(exception) => exception.toString },
-        IngestToApi(conf.settings),
-        IngestToApi(conf.metrics.toEndpointResponse),
-      )
-    }(graph.shardDispatcherEC)
-
-  private def setIngestStreamPauseState(
-    name: String,
-    namespace: NamespaceId,
-    newState: SwitchMode,
-  )(implicit logConfig: LogConfig): Future[Option[ApiIngest.IngestStreamInfoWithName]] =
-    app.getIngestStreamFromState(name, namespace) match {
-      case None => Future.successful(None)
-      case Some(ingest: IngestStreamWithControl[UnifiedIngestConfiguration]) =>
-        ingest.initialStatus match {
-          case V1.IngestStreamStatus.Completed =>
-            Future.failed(IngestApiEntities.PauseOperationException.Completed)
-          case V1.IngestStreamStatus.Terminated =>
-            Future.failed(IngestApiEntities.PauseOperationException.Terminated)
-          case V1.IngestStreamStatus.Failed =>
-            Future.failed(IngestApiEntities.PauseOperationException.Failed)
-          case _ =>
-            val flippedValve = ingest.valve().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
-            val ingestStatus = flippedValve.flatMap { _ =>
-              // HACK: set the ingest's "initial status" to "Paused". `stream2Info` will use this as the stream status
-              // when the valve is closed but the stream is not terminated. However, this assignment is not threadsafe,
-              // and this directly violates the semantics of `initialStatus`. This should be fixed in a future refactor.
-              ingest.initialStatus = V1.IngestStreamStatus.Paused
-              stream2Info(ingest.copy(settings = V2IngestEntities.IngestSource(ingest.settings)))
-            }(graph.nodeDispatcherEC)
-            ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)
-        }
-    }
 
   private def mkPauseOperationError(
     operation: String,
@@ -702,164 +659,113 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
 
   // --------------------- Ingest Endpoints ------------------------
 
-  private type ErrC = ServerError :+: BadRequest :+: CNil
-  private type Warnings = Set[String]
+  protected type ErrC = ServerError :+: BadRequest :+: CNil
+  protected type Warnings = Set[String]
 
-  /** Wraps Create ingest in logic to check in ingest stream already exists and return stream info */
-  def handleCreateIngest[Conf](
+  def createIngestStream[Conf](
     ingestStreamName: String,
     ns: NamespaceId,
     ingestStreamConfig: Conf,
+    memberIdx: Option[Int],
   )(implicit
     ec: ExecutionContext,
     configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf],
   ): Future[Either[ErrC, (ApiIngest.IngestStreamInfoWithName, Warnings)]] = {
 
-    def asBadRequest(msg: String): ErrC = Coproduct[ErrC](BadRequest(msg))
     def asServerError(msg: String): ErrC = Coproduct[ErrC](ServerError(msg))
 
-    for {
-      existingIngests <- listIngestStreams(ns)
-
-      // Create the stream
-      eitherCreated = {
-        if (existingIngests.contains(ingestStreamName))
-          Left(asBadRequest(s"Ingest Stream, $ingestStreamName, already exists"))
-        else
-          createIngestStream(ingestStreamName, ingestStreamConfig, ns).left
-            .map(e => Coproduct[ErrC](e))
-      }
-
-      // Current stream info
-      optStream <- ingestStreamStatus(ingestStreamName, ns)
-
-      // Collect stream info and warnings.  Fail if stream cannot be found at this point.
-      result = eitherCreated.flatMap(warnings =>
-        optStream match {
-          case Some(stream) =>
-            Right((stream, warnings)): Either[ErrC, (ApiIngest.IngestStreamInfoWithName, Set[String])]
-          case None =>
-            Left(asServerError("Ingest was not found after creation"))
-        },
-      )
-
-    } yield result
-
-  }
-
-  def createIngestStream[Conf](
-    ingestName: String,
-    settings: Conf,
-    namespaceId: NamespaceId,
-  )(implicit configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf]): Either[BadRequest, Set[String]] =
-    try app
+    app
       .addV2IngestStream(
-        ingestName,
-        configOf(settings),
-        namespaceId,
-        None, // this ingest is being created, not restored, so it has no previous status
-        shouldResumeRestoredIngests = true,
+        ingestStreamName,
+        configOf(ingestStreamConfig),
+        ns,
         timeout,
-        shouldSaveMetadata = true,
-        Some(thisMemberIdx),
+        memberIdx.getOrElse(thisMemberIdx),
       )
-      .toEither
-      .map(_ => QuineValueIngestQuery.getQueryWarnings(configOf(settings).query, configOf(settings).parameter))
-      .left
-      .map(s => BadRequest.ofErrors(s.toList))
-    catch {
-      case e: CypherException => Left(BadRequest(ErrorType.CypherError(e.getMessage)))
-    }
+      .map(eitherErrOrCreated =>
+        eitherErrOrCreated.fold(
+          errs => Left(BadRequest.ofErrorStrings(errs.toList)),
+          _ =>
+            Right(
+              QuineValueIngestQuery
+                .getQueryWarnings(configOf(ingestStreamConfig).query, configOf(ingestStreamConfig).parameter),
+            ),
+        ),
+      )
+      .flatMap {
+        case Left(err) => Future.successful(Left(Coproduct[ErrC](err)))
+        case Right(warnings) =>
+          ingestStreamStatus(ingestStreamName, ns, memberIdx).map {
+            case Some(stream) =>
+              Right((stream, warnings))
+            case None =>
+              Left(asServerError("Ingest was not found after creation"))
+          }(ExecutionContext.parasitic)
+      }(ExecutionContext.parasitic)
+  }
 
   def deleteIngestStream(
     ingestName: String,
     namespaceId: NamespaceId,
+    memberIdx: Option[Int],
   ): Future[Option[ApiIngest.IngestStreamInfoWithName]] =
-    graph.requiredGraphIsReadyFuture {
-
-      app.removeIngestStream(ingestName, namespaceId) match {
-        case None => Future.successful(None)
-        case Some(control @ IngestStreamWithControl(settings, metrics, _, terminated, close, _, _)) =>
-          val finalStatus = control.status.map { previousStatus =>
-            import com.thatdot.quine.routes.IngestStreamStatus._
-            previousStatus match {
-              // in these cases, the ingest was healthy and runnable/running
-              case Running | Paused | Restored => Terminated
-              // in these cases, the ingest was not running/runnable
-              case Completed | Failed | Terminated => previousStatus
-            }
-          }(ExecutionContext.parasitic)
-
-          val terminationMessage: Future[Option[String]] = {
-            // start terminating the ingest
-            close()
-            // future will return when termination finishes
-            terminated()
-              .flatMap(t =>
-                t
-                  .map({ case Done => None })(graph.shardDispatcherEC)
-                  .recover({ case e =>
-                    Some(e.toString)
-                  })(graph.shardDispatcherEC),
-              )(graph.shardDispatcherEC)
-          }
-
-          finalStatus
-            .zip(terminationMessage)
-            .map { case (newStatus, message) =>
-              Some(
-                ApiIngest.IngestStreamInfoWithName(
-                  ingestName,
-                  IngestToApi(newStatus),
-                  message,
-                  IngestToApi(V2IngestEntities.IngestSource(settings)),
-                  IngestToApi(metrics.toEndpointResponse),
-                ),
-              )
-            }(graph.shardDispatcherEC)
-      }
-    }
+    app
+      .removeV2IngestStream(ingestName, namespaceId, memberIdx.getOrElse(thisMemberIdx))
+      .map { maybeIngest =>
+        maybeIngest.map(IngestToApi.apply)
+      }(ExecutionContext.parasitic)
 
   def pauseIngestStream(
     ingestName: String,
     namespaceId: NamespaceId,
+    memberIdx: Option[Int],
   ): Future[Either[BadRequest, Option[ApiIngest.IngestStreamInfoWithName]]] =
-    graph.requiredGraphIsReadyFuture {
-      setIngestStreamPauseState(ingestName, namespaceId, SwitchMode.Close)
-        .map(Right(_))(ExecutionContext.parasitic)
-        .recover(mkPauseOperationError("pause"))(ExecutionContext.parasitic)
-    }
+    app
+      .pauseV2IngestStream(ingestName, namespaceId, memberIdx.getOrElse(thisMemberIdx))
+      .map {
+        case None => Right(None)
+        case Some(ingest) =>
+          Right(Some(IngestToApi(ingest)))
+      }(ExecutionContext.parasitic)
+      .recover(mkPauseOperationError("pause"))(ExecutionContext.parasitic)
 
   def unpauseIngestStream(
     ingestName: String,
     namespaceId: NamespaceId,
+    memberIdx: Option[Int],
   ): Future[Either[BadRequest, Option[ApiIngest.IngestStreamInfoWithName]]] =
-    graph.requiredGraphIsReadyFuture {
-      setIngestStreamPauseState(ingestName, namespaceId, SwitchMode.Open)
-        .map(Right(_))(ExecutionContext.parasitic)
-        .recover(mkPauseOperationError("resume"))(ExecutionContext.parasitic)
-    }
+    app
+      .unpauseV2IngestStream(ingestName, namespaceId, memberIdx.getOrElse(thisMemberIdx))
+      .map {
+        case None => Right(None)
+        case Some(ingest) =>
+          Right(Some(IngestToApi(ingest)))
+      }(ExecutionContext.parasitic)
+      .recover(mkPauseOperationError("resume"))(ExecutionContext.parasitic)
 
   def ingestStreamStatus(
     ingestName: String,
     namespaceId: NamespaceId,
+    memberIdx: Option[Int],
   ): Future[Option[ApiIngest.IngestStreamInfoWithName]] =
     graph.requiredGraphIsReadyFuture {
-      app.getV2IngestStream(ingestName, namespaceId) match {
-        case None => Future.successful(None)
-        case Some(stream) => stream2Info(stream).map(s => Some(s.withName(ingestName)))(ExecutionContext.parasitic)
-      }
+      app
+        .getV2IngestStream(ingestName, namespaceId, memberIdx.getOrElse(thisMemberIdx))
+        .map(maybeIngestInfo => maybeIngestInfo.map(IngestToApi.apply))(graph.nodeDispatcherEC)
     }
 
-  def listIngestStreams(namespaceId: NamespaceId): Future[Map[String, ApiIngest.IngestStreamInfo]] =
+  def listIngestStreams(
+    namespaceId: NamespaceId,
+    memberIdx: Option[MemberIdx],
+  ): Future[Map[String, ApiIngest.IngestStreamInfo]] =
     graph.requiredGraphIsReadyFuture {
-      Future
-        .traverse(
-          app.getV2IngestStreams(namespaceId).toList,
-        ) { case (name, ingest) =>
-          stream2Info(ingest).map(name -> _)(graph.shardDispatcherEC)
-        }(implicitly, graph.shardDispatcherEC)
-        .map(_.toMap)(graph.shardDispatcherEC)
+      app
+        .getV2IngestStreams(namespaceId, memberIdx.getOrElse(thisMemberIdx))
+        .map(nameToInternalModel =>
+          nameToInternalModel.map { case (name, ingest) =>
+            name -> IngestToApi.apply(ingest)
+          },
+        )(ExecutionContext.parasitic)
     }
 
   def isReadOnly(queryText: String): Boolean = cypher.compile(queryText).isReadOnly

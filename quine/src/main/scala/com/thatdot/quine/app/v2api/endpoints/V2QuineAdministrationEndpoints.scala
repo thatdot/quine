@@ -340,9 +340,10 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     : Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[Map[String, String]], Any, Future] =
     metadata.serverLogic[Future](metadataLogic)
 
-  protected[endpoints] val metrics: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Ok[TMetricsReport], Any] =
+  protected[endpoints] val metrics: Endpoint[Unit, Option[Int], ServerError, SuccessEnvelope.Ok[TMetricsReport], Any] =
     adminBase("metrics")
       .name("Metrics")
+      .in(memberIdxParameter)
       .summary("Metrics Summary")
       .description(
         """Returns a JSON object containing metrics data used in the Quine
@@ -374,13 +375,14 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[TMetricsReport]])
 
-  protected[endpoints] val metricsLogic: Unit => Future[Either[ServerError, SuccessEnvelope.Ok[TMetricsReport]]] = _ =>
-    recoverServerError(Future.successful(metricsReportFromV1Metrics(appMethods.metrics)))((inp: TMetricsReport) =>
+  protected[endpoints] val metricsLogic
+    : Option[Int] => Future[Either[ServerError, SuccessEnvelope.Ok[TMetricsReport]]] = maybeMemberIdx =>
+    recoverServerError(appMethods.metrics(maybeMemberIdx).map(metricsReportFromV1Metrics))((inp: TMetricsReport) =>
       SuccessEnvelope.Ok(inp),
     )
 
   private val metricsServerEndpoint
-    : Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[TMetricsReport], Any, Future] =
+    : Full[Unit, Unit, Option[Int], ServerError, SuccessEnvelope.Ok[TMetricsReport], Any, Future] =
     metrics.serverLogic[Future](metricsLogic)
 
   protected[endpoints] val shardSizes: Endpoint[Unit, Map[Int, TShardInMemoryLimit], ServerError, SuccessEnvelope.Ok[

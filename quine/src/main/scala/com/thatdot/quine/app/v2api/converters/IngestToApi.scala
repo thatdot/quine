@@ -241,6 +241,31 @@ object IngestToApi {
   def apply(cb: Ingest.ConfigsBuilder): Api.ConfigsBuilder =
     Api.ConfigsBuilder(cb.tableName, cb.workerIdentifier)
 
+  def apply(info: Ingest.IngestStreamInfo): Api.IngestStreamInfo =
+    Api.IngestStreamInfo(
+      status = apply(info.status),
+      message = info.message,
+      settings = apply(info.settings),
+      stats = apply(info.stats),
+    )
+
+  def apply(stats: Ingest.IngestStreamStats): Api.IngestStreamStats = Api.IngestStreamStats(
+    ingestedCount = stats.ingestedCount,
+    rates = apply(stats.rates),
+    byteRates = apply(stats.byteRates),
+    startTime = stats.startTime,
+    totalRuntime = stats.totalRuntime,
+  )
+
+  def apply(ratesSummary: Ingest.RatesSummary): com.thatdot.api.v2.RatesSummary =
+    com.thatdot.api.v2.RatesSummary(
+      count = ratesSummary.count,
+      oneMinute = ratesSummary.oneMinute,
+      fiveMinute = ratesSummary.fiveMinute,
+      fifteenMinute = ratesSummary.fifteenMinute,
+      overall = ratesSummary.overall,
+    )
+
   def apply(source: Ingest.IngestSource): Api.IngestSource = source match {
     case Ingest.FileIngest(
           format,
@@ -410,5 +435,23 @@ object IngestToApi {
       maxPerSecond = conf.maxPerSecond,
       onRecordError = conf.onRecordError,
       onStreamError = apply(conf.onStreamError),
+    )
+
+  def apply(status: Ingest.IngestStreamStatus): Api.IngestStreamStatus = status match {
+    case Ingest.IngestStreamStatus.Completed => Api.IngestStreamStatus.Completed
+    case Ingest.IngestStreamStatus.Terminated => Api.IngestStreamStatus.Terminated
+    case Ingest.IngestStreamStatus.Failed => Api.IngestStreamStatus.Failed
+    case Ingest.IngestStreamStatus.Running => Api.IngestStreamStatus.Running
+    case Ingest.IngestStreamStatus.Paused => Api.IngestStreamStatus.Paused
+    case Ingest.IngestStreamStatus.Restored => Api.IngestStreamStatus.Restored
+  }
+
+  def apply(info: Ingest.IngestStreamInfoWithName): Api.IngestStreamInfoWithName =
+    Api.IngestStreamInfoWithName(
+      name = info.name,
+      status = apply(info.status),
+      message = info.message,
+      settings = apply(info.settings),
+      stats = apply(info.stats),
     )
 }
