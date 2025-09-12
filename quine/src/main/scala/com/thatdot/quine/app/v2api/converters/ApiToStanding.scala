@@ -32,9 +32,9 @@ object ApiToStanding {
   }
 
   private def apply(
-    t: Api.StandingQueryResultTransform,
-  )(implicit idProvider: QuineIdProvider): standing.StandingQueryResultTransform = t match {
-    case Api.StandingQueryResultTransform.InlineData => standing.StandingQueryResultTransform.InlineData()
+    t: Api.StandingQueryResultTransformation,
+  )(implicit idProvider: QuineIdProvider): standing.StandingQueryResultTransformation = t match {
+    case Api.StandingQueryResultTransformation.InlineData => standing.StandingQueryResultTransformation.InlineData()
   }
 
   def apply(
@@ -64,7 +64,7 @@ object ApiToStanding {
           namespaceId = namespaceId,
           workflow = standing.Workflow(
             filter = workflow.filter.map(Api2ToOutputs2.apply),
-            preEnrichmentTransform = workflow.preEnrichmentTransform.map(apply),
+            preEnrichmentTransformation = workflow.preEnrichmentTransformation.map(apply),
             enrichmentQuery = workflow.resultEnrichment.map(Api2ToOutputs2.toEnrichmentQuery),
           ),
           destinationStepsList = dests,

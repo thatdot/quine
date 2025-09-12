@@ -14,7 +14,7 @@ import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.Predicate.OnlyPositiveMatch
 import com.thatdot.quine.app.v2api.definitions.query.standing.QuineSupportedDestinationSteps.CoreDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode
-import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultTransform.InlineData
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultTransformation.InlineData
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultWorkflow
 
 trait V2StandingApiSchemas extends V2ApiConfiguration {
@@ -35,7 +35,7 @@ trait V2StandingApiSchemas extends V2ApiConfiguration {
   // Schema for Standing Query Result Workflow map because `@encodedExample` does not work as expected
   val exampleStandingQueryResultWorkflowToStandardOut: StandingQueryResultWorkflow = StandingQueryResultWorkflow(
     filter = Some(OnlyPositiveMatch),
-    preEnrichmentTransform = Some(InlineData),
+    preEnrichmentTransformation = Some(InlineData),
     resultEnrichment = Some(QuineDestinationSteps.CypherQuery(QuineDestinationSteps.CypherQuery.exampleQuery)),
     destinations = NonEmptyList.one(CoreDestinationSteps(DestinationSteps.StandardOut)),
   )

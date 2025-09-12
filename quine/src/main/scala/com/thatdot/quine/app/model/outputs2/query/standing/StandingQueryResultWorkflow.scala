@@ -22,7 +22,7 @@ case class Workflow(
    => [1, 2, 3, 4]
      => Value: [1, 2, 3, 4]
    */
-  preEnrichmentTransform: Option[StandingQueryResultTransform],
+  preEnrichmentTransformation: Option[StandingQueryResultTransformation],
   /*
    MATCH (u:User) WHERE id(u) = idFrom(that.username) RETURNING (<u.Products>, that.removeDownstream)
    */
@@ -49,14 +49,14 @@ case class Workflow(
             sqFlow.flow.filter(predicate.apply)
         }
     }
-    val maybeThenPreEnrich = preEnrichmentTransform.fold((x: StandingQueryResultFlow) => x: BroadcastableFlow) {
-      // Right now, `preEnrichmentTransform` only supports built-in offerings, but this will need to change when
+    val maybeThenPreEnrich = preEnrichmentTransformation.fold((x: StandingQueryResultFlow) => x: BroadcastableFlow) {
+      // Right now, `preEnrichmentTransformation` only supports built-in offerings, but this will need to change when
       //  we want to support JS transformations here, too.
-      transform => (priorFlow: StandingQueryResultFlow) =>
+      transformation => (priorFlow: StandingQueryResultFlow) =>
         new BroadcastableFlow {
-          override type Out = transform.Out
-          override def foldableFrom: DataFoldableFrom[Out] = transform.dataFoldableFrom
-          override def flow: Flow[StandingQueryResult, Out, NotUsed] = priorFlow.flow.map(transform.apply)
+          override type Out = transformation.Out
+          override def foldableFrom: DataFoldableFrom[Out] = transformation.dataFoldableFrom
+          override def flow: Flow[StandingQueryResult, Out, NotUsed] = priorFlow.flow.map(transformation.apply)
         }
     }
     val maybeThenEnrich = enrichmentQuery.fold(identity[BroadcastableFlow] _) {
