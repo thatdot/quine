@@ -385,24 +385,54 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     : Full[Unit, Unit, Option[Int], ServerError, SuccessEnvelope.Ok[TMetricsReport], Any, Future] =
     metrics.serverLogic[Future](metricsLogic)
 
-  protected[endpoints] val shardSizes: Endpoint[Unit, Map[Int, TShardInMemoryLimit], ServerError, SuccessEnvelope.Ok[
+  protected[endpoints] val getShardSizes: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Ok[
     Map[Int, TShardInMemoryLimit],
-  ], Any] = adminBase("shards").put
+  ], Any] = adminBase("shards").get
     .name("Shard Sizes")
     .description(
-      """Get and update the in-memory node limits.
-          |
-          |Sending a request containing an empty JSON object will return the current in-memory node settings.""".stripMargin +
-      "\n\n" +
-      """To apply different values, apply your edits to the returned document and send those values in a new
-          |PUT request.""".asOneLine,
+      """Update the in-memory node limits.
+        |
+        |Returns the updated in-memory node settings for all shards.""".stripMargin,
+    )
+    .in("size-limits")
+    .out(statusCode(StatusCode.Ok))
+    .out(jsonBody[SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]])
+
+  protected[endpoints] val getShardSizesLogic
+    : Unit => Future[Either[ServerError, SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]]] =
+    _ =>
+      recoverServerError(
+        appMethods
+          .shardSizes(Map.empty)
+          .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
+      )((inp: Map[Int, TShardInMemoryLimit]) => SuccessEnvelope.Ok(inp))
+
+  private val getShardSizesServerEndpoint: Full[
+    Unit,
+    Unit,
+    Unit,
+    ServerError,
+    SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
+    Any,
+    Future,
+  ] = getShardSizes.serverLogic[Future](getShardSizesLogic)
+
+  protected[endpoints] val updateShardSizes
+    : Endpoint[Unit, Map[Int, TShardInMemoryLimit], ServerError, SuccessEnvelope.Ok[
+      Map[Int, TShardInMemoryLimit],
+    ], Any] = adminBase("shards").post
+    .name("Shard Sizes")
+    .description(
+      """Update the in-memory node limits. Shards not mentioned in the request are unaffected.
+        |
+        |Returns the updated in-memory node settings for all shards.""".stripMargin,
     )
     .in("size-limits")
     .in(jsonOrYamlBody[Map[Int, TShardInMemoryLimit]](Some(exampleShardMap)))
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]])
 
-  protected[endpoints] val shardSizesLogic
+  protected[endpoints] val updateShardSizesLogic
     : Map[Int, TShardInMemoryLimit] => Future[Either[ServerError, SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]]] =
     resizes =>
       recoverServerError(
@@ -411,7 +441,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
           .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
       )((inp: Map[Int, TShardInMemoryLimit]) => SuccessEnvelope.Ok(inp))
 
-  private val shardSizesServerEndpoint: Full[
+  private val updateShardSizesServerEndpoint: Full[
     Unit,
     Unit,
     Map[Int, TShardInMemoryLimit],
@@ -419,7 +449,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
     Any,
     Future,
-  ] = shardSizes.serverLogic[Future](shardSizesLogic)
+  ] = updateShardSizes.serverLogic[Future](updateShardSizesLogic)
 
   protected[endpoints] val requestNodeSleep
     : Endpoint[Unit, (QuineId, Option[String]), ServerError, SuccessEnvelope.Accepted, Any] =
@@ -465,7 +495,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     metricsServerEndpoint,
     readinessServerEndpoint,
     requestNodeSleepServerEndpoint,
-    shardSizesServerEndpoint,
+    getShardSizesServerEndpoint,
+    updateShardSizesServerEndpoint,
     gracefulShutdownServerEndpoint,
   )
 
