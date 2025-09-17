@@ -1,0 +1,300 @@
+version: 1
+title: Conway's Game of Life
+contributor: Matthew Cullum https://github.com/brackishman
+summary: Conway's Game of Life in Quine
+description: |-
+  This recipe implements a generic Conway's Game of Life using standing queries for 
+  real-time cellular automaton evolution. The grid size, initial patterns, and 
+  configuration are loaded from a JSON file specified at runtime.
+  
+  Each cell evaluates its neighbors and changes state only when Conway's rules dictate 
+  a change, triggering cascading updates throughout the grid.
+  
+  Conway's Rules:
+  1. Live cell with 2-3 live neighbors survives
+  2. Dead cell with exactly 3 live neighbors becomes alive  
+  3. All other cells die or stay dead
+  
+  Usage: Specify JSON config file with --recipe-value config_file=path/to/config.json
+  The config file schema is as follows:
+  {
+    "name": "My Game of Life",
+    "description": "A description of this setup",
+    "gridWidth": 10,
+    "gridHeight": 10,
+    "initialPattern": [
+      {"x": 1, "y": 0, "alive": true},
+      {"x": 2, "y": 1, "alive": true},
+      {"x": 0, "y": 2, "alive": true},
+      {"x": 1, "y": 2, "alive": true},
+      {"x": 2, "y": 2, "alive": true}
+    ]
+  }
+
+  In Quine you can view all cell nodes with the following query: MATCH (c:Cell) RETURN c
+
+  Once Quine is running with this recipe, load the layout json from the UI to see the grid.
+  You can create a new layout by running the generate-conways-layout.js script while Quine is running.
+
+  Once the cell nodes are layed out, make sure to enable the bookmarklet. The javascript for the bookmarklet is in conways-gol-bookmarklet.js
+
+  Start the game with the "▶️ START Game" quick query on any cell node, and pause it with the "⏸️ STOP Game" quick query.
+
+# Set up grid dynamically from JSON configuration file
+ingestStreams:
+  - type: FileIngest
+    path: $config_file
+    format:
+      type: CypherJson
+      query: |-
+        // Extract configuration from JSON and calculate totalCells
+        WITH $that.gridWidth AS gridWidth,
+             $that.gridHeight AS gridHeight,
+             $that.gridWidth * $that.gridHeight AS totalCells,
+             $that.name AS name,
+             $that.description AS description,
+             $that.initialPattern AS initialPattern
+        
+        // Create all grid cells (totalCells = gridWidth * gridHeight)
+        UNWIND range(0, totalCells - 1) AS cellIndex
+        WITH gridWidth, gridHeight, totalCells, name, description, initialPattern,
+             cellIndex % gridWidth AS x,
+             cellIndex / gridWidth AS y
+        
+        // Determine if this cell should be alive based on initialPattern
+        WITH x, y, gridWidth, gridHeight, totalCells, name, description,
+             CASE 
+               WHEN any(pattern IN initialPattern WHERE pattern.x = x AND pattern.y = y AND pattern.alive = true) THEN true
+               ELSE false 
+             END AS alive
+        
+        // Create/update the specific cell
+        MATCH (cell)
+        WHERE id(cell) = idFrom("cell", x, y)
+        SET cell.x = x,
+            cell.y = y,
+            cell.alive = alive,
+            cell.generation = 0,
+            cell.state = "applied",
+            cell: Cell
+        
+        // Create neighbor relationships within grid bounds
+        WITH cell, x, y, gridWidth, gridHeight, totalCells, name, description
+        UNWIND [
+          [x-1, y-1], [x, y-1], [x+1, y-1],
+          [x-1, y],             [x+1, y],
+          [x-1, y+1], [x, y+1], [x+1, y+1]
+        ] AS neighbor
+        WITH cell, neighbor[0] AS nx, neighbor[1] AS ny, gridWidth, gridHeight, totalCells, name, description
+        WHERE nx >= 0 AND nx < gridWidth AND ny >= 0 AND ny < gridHeight
+        MATCH (neighborCell)
+        WHERE id(neighborCell) = idFrom("cell", nx, ny)
+        CREATE (cell)-[:NEIGHBOR]->(neighborCell)
+        
+        // Create/update ready node with configuration and connect to this cell
+        WITH cell, gridWidth, gridHeight, totalCells, name, description
+        MATCH (ready)
+        WHERE id(ready) = idFrom("ready")
+        SET ready.computingCells = 0,
+            ready.applyingCells = 0,
+            ready.generation = 0,
+            ready.state = "stopped",
+            ready.totalCells = totalCells,
+            ready.gridWidth = gridWidth,
+            ready.gridHeight = gridHeight,
+            ready.name = name,
+            ready.description = description
+        CREATE (ready)-[:ACTIVATES]->(cell)
+
+# Standing queries for two-wave Conway's Game of Life evolution (fully dynamic)
+standingQueries:
+  # Wave 1: Compute next state for all cells
+  - pattern:
+      type: Cypher
+      mode: MultipleValues
+      query: >-
+        MATCH (ready)-[:ACTIVATES]->(cell)
+        WHERE ready.computingCells = ready.totalCells AND ready.state = "computing"
+        RETURN id(cell) AS cellId
+    outputs:
+      compute-next-state:
+        type: CypherQuery
+        query: |-
+          MATCH (cell)-[:NEIGHBOR]->(neighbor)
+          WHERE id(cell) = $that.data.cellId
+          WITH cell, count(CASE WHEN neighbor.alive = true THEN 1 END) AS liveNeighbors
+          WITH cell, liveNeighbors, CASE
+            WHEN cell.alive = false AND liveNeighbors = 3 THEN true
+            WHEN cell.alive = true AND (liveNeighbors = 2 OR liveNeighbors = 3) THEN true
+            ELSE false
+          END AS nextAlive
+          SET cell.nextAlive = nextAlive,
+              cell.state = "calculated"
+          WITH cell
+          MATCH (ready)-[:ACTIVATES]->(cell)
+          WHERE id(cell) = $that.data.cellId
+          CALL int.add(ready, "computingCells", -1) YIELD result
+          RETURN cell.x AS x, cell.y AS y, cell.nextAlive AS nextAlive, "calculated" AS cellState, result AS remainingCells
+        andThen:
+          type: PrintToStandardOut
+
+  # Wave 2: Apply computed state changes
+  - pattern:
+      type: Cypher
+      mode: MultipleValues
+      query: >-
+        MATCH (ready)-[:ACTIVATES]->(cell)
+        WHERE ready.applyingCells = ready.totalCells AND ready.state = "applying"
+        RETURN id(cell) AS cellId
+    outputs:
+      apply-state-change:
+        type: CypherQuery
+        query: |-
+          MATCH (cell)
+          WHERE id(cell) = $that.data.cellId
+          WITH cell, cell.alive AS oldAlive, cell.nextAlive AS newAlive
+          SET cell.alive = newAlive,
+              cell.updated = (oldAlive <> newAlive),
+              cell.state = "applied"
+          WITH cell
+          MATCH (ready)-[:ACTIVATES]->(cell)
+          WHERE id(cell) = $that.data.cellId
+          CALL int.add(ready, "applyingCells", -1) YIELD result
+          RETURN cell.x AS x, cell.y AS y, cell.alive AS alive, "applied" AS cellState, result AS remainingCells
+        andThen:
+          type: PrintToStandardOut
+
+  # Wave coordination: Wave 1 complete -> Start Wave 2 (two-phase lock)
+  - pattern:
+      type: Cypher
+      mode: MultipleValues
+      query: >-
+        MATCH (ready)
+        WHERE ready.computingCells = 0 AND ready.applyingCells = 0 AND ready.state = "computing"
+        RETURN id(ready) AS readyId
+    outputs:
+      start-wave-2:
+        type: CypherQuery
+        query: |-
+          MATCH (ready)-[:ACTIVATES]->(cell)
+          WHERE id(ready) = $that.data.readyId
+          WITH ready, ready.totalCells AS TOTAL_CELLS, count(CASE WHEN cell.state = "calculated" THEN 1 END) AS calculatedCells
+          WHERE calculatedCells = TOTAL_CELLS
+          SET ready.applyingCells = TOTAL_CELLS,
+              ready.state = "applying"
+          RETURN "Starting Wave 2" AS message, TOTAL_CELLS AS cellCount, calculatedCells AS verifiedCells
+        andThen:
+          type: PrintToStandardOut
+
+  # Wave coordination: Wave 2 complete -> Start next generation Wave 1 (two-phase lock)
+  - pattern:
+      type: Cypher
+      mode: MultipleValues
+      query: >-
+        MATCH (ready)
+        WHERE ready.applyingCells = 0 AND ready.computingCells = 0 AND ready.state = "applying"
+        RETURN id(ready) AS readyId
+    outputs:
+      start-next-generation:
+        type: CypherQuery
+        query: |-
+          MATCH (ready)-[:ACTIVATES]->(cell)
+          WHERE id(ready) = $that.data.readyId
+          WITH ready, ready.totalCells AS TOTAL_CELLS, count(CASE WHEN cell.state = "applied" THEN 1 END) AS appliedCells
+          WHERE appliedCells = TOTAL_CELLS
+          CALL int.add(ready, "generation", 1) YIELD result
+          SET ready.computingCells = TOTAL_CELLS,
+              ready.state = "computing"
+          RETURN "Starting Generation" AS message, result AS generation, TOTAL_CELLS AS cellCount, appliedCells AS verifiedCells
+        andThen:
+          type: PrintToStandardOut
+
+# UI Configuration - works with any grid size
+nodeAppearances:
+  - predicate:
+      propertyKeys: ["alive", "x", "y"]
+      knownValues: 
+        alive: true
+      dbLabel: Cell
+    icon: ion-record
+    color: "#FF4500"
+    size: 50.0
+    label:
+      type: Property
+      key: "x"
+      prefix: "● ("
+      suffix: ",{y})"
+  - predicate:
+      propertyKeys: ["alive", "x", "y"] 
+      knownValues:
+        alive: false
+      dbLabel: Cell
+    icon: ion-record
+    color: "#CCCCCC"
+    size: 15.0
+    label:
+      type: Property
+      key: "x"
+      prefix: "○ ("
+      suffix: ",{y})"
+
+quickQueries:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Refresh
+      querySuffix: RETURN n
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Local Properties
+      querySuffix: RETURN id(n), properties(n)
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: ["x", "y"]
+      knownValues: {}
+      dbLabel: Cell
+    quickQuery:
+      name: "▶️ START Game"
+      querySuffix: |-
+        MATCH (ready) WHERE id(ready) = idFrom("ready")
+        SET ready.computingCells = ready.totalCells, ready.state = "computing"
+        RETURN n
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: ["x", "y"]
+      knownValues: {}
+      dbLabel: Cell
+    quickQuery:
+      name: "⏸️ STOP Game"
+      querySuffix: |-
+        MATCH (ready) WHERE id(ready) = idFrom("ready")
+        SET ready.computingCells = 0, ready.applyingCells = 0, ready.state = "stopped"
+        RETURN n
+      queryLanguage: Cypher
+      sort: Node
+
+sampleQueries:
+  - name: "📊 Show Game Configuration"
+    query: |-
+      MATCH (ready) WHERE id(ready) = idFrom("ready")
+      MATCH (c:Cell)
+      RETURN 
+        ready.name AS setup,
+        ready.description AS description,
+        ready.gridWidth AS width,
+        ready.gridHeight AS height,
+        ready.totalCells AS totalCells,
+        count(CASE WHEN c.alive = true THEN 1 END) AS liveCells,
+        ready.generation AS currentGeneration
+
+statusQuery:
+  cypherQuery: |-
+    MATCH (c:Cell)
+    RETURN c
