@@ -146,16 +146,18 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
       .withSslContext(SSLContext.getDefault)
       .withAuthProvider(new SigV4AuthProvider(credsProvider, region.id))
 
+    // Keyspace names in AWS Keyspaces is case-sensitive
+    val keyspaceInternalId = CqlIdentifier.fromInternal(keyspace)
+
     def createQualifiedSession: CqlSession = sessionBuilder
-      .withKeyspace(keyspace)
+      .withKeyspace(keyspaceInternalId)
       .build
 
     // CREATE KEYSPACE IF NOT EXISTS `keyspace` WITH replication={'class':'SingleRegionStrategy'}
     val createKeyspaceStatement: SimpleStatement =
-      createKeyspace(keyspace).ifNotExists.withReplicationOptions(singletonMap("class", "SingleRegionStrategy")).build
-
-    // Use the id generated when creating the keyspace. createKeyspace sets getKeyspace upon creation.
-    val keyspaceInternalId: CqlIdentifier = createKeyspaceStatement.getKeyspace
+      createKeyspace(keyspaceInternalId).ifNotExists
+        .withReplicationOptions(singletonMap("class", "SingleRegionStrategy"))
+        .build
 
     val session: CqlSession =
       try createQualifiedSession
@@ -166,10 +168,10 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
           val keyspaceExistsQuery = selectFrom("system_schema_mcs", "keyspaces")
             .column("replication")
             .whereColumn("keyspace_name")
-            .isEqualTo(literal(keyspaceInternalId))
+            .isEqualTo(literal(keyspaceInternalId.asInternal))
             .build
           while (!sess.execute(keyspaceExistsQuery).iterator.hasNext) {
-            logger.info(safe"Keyspace ${Safe(keyspace)} does not yet exist, re-checking in 4s")
+            logger.info(safe"Keyspace ${Safe(keyspaceInternalId.asInternal)} does not yet exist, re-checking in 4s")
             Thread.sleep(4000)
           }
           sess.close()
@@ -180,7 +182,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
     def tableStatusQuery(tableName: CqlIdentifier): SimpleStatement = selectFrom("system_schema_mcs", "tables")
       .column("status")
       .whereColumn("keyspace_name")
-      .isEqualTo(literal(keyspaceInternalId))
+      .isEqualTo(literal(keyspaceInternalId.asInternal))
       .whereColumn("table_name")
       .isEqualTo(literal(tableName.asInternal))
       .build
