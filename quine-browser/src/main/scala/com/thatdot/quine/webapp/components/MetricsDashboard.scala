@@ -60,7 +60,7 @@ object MetricsDashboard {
           case Right(None) => MetricsReport.empty
           case Left(_) => throw new RuntimeException("Failed to get metrics from V2 API")
         }
-        val shardSizesF = props.routes.shardSizesV2(Map.empty).future.map {
+        val shardSizesF = props.routes.shardSizesV2(()).future.map {
           case Right(Some(shardSizes)) => shardSizes
           case Right(None) => Map.empty[Int, ShardInMemoryLimit]
           case Left(_) => throw new RuntimeException("Failed to get shard sizes from V2 API")
