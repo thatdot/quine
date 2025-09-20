@@ -19,6 +19,8 @@ object QuineSupportedDestinationSteps {
 @title(StandingQueryResultWorkflow.apiTitle)
 @description(StandingQueryResultWorkflow.apiDescription)
 case class StandingQueryResultWorkflow(
+  @description("Name of this output Workflow, unique within the Standing Query.")
+  name: String,
   @description("A `StandingQueryResult` filter (one of any built-in options), which runs before any enrichment query.")
   filter: Option[Predicate] = None,
   @description("A transformation function to apply to each result.")

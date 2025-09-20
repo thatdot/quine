@@ -193,14 +193,13 @@ final class QuineApp(
             val sqId = StandingQueryId.fresh()
             implicit val ec: ExecutionContext = graph.nodeDispatcherEC
             Future
-              .traverse(standingQueryDefinition.outputs.toVector) { case (outputName, apiWorkflow) =>
-                ApiToStanding(apiWorkflow, outputName, inNamespace)(graph, protobufSchemaCache).map(
-                  workflowInterpreter =>
-                    outputName -> workflowInterpreter
-                      .flow(graph)
-                      .viaMat(KillSwitches.single)(Keep.right)
-                      .map(_ => SqResultsExecToken(s"SQ: $outputName in: $inNamespace"))
-                      .to(graph.masterStream.standingOutputsCompletionSink),
+              .traverse(standingQueryDefinition.outputs.toVector) { apiWorkflow =>
+                ApiToStanding(apiWorkflow, inNamespace)(graph, protobufSchemaCache).map(workflowInterpreter =>
+                  apiWorkflow.name -> workflowInterpreter
+                    .flow(graph)
+                    .viaMat(KillSwitches.single)(Keep.right)
+                    .map(_ => SqResultsExecToken(s"SQ: ${apiWorkflow.name} in: $inNamespace"))
+                    .to(graph.masterStream.standingOutputsCompletionSink),
                 )
               }
               .map(_.toMap)
@@ -278,9 +277,9 @@ final class QuineApp(
                         queueBackpressureThreshold = standingQueryDefinition.inputBufferSize,
                         sqId = sqId,
                       )
-                      val outputsWithKillSwitches = standingQueryDefinition.outputs.map { case (name, workflow) =>
-                        name -> OutputTarget.V2(workflow, killSwitches(name))
-                      }
+                      val outputsWithKillSwitches = standingQueryDefinition.outputs.map { workflow =>
+                        workflow.name -> OutputTarget.V2(workflow, killSwitches(workflow.name))
+                      }.toMap
                       val updatedInnerMap = sqOutputTargets + (queryName -> (sq.query.id -> outputsWithKillSwitches))
                       outputTargets += inNamespace -> updatedInnerMap
                       storeStandingQueryOutputs2().map(_ => StandingQueryInterfaceV2.Result.Success)(
@@ -389,7 +388,7 @@ final class QuineApp(
     synchronizedFakeFuture(outputTargetsLock) {
       val cancelledSqState = for {
         (sqId, outputs: Map[SQOutputName, OutputTarget]) <- outputTargets.get(inNamespace).flatMap(_.get(queryName))
-        v2Outputs = outputs.collect { case (name, target: OutputTarget.V2) => name -> target.definition }
+        v2Outputs = outputs.collect { case (_, target: OutputTarget.V2) => target.definition }
         cancelledSq <- graph.standingQueries(inNamespace).flatMap(_.cancelStandingQuery(sqId))
       } yield {
         // Remove key from the inner map:
@@ -400,7 +399,7 @@ final class QuineApp(
           makeRegisteredStandingQueryV2(
             internal = internalSq,
             inNamespace = inNamespace,
-            outputs = v2Outputs,
+            outputs = v2Outputs.toSeq,
             startTime = startTime,
             bufferSize = bufferSize,
             metrics = graph.metrics,
@@ -478,7 +477,7 @@ final class QuineApp(
         if (outputs.contains(outputName)) {
           Future.successful(StandingQueryInterfaceV2.Result.AlreadyExists(outputName))
         } else {
-          ApiToStanding(workflow, outputName, inNamespace)(graph, protobufSchemaCache).flatMap { workflowInterpreter =>
+          ApiToStanding(workflow, inNamespace)(graph, protobufSchemaCache).flatMap { workflowInterpreter =>
             val killSwitch =
               sqResultsHub
                 .viaMat(KillSwitches.single)(Keep.right)
@@ -622,7 +621,7 @@ final class QuineApp(
       } yield makeRegisteredStandingQueryV2(
         internal = internalSq,
         inNamespace = inNamespace,
-        outputs = outputs.fmap(_.definition),
+        outputs = outputs.values.map(_.definition).toSeq,
         startTime = startTime,
         bufferSize = bufferSize,
         metrics = graph.metrics,
@@ -1207,7 +1206,7 @@ final class QuineApp(
             .traverse(queriesWithResultHubs.toVector) { case (queryName, sqId, outputToWorkflowDef, resultHub) =>
               Future
                 .traverse(outputToWorkflowDef.toVector) { case (outputName, workflowDef) =>
-                  ApiToStanding(workflowDef, outputName, ns)(graph, protobufSchemaCache).map { workflowInterpreter =>
+                  ApiToStanding(workflowDef, ns)(graph, protobufSchemaCache).map { workflowInterpreter =>
                     val killSwitch =
                       resultHub
                         .viaMat(KillSwitches.single)(Keep.right)
@@ -1536,7 +1535,7 @@ object QuineApp {
   private def makeRegisteredStandingQueryV2(
     internal: StandingQueryInfo,
     inNamespace: NamespaceId,
-    outputs: Map[String, V2ApiStanding.StandingQueryResultWorkflow],
+    outputs: Seq[V2ApiStanding.StandingQueryResultWorkflow],
     startTime: Instant,
     bufferSize: Int,
     metrics: HostQuineMetrics,

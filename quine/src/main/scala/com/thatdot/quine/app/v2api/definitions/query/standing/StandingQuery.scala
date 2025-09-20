@@ -9,14 +9,16 @@ object StandingQuery {
   @title("Standing Query")
   @description("Standing Query.")
   final case class StandingQueryDefinition(
+    @description("Unique name for this Standing Query.")
+    name: String,
     pattern: StandingQueryPattern,
     // Cannot get `@default` to work here, despite a working example in `DestinationSteps.Kafka#kafkaProperties`.
     @description(
-      s"""A map of ${StandingQueryResultWorkflow.apiTitle}s as named outputs. Defaults to an empty map (`{}`).
+      s"""${StandingQueryResultWorkflow.apiTitle}s as named outputs. Defaults to an empty list (`[]`).
          |The values are each:
          |${StandingQueryResultWorkflow.apiDescription}""".stripMargin,
     )
-    outputs: Map[String, StandingQueryResultWorkflow] = Map.empty,
+    outputs: Seq[StandingQueryResultWorkflow] = Seq.empty,
     @description("Whether or not to include cancellations in the results of this query.")
     @default(false)
     includeCancellations: Boolean = false,
@@ -36,11 +38,11 @@ object StandingQuery {
     pattern: Option[StandingQueryPattern], // TODO: remove Option once we remove DGB SQs
     // Cannot get `@default` to work here, despite a working example in `DestinationSteps.Kafka#kafkaProperties`.
     @description(
-      s"""A map of ${StandingQueryResultWorkflow.apiTitle}s as named outputs. Defaults to an empty map (`{}`).
+      s"""${StandingQueryResultWorkflow.apiTitle}s as named outputs. Defaults to an empty list (`[]`).
          |The values are each:
          |${StandingQueryResultWorkflow.apiDescription}""".stripMargin,
     )
-    outputs: Map[String, StandingQueryResultWorkflow] = Map.empty,
+    outputs: Seq[StandingQueryResultWorkflow] = Seq.empty,
     @description("Whether or not to include cancellations in the results of this query.")
     includeCancellations: Boolean,
     @description("How many Standing Query results to buffer on each host before backpressuring.")

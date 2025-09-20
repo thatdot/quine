@@ -6,7 +6,7 @@ object StandingQuery {
 
   final case class StandingQueryDefinition(
     pattern: StandingQueryPattern,
-    outputs: Map[String, StandingQueryResultWorkflow],
+    outputs: Seq[StandingQueryResultWorkflow],
     includeCancellations: Boolean = false,
     inputBufferSize: Int = 32, // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
     shouldCalculateResultHashCode: Boolean = false,
@@ -16,7 +16,7 @@ object StandingQuery {
     name: String,
     internalId: UUID,
     pattern: Option[StandingQueryPattern], // TODO: remove Option once we remove DGB SQs
-    outputs: Map[String, StandingQueryResultWorkflow],
+    outputs: Seq[StandingQueryResultWorkflow],
     includeCancellations: Boolean,
     inputBufferSize: Int,
     stats: Map[String, StandingQueryStats],

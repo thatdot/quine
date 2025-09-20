@@ -39,7 +39,6 @@ object ApiToStanding {
 
   def apply(
     workflow: Api.StandingQueryResultWorkflow,
-    outputName: String,
     namespaceId: NamespaceId,
   )(implicit
     graph: CypherOpsGraph,
@@ -60,7 +59,7 @@ object ApiToStanding {
       }
       .map(dests =>
         standing.StandingQueryResultWorkflow(
-          outputName = outputName,
+          outputName = workflow.name,
           namespaceId = namespaceId,
           workflow = standing.Workflow(
             filter = workflow.filter.map(Api2ToOutputs2.apply),
@@ -79,16 +78,14 @@ object ApiToStanding {
   ): Future[standing.StandingQuery.StandingQueryDefinition] = {
     val q = standingQueryDefinition
     val pattern = apply(q.pattern)
-    val outputsFut = Future.traverse(q.outputs.toVector) { case (outputName, workflow) =>
-      apply(workflow = workflow, outputName = outputName, namespaceId = namespace).map { internalWorkflow =>
-        outputName -> internalWorkflow
-      }
+    val outputsFut = Future.traverse(q.outputs.toVector) { workflow =>
+      apply(workflow = workflow, namespaceId = namespace)
     }
 
     outputsFut.map(outputs =>
       standing.StandingQuery.StandingQueryDefinition(
         pattern = pattern,
-        outputs = outputs.toMap,
+        outputs = outputs,
         includeCancellations = q.includeCancellations,
         inputBufferSize = q.inputBufferSize,
         shouldCalculateResultHashCode = q.includeCancellations,
@@ -106,15 +103,13 @@ object ApiToStanding {
     val q = registeredSQ
     implicit val ec: ExecutionContext = graph.nodeDispatcherEC
     Future
-      .traverse(q.outputs.toVector) { case (outputName, apiWorkflow) =>
-        apply(apiWorkflow, outputName, namespace).map(internalWorkflow => outputName -> internalWorkflow)
-      }
-      .map { internalWorkflowsByName =>
+      .traverse(q.outputs.toVector)(apiWorkflow => apply(apiWorkflow, namespace))
+      .map { internalWorkflows =>
         standing.StandingQuery.RegisteredStandingQuery(
           name = q.name,
           internalId = q.internalId,
           pattern = q.pattern.map(apply),
-          outputs = internalWorkflowsByName.toMap,
+          outputs = internalWorkflows,
           includeCancellations = q.includeCancellations,
           inputBufferSize = q.inputBufferSize,
           stats = q.stats.view.mapValues(apply).toMap,

@@ -39,7 +39,8 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with StringOps {
   private val ingestBase: EndpointBase = rawIngest.errorOut(serverError())
 
   private val ingestExample = ApiIngest.Oss.QuineIngestConfiguration(
-    ApiIngest.IngestSource.NumberIterator(0, None),
+    name = "numbers",
+    source = ApiIngest.IngestSource.NumberIterator(0, None),
     query = "MATCH (n) WHERE id(n) = idFrom($that) SET n.num = $that",
     onStreamError = ApiIngest.LogStreamError,
     maxPerSecond = Some(100),
@@ -48,7 +49,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with StringOps {
   implicit private val ec: ExecutionContext = ExecutionContext.parasitic
 
   protected[endpoints] val createIngest
-    : Endpoint[Unit, (String, Option[String], Option[Int], Oss.QuineIngestConfiguration), Either[
+    : Endpoint[Unit, (Option[String], Option[Int], Oss.QuineIngestConfiguration), Either[
       ServerError,
       BadRequest,
     ], SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName], Any] = ingestBase
@@ -60,7 +61,6 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with StringOps {
         |and must be created with a unique name. Many Ingest Stream types allow a Cypher query to operate
         |on the event stream data to create nodes and relationships in the graph.""".asOneLine,
     )
-    .in(ingestStreamNameElement)
     .in(namespaceParameter)
     .in(memberIdxParameter)
     .in(jsonOrYamlBody[ApiIngest.Oss.QuineIngestConfiguration](Some(ingestExample)))
@@ -74,12 +74,11 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with StringOps {
       ),
     )
 
-  protected[endpoints] val createIngestLogic
-    : ((String, Option[String], Option[Int], Oss.QuineIngestConfiguration)) => Future[
-      Either[Either[ServerError, BadRequest], SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName]],
-    ] = { case (ingestStreamName, ns, memberIdx, ingestStreamConfig) =>
+  protected[endpoints] val createIngestLogic: ((Option[String], Option[Int], Oss.QuineIngestConfiguration)) => Future[
+    Either[Either[ServerError, BadRequest], SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName]],
+  ] = { case (ns, memberIdx, ingestStreamConfig) =>
     recoverServerErrorEitherWithServerError {
-      appMethods.createIngestStream(ingestStreamName, namespaceFromParam(ns), ingestStreamConfig, memberIdx)
+      appMethods.createIngestStream(ingestStreamConfig.name, namespaceFromParam(ns), ingestStreamConfig, memberIdx)
     } { case (stream, warnings) =>
       SuccessEnvelope.Created(stream, warnings = warnings.toList)
     }
@@ -88,7 +87,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with StringOps {
   private val createIngestServerEndpoint: Full[
     Unit,
     Unit,
-    (String, Option[String], Option[Int], Oss.QuineIngestConfiguration),
+    (Option[String], Option[Int], Oss.QuineIngestConfiguration),
     Either[ServerError, BadRequest],
     SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName],
     Any,

@@ -34,19 +34,20 @@ trait V2StandingApiSchemas extends V2ApiConfiguration {
 
   // Schema for Standing Query Result Workflow map because `@encodedExample` does not work as expected
   val exampleStandingQueryResultWorkflowToStandardOut: StandingQueryResultWorkflow = StandingQueryResultWorkflow(
+    name = "stdout-example",
     filter = Some(OnlyPositiveMatch),
     preEnrichmentTransformation = Some(InlineData),
     resultEnrichment = Some(QuineDestinationSteps.CypherQuery(QuineDestinationSteps.CypherQuery.exampleQuery)),
     destinations = NonEmptyList.one(CoreDestinationSteps(DestinationSteps.StandardOut)),
   )
-  val exampleStandingQueryResultWorkflowMap: Map[String, StandingQueryResultWorkflow] = Map(
-    "stdout" -> exampleStandingQueryResultWorkflowToStandardOut,
+  val exampleStandingQueryResultWorkflows: Seq[StandingQueryResultWorkflow] = Seq(
+    exampleStandingQueryResultWorkflowToStandardOut,
   )
   implicit lazy val stringStandingQueryResultWorkflowMapSchema: Schema[Map[String, StandingQueryResultWorkflow]] =
     Schema
       .schemaForMap[StandingQueryResultWorkflow]
       // Cannot get `.default` to work here
-      .encodedExample(exampleStandingQueryResultWorkflowMap.asJson.deepDropNullValues)
+      .encodedExample(exampleStandingQueryResultWorkflows.asJson.deepDropNullValues)
 
   // Kafka Property Value codec, hand-rolled for like-a-String representation instead of as-an-Object with a field
   implicit val kafkaPropertyValueEncoder: Encoder[KafkaPropertyValue] = Encoder.encodeString.contramap(_.s)

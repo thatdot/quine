@@ -180,7 +180,7 @@ class IngestCodecTest
       Some(2L),
       Seq(Base64, Zlib),
     )
-    testJsonEncodeDecode(Oss.QuineIngestConfiguration(kafka, "CREATE $(that)"))
+    testJsonEncodeDecode(Oss.QuineIngestConfiguration("kafka-in", kafka, "CREATE $(that)"))
 
   }
 

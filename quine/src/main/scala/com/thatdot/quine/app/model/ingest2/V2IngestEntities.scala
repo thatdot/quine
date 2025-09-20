@@ -752,23 +752,15 @@ object V2IngestEntities {
     ) extends Transformation
   }
 
-  @title("Ingest Configuration")
-  @description("A specification of a data source and rules for consuming data from that source.")
   case class QuineIngestConfiguration(
+    name: String,
     source: IngestSource,
-    @description("Cypher query to execute on each record.")
     query: String,
-    @description("Name of the Cypher parameter to populate with the JSON value.")
     parameter: String = "that",
-    @description("A function to be run before the cypher query is executed. Used to pre-process input.")
     transformation: Option[Transformation] = None,
-    @description("Maximum number of records to process at once.")
     parallelism: Int = V1.IngestRoutes.defaultWriteParallelism,
-    @description("Maximum number of records to process per second.")
     maxPerSecond: Option[Int] = None,
-    @description("Action to take on a single failed record")
     onRecordError: OnRecordErrorHandler = OnRecordErrorHandler(),
-    @description("Action to take on a failure of the input stream")
     onStreamError: OnStreamErrorHandler = LogStreamError,
   ) extends V2IngestConfiguration
       with LazySafeLogging {

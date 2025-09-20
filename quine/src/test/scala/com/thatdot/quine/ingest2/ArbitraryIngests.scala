@@ -123,8 +123,11 @@ trait ArbitraryIngests {
     Gen.oneOf(fileGen, s3Gen, stdInGen, numInGen, webSocketGen, sseInGen, sqsInGen, kinesisGen, kafkaGen)
   implicit val arbInbestSource: Arbitrary[IngestSource] = Arbitrary(v2IngestSourceGen)
   implicit val v2IngestConfigurationGen: Gen[Oss.QuineIngestConfiguration] = for {
+    initChar <- Gen.alphaChar
+    nameTail <- Gen.alphaNumStr
+    name = s"$initChar$nameTail"
     source <- v2IngestSourceGen
-  } yield Oss.QuineIngestConfiguration(source, "CREATE ($that)")
+  } yield Oss.QuineIngestConfiguration(name, source, "CREATE ($that)")
 
   implicit val arbIngest: Arbitrary[Oss.QuineIngestConfiguration] = Arbitrary(v2IngestConfigurationGen)
   implicit val v1IngestStreamStatusGen: Gen[IngestStreamStatus] = Gen.oneOf(

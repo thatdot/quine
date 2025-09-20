@@ -258,6 +258,8 @@ object ApiIngest {
 
   object Oss {
     case class QuineIngestConfiguration(
+      @description("Unique name identifying the ingest stream.")
+      name: String,
       source: IngestSource,
       @description("Cypher query to execute on each record.")
       query: String,
