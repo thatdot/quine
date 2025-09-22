@@ -21,7 +21,6 @@ import shapeless.{:+:, CNil, Coproduct}
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.api.v2.ErrorResponseHelpers.toServerError
 import com.thatdot.api.v2.ErrorType
-import com.thatdot.api.v2.outputs.DestinationSteps
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
@@ -33,10 +32,7 @@ import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.v2api.converters._
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
-import com.thatdot.quine.app.v2api.definitions.query.standing.QuineSupportedDestinationSteps.{
-  CoreDestinationSteps,
-  QuineAdditionalDestinationSteps,
-}
+import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
@@ -212,27 +208,18 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
           .map(_ => ())(ExecutionContext.parasitic)
       }
 
-  private def validateCoreDestinationSteps(
-    destinationSteps: CoreDestinationSteps,
+  private def validateDestinationSteps(
+    destinationSteps: QuineDestinationSteps,
   ): Option[NonEmptyList[ErrorString]] =
-    destinationSteps.steps match {
-      case k: DestinationSteps.Kafka =>
+    destinationSteps match {
+      case k: QuineDestinationSteps.Kafka =>
         KafkaSettingsValidator.validateProperties(k.kafkaProperties.view.mapValues(_.toString).toMap)
       case _ => None
     }
 
-  private def validateQuineDestinationSteps(
-    destinationSteps: QuineAdditionalDestinationSteps,
-  ): Option[NonEmptyList[ErrorString]] = None
-
   private def validateWorkflow(workflow: ApiStanding.StandingQueryResultWorkflow): Option[NonEmptyList[ErrorString]] = {
     import cats.implicits.catsSyntaxSemigroup
-    workflow.destinations
-      .collect {
-        case steps: CoreDestinationSteps => validateCoreDestinationSteps(steps)
-        case steps: QuineAdditionalDestinationSteps => validateQuineDestinationSteps(steps)
-      }
-      .reduce(_.combine(_))
+    workflow.destinations.map(validateDestinationSteps).reduce[Option[NonEmptyList[ErrorString]]](_.combine(_))
   }
 
   private type ErrSq = BadRequest :+: NotFound :+: CNil

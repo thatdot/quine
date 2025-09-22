@@ -4,7 +4,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.{EndpointOutput, Schema, statusCode}
 
-import com.thatdot.api.v2.configuration.V2ApiConfiguration.jsonBody
+import com.thatdot.api.v2.schema.V2ApiConfiguration.jsonBody
 import com.thatdot.quine.util.BaseError
 
 /** Errors that api v2 cares to distinguish for reporting */

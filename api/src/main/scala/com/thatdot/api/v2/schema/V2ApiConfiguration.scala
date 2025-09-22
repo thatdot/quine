@@ -1,4 +1,4 @@
-package com.thatdot.api.v2.configuration
+package com.thatdot.api.v2.schema
 
 import io.circe.generic.extras.{Configuration => CirceConfig}
 import io.circe.{Decoder, Encoder, Json, Printer}

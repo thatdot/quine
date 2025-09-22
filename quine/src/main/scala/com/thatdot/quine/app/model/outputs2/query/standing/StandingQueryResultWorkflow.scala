@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.model.outputs2.query.standing
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.stream.scaladsl.{Flow, Sink}
+import org.apache.pekko.stream.scaladsl.Flow
 
 import cats.data.NonEmptyList
 
@@ -93,26 +93,11 @@ object Workflow {
   }
 }
 
-sealed trait QuineSupportedDestinationSteps extends DataFoldableSink {
-  def underlying: DataFoldableSink
-  override def sink[A: DataFoldableFrom](name: String, inNamespace: NamespaceId)(implicit
-    logConfig: LogConfig,
-  ): Sink[A, NotUsed] = underlying.sink(name, inNamespace)
-}
-
-object QuineSupportedDestinationSteps {
-  import com.thatdot.outputs2.{FoldableDestinationSteps => Core}
-  import com.thatdot.quine.app.model.outputs2.{QuineDestinationSteps => Quine}
-
-  case class CoreDestinationSteps(underlying: Core) extends QuineSupportedDestinationSteps
-  case class QuineAdditionalFoldableDataResultDestinations(underlying: Quine) extends QuineSupportedDestinationSteps
-}
-
 case class StandingQueryResultWorkflow(
   outputName: String,
   namespaceId: NamespaceId,
   workflow: Workflow,
-  destinationStepsList: NonEmptyList[QuineSupportedDestinationSteps],
+  destinationStepsList: NonEmptyList[DataFoldableSink],
 ) {
 
   def flow(graph: CypherOpsGraph)(implicit logConfig: LogConfig): Flow[StandingQueryResult, Unit, NotUsed] = {

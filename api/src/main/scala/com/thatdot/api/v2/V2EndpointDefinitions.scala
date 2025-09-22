@@ -15,7 +15,7 @@ import sttp.tapir._
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.ErrorResponseHelpers.toServerError
-import com.thatdot.api.v2.configuration.V2ApiConfiguration
+import com.thatdot.api.v2.schema.V2ApiConfiguration
 import com.thatdot.common.logging.Log._
 import com.thatdot.quine.model.Milliseconds
 

@@ -3,18 +3,8 @@ package com.thatdot.quine.app.v2api.definitions.query.standing
 import cats.data.NonEmptyList
 import sttp.tapir.Schema.annotations.{description, title}
 
+import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.CypherQuery
-import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultTransformation
-
-sealed trait QuineSupportedDestinationSteps
-
-object QuineSupportedDestinationSteps {
-  import com.thatdot.api.v2.outputs.{DestinationSteps => Core}
-  import com.thatdot.quine.app.v2api.definitions.outputs.{QuineDestinationSteps => Quine}
-
-  case class CoreDestinationSteps(steps: Core) extends QuineSupportedDestinationSteps
-  case class QuineAdditionalDestinationSteps(steps: Quine) extends QuineSupportedDestinationSteps
-}
 
 @title(StandingQueryResultWorkflow.apiTitle)
 @description(StandingQueryResultWorkflow.apiDescription)
@@ -28,7 +18,7 @@ case class StandingQueryResultWorkflow(
   @description("A `CypherQuery` that returns data.")
   resultEnrichment: Option[CypherQuery] = None,
   @description("The destinations to which the latest data passed through the workflow steps shall be delivered.")
-  destinations: NonEmptyList[QuineSupportedDestinationSteps],
+  destinations: NonEmptyList[QuineDestinationSteps],
 )
 
 object StandingQueryResultWorkflow {

@@ -34,7 +34,7 @@ object Api2ToOutputs2 {
     implicit val system: ActorSystem = graph.system
 
     destinationSteps match {
-      case api.v2.outputs.DestinationSteps.Drop =>
+      case api.v2.outputs.DestinationSteps.Drop() =>
         Future.successful(
           outputs2.FoldableDestinationSteps.WithAny(
             destination = outputs2.destination.Drop,
@@ -115,7 +115,7 @@ object Api2ToOutputs2 {
             ),
           ),
         )
-      case api.v2.outputs.DestinationSteps.StandardOut =>
+      case api.v2.outputs.DestinationSteps.StandardOut() =>
         Future.successful(
           outputs2.FoldableDestinationSteps.WithByteEncoding(
             // Update this when non-JSON outputs are supported for StandardOut

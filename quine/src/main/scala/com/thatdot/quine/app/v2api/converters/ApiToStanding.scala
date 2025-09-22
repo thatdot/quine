@@ -5,6 +5,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import org.apache.pekko.dispatch.MessageDispatcher
 
 import com.thatdot.quine.app.model.outputs2.query.standing
+import com.thatdot.quine.app.v2api.definitions.outputs.{MirrorOfCore, QuineDestinationSteps}
 import com.thatdot.quine.app.v2api.definitions.query.{standing => Api}
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
@@ -49,15 +50,17 @@ object ApiToStanding {
     implicit val idProvider: QuineIdProvider = graph.idProvider
 
     workflow.destinations
-      .traverse {
-        case Api.QuineSupportedDestinationSteps.CoreDestinationSteps(steps) =>
-          ConvertCore.Api2ToOutputs2(steps).map(standing.QuineSupportedDestinationSteps.CoreDestinationSteps)
-        case Api.QuineSupportedDestinationSteps.QuineAdditionalDestinationSteps(steps) =>
-          Api2ToOutputs2(steps).map(
-            standing.QuineSupportedDestinationSteps.QuineAdditionalFoldableDataResultDestinations,
-          )
+      .map {
+        case coreMirroredDestinationSteps: QuineDestinationSteps with MirrorOfCore =>
+          Right(Api2ToOutputs2.quineDestinationStepsToCoreDestinationSteps(coreMirroredDestinationSteps))
+        case nonMirroredDestinationSteps =>
+          Left(nonMirroredDestinationSteps)
       }
-      .map(dests =>
+      .traverse {
+        case Right(coreDestinationSteps) => ConvertCore.Api2ToOutputs2(coreDestinationSteps)
+        case Left(quineDestinationSteps) => Api2ToOutputs2(quineDestinationSteps)
+      }
+      .map(dataFoldableSinks =>
         standing.StandingQueryResultWorkflow(
           outputName = workflow.name,
           namespaceId = namespaceId,
@@ -66,7 +69,7 @@ object ApiToStanding {
             preEnrichmentTransformation = workflow.preEnrichmentTransformation.map(apply),
             enrichmentQuery = workflow.resultEnrichment.map(Api2ToOutputs2.toEnrichmentQuery),
           ),
-          destinationStepsList = dests,
+          destinationStepsList = dataFoldableSinks,
         ),
       )
   }

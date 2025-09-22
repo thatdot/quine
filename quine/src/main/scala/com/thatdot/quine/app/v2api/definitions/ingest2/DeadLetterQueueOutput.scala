@@ -130,7 +130,7 @@ object DeadLetterQueueOutput {
     */
   def dlqMatchesOutputs(outputs: Outputs): DeadLetterQueueOutput = outputs match {
 
-    case DestinationSteps.Drop =>
+    case DestinationSteps.Drop() =>
       throw new IllegalArgumentException(
         "Drop cannot be used as a Dead-Letter-Queue destination",
       )
@@ -144,7 +144,7 @@ object DeadLetterQueueOutput {
     case DestinationSteps.ReactiveStream(address, port, format) =>
       DeadLetterQueueOutput.ReactiveStream(address, port, formatMatchesOutput(format))
 
-    case DestinationSteps.StandardOut =>
+    case DestinationSteps.StandardOut() =>
       DeadLetterQueueOutput.StandardOut
 
     // ──────────────── mappings with reordered params ────────────────

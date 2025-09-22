@@ -16,7 +16,7 @@ import sttp.tapir.{Endpoint, Schema, emptyOutputAs, path, statusCode}
 import com.thatdot.api.v2.ErrorResponse.{ServerError, ServiceUnavailable}
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
 import com.thatdot.api.v2.SuccessEnvelope
-import com.thatdot.api.v2.configuration.V2ApiConfiguration
+import com.thatdot.api.v2.schema.V2ApiConfiguration
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._

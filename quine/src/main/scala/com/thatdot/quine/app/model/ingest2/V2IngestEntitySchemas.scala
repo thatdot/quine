@@ -18,7 +18,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
-import com.thatdot.api.v2.configuration.V2ApiConfiguration
+import com.thatdot.api.v2.schema.V2ApiConfiguration
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.CsvFormat
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.StreamingFormat.ProtobufFormat
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._

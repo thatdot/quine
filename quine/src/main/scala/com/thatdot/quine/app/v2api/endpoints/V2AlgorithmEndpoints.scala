@@ -19,7 +19,7 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
-import com.thatdot.api.v2.configuration.V2ApiConfiguration
+import com.thatdot.api.v2.schema.V2ApiConfiguration
 import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
