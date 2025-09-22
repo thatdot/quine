@@ -47,7 +47,6 @@ import com.thatdot.quine.persistor.cassandra.{
 }
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 import com.thatdot.quine.util.Log.implicits._
-import com.thatdot.quine.util.PekkoStreams.distinctConsecutive
 import com.thatdot.quine.util.Retry
 
 abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
@@ -340,9 +339,9 @@ class KeyspacesPersistor(
   )
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
-    super.enumerateJournalNodeIds().via(distinctConsecutive)
+    super.enumerateJournalNodeIds().dropRepeated()
 
   override def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
-    super.enumerateSnapshotNodeIds().via(distinctConsecutive)
+    super.enumerateSnapshotNodeIds().dropRepeated()
 
 }
