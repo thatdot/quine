@@ -134,7 +134,7 @@ lazy val `quine-cassandra-persistor`: Project = project
     ),
   )
 
-// Parser and interepreter for a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
+// Parser and interpreter for a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
 lazy val `quine-gremlin`: Project = project
   .settings(commonSettings)
   .dependsOn(`quine-core` % "compile->compile;test->test")

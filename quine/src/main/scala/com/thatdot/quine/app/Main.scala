@@ -236,7 +236,7 @@ object Main extends App with LazySafeLogging {
 
   // Determine the bind address and resolvable URL for the web server, if enabled
   val bindAndResolvableAddresses: Option[(WebServerBindConfig, URL)] = Option.when(config.webserver.enabled) {
-    // if a canonical URL is configured, use that for presentation (eg logging) purposes. Otherwise, infer
+    // if a canonical URL is configured, use that for presentation (e.g. logging) purposes. Otherwise, infer
     // from the bind URL
     config.webserver -> config.webserverAdvertise.fold(config.webserver.guessResolvableUrl)(
       _.url(config.webserver.protocol),
