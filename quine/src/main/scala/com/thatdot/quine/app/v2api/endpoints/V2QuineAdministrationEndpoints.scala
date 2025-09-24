@@ -385,15 +385,15 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     : Full[Unit, Unit, Option[Int], ServerError, SuccessEnvelope.Ok[TMetricsReport], Any, Future] =
     metrics.serverLogic[Future](metricsLogic)
 
-  protected[endpoints] val getShardSizes: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Ok[
-    Map[Int, TShardInMemoryLimit],
-  ], Any] = adminBase("shards").get
+  protected[endpoints] val getShardSizes: Endpoint[
+    Unit,
+    Unit,
+    ServerError,
+    SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
+    Any,
+  ] = adminBase("shards").get
     .name("Shard Sizes")
-    .description(
-      """Update the in-memory node limits.
-        |
-        |Returns the updated in-memory node settings for all shards.""".stripMargin,
-    )
+    .description("Get the in-memory node limits for all shards.")
     .in("size-limits")
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]])
@@ -417,10 +417,13 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     Future,
   ] = getShardSizes.serverLogic[Future](getShardSizesLogic)
 
-  protected[endpoints] val updateShardSizes
-    : Endpoint[Unit, Map[Int, TShardInMemoryLimit], ServerError, SuccessEnvelope.Ok[
-      Map[Int, TShardInMemoryLimit],
-    ], Any] = adminBase("shards").post
+  protected[endpoints] val updateShardSizes: Endpoint[
+    Unit,
+    Map[Int, TShardInMemoryLimit],
+    ServerError,
+    SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
+    Any,
+  ] = adminBase("shards").post
     .name("Shard Sizes")
     .description(
       """Update the in-memory node limits. Shards not mentioned in the request are unaffected.
@@ -432,14 +435,14 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]])
 
-  protected[endpoints] val updateShardSizesLogic
-    : Map[Int, TShardInMemoryLimit] => Future[Either[ServerError, SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]]] =
-    resizes =>
-      recoverServerError(
-        appMethods
-          .shardSizes(resizes.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
-          .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
-      )((inp: Map[Int, TShardInMemoryLimit]) => SuccessEnvelope.Ok(inp))
+  protected[endpoints] val updateShardSizesLogic: Map[Int, TShardInMemoryLimit] => Future[
+    Either[ServerError, SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]],
+  ] = resizes =>
+    recoverServerError(
+      appMethods
+        .shardSizes(resizes.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
+        .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
+    )((inp: Map[Int, TShardInMemoryLimit]) => SuccessEnvelope.Ok(inp))
 
   private val updateShardSizesServerEndpoint: Full[
     Unit,
