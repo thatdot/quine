@@ -732,10 +732,7 @@ object V2IngestEntities {
   // Stream Error Handler
   // --------------------
 
-  /** Enforce shared structure between quine and novelty ingest usages.
-    * Novelty ingests are identical to quine ingests with the exception
-    * that they omit query and parameter fields.
-    */
+  /** Enforce shared structure between quine and novelty ingest usages. */
   trait V2IngestConfiguration {
     val source: IngestSource
     val parallelism: Int
