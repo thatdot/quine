@@ -1415,6 +1415,7 @@ object QuineApp {
 
   implicit val sqOutputs2Codec: EncoderDecoder[V2StandingQueryDataMap] = {
     import io.circe.generic.auto._
+    import com.thatdot.api.v2.schema.V2ApiSchemas._
     EncoderDecoder.ofEncodeDecode
   }
 

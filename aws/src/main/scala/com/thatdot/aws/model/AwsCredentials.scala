@@ -1,3 +1,5 @@
 package com.thatdot.aws.model
 
-final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
+import org.polyvariant.sttp.oauth2.Secret
+
+final case class AwsCredentials(accessKeyId: String, secretAccessKey: Secret[String])

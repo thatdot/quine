@@ -2,6 +2,7 @@ package com.thatdot.api.v2.schema
 
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
+import org.polyvariant.sttp.oauth2.Secret
 import sttp.tapir.Schema
 import sttp.tapir.generic.auto._
 
@@ -31,6 +32,10 @@ trait V2ApiSchemas extends V2ApiConfiguration {
       .schemaForMap[KafkaPropertyValue]
       // Cannot get `.default` to work here
       .encodedExample(exampleKafkaProperties.asJson)
+
+  implicit val secretStringEncoder: Encoder[Secret[String]] = Encoder.encodeString.contramap(_.toString)
+  implicit val secretStringDecoder: Decoder[Secret[String]] = Decoder.decodeString.map(Secret(_))
+  implicit val secretStringSchema: Schema[Secret[String]] = Schema.string[Secret[String]]
 }
 
 object V2ApiSchemas extends V2ApiSchemas

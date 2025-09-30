@@ -7,6 +7,7 @@ import io.circe.Decoder.Result
 import io.circe.generic.extras.auto._
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
+import org.polyvariant.sttp.oauth2.Secret
 import org.scalatest.Assertion
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
@@ -69,7 +70,7 @@ class IngestCodecTest
         IngestFormat.FileFormat.Json,
         "bucket",
         "key",
-        Some(AwsCredentials("A", "B")),
+        Some(AwsCredentials("A", Secret("B"))),
         Some(10),
         10,
         Some(20),
@@ -104,7 +105,7 @@ class IngestCodecTest
         IngestFormat.StreamingFormat.Json,
         "streamName",
         Some(Set("A", "B", "C")),
-        Some(AwsCredentials("A", "B")),
+        Some(AwsCredentials("A", Secret("B"))),
         Some(AwsRegion.apply("us-east-1")),
         IteratorType.AfterSequenceNumber("sequenceNumber"),
         2,
@@ -125,7 +126,7 @@ class IngestCodecTest
         IngestFormat.StreamingFormat.Json,
         "queueUrl",
         12,
-        Some(AwsCredentials("A", "B")),
+        Some(AwsCredentials("A", Secret("B"))),
         Some(AwsRegion.apply("us-east-1")),
         true,
         Seq(Base64, Zlib),
