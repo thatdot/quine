@@ -62,7 +62,7 @@ object Dependencies {
   val rocksdbV = "9.7.4"
   val rsocketV = "1.1.5"
   val scaffeineV = "5.3.0"
-  val scalaCheckV = "1.18.1"
+  val scalaCheckV = "1.19.0"
   val scalaJavaTimeV = "2.6.0"
   val scalaLoggingV = "3.9.5"
   val scalaParserCombinatorsV = "2.4.0"
