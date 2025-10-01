@@ -15,7 +15,7 @@ import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.pekkohttp.{PekkoHttpServerInterpreter, PekkoHttpServerOptions}
 
-import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
+import com.thatdot.quine.app.v2api.endpoints.{V2IngestApiSchemas, Visibility}
 
 /** Definitions wrapping Tapir endpoints into akka-http routes.
   */
@@ -23,16 +23,15 @@ abstract class TapirRoutes extends FailFastCirceSupport with V2IngestApiSchemas 
   protected val apiEndpoints: List[ServerEndpoint[Any, Future]]
   protected val ingestEndpoints: List[ServerEndpoint[Any, Future]]
 
-  /** List of endpoints that should not appear in api docs. */
-  protected val hiddenEndpoints: Set[ServerEndpoint[Any, Future]]
-
   val appMethods: ApplicationApiMethods
 
   val apiInfo: Info
 
   protected def openApiSpec(ingestOnly: Boolean): OpenAPI = OpenAPIDocsInterpreter()
     .toOpenAPI(
-      (if (ingestOnly) ingestEndpoints else apiEndpoints).filterNot(hiddenEndpoints.contains).map(_.endpoint),
+      (if (ingestOnly) ingestEndpoints else apiEndpoints)
+        .filterNot(_.attribute(Visibility.attributeKey).contains(Visibility.Hidden))
+        .map(_.endpoint),
       apiInfo,
     )
 

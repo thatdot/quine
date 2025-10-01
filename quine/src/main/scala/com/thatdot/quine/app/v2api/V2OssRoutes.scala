@@ -34,8 +34,6 @@ class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfi
     uiEndpoints ++ adminEndpoints ++ debugEndpoints ++ ingestEndpoints ++ algorithmEndpoints ++ standingQueryEndpoints ++ cypherEndpoints
   }
 
-  /** List of endpoints that should not appear in api docs. */
-  override val hiddenEndpoints: Set[ServerEndpoint[Any, Future]] = adminHiddenEndpoints.toSet ++ debugEndpoints
   //Hidden in OSS api
   def memberIdxParameter: EndpointInput[Option[Int]] =
     query[Option[Int]]("memberIdx").schema(_.hidden(true))

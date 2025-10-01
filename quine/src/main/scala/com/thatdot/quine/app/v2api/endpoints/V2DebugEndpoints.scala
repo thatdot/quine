@@ -129,6 +129,7 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
           |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post).""".asOneLine +
       debugEndpointIntentionAddendum,
     )
+    .attribute(Visibility.attributeKey, Visibility.Hidden)
     .in(idPathElement)
     .in("props")
     .in(propKeyParameter)
@@ -165,6 +166,7 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
   ] = debugBase
     .name("List Properties/Edges")
     .description(s"Retrieve a node's list of properties and list of edges." + debugEndpointIntentionAddendum)
+    .attribute(Visibility.attributeKey, Visibility.Hidden)
     .in(idPathElement)
     .in(atTimeParameter)
     .in(namespaceParameter)
@@ -200,6 +202,7 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
   ] = debugBase
     .name("List Node State (Verbose)")
     .description(s"Returns information relating to the node's internal state." + debugEndpointIntentionAddendum)
+    .attribute(Visibility.attributeKey, Visibility.Hidden)
     .in(idPathElement)
     .in("verbose")
     .in(atTimeParameter)
@@ -243,6 +246,7 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
     debugBase
       .name("List Edges")
       .description(s"Retrieve all node edges." + debugEndpointIntentionAddendum)
+      .attribute(Visibility.attributeKey, Visibility.Hidden)
       .in(idPathElement)
       .in("edges")
       .in(atTimeParameter)
@@ -302,5 +306,4 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguratio
     debugOpsVerboseServerEndpoint,
     debugOpsEdgesGetServerEndpoint,
   )
-
 }

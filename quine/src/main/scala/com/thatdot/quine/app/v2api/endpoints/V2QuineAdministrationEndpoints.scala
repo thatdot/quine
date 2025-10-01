@@ -326,6 +326,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     adminBase("metadata")
       .name("Persisted Metadata")
       .summary("Metadata")
+      .attribute(Visibility.attributeKey, Visibility.Hidden)
       .get
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[Map[String, String]]])
@@ -486,8 +487,6 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     Any,
     Future,
   ] = requestNodeSleep.serverLogic[Future](requestNodeSleepLogic)
-
-  val adminHiddenEndpoints: List[ServerEndpoint[Any, Future]] = List(metadataServerEndpoint)
 
   val adminEndpoints: List[ServerEndpoint[Any, Future]] = List(
     systemInfoServerEndpoint,
