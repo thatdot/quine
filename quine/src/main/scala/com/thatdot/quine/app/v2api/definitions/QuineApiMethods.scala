@@ -755,5 +755,11 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
         )(ExecutionContext.parasitic)
     }
 
-  def isReadOnly(queryText: String, parameters: Seq[String]): Boolean = cypher.compile(queryText, parameters).isReadOnly
+  def analyze(queryText: String, parameters: Seq[String]): QueryEffects = {
+    val compiled = cypher.compile(queryText, parameters)
+    QueryEffects(
+      isReadOnly = compiled.isReadOnly,
+      canContainAllNodeScan = compiled.canContainAllNodeScan,
+    )
+  }
 }
