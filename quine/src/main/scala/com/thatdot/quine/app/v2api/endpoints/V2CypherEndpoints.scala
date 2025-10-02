@@ -13,10 +13,10 @@ import sttp.tapir.Schema.annotations.description
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{Codec, DecodeResult, Endpoint, Schema, oneOfBody, statusCode}
+import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, oneOfBody, statusCode}
 
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
-import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope}
+import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._
@@ -53,7 +53,14 @@ object V2CypherEndpointEntities {
 
   case class TUiEdge(from: QuineId, edgeType: String, to: QuineId, isDirected: Boolean = true)
 }
-trait V2CypherEndpoints extends V2QuineEndpointDefinitions with StringOps {
+
+trait V2CypherEndpoints extends V2EndpointDefinitions with V2IngestApiSchemas with CommonParameters with StringOps { // V2EndpointDefinitions with V2ApiSchemas
+  val appMethods: ApplicationApiMethods with CypherApiMethods
+
+  import com.thatdot.api.v2.schema.V2ApiSchemas._
+
+  def namespaceParameter: EndpointInput[Option[String]]
+  def memberIdxParameter: EndpointInput[Option[Int]]
 
   // QuineId JSON serialization support for UI APIv2 handling
   implicit val quineIdEncoder: Encoder[QuineId] = Encoder.encodeString.contramap(idProvider.qidToPrettyString)
@@ -98,7 +105,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with StringOps {
       textBody(cypherQueryAsStringCodec).example(textEx),
     )
 
-  protected[endpoints] val cypher: Endpoint[
+  val cypher: Endpoint[
     Unit,
     (Option[AtTime], FiniteDuration, Option[String], TCypherQuery),
     Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
@@ -141,7 +148,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with StringOps {
     Future,
   ] = cypher.serverLogic[Future](cypherLogic)
 
-  protected[endpoints] val cypherNodes: Endpoint[
+  val cypherNodes: Endpoint[
     Unit,
     (Option[AtTime], FiniteDuration, Option[String], TCypherQuery),
     Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
@@ -163,7 +170,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with StringOps {
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Seq[TUiNode]]])
 
-  protected[endpoints] val cypherNodesLogic: (
+  val cypherNodesLogic: (
     (
       Option[Milliseconds],
       FiniteDuration,
@@ -190,7 +197,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with StringOps {
     Future,
   ] = cypherNodes.serverLogic[Future](cypherNodesLogic)
 
-  protected[endpoints] val cypherEdges: Endpoint[
+  val cypherEdges: Endpoint[
     Unit,
     (Option[AtTime], FiniteDuration, Option[String], TCypherQuery),
     Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
@@ -212,7 +219,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions with StringOps {
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Seq[TUiEdge]]])
 
-  protected[endpoints] val cypherEdgesLogic: ((Option[AtTime], FiniteDuration, Option[String], TCypherQuery)) => Future[
+  val cypherEdgesLogic: ((Option[AtTime], FiniteDuration, Option[String], TCypherQuery)) => Future[
     Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], SuccessEnvelope.Ok[Seq[TUiEdge]]],
   ] = { case (atTime, timeout, namespace, query) =>
     recoverServerErrorEitherFlat(

@@ -14,8 +14,7 @@ import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, path, query, st
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
-import com.thatdot.api.v2.SuccessEnvelope
-import com.thatdot.api.v2.schema.V2ApiConfiguration
+import com.thatdot.api.v2.{SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._
@@ -63,7 +62,8 @@ object V2DebugEndpointEntities {
 
 }
 
-trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration with StringOps {
+trait V2DebugEndpoints extends V2EndpointDefinitions with V2IngestApiSchemas with CommonParameters with StringOps {
+  val appMethods: ApplicationApiMethods with DebugApiMethods
 
   implicit val tEdgeDirectionCodec: Codec[String, TEdgeDirection, TextPlain] = {
 

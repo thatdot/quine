@@ -14,13 +14,14 @@ import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
 import com.thatdot.api.v2.SuccessEnvelope
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.V2QuineEndpointDefinitions
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.Oss
+import com.thatdot.quine.app.v2api.definitions.{CommonParameters, QuineApiMethods, V2QuineEndpointDefinitions}
 
-trait V2IngestEndpoints extends V2QuineEndpointDefinitions with StringOps {
-
+trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters with StringOps {
   import com.thatdot.quine.app.v2api.converters.ApiToIngest.OssConversions._
+
+  val appMethods: QuineApiMethods
 
   val ingestStreamNameElement: EndpointInput.PathCapture[String] =
     path[String]("name").description("Ingest Stream name.").example("NumbersStream")

@@ -1,25 +1,19 @@
 package com.thatdot.quine.app.v2api.definitions
 
-import java.nio.file.{FileAlreadyExistsException, FileSystemException, InvalidPathException}
 import java.util.Properties
 
-import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters.CollectionHasAsScala
-import scala.util.control.NonFatal
-import scala.util.{Either, Failure, Success, Try}
+import scala.util.Either
 
-import org.apache.pekko.stream.scaladsl.Sink
 import org.apache.pekko.stream.{Materializer, StreamDetachedException}
 import org.apache.pekko.util.Timeout
 
 import cats.data.NonEmptyList
 import cats.implicits.toFunctorOps
-import io.circe.Json
 import shapeless.{:+:, CNil, Coproduct}
 
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
-import com.thatdot.api.v2.ErrorResponseHelpers.toServerError
 import com.thatdot.api.v2.ErrorType
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
@@ -35,14 +29,6 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
-import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
-import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
-  TCypherQuery,
-  TCypherQueryResult,
-  TUiEdge,
-  TUiNode,
-}
-import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 import com.thatdot.quine.app.{BaseApp, BuildInfo, SchemaCache}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.exceptions.NamespaceNotFoundException
@@ -59,9 +45,9 @@ import com.thatdot.quine.graph.{
   StandingQueryOpsGraph,
   namespaceToString,
 }
-import com.thatdot.quine.model.{HalfEdge, Milliseconds, QuineValue}
+import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.persistor.PersistenceAgent
-import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model, routes => V1}
+import com.thatdot.quine.{BuildInfo => QuineBuildInfo, routes => V1}
 
 sealed trait ProductVersion
 object ProductVersion {
@@ -73,8 +59,8 @@ object ProductVersion {
 }
 
 trait ApplicationApiMethods {
-  val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph with StandingQueryOpsGraph
-  val app: BaseApp with SchemaCache
+  val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph
+  val app: BaseApp with SchemaCache with QueryUiConfigurationState
   def productVersion: ProductVersion
   implicit def timeout: Timeout
   implicit val logConfig: LogConfig
@@ -137,6 +123,22 @@ trait ApplicationApiMethods {
       graph.requestNodeSleep(namespaceId, quineId),
     )
 
+  def getSamplesQueries(implicit ctx: ExecutionContext): Future[Vector[SampleQuery]] =
+    graph.requiredGraphIsReadyFuture(app.getSampleQueries).map(_.map(UiStylingToApi.apply))
+  def getNodeAppearances(implicit ctx: ExecutionContext): Future[Vector[UiNodeAppearance]] =
+    graph.requiredGraphIsReadyFuture(app.getNodeAppearances.map(_.map(UiStylingToApi.apply)))
+  def getQuickQueries(implicit ctx: ExecutionContext): Future[Vector[UiNodeQuickQuery]] =
+    graph.requiredGraphIsReadyFuture(app.getQuickQueries.map(_.map(UiStylingToApi.apply)))
+
+  def analyze(queryText: String, parameters: Seq[String]): QueryEffects = {
+    val compiled = cypher.compile(queryText, parameters)
+    QueryEffects(
+      isReadOnly = compiled.isReadOnly,
+      canContainAllNodeScan = compiled.canContainAllNodeScan,
+    )
+  }
+
+//  def isReadOnly(queryText: String, parameters: Seq[String]): Boolean = analyze(queryText, parameters).isReadOnly //cypher.compile(queryText, parameters).isReadOnly
 }
 // --------------------- End Admin Endpoints ------------------------
 
@@ -144,7 +146,12 @@ trait ApplicationApiMethods {
 import com.thatdot.quine.app.routes.{AlgorithmMethods => V1AlgorithmMethods}
 
 /** Encapsulates access to the running components of quine for individual endpoints. */
-trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
+trait QuineApiMethods
+    extends ApplicationApiMethods
+    with V1AlgorithmMethods
+    with CypherApiMethods
+    with DebugApiMethods
+    with AlgorithmApiMethods {
 
   override val graph: BaseGraph with LiteralOpsGraph with StandingQueryOpsGraph with CypherOpsGraph with AlgorithmGraph
   override val app: BaseApp
@@ -253,17 +260,8 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       }
     }
 
-  def getSamplesQueries(implicit ctx: ExecutionContext): Future[Vector[SampleQuery]] =
-    graph.requiredGraphIsReadyFuture(app.getSampleQueries).map(_.map(UiStylingToApi.apply))
-
   def setSampleQueries(newSampleQueries: Vector[SampleQuery]): Future[Unit] =
     graph.requiredGraphIsReadyFuture(app.setSampleQueries(newSampleQueries.map(ApiToUiStyling.apply)))
-
-  def getQuickQueries(implicit ctx: ExecutionContext): Future[Vector[UiNodeQuickQuery]] =
-    graph.requiredGraphIsReadyFuture(app.getQuickQueries.map(_.map(UiStylingToApi.apply)))
-
-  def getNodeAppearances(implicit ctx: ExecutionContext): Future[Vector[UiNodeAppearance]] =
-    graph.requiredGraphIsReadyFuture(app.getNodeAppearances.map(_.map(UiStylingToApi.apply)))
 
   def setQuickQueries(newQuickQueries: Vector[UiNodeQuickQuery]): Future[Unit] =
     graph.requiredGraphIsReadyFuture(app.setQuickQueries(newQuickQueries.map(ApiToUiStyling.apply)))
@@ -335,314 +333,6 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
       .map(
         _.toRight(NotFound(s"Standing Query, $name, does not exist")),
       )(ExecutionContext.parasitic)
-
-  // --------------------- Cypher Endpoints ------------------------
-
-  // The Query UI relies heavily on a couple Cypher endpoints for making queries.
-  private def catchCypherException[A](futA: => Future[A]): Future[Either[BadRequest, A]] =
-    Future
-      .fromTry(Try(futA))
-      .flatten
-      .transform {
-        case Success(a) => Success(Right(a))
-        case Failure(qce: CypherException) => Success(Left(BadRequest(ErrorType.CypherError(qce.pretty))))
-        case Failure(err) => Failure(err)
-      }(ExecutionContext.parasitic)
-
-  //TODO On missing namespace
-  //TODO timeout handling
-  val cypherMethods = new OSSQueryUiCypherMethods(graph)
-
-  def cypherPost(
-    atTime: Option[Milliseconds],
-    timeout: FiniteDuration,
-    namespaceId: NamespaceId,
-    query: TCypherQuery,
-  ): Future[Either[BadRequest, TCypherQueryResult]] =
-    graph.requiredGraphIsReadyFuture {
-      catchCypherException {
-        val (columns, results, isReadOnly, _) =
-          cypherMethods.queryCypherGeneric(
-            V1.CypherQuery(query.text, query.parameters),
-            namespaceId,
-            atTime,
-          ) // TODO read canContainAllNodeScan
-        results
-          .via(Util.completionTimeoutOpt(timeout, allowTimeout = isReadOnly))
-          .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
-          .runWith(Sink.seq)(graph.materializer)
-          .map(TCypherQueryResult(columns, _))(ExecutionContext.parasitic)
-      }
-    }
-
-  //private def ifNamespaceFound(namespaceId: NamespaceId) = ???
-
-  def cypherNodesPost(
-    atTime: Option[Milliseconds],
-    timeout: FiniteDuration,
-    namespaceId: NamespaceId,
-    query: TCypherQuery,
-  ): Future[Either[BadRequest, Seq[TUiNode]]] =
-    graph.requiredGraphIsReadyFuture {
-      catchCypherException {
-        val (results, isReadOnly, _) =
-          cypherMethods.queryCypherNodes(
-            V1.CypherQuery(query.text, query.parameters),
-            namespaceId,
-            atTime,
-          ) // TODO read canContainAllNodeScan
-        results
-          .via(Util.completionTimeoutOpt(timeout, allowTimeout = isReadOnly))
-          .named(s"cypher-nodes-query-atTime-${atTime.fold("none")(_.millis.toString)}")
-          .map(node => TUiNode(node.id, node.hostIndex, node.label, node.properties))
-          .runWith(Sink.seq)(graph.materializer)
-      }
-    }
-
-  def cypherEdgesPost(
-    atTime: Option[Milliseconds],
-    timeout: FiniteDuration,
-    namespaceId: NamespaceId,
-    query: TCypherQuery,
-  ): Future[Either[BadRequest, Seq[TUiEdge]]] =
-    graph.requiredGraphIsReadyFuture {
-      catchCypherException {
-        val (results, isReadOnly, _) =
-          cypherMethods.queryCypherEdges(
-            V1.CypherQuery(query.text, query.parameters),
-            namespaceId,
-            atTime,
-          ) // TODO read canContainAllNodeScan
-        results
-          .via(Util.completionTimeoutOpt(timeout, allowTimeout = isReadOnly))
-          .named(s"cypher-edges-query-atTime-${atTime.fold("none")(_.millis.toString)}")
-          .map(edge => TUiEdge(edge.from, edge.edgeType, edge.to, edge.isDirected))
-          .runWith(Sink.seq)(graph.materializer)
-      }
-    }
-
-  // --------------------- Algorithm Endpoints ------------------------
-
-  /** Note: Duplicate implementation of [[AlgorithmRoutesImpl.algorithmSaveRandomWalksRoute]] */
-  def algorithmSaveRandomWalks(
-    lengthOpt: Option[Int],
-    countOpt: Option[Int],
-    queryOpt: Option[String],
-    returnParamOpt: Option[Double],
-    inOutParamOpt: Option[Double],
-    seedOpt: Option[String],
-    namespaceId: NamespaceId,
-    atTime: Option[Milliseconds],
-    parallelism: Int,
-    saveLocation: TSaveLocation,
-  ): Either[ServerError :+: BadRequest :+: CNil, Option[String]] = {
-
-    graph.requiredGraphIsReady()
-    if (!graph.getNamespaces.contains(namespaceId)) Right(None)
-    else {
-      val defaultFileName =
-        generateDefaultFileName(atTime, lengthOpt, countOpt, queryOpt, returnParamOpt, inOutParamOpt, seedOpt)
-      val fileName = saveLocation.fileName(defaultFileName)
-      Try {
-        require(!lengthOpt.exists(_ < 1), "walk length cannot be less than one.")
-        require(!countOpt.exists(_ < 0), "walk count cannot be less than zero.")
-        require(!inOutParamOpt.exists(_ < 0d), "in-out parameter cannot be less than zero.")
-        require(!returnParamOpt.exists(_ < 0d), "return parameter cannot be less than zero.")
-        require(parallelism >= 1, "parallelism cannot be less than one.")
-        val saveSink = saveLocation.toSink(fileName)
-        saveSink -> compileWalkQuery(queryOpt)
-      }.map { case (sink, compiledQuery) =>
-        graph.algorithms
-          .saveRandomWalks(
-            sink,
-            compiledQuery,
-            lengthOpt.getOrElse(AlgorithmGraph.defaults.walkLength),
-            countOpt.getOrElse(AlgorithmGraph.defaults.walkCount),
-            returnParamOpt.getOrElse(AlgorithmGraph.defaults.returnParam),
-            inOutParamOpt.getOrElse(AlgorithmGraph.defaults.inOutParam),
-            seedOpt,
-            namespaceId,
-            atTime,
-            parallelism,
-          )
-        Some(fileName)
-      }.toEither
-        .left
-        .map {
-          case _: InvalidPathException | _: FileAlreadyExistsException | _: SecurityException |
-              _: FileSystemException =>
-            Coproduct[ServerError :+: BadRequest :+: CNil](
-              BadRequest(s"Invalid file name: $fileName"),
-            ) // Return a Bad Request Error
-          case e: CypherException =>
-            Coproduct[ServerError :+: BadRequest :+: CNil](
-              BadRequest(ErrorType.CypherError(s"Invalid query: ${e.getMessage}")),
-            )
-          case e: IllegalArgumentException =>
-            Coproduct[ServerError :+: BadRequest :+: CNil](BadRequest(e.getMessage))
-          case NonFatal(e) =>
-            Coproduct[ServerError :+: BadRequest :+: CNil](
-              toServerError(e),
-            ) // Return an Internal Server Error
-          case other =>
-            Coproduct[ServerError :+: BadRequest :+: CNil](
-              toServerError(other),
-            ) // This might expose more than we want
-        }
-    }
-  }
-
-  /** Note: Duplicate implementation of [[AlgorithmRoutesImpl.algorithmRandomWalkRoute]] */
-  def algorithmRandomWalk(
-    qid: QuineId,
-    lengthOpt: Option[Int],
-    queryOpt: Option[String],
-    returnParamOpt: Option[Double],
-    inOutParamOpt: Option[Double],
-    seedOpt: Option[String],
-    namespaceId: NamespaceId,
-    atTime: Option[Milliseconds],
-  ): Future[Either[ServerError :+: BadRequest :+: CNil, List[String]]] = {
-
-    val errors: Either[ServerError :+: BadRequest :+: CNil, List[String]] = Try {
-      require(!lengthOpt.exists(_ < 1), "walk length cannot be less than one.")
-      require(!inOutParamOpt.exists(_ < 0d), "in-out parameter cannot be less than zero.")
-      require(!returnParamOpt.exists(_ < 0d), "return parameter cannot be less than zero.")
-      Nil
-    }.toEither.left
-      .map {
-        case e: CypherException =>
-          Coproduct[ServerError :+: BadRequest :+: CNil](BadRequest(s"Invalid query: ${e.getMessage}"))
-        case e: IllegalArgumentException =>
-          Coproduct[ServerError :+: BadRequest :+: CNil](BadRequest(e.getMessage))
-        case NonFatal(e) =>
-          Coproduct[ServerError :+: BadRequest :+: CNil](
-            toServerError(e),
-          ) // Return an Internal Server Error
-        case other =>
-          Coproduct[ServerError :+: BadRequest :+: CNil](
-            toServerError(other),
-          ) // this might expose more than we want
-      }
-    if (errors.isLeft)
-      Future.successful[Either[ServerError :+: BadRequest :+: CNil, List[String]]](errors)
-    else {
-
-      graph.requiredGraphIsReady()
-
-      graph.algorithms
-        .randomWalk(
-          qid,
-          compileWalkQuery(queryOpt),
-          lengthOpt.getOrElse(AlgorithmGraph.defaults.walkLength),
-          returnParamOpt.getOrElse(AlgorithmGraph.defaults.returnParam),
-          inOutParamOpt.getOrElse(AlgorithmGraph.defaults.inOutParam),
-          None,
-          seedOpt,
-          namespaceId,
-          atTime,
-        )
-        .map(w => Right(w.acc))(ExecutionContext.parasitic)
-
-    }
-  }
-
-  // --------------------- Debug Endpoints ------------------------
-
-  private def toApiEdgeDirection(dir: model.EdgeDirection): TEdgeDirection = dir match {
-    case model.EdgeDirection.Outgoing => TEdgeDirection.Outgoing
-    case model.EdgeDirection.Incoming => TEdgeDirection.Incoming
-    case model.EdgeDirection.Undirected => TEdgeDirection.Undirected
-  }
-
-  private def toModelEdgeDirection(dir: TEdgeDirection): model.EdgeDirection = dir match {
-    case TEdgeDirection.Outgoing => model.EdgeDirection.Outgoing
-    case TEdgeDirection.Incoming => model.EdgeDirection.Incoming
-    case TEdgeDirection.Undirected => model.EdgeDirection.Undirected
-  }
-
-  def debugOpsPropertyGet(
-    qid: QuineId,
-    propKey: String,
-    atTime: Option[Milliseconds],
-    namespaceId: NamespaceId,
-  ): Future[Option[Json]] =
-    graph.requiredGraphIsReadyFuture {
-      graph
-        .literalOps(namespaceId)
-        .getProps(qid, atTime)
-        .map(m =>
-          m.get(Symbol(propKey))
-            .map(_.deserialized.get)
-            .map(qv => QuineValue.toJson(qv)(graph.idProvider, logConfig)),
-        )(
-          graph.nodeDispatcherEC,
-        )
-    }
-
-  def debugOpsGet(qid: QuineId, atTime: Option[Milliseconds], namespaceId: NamespaceId): Future[TLiteralNode[QuineId]] =
-    graph.requiredGraphIsReadyFuture {
-      val propsF = graph.literalOps(namespaceId).getProps(qid, atTime = atTime)
-      val edgesF = graph.literalOps(namespaceId).getEdges(qid, atTime = atTime)
-      propsF
-        .zip(edgesF)
-        .map { case (props, edges) =>
-          TLiteralNode(
-            props.map { case (k, v) =>
-              k.name -> QuineValue.toJson(v.deserialized.get)(graph.idProvider, logConfig)
-            },
-            edges.toSeq.map { case HalfEdge(t, d, o) => TRestHalfEdge(t.name, toApiEdgeDirection(d), o) },
-          )
-        }(graph.nodeDispatcherEC)
-    }
-
-  def debugOpsVerbose(qid: QuineId, atTime: Option[Milliseconds], namespaceId: NamespaceId): Future[String] =
-    graph.requiredGraphIsReadyFuture {
-      graph
-        .literalOps(namespaceId)
-        .logState(qid, atTime)
-        //TODO: ToString -> see DebugOpsRoutes.nodeInternalStateSchema
-        .map(_.toString)(graph.nodeDispatcherEC)
-    }
-
-  def debugOpsEdgesGet(
-    qid: QuineId,
-    atTime: Option[Milliseconds],
-    limit: Option[Int],
-    edgeDirOpt: Option[TEdgeDirection],
-    otherOpt: Option[QuineId],
-    edgeTypeOpt: Option[String],
-    namespaceId: NamespaceId,
-  ): Future[Vector[TRestHalfEdge[QuineId]]] =
-    graph.requiredGraphIsReadyFuture {
-      val edgeDirOpt2 = edgeDirOpt.map(toModelEdgeDirection)
-      graph
-        .literalOps(namespaceId)
-        .getEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
-        .map(_.toVector.map { case HalfEdge(t, d, o) => TRestHalfEdge(t.name, toApiEdgeDirection(d), o) })(
-          graph.nodeDispatcherEC,
-        )
-
-    }
-
-  def debugOpsHalfEdgesGet(
-    qid: QuineId,
-    atTime: Option[Milliseconds],
-    limit: Option[Int],
-    edgeDirOpt: Option[TEdgeDirection],
-    otherOpt: Option[QuineId],
-    edgeTypeOpt: Option[String],
-    namespaceId: NamespaceId,
-  ): Future[Vector[TRestHalfEdge[QuineId]]] =
-    graph.requiredGraphIsReadyFuture {
-      val edgeDirOpt2 = edgeDirOpt.map(toModelEdgeDirection)
-      graph
-        .literalOps(namespaceId)
-        .getHalfEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
-        .map(_.toVector.map { case HalfEdge(t, d, o) => TRestHalfEdge(t.name, toApiEdgeDirection(d), o) })(
-          graph.nodeDispatcherEC,
-        )
-    }
 
   // --------------------- Ingest Endpoints ------------------------
 
@@ -755,11 +445,4 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
         )(ExecutionContext.parasitic)
     }
 
-  def analyze(queryText: String, parameters: Seq[String]): QueryEffects = {
-    val compiled = cypher.compile(queryText, parameters)
-    QueryEffects(
-      isReadOnly = compiled.isReadOnly,
-      canContainAllNodeScan = compiled.canContainAllNodeScan,
-    )
-  }
 }

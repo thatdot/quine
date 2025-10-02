@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.{Failure, Success}
 
 import io.circe.{Decoder, Encoder}
 import shapeless.ops.coproduct.{Basis, CoproductToEither}
@@ -17,13 +18,26 @@ import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.ErrorResponseHelpers.toServerError
 import com.thatdot.api.v2.schema.V2ApiConfiguration
 import com.thatdot.common.logging.Log._
-import com.thatdot.quine.model.Milliseconds
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 
 trait V2EndpointDefinitions extends V2ApiConfiguration with LazySafeLogging {
 
   implicit protected def logConfig: LogConfig
 
   type AtTime = Milliseconds
+  // ------- id ----------------
+  protected def toQuineId(s: String): DecodeResult[QuineId] =
+    idProvider.qidFromPrettyString(s) match {
+      case Success(id) => Value(id)
+      case Failure(_) => DecodeResult.Error(s, new IllegalArgumentException(s"'$s' is not a valid QuineId"))
+    }
+
+  // TODO Use Tapir Validator IdProvider.validate
+  val idProvider: QuineIdProvider
+
+  implicit val quineIdCodec: Codec[String, QuineId, TextPlain] =
+    Codec.string.mapDecode(toQuineId)(idProvider.qidToPrettyString)
 
   /** Since timestamps get encoded as milliseconds since 1970 in the REST API,
     * it is necessary to define the serialization/deserialization to/from a long.

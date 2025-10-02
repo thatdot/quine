@@ -20,10 +20,16 @@ import sttp.tapir.server.ServerEndpoint.Full
 
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
 import com.thatdot.api.v2.schema.V2ApiConfiguration
-import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope}
+import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.V2QuineEndpointDefinitions
+import com.thatdot.quine.app.v2api.definitions.{
+  AlgorithmApiMethods,
+  ApplicationApiMethods,
+  CommonParameters,
+  ParallelismParameter,
+}
+import com.thatdot.quine.graph.{AlgorithmGraph, BaseGraph, CypherOpsGraph, LiteralOpsGraph}
 
 object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
   /* WARNING: these values duplicate `AlgorithmGraph.defaults.walkPrefix` and `walkSuffix` from the
@@ -112,7 +118,14 @@ object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
 
 }
 
-trait V2AlgorithmEndpoints extends V2QuineEndpointDefinitions {
+trait V2AlgorithmEndpoints
+    extends V2EndpointDefinitions
+    with V2IngestApiSchemas
+    with CommonParameters
+    with ParallelismParameter {
+  val appMethods: AlgorithmApiMethods with ApplicationApiMethods {
+    val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph with AlgorithmGraph
+  }
 
   import V2AlgorithmEndpointEntities._
 
