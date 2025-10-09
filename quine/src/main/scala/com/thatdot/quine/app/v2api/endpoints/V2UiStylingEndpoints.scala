@@ -69,7 +69,7 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
   protected[endpoints] val queryUiAppearance
     : Endpoint[Unit, Unit, ErrorResponse.ServerError, SuccessEnvelope.Ok[Vector[UiNodeAppearance]], Any] =
     uiStylingBase
-      .name("List Node Appearances ")
+      .name("List Node Appearances")
       .description(
         """When rendering a node in the UI, a node's style is decided by picking the first style in this list whose
         |`predicate` matches the node.""".asOneLine,

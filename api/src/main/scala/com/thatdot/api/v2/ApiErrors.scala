@@ -37,6 +37,7 @@ object ErrorType {
 
 trait HasErrors extends Product with Serializable {
   def errors: List[ErrorType]
+
 }
 
 /** Provides the types of error codes that the api can give back to a user.
