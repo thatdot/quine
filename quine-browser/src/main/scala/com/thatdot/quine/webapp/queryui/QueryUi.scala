@@ -577,7 +577,7 @@ import com.thatdot.{visnetwork => vis}
       case QueryMethod.RestfulV2 =>
         mergeEndpointErrorsIntoFuture(language match {
           case QueryLanguage.Gremlin =>
-            props.routes.gremlinNodesPost((atTime, None, namespace, GremlinQuery(query))).future
+            Future.successful(Left(Invalid(Seq("Gremlin is not supported in APIv2"))))
           case QueryLanguage.Cypher =>
             props.routes.cypherNodesPostV2((atTime, None, namespace, CypherQuery(query))).future
         }).map(Some(_))
@@ -616,7 +616,7 @@ import com.thatdot.{visnetwork => vis}
       case QueryMethod.RestfulV2 =>
         mergeEndpointErrorsIntoFuture(language match {
           case QueryLanguage.Gremlin =>
-            props.routes.gremlinEdgesPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
+            Future.successful(Left(Invalid(Seq("Gremlin is not supported in APIv2"))))
           case QueryLanguage.Cypher =>
             props.routes.cypherEdgesPostV2((atTime, None, namespace, CypherQuery(query, parameters))).future
         }).map(Some(_))
@@ -661,11 +661,7 @@ import com.thatdot.{visnetwork => vis}
         }
 
       case (QueryMethod.RestfulV2, QueryLanguage.Gremlin) =>
-        val gremlinResults = props.routes.gremlinPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
-        mergeEndpointErrorsIntoFuture(gremlinResults).map { results =>
-          updateResults(Left(results))
-          Some(())
-        }
+        Future.successful(Some(()))
 
       case (QueryMethod.RestfulV2, QueryLanguage.Cypher) =>
         val cypherResults = props.routes.cypherPostV2((atTime, None, namespace, CypherQuery(query, parameters))).future

@@ -3,7 +3,7 @@ package com.thatdot.quine.v2api.routes
 import scala.concurrent.duration.FiniteDuration
 
 import endpoints4s.Invalid
-import endpoints4s.algebra.StatusCodes
+import endpoints4s.algebra.{Endpoints, JsonEntitiesFromSchemas, StatusCodes}
 import endpoints4s.generic.{docs, title, unnamed}
 import io.circe.Json
 
@@ -20,8 +20,8 @@ final case class V2SuccessResponse[Content](
   @docs("Warning messages") warnings: List[String] = Nil,
 )
 
-final case class CypherError(message: String, `type`: String)
-final case class V2ErrorResponse(errors: Seq[CypherError])
+final case class V2Error(message: String, `type`: String)
+final case class V2ErrorResponse(errors: Seq[V2Error])
 
 /** Browser-compatible V2 UI Node type (using String ID instead of QuineId) */
 @unnamed
@@ -45,7 +45,25 @@ final case class V2UiEdge(
   @docs("Whether the edge is directed or undirected") isDirected: Boolean = true,
 )
 
-trait V2QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema with exts.IdSchema {
+trait V2SuccessResponseSchema extends endpoints4s.generic.JsonSchemas with exts.AnySchema {
+  implicit def v2SuccessResponseSchema[T](implicit contentSchema: JsonSchema[T]): JsonSchema[V2SuccessResponse[T]] = {
+    implicit val stringOptSchema: JsonSchema[Option[String]] = optionalSchema(stringJsonSchema(None))
+    implicit val stringListSchema: JsonSchema[List[String]] = arrayJsonSchema(stringJsonSchema(None), implicitly)
+    genericRecord[V2SuccessResponse[T]]
+  }
+}
+
+trait V2ErrorResponseSchema extends endpoints4s.generic.JsonSchemas {
+  implicit lazy val cypherErrorSchema: JsonSchema[V2Error] = genericRecord[V2Error]
+  implicit lazy val v2ErrorResponseSchema: JsonSchema[V2ErrorResponse] = genericRecord[V2ErrorResponse]
+}
+
+trait V2QuerySchemas
+    extends endpoints4s.generic.JsonSchemas
+    with V2SuccessResponseSchema
+    with V2ErrorResponseSchema
+    with exts.AnySchema
+    with exts.IdSchema {
 
   implicit lazy val v2UiNodeSchema: Record[V2UiNode] = {
     implicit val property = anySchema(None)
@@ -54,20 +72,33 @@ trait V2QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema
 
   implicit lazy val v2UiEdgeSchema: Record[V2UiEdge] =
     genericRecord[V2UiEdge]
-
-  // JsonSchema for V2SuccessResponse that matches server's SuccessEnvelope.Ok structure
-  // Server sends: {"content": [...], "message": null, "warnings": []}
-  implicit def v2SuccessResponseSchema[T](implicit contentSchema: JsonSchema[T]): JsonSchema[V2SuccessResponse[T]] = {
-    implicit val stringOptSchema: JsonSchema[Option[String]] = optionalSchema(stringJsonSchema(None))
-    implicit val stringListSchema: JsonSchema[List[String]] = arrayJsonSchema(stringJsonSchema(None), implicitly)
-    genericRecord[V2SuccessResponse[T]]
-  }
-
-  implicit lazy val cypherErrorSchema: JsonSchema[CypherError] = genericRecord[CypherError]
-  implicit lazy val v2ErrorResponseSchema: JsonSchema[V2ErrorResponse] = genericRecord[V2ErrorResponse]
 }
 
-trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with StatusCodes {
+trait ErrorResponses extends Endpoints with V2QuerySchemas with JsonEntitiesFromSchemas {
+  def convertV2ErrorResponseToClientErrors(
+    errorResponse: Either[Either[V2ErrorResponse, V2ErrorResponse], String],
+  ): ClientErrors =
+    errorResponse match {
+      case Left(eitherV2ErrorResponse) => Invalid(eitherV2ErrorResponse.merge.errors.map(_.message))
+      case Right(errorMsg) => Invalid(Seq(errorMsg))
+    }
+
+  def convertClientErrorsToV2ErrorResponse(
+    clientErrors: ClientErrors,
+  ): Either[Either[V2ErrorResponse, V2ErrorResponse], String] =
+    clientErrors match {
+      case Invalid(errors) =>
+        Left(Left(V2ErrorResponse(errors.map(message => V2Error(message = message, `type` = "CypherError")))))
+    }
+
+  def errorResponses(): Response[ClientErrors] =
+    response(statusCode = BadRequest, entity = jsonResponse[V2ErrorResponse])
+      .orElse(response(statusCode = Unauthorized, entity = jsonResponse[V2ErrorResponse]))
+      .orElse(response(statusCode = InternalServerError, entity = textResponse))
+      .xmap[ClientErrors](convertV2ErrorResponseToClientErrors)(convertClientErrorsToV2ErrorResponse)
+}
+
+trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with ErrorResponses with StatusCodes {
   final protected val v2Query: Path[Unit] = path / "api" / "v2" / "cypher-queries"
 
   final type V2QueryInputs[A] = (AtTime, Option[FiniteDuration], NamespaceParameter, A)
@@ -94,28 +125,6 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with StatusCodes
     UiEdge(decodedFromId, v2Edge.edgeType, decodedToId, v2Edge.isDirected)
   }
 
-  def convertV2ErrorResponseToClientErrors(
-    errorResponse: Either[Either[V2ErrorResponse, V2ErrorResponse], String],
-  ): ClientErrors =
-    errorResponse match {
-      case Left(eitherV2ErrorResponse) => Invalid(eitherV2ErrorResponse.merge.errors.map(_.message))
-      case Right(errorMsg) => Invalid(Seq(errorMsg))
-    }
-
-  def convertClientErrorsToV2ErrorResponse(
-    clientErrors: ClientErrors,
-  ): Either[Either[V2ErrorResponse, V2ErrorResponse], String] =
-    clientErrors match {
-      case Invalid(errors) =>
-        Left(Left(V2ErrorResponse(errors.map(message => CypherError(message = message, `type` = "CypherError")))))
-    }
-
-  def cypherErrorResponses(): Response[ClientErrors] =
-    response(statusCode = BadRequest, entity = jsonResponse[V2ErrorResponse])
-      .orElse(response(statusCode = Unauthorized, entity = jsonResponse[V2ErrorResponse]))
-      .orElse(response(statusCode = InternalServerError, entity = textResponse))
-      .xmap[ClientErrors](convertV2ErrorResponseToClientErrors)(convertClientErrorsToV2ErrorResponse)
-
   val cypherPostV2: Endpoint[V2QueryInputs[CypherQuery], Either[ClientErrors, Option[CypherQueryResult]]] =
     endpoint(
       request = post(
@@ -124,7 +133,7 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with StatusCodes
           .orElse(textRequest)
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
       ),
-      response = cypherErrorResponses()
+      response = errorResponses()
         .orElse(
           wheneverFound(
             ok(
@@ -142,7 +151,7 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with StatusCodes
           .orElse(textRequest)
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
       ),
-      response = cypherErrorResponses()
+      response = errorResponses()
         .orElse(
           wheneverFound(
             ok(
@@ -162,7 +171,7 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with StatusCodes
           .orElse(textRequest)
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
       ),
-      response = cypherErrorResponses()
+      response = errorResponses()
         .orElse(
           wheneverFound(
             ok(
