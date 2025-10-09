@@ -434,15 +434,13 @@ trait QuineApiMethods
   def listIngestStreams(
     namespaceId: NamespaceId,
     memberIdx: Option[MemberIdx],
-  ): Future[Map[String, ApiIngest.IngestStreamInfo]] =
+  ): Future[Seq[ApiIngest.IngestStreamInfoWithName]] =
     graph.requiredGraphIsReadyFuture {
       app
         .getV2IngestStreams(namespaceId, memberIdx.getOrElse(thisMemberIdx))
-        .map(nameToInternalModel =>
-          nameToInternalModel.map { case (name, ingest) =>
-            name -> IngestToApi.apply(ingest)
-          },
-        )(ExecutionContext.parasitic)
+        .map(_.map { case (name, ingest) =>
+          IngestToApi.apply(ingest.withName(name))
+        }.toSeq)(ExecutionContext.parasitic)
     }
 
 }

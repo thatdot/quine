@@ -154,7 +154,7 @@ object QuineDestinationSteps {
 
   object CypherQuery {
     val queryDescription: String = "Cypher query to execute on Standing Query result"
-    val exampleQuery: String = "MATCH (n) WHERE $that.id = n.id RETURN (n)"
+    val exampleQuery: String = "MATCH (n) WHERE id(n) = $that.id RETURN (n)"
   }
 
   @title("Publish to Slack Webhook")

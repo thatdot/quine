@@ -281,9 +281,13 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     Future,
   ] = ingestStatus.serverLogic[Future](ingestStatusLogic)
 
-  protected[endpoints] val listIngest: Endpoint[Unit, (Option[String], Option[Int]), ServerError, SuccessEnvelope.Ok[
-    Map[String, ApiIngest.IngestStreamInfo],
-  ], Any] =
+  protected[endpoints] val listIngest: Endpoint[
+    Unit,
+    (Option[String], Option[Int]),
+    ServerError,
+    SuccessEnvelope.Ok[Seq[ApiIngest.IngestStreamInfoWithName]],
+    Any,
+  ] =
     ingestBase
       .name("List Ingest Streams")
       .description(
@@ -294,14 +298,12 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
       .in(memberIdxParameter)
       .get
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[Map[String, ApiIngest.IngestStreamInfo]]])
+      .out(jsonBody[SuccessEnvelope.Ok[Seq[ApiIngest.IngestStreamInfoWithName]]])
 
   protected[endpoints] val listIngestLogic: ((Option[String], Option[Int])) => Future[
-    Either[ServerError, SuccessEnvelope.Ok[Map[String, ApiIngest.IngestStreamInfo]]],
+    Either[ServerError, SuccessEnvelope.Ok[Seq[ApiIngest.IngestStreamInfoWithName]]],
   ] = { case (ns, memberIdx) =>
-    recoverServerError(appMethods.listIngestStreams(namespaceFromParam(ns), memberIdx))(
-      (inp: Map[String, ApiIngest.IngestStreamInfo]) => SuccessEnvelope.Ok.apply(inp),
-    )
+    recoverServerError(appMethods.listIngestStreams(namespaceFromParam(ns), memberIdx))(SuccessEnvelope.Ok.apply(_))
   }
 
   private val listIngestServerEndpoint: Full[
@@ -309,7 +311,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     Unit,
     (Option[String], Option[Int]),
     ServerError,
-    SuccessEnvelope.Ok[Map[String, ApiIngest.IngestStreamInfo]],
+    SuccessEnvelope.Ok[Seq[ApiIngest.IngestStreamInfoWithName]],
     Any,
     Future,
   ] = listIngest.serverLogic[Future](listIngestLogic)
