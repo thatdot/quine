@@ -4,7 +4,6 @@ import java.nio.charset.Charset
 
 import scala.jdk.CollectionConverters._
 
-import org.polyvariant.sttp.oauth2.Secret
 import org.scalacheck.{Arbitrary, Gen}
 
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
@@ -34,7 +33,7 @@ trait ArbitraryIngests {
 
   implicit val arbF: Arbitrary[FileIngestMode] = Arbitrary(Gen.oneOf(Regular, NamedPipe))
   implicit val arbAWS: Arbitrary[Option[AwsCredentials]] = Arbitrary(
-    Gen.option(Gen.const(AwsCredentials(randomString(), Secret(randomString())))),
+    Gen.option(Gen.const(AwsCredentials(randomString(), randomString()))),
   )
   implicit val arbReg: Arbitrary[Option[AwsRegion]] = Arbitrary(
     Gen.option(Gen.oneOf("us-west-1", "us-east-1").map(AwsRegion.apply)),

@@ -7,7 +7,6 @@ import scala.util.control.NoStackTrace
 import cats.data.NonEmptyList
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
-import org.polyvariant.sttp.oauth2.Secret
 import sttp.tapir.Schema.annotations.{description, title => ttitle}
 
 import com.thatdot.quine.routes.exts.{EndpointsWithCustomErrorText, NamespaceParameter}
@@ -189,7 +188,7 @@ trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
     |default AWS credential chain.
     |See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>.""".stripMargin,
 )
-final case class AwsCredentials(accessKeyId: String, secretAccessKey: Secret[String])
+final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
 
 @unnamed
 @title("AWS Region")
@@ -205,8 +204,6 @@ final case class AwsCredentials(accessKeyId: String, secretAccessKey: Secret[Str
 final case class AwsRegion(region: String)
 
 trait AwsConfigurationSchemas extends endpoints4s.generic.JsonSchemas {
-  implicit lazy val secretStringSchema: JsonSchema[Secret[String]] =
-    defaultStringJsonSchema.xmap(Secret.apply)(_.toString())
   implicit lazy val awsCredentialsSchema: Record[AwsCredentials] = genericRecord[AwsCredentials]
   implicit val awsRegionSchema: Record[AwsRegion] = genericRecord[AwsRegion]
 }

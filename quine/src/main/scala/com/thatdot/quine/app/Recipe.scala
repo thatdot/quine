@@ -16,7 +16,6 @@ import io.circe.Error.showError
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto._
 import io.circe.{Decoder, DecodingFailure, Json}
-import org.polyvariant.sttp.oauth2.Secret
 import org.snakeyaml.engine.v2.api.YamlUnicodeReader
 
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef._
@@ -106,7 +105,7 @@ object Recipe {
       def subs: ValidatedNel[UnboundVariableError, AwsCredentials] =
         (
           c.accessKeyId.subs,
-          c.secretAccessKey.value.subs.map(Secret.apply),
+          c.secretAccessKey.subs,
         ).mapN(AwsCredentials(_, _))
     }
     implicit class SubRegion(r: AwsRegion) {

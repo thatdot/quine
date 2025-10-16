@@ -18,7 +18,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
-import com.thatdot.api.v2.schema.{V2ApiConfiguration, V2ApiSchemas}
+import com.thatdot.api.v2.schema.V2ApiConfiguration
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.CsvFormat
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.StreamingFormat.ProtobufFormat
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
@@ -43,7 +43,7 @@ object V2IngestEntityEncoderDecoders extends V2IngestEntitySchemas {
   }
 }
 
-trait V2IngestEntitySchemas extends V2ApiSchemas with V2ApiConfiguration {
+trait V2IngestEntitySchemas extends V2ApiConfiguration {
 
   implicit lazy val config: Configuration = typeDiscriminatorConfig
 

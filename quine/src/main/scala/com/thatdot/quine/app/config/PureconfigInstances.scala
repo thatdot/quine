@@ -5,7 +5,6 @@ import scala.jdk.CollectionConverters._
 
 import org.apache.pekko.util.Timeout
 
-import org.polyvariant.sttp.oauth2.Secret
 import pureconfig.BasicReaders.stringConfigReader
 import pureconfig.error.CannotConvert
 import pureconfig.generic.ProductHint
@@ -45,7 +44,4 @@ trait PureconfigInstances {
     regions.get(s.toLowerCase) toRight CannotConvert(s, "Region", "expected one of " + regions.keys.mkString(", ")),
   )
   implicit val regionWriter: ConfigWriter[Region] = ConfigWriter.toString(_.id)
-
-  implicit val secretStringReader: ConfigReader[Secret[String]] = ConfigReader[String].map(Secret(_))
-  implicit val secretStringWriter: ConfigWriter[Secret[String]] = ConfigWriter[String].contramap(_.toString)
 }

@@ -22,7 +22,7 @@ case object AwsOps extends LazySafeLogging {
   def staticCredentialsProviderV2(credsOpt: Option[AwsCredentials]): AwsCredentialsProvider =
     credsOpt.fold[AwsCredentialsProvider](DefaultCredentialsProvider.builder.build) { credentials =>
       StaticCredentialsProvider.create(
-        AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey.value),
+        AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey),
       )
     }
 

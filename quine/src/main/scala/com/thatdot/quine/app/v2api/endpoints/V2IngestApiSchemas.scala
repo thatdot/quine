@@ -13,11 +13,11 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
-import com.thatdot.api.v2.schema.{V2ApiConfiguration, V2ApiSchemas}
+import com.thatdot.api.v2.schema.V2ApiConfiguration
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 
-trait V2IngestApiSchemas extends V2ApiSchemas with V2ApiConfiguration {
+trait V2IngestApiSchemas extends V2ApiConfiguration {
   implicit val config: Configuration = typeDiscriminatorConfig
 
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] =

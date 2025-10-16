@@ -1,6 +1,5 @@
 import Dependencies.*
-import scalajsbundler.util.JSON.*
-import InternalDependencies.*
+import scalajsbundler.util.JSON._
 import QuineSettings.*
 
 ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/release/"
@@ -201,7 +200,6 @@ lazy val `aws`: Project = project
   .settings(
     libraryDependencies ++= Seq(
       "com.thatdot" %% "quine-logging" % quineCommonV,
-      "org.polyvariant" %% "sttp-oauth2" % sttpOauth2V,
       "software.amazon.awssdk" % "aws-core" % awsSdkV,
     ),
   )
@@ -231,7 +229,6 @@ lazy val `api`: Project = project
       "io.circe" %% "circe-core" % circeV,
       "io.circe" %% "circe-generic-extras" % circeGenericExtrasV,
       "io.circe" %% "circe-yaml" % circeYamlV,
-      "org.polyvariant" %% "sttp-oauth2" % sttpOauth2V,
     ),
   )
 
@@ -271,7 +268,6 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
       "com.lihaoyi" %% "ujson-circe" % ujsonCirceV, // For the OpenAPI rendering
       "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test,
       "com.softwaremill.sttp.tapir" %% "tapir-core" % tapirV, // For tapir annotations
-      "org.polyvariant" %% "sttp-oauth2" % sttpOauth2V,
     ),
   )
   .jsSettings(
