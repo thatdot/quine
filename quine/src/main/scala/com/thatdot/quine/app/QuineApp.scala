@@ -1392,6 +1392,9 @@ object QuineApp {
   final val IngestStreamsKey = "ingest_streams"
   final val V2IngestStreamsKey = "v2_ingest_streams"
   final val NonDefaultNamespacesKey = "live_namespaces"
+  final val ReportStreamUsageKey = "report_stream_usage"
+  final val ThrottleMasterStreamKey = "throttle_master_stream"
+  final val DisableThrottleMasterStreamKey = "disable_throttle_master_stream"
 
   type FriendlySQName = String
   type SQOutputName = String

@@ -57,10 +57,50 @@ class MasterStream(implicit val mat: Materializer, val logConfig: LogConfig) ext
   private val loggingSink: Sink[ExecutionToken, Future[Done]] =
     Sink.foreach[ExecutionToken](x => logger.trace(safe"${Safe(x.name)}")).named("master-stream-logging-sink")
 
+  /** Cached throttle cost for ingest streams.
+    *
+    * Will be set from [[QuineEnterpriseApp]] after the [[ClusterManager]] communicates
+    * with the license server and each host.
+    */
+  @volatile private var cachedThrottleCost: Int = 1
+
+  /** This is the max allowed rate for the bucket size included in Flow[_].throttle */
+  private val bucketSize = 1.second.toNanos.toInt
+
+  /** To fit `elementsPer` in a bucket of size `bucketSize` using Pekko's cost function throttle the cost
+    *
+    * In other words given a limit, `bucketSize`, how big of a slice of that limit should each element `cost`` so that only
+    * `elementsPer` fit.
+    *
+    * If the elements per second is greater than the bucket size make their cost one to avoid any
+    * wonky-ness that could exist in that case.
+    */
+  private def elementsPerToCost(elementsPer: Long): Int =
+    math.max(1, (bucketSize.toLong / elementsPer).toInt)
+
+  /** Returns the cached throttle cost. This avoids expensive atomic reads on every element.
+    *
+    *  A cost of 1 means that elements per time will be equal to the bucket size.
+    */
+  private def throttleCostFunction[A]: A => Int = _ => cachedThrottleCost
+
+  /** Turns off the throttling of the ingest portion of the [[MasterStream]] */
+  def disableIngestThrottle(): Unit =
+    cachedThrottleCost = 1
+
+  /** Throttles the ingest portion of the [[MasterStream]] `elementsPerSecond` number of elements per second */
+  def enableIngestThrottle(elementsPerSecond: Long): Unit = {
+    val newCost = elementsPerToCost(elementsPerSecond)
+    cachedThrottleCost = newCost
+  }
+
   Source
     .repeat(IdleToken)
     .throttle(1, 1.second)
-    .mergePreferred(ingestSource, preferNewHubOverUpstream)
+    .mergePreferred(
+      ingestSource.throttle(bucketSize, 1.second, throttleCostFunction),
+      preferNewHubOverUpstream,
+    )
     .mergePreferred(sqResultsSource, preferNewHubOverUpstream)
     .mergePreferred(nodeSleepSource, preferNewHubOverUpstream)
     .mergePreferred(persistorSource, preferNewHubOverUpstream)
