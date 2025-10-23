@@ -51,8 +51,6 @@ object Util {
     val anyDataBlob = "data:"
     @unused val anyHttp = "http:"
     @unused val anyHttps = "https:"
-    val anyWs = "ws:"
-    val anyWss = "wss:"
   }
 
   /** Constants describing the frame embedding settings (to mitigate the risk of clickjacking attacks).
@@ -76,51 +74,91 @@ object Util {
     val modernCspSetting: (String, Vector[String]) = "frame-ancestors" -> Vector(self)
   }
 
-  /** Harden the underlying route against XSS by providing a Content Security Policy
-    * @param underlying the route to protect
-    * @return the augmented route
-    *
-    * TODO replace this with a better implementation once the issue described in
-    * https://github.com/akka/akka-http/issues/155 is resolved in pekko-http
+  /** Route-hardening operations, implicitly available via {{{import RouteHardeningOps.syntax._}}}.
+    * <br/>
+    * Consider improving these implementations if and when https://github.com/akka/akka-http/issues/155 ideas are
+    * implemented in `pekko-http` (consider writing and offering the necessary changes to the library).
     */
-  def xssHarden(underlying: server.Route): server.Route =
-    respondWithHeader(
-      RawHeader(
-        com.google.common.net.HttpHeaders.CONTENT_SECURITY_POLICY, {
-          import CspConstants._
+  trait RouteHardeningOps {
 
-          val Csp = Map(
-            "default-src" -> Vector(self), // in general, allow resources when they match the same origin policy
-            "script-src" -> Vector( // only allow scripts that match the same origin policy... and allow eval() for plotly and vis-network
-              self,
-              eval,
-            ),
-            "object-src" -> Vector(none), // don't allow <object>, <embed>, or <applet>
-            "style-src" -> Vector(self, inline), // allow scripts that match same origin or are provided inline
-            "img-src" -> Vector( // allow images that match same origin or are provided as data: blobs
-              self,
-              anyDataBlob,
-            ),
-            "media-src" -> Vector(none), // don't allow <video>, <audio>, <source>, or <track>
-            "frame-src" -> Vector(none), // don't allow <frame> or <iframe> on this page
-            "font-src" -> Vector(self), // allow fonts that match same origin
-            "connect-src" -> Vector( // allow HTTP requests to be sent by other (allowed) resources only if the destinations of those requests match the same origin policy
-              self,
-              anyWs, // NB this is way more permissive than we want. this allows connection to arbitrary websockets APIs, not just our own.
-              anyWss, // However, connect-src 'self' doesn't include websockets on some browsers. See https://github.com/w3c/webappsec-csp/issues/7
-            ),
-            FrameEmbedSettings.modernCspSetting,
-          )
+    /** Harden the underlying route against XSS by providing a Content Security Policy
+      *
+      * @param underlying the route to protect
+      * @return the augmented route
+      * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP
+      */
+    private def xssHarden(underlying: server.Route): server.Route =
+      respondWithHeader(
+        RawHeader(
+          com.google.common.net.HttpHeaders.CONTENT_SECURITY_POLICY, {
+            import CspConstants._
 
-          Csp.toSeq.map { case (k, vs) => (k + vs.mkString(" ", " ", "")) }.mkString("; ")
-        },
-      ),
-    )(underlying)
+            val Csp = Map(
+              "default-src" -> Vector(self), // in general, allow resources when they match the same origin policy
+              "script-src" -> Vector( // only allow scripts that match the same origin policy... and allow eval() for plotly and vis-network
+                self,
+                eval,
+              ),
+              "object-src" -> Vector(none), // don't allow <object>, <embed>, or <applet>
+              "style-src" -> Vector(self, inline), // allow scripts that match same origin or are provided inline
+              "img-src" -> Vector( // allow images that match same origin or are provided as data: blobs
+                self,
+                anyDataBlob,
+              ),
+              "media-src" -> Vector(none), // don't allow <video>, <audio>, <source>, or <track>
+              "frame-src" -> Vector(none), // don't allow <frame> or <iframe> on this page
+              "font-src" -> Vector(self), // allow fonts that match same origin
+              "connect-src" -> Vector( // allow HTTP requests to be sent by other (allowed) resources only if the destinations of those requests match the same origin policy
+                self,
+              ),
+              FrameEmbedSettings.modernCspSetting,
+            )
 
-  def frameEmbedHarden(underlying: server.Route): server.Route =
-    respondWithHeader(FrameEmbedSettings.legacyFrameOptionsHeader)(underlying)
+            Csp.toSeq.map { case (k, vs) => (k + vs.mkString(" ", " ", "")) }.mkString("; ")
+          },
+        ),
+      )(underlying)
 
-  /** Flow that will timeout after some fixed duration, provided that duration
+    /** Apply frame embedding hardening to prevent clickjacking attacks by setting X-Frame-Options header.
+      * This adds the legacy `X-Frame-Options: SAMEORIGIN` header for older browsers that don't fully support
+      * the modern CSP frame-ancestors directive.
+      *
+      * @param underlying the route to protect
+      * @return the augmented route
+      * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
+      */
+    private def frameEmbedHarden(underlying: server.Route): server.Route =
+      respondWithHeader(FrameEmbedSettings.legacyFrameOptionsHeader)(underlying)
+
+    /** Harden the underlying route with HTTP Strict Transport Security (HSTS) to enforce HTTPS connections
+      * and prevent protocol downgrade attacks.
+      *
+      * @param underlying the route to protect
+      * @return the augmented route
+      * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+      */
+    private def hstsHarden(underlying: server.Route): server.Route =
+      respondWithHeader(
+        RawHeader(
+          com.google.common.net.HttpHeaders.STRICT_TRANSPORT_SECURITY,
+          // 1 week for now. We should increase this duration when we have exercised this for some time. QU-2380
+          "max-age=604800; includeSubDomains",
+        ),
+      )(underlying)
+
+    implicit class WithHardening(route: server.Route) {
+      def withXssHardening: server.Route = xssHarden(route)
+      def withFrameEmbedHardening: server.Route = frameEmbedHarden(route)
+      def withHstsHardening: server.Route = hstsHarden(route)
+      def withSecurityHardening: server.Route = xssHarden(route).withFrameEmbedHardening.withHstsHardening
+    }
+  }
+
+  object RouteHardeningOps {
+    object syntax extends RouteHardeningOps
+  }
+
+  /** Flow that will time out after some fixed duration, provided that duration
     * is finite and the boolean override is not set
     *
     * @param dur how long after materialization to time out?

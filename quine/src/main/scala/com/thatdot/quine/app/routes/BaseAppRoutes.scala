@@ -43,8 +43,9 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
   def apiRoute: Route
 
   /** Final HTTP route */
-  def mainRoute: Route =
-    Util.frameEmbedHarden(Util.xssHarden(staticFilesRoute)) ~
+  def mainRoute: Route = {
+    import Util.RouteHardeningOps.syntax._
+    staticFilesRoute.withSecurityHardening ~
     redirectToNoTrailingSlashIfPresent(StatusCodes.PermanentRedirect) {
       apiRoute ~
       respondWithHeader(`Access-Control-Allow-Origin`.*) {
@@ -53,6 +54,7 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
         openApiRoute
       }
     }
+  }
 
   /** Bind a webserver to server up the main route */
   def bindWebServer(interface: String, port: Int, useTls: Boolean): Future[Http.ServerBinding] = {
