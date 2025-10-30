@@ -416,7 +416,7 @@ lazy val `quine`: Project = project
       // [x] | com.thatdot:quine                              | software.amazon.glue:schema-registry-serde     | 1.1.23
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:sso                     | 2.29.52
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:ssooidc                 | 2.29.52
-      "io.netty" % "netty-handler" % "4.1.119.Final",
+      "io.netty" % "netty-handler" % "4.1.127.Final",
       // AWS SDK deps (next 4) effectively bundle sibling JARs needed for certain features, despite no code references
       "software.amazon.awssdk" % "sso" % awsSdkV,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV,
