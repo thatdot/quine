@@ -61,7 +61,7 @@ class QuineAppTelemetryTest
         getSinks = getSinks,
         recipe = recipe,
         recipeCanonicalName = recipeCanonicalName,
-        apiKey = apiKey,
+        apiKey = () => apiKey,
       ) {
     val assertionPromise: Promise[Checkpoint]
   }

@@ -38,7 +38,7 @@ class ImproveQuine(
   getSinks: () => Future[Option[List[String]]],
   recipe: Option[Recipe] = None,
   recipeCanonicalName: Option[String] = None,
-  apiKey: Option[String] = None,
+  apiKey: () => Option[String] = () => None,
 )(implicit system: ActorSystem, logConfig: LogConfig)
     extends LazySafeLogging {
   import ImproveQuine._
@@ -119,7 +119,7 @@ class ImproveQuine(
     recipeUsed = recipeUsed,
     recipeCanonicalName = recipeCanonicalName,
     recipeInfo = recipeInfo,
-    apiKey = apiKey,
+    apiKey = apiKey(), // Call the function to get the current value
   ).run()
 
   def startup(

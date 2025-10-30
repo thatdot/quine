@@ -1090,7 +1090,7 @@ final class QuineApp(
       .map(_ => ())(graph.system.dispatcher)
   }
 
-  /** Report telemetry only if the user has opted in (always `true` in trial-mode).
+  /** Report telemetry unless the user has opted out.
     * This needs to be loaded after the webserver is started; if not, the initial telemetry
     * startup message may not get sent.
     *
