@@ -39,7 +39,7 @@ object Dependencies {
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
   val mapDbV = "3.1.0"
   val metricsInfluxdbV = "1.1.0"
-  val msgPackV = "0.9.9"
+  val msgPackV = "0.9.10"
   val openApiCirceYamlV = "0.11.9"
   val openCypherV = "9.2.3"
   val parboiledV = "1.4.1"
