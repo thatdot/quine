@@ -1,5 +1,4 @@
 object Dependencies {
-  val antlrV = "4.9.2"
   val amazonKinesisClientV = "3.0.3"
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.1"
@@ -33,7 +32,6 @@ object Dependencies {
   // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
   val kafkaClientsV = "3.9.1"
   val kindProjectorV = "0.13.4"
-  val logbackConfigV = "0.4.0"
   val logbackV = "1.5.19"
   val logstashLogbackV = "8.0"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
