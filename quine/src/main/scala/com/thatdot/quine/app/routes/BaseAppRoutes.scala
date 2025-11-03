@@ -47,11 +47,11 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
     import Util.RouteHardeningOps.syntax._
     staticFilesRoute.withSecurityHardening ~
     redirectToNoTrailingSlashIfPresent(StatusCodes.PermanentRedirect) {
-      apiRoute ~
+      apiRoute.withHstsHardening ~
       respondWithHeader(`Access-Control-Allow-Origin`.*) {
         // NB the following resources will be available to request from ANY source (including evilsite.com):
         // be sure this is what you want!
-        openApiRoute
+        openApiRoute.withSecurityHardening
       }
     }
   }
