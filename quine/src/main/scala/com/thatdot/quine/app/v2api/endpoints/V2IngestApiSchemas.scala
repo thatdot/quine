@@ -6,15 +6,12 @@ import scala.util.{Failure, Success}
 
 import cats.implicits.catsSyntaxEitherId
 import io.circe.Encoder.encodeString
-import io.circe.generic.extras.auto._
 import io.circe.generic.extras.semiauto.{deriveEnumerationDecoder, deriveEnumerationEncoder}
-import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
 import com.thatdot.api.v2.schema.V2ApiConfiguration
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 
 trait V2IngestApiSchemas extends V2ApiConfiguration {
@@ -22,13 +19,6 @@ trait V2IngestApiSchemas extends V2ApiConfiguration {
 
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] =
     Schema.derived[RecordDecodingType]
-
-  implicit val ingestFormatTypeSchema: Schema[IngestFormat] =
-    Schema.derived
-      .description("Ingest format")
-      .encodedExample(
-        IngestFormat.FileFormat.Csv(Right(List("header1", "header2")), Comma, DoubleQuote, Backslash).asJson,
-      )
 
   implicit val charsetCodec: Codec[String, Charset, TextPlain] = Codec.string.mapDecode(s =>
     scala.util.Try(Charset.forName(s)) match {

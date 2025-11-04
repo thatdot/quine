@@ -23,7 +23,7 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
   KafkaOffsetCommitting,
   KafkaSecurityProtocol,
   Oss,
-  WebsocketSimpleStartupIngest,
+  WebSocketClient,
 }
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
@@ -44,14 +44,14 @@ class IngestCodecTest
   }
 
   test("csv format json encode/decode") {
-    testJsonEncodeDecode(IngestFormat.FileFormat.Csv(Left(true)))
-    testJsonEncodeDecode(IngestFormat.FileFormat.Csv(Right(List("A", "B"))))
+    testJsonEncodeDecode(IngestFormat.FileFormat.CSV(Left(true)))
+    testJsonEncodeDecode(IngestFormat.FileFormat.CSV(Right(List("A", "B"))))
   }
 
   test("file json encode/decode") {
     testJsonEncodeDecode(
       ApiIngest.IngestSource.File(
-        IngestFormat.FileFormat.Json,
+        IngestFormat.FileFormat.JsonL,
         "/a",
         Some(FileIngestMode.Regular),
         Some(10),
@@ -66,7 +66,7 @@ class IngestCodecTest
   test("s3 json encode/decode") {
     testJsonEncodeDecode(
       ApiIngest.IngestSource.S3(
-        IngestFormat.FileFormat.Json,
+        IngestFormat.FileFormat.JsonL,
         "bucket",
         "key",
         Some(AwsCredentials("A", "B")),
@@ -81,17 +81,17 @@ class IngestCodecTest
 
   test("stdin json encode/decode") {
     testJsonEncodeDecode(
-      ApiIngest.IngestSource.StdInput(IngestFormat.FileFormat.Json, Some(10), Charset.forName("UTF-16")),
+      ApiIngest.IngestSource.StdInput(IngestFormat.FileFormat.JsonL, Some(10), Charset.forName("UTF-16")),
     )
   }
 
   test("websocket json encode/decode") {
     testJsonEncodeDecode(
-      ApiIngest.IngestSource.Websocket(
+      ApiIngest.IngestSource.WebsocketClient(
         IngestFormat.StreamingFormat.Json,
         "url",
         Seq("A", "B", "C"),
-        WebsocketSimpleStartupIngest.SendMessageInterval("message", 5001),
+        WebSocketClient.SendMessageInterval("message", 5001),
         Charset.forName("UTF-16"),
       ),
     )

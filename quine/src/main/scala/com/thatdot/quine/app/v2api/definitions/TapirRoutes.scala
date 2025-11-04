@@ -11,6 +11,8 @@ import com.github.pjfanning.pekkohttpcirce.FailFastCirceSupport
 import io.circe.syntax._
 import sttp.apispec.openapi.circe._
 import sttp.apispec.openapi.{Info, OpenAPI}
+import sttp.capabilities.WebSockets
+import sttp.capabilities.pekko.PekkoStreams
 import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.pekkohttp.{PekkoHttpServerInterpreter, PekkoHttpServerOptions}
@@ -20,8 +22,9 @@ import com.thatdot.quine.app.v2api.endpoints.{V2IngestApiSchemas, Visibility}
 /** Definitions wrapping Tapir endpoints into akka-http routes.
   */
 abstract class TapirRoutes extends FailFastCirceSupport with V2IngestApiSchemas with TapirDecodeErrorHandler {
-  protected val apiEndpoints: List[ServerEndpoint[Any, Future]]
-  protected val ingestEndpoints: List[ServerEndpoint[Any, Future]]
+  import TapirRoutes.Requirements
+  protected val apiEndpoints: List[ServerEndpoint[Requirements, Future]]
+  protected val ingestEndpoints: List[ServerEndpoint[Requirements, Future]]
 
   val appMethods: ApplicationApiMethods
 
@@ -58,4 +61,8 @@ abstract class TapirRoutes extends FailFastCirceSupport with V2IngestApiSchemas 
   def v2Routes(ingestOnly: Boolean)(implicit ec: ExecutionContext): Route =
     v2ApiRoutes(ingestOnly)(ec) ~ v2DocsRoute(ingestOnly)
 
+}
+
+object TapirRoutes {
+  type Requirements = PekkoStreams with WebSockets
 }

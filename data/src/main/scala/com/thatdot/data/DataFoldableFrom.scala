@@ -90,6 +90,14 @@ object DataFoldableFrom {
     }
   }
 
+  implicit val stringVectorDataFoldable: DataFoldableFrom[Vector[String]] = new DataFoldableFrom[Vector[String]] {
+    override def fold[B](value: Vector[String], folder: DataFolderTo[B]): B = {
+      val builder = folder.vectorBuilder()
+      value.foreach(v => builder.add(folder.string(v)))
+      builder.finish()
+    }
+  }
+
   implicit val stringMapDataFoldable: DataFoldableFrom[Map[String, String]] =
     new DataFoldableFrom[Map[String, String]] {
       override def fold[B](value: Map[String, String], folder: DataFolderTo[B]): B = {

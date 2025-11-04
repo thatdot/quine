@@ -25,7 +25,7 @@ import com.thatdot.quine.routes.WebsocketSimpleStartupIngest
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol
 import com.thatdot.quine.util.BaseError
 
-case class WebsocketSource(
+case class WebSocketClientSource(
   wsUrl: String,
   initMessages: Seq[String],
   keepaliveProtocol: KeepaliveProtocol,

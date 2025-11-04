@@ -48,9 +48,10 @@ object IngestToApi {
   }
   def apply(format: Ingest.FileFormat): Api.IngestFormat.FileFormat = format match {
     case Ingest.FileFormat.LineFormat => Api.IngestFormat.FileFormat.Line
+    case Ingest.FileFormat.JsonLinesFormat => Api.IngestFormat.FileFormat.JsonL
     case Ingest.FileFormat.JsonFormat => Api.IngestFormat.FileFormat.Json
     case Ingest.FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
-      Api.IngestFormat.FileFormat.Csv(
+      Api.IngestFormat.FileFormat.CSV(
         headers = headers,
         delimiter = apply(delimiter),
         quoteChar = apply(quoteChar),
@@ -68,12 +69,12 @@ object IngestToApi {
   }
   def apply(
     proto: V1.WebsocketSimpleStartupIngest.KeepaliveProtocol,
-  ): Api.WebsocketSimpleStartupIngest.KeepaliveProtocol = proto match {
+  ): Api.WebSocketClient.KeepaliveProtocol = proto match {
     case V1.WebsocketSimpleStartupIngest.PingPongInterval(intervalMillis) =>
-      Api.WebsocketSimpleStartupIngest.PingPongInterval(intervalMillis)
+      Api.WebSocketClient.PingPongInterval(intervalMillis)
     case V1.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis) =>
-      Api.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis)
-    case V1.WebsocketSimpleStartupIngest.NoKeepalive => Api.WebsocketSimpleStartupIngest.NoKeepalive
+      Api.WebSocketClient.SendMessageInterval(message, intervalMillis)
+    case V1.WebsocketSimpleStartupIngest.NoKeepalive => Api.WebSocketClient.NoKeepalive
   }
   def apply(it: V1.KinesisIngest.IteratorType): Api.IngestSource.Kinesis.IteratorType = it match {
     case V1.KinesisIngest.IteratorType.Latest => Api.IngestSource.Kinesis.IteratorType.Latest
@@ -318,7 +319,7 @@ object IngestToApi {
     case Ingest.NumberIteratorIngest(_, startOffset, limit) =>
       Api.IngestSource.NumberIterator(startOffset, limit)
     case Ingest.WebsocketIngest(format, url, initMessages, keepAlive, characterEncoding) =>
-      Api.IngestSource.Websocket(
+      Api.IngestSource.WebsocketClient(
         format = apply(format),
         url = url,
         initMessages = initMessages,
@@ -414,6 +415,8 @@ object IngestToApi {
       )
     case Ingest.ReactiveStreamIngest(format, url, port) =>
       Api.IngestSource.ReactiveStream(apply(format), url, port)
+    case Ingest.WebSocketFileUpload(format) =>
+      Api.WebSocketFileUpload(apply(format))
   }
 
   def apply(handler: Ingest.OnStreamErrorHandler): Api.OnStreamErrorHandler = handler match {

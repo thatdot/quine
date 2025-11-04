@@ -13,7 +13,7 @@ import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.JsonFormat
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.JsonLinesFormat
 import com.thatdot.quine.app.model.ingest2.source.{IngestBounds, QuineValueIngestQuery}
 import com.thatdot.quine.app.model.ingest2.sources.{DEFAULT_MAXIMUM_LINE_SIZE, NumberIteratorSource}
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
@@ -45,7 +45,7 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
       val graph: GraphService = IngestTestGraph.makeGraph()
       val rawJson = 1.to(5).map(i => s"""{ "foo":$i }""").mkString("\n")
       val decodedSource =
-        buildDecodedSource(srcFromString(rawJson), JsonFormat, IngestBounds(), DEFAULT_MAXIMUM_LINE_SIZE, Seq())
+        buildDecodedSource(srcFromString(rawJson), JsonLinesFormat, IngestBounds(), DEFAULT_MAXIMUM_LINE_SIZE, Seq())
 
       val ingestQuery = QuineValueIngestQuery.build(graph, "CREATE ($that)", "that", None).get
 

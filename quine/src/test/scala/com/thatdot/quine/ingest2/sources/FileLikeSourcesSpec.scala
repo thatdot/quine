@@ -18,7 +18,7 @@ import org.scalatest.matchers.should.Matchers
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.{CsvFormat, JsonFormat, LineFormat}
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.{CsvFormat, JsonLinesFormat, LineFormat}
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.model.ingest2.sources.DEFAULT_MAXIMUM_LINE_SIZE
 import com.thatdot.quine.app.model.ingest2.sources.FileSource.decodedSourceFromFileStream
@@ -104,7 +104,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     val jsonSample = generateJsonSample(50)
 
     it("reads all values") {
-      val (meter, values) = generateValues(jsonSample, JsonFormat)
+      val (meter, values) = generateValues(jsonSample, JsonLinesFormat)
       values.length shouldEqual 50
       values.head shouldEqual Expr.Map(
         TreeMap(
@@ -118,7 +118,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
     it("reads all values w/o line delimiter") {
       val undelimitedSample = generateJsonSample(50, "")
-      val (meter, values) = generateValues(undelimitedSample, JsonFormat)
+      val (meter, values) = generateValues(undelimitedSample, JsonLinesFormat)
       values.length shouldEqual 50
       values.head shouldEqual Expr.Map(
         TreeMap(
@@ -133,7 +133,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("respects value bounds") {
       val resultCount = 11 + Random.nextInt(30)
       val bounds = IngestBounds(10, Some(resultCount.longValue()))
-      val (meter, values) = generateValues(jsonSample, JsonFormat, bounds)
+      val (meter, values) = generateValues(jsonSample, JsonLinesFormat, bounds)
       values.length shouldEqual resultCount
       values.head shouldEqual Expr.Map(
         TreeMap(
@@ -148,7 +148,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("uses gzip,base64 decoders") {
       val (meter, values) = generateValues(
         jsonSample,
-        JsonFormat,
+        JsonLinesFormat,
         contentDecoders = Seq(ContentDecoder.GzipDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50
@@ -165,7 +165,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("uses zlib,base64 decoders") {
       val (meter, values) = generateValues(
         jsonSample,
-        JsonFormat,
+        JsonLinesFormat,
         contentDecoders = Seq(ContentDecoder.ZlibDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50

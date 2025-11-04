@@ -172,7 +172,7 @@ object FrameDecoder {
     format: V2IngestFormat,
   )(implicit protobufCache: ProtobufSchemaCache, avroSchemaCache: AvroSchemaCache): FrameDecoder[_] = format match {
     case FileFormat.LineFormat => CypherStringDecoder
-    case FileFormat.JsonFormat | StreamingFormat.JsonFormat => JsonDecoder
+    case FileFormat.JsonLinesFormat | FileFormat.JsonFormat | StreamingFormat.JsonFormat => JsonDecoder
     case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
       headers match {
         case Left(false) =>

@@ -101,6 +101,7 @@ trait IngestRoutesImpl
                 close,
                 initialStatus @ _,
                 optWs @ _,
+                optWsV2 @ _,
               ),
             ) =>
           val finalStatus = control.status.map { previousStatus =>

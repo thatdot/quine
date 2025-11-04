@@ -17,6 +17,7 @@ import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
   Transformation,
 }
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, QuineValueIngestQuery}
+import com.thatdot.quine.app.model.ingest2.sources.WebSocketFileUploadSource
 import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities}
 import com.thatdot.quine.app.model.transformation.polyglot
 import com.thatdot.quine.app.model.transformation.polyglot.langauges.JavaScriptTransformation
@@ -214,6 +215,13 @@ trait IngestStreamState {
                 initialStatus,
               )
 
+            // For V2 WebSocket file upload, extract and store the packaging in optWsV2
+            s match {
+              case wsUpload: WebSocketFileUploadSource =>
+                streamDefWithControl.optWsV2 = Some(wsUpload.decodingHub)
+              case _ => // Other source types don't need special handling
+            }
+
             val newNamespaceIngests = ingests + (name -> streamDefWithControl)
             //TODO this is blocking in QuineEnterpriseApp
             ingestStreams += intoNamespace -> newNamespaceIngests
@@ -360,6 +368,7 @@ trait IngestStreamState {
           close,
           initialStatus,
           optWs,
+          optWsV2,
         ) =>
       val ingestV2 = IngestStreamWithControl[V2IngestEntities.IngestSource](
         v2Config.source,
@@ -369,6 +378,7 @@ trait IngestStreamState {
         close,
         initialStatus,
         optWs,
+        optWsV2,
       )
       streamToInternalModel(ingestV2).map(Some(_))(ExecutionContext.parasitic)
     case _ => Future.successful(None)

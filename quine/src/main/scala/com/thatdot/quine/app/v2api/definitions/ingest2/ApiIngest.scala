@@ -199,7 +199,7 @@ object ApiIngest {
     case object Sasl_Plaintext extends KafkaSecurityProtocol("SASL_PLAINTEXT")
   }
 
-  object WebsocketSimpleStartupIngest {
+  object WebSocketClient {
     @title("Websockets Keepalive Protocol")
     sealed trait KeepaliveProtocol
 
@@ -465,7 +465,7 @@ object ApiIngest {
 
     @title("Websockets Ingest Stream (Simple Startup)")
     @description("A websocket stream started after a sequence of text messages.")
-    case class Websocket(
+    case class WebsocketClient(
       @description("Format used to decode each incoming message.")
       format: IngestFormat.StreamingFormat,
       @description("Websocket (ws: or wss:) url to connect to.")
@@ -473,8 +473,8 @@ object ApiIngest {
       @description("Initial messages to send to the server on connecting.")
       initMessages: Seq[String],
       @description("Strategy to use for sending keepalive messages, if any.")
-      @default(WebsocketSimpleStartupIngest.PingPongInterval())
-      keepAlive: WebsocketSimpleStartupIngest.KeepaliveProtocol = WebsocketSimpleStartupIngest.PingPongInterval(),
+      @default(WebSocketClient.PingPongInterval())
+      keepAlive: WebSocketClient.KeepaliveProtocol = WebSocketClient.PingPongInterval(),
       @description(
         """Text encoding used to read the file. Only UTF-8, US-ASCII and ISO-8859-1 are directly supported —
           |other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).""".asOneLine,
@@ -926,6 +926,27 @@ object ApiIngest {
     metricsEnabledDimensions: Option[Set[MetricsDimension]],
   )
 
+  @title("WebSocket File Upload")
+  @description("Streamed file upload via WebSocket protocol.")
+  final case class WebSocketFileUpload(
+    @description("file format") format: IngestFormat.FileFormat,
+  ) extends IngestSource
+
+  object WebSocketFileUpload {
+
+    /** Maximum number of websocket messages the server backend promises to buffer */
+    val MaxBufferedMessages = 8
+
+    /** Type of JSON message sent back in a websocket novelty ingest stream */
+    sealed abstract class FeedbackMessage
+
+    case object Ack extends FeedbackMessage
+
+    final case class Progress(count: Long) extends FeedbackMessage
+
+    final case class Error(message: String, index: Option[Long], record: Option[String]) extends FeedbackMessage
+  }
+
   sealed trait IngestFormat
 
   object IngestFormat {
@@ -936,41 +957,34 @@ object ApiIngest {
 
     object FileFormat {
 
-      /** Create using a cypher query, passing each line in as a string */
       @title("Line")
-      @description(
-        """For every line (LF/CRLF delimited) in the source, the given Cypher query will be
-          |re-executed with the parameter in the query set equal to a string matching
-          |the new line value. The newline is not included in this string.""".asOneLine,
-      )
+      @description("""Read each line (LF/CRLF delimited) as a single string element.
+                     |The newline is not included in this string.""".asOneLine)
       case object Line extends FileFormat
 
-      /** Create using a cypher query, expecting each line to be a JSON record */
+      @title("JsonL")
+      @description("Read each line in the file as a JSON value.")
+      case object JsonL extends FileFormat
+
       @title("Json")
-      @description(
-        """Lines in the file should be JSON values. For every value received, the
-          |given Cypher query will be re-executed with the parameter in the query set
-          |equal to the new JSON value.""".asOneLine,
-      )
+      @description("""A file with a single top level array of objects to treat as separate elements, or a series of
+                     |concatenated objects, with optional commas and/or whitespace between them. Files with
+                     |newline-delimited top level values that are not objects (e.g. arrays) should use the JsonL
+                     |format instead.""".asOneLine)
       case object Json extends FileFormat
 
-      /** Create using a cypher query, expecting each line to be a single row CSV record */
       @title("CSV")
-      @description(
-        """For every row in a CSV file, the given Cypher query will be re-executed with the parameter in the query set
-          |to the parsed row. Rows are parsed into either a Cypher List of strings or a Map, depending on whether a
-          |`headers` row is available.""".asOneLine,
-      )
-      case class Csv(
+      @description("Emit a list of strings for each row, or a map of field name to string if headers are provided.")
+      case class CSV(
         @description(
           """Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`).
             |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
-            |type available to the Cypher query will be a List of strings with values accessible by index. When
-            |headers are available (supplied or read from the file), the resulting type available to the Cypher
-            |query will be a Map[String, String], with values accessible using the corresponding header string.
-            |CSV rows containing more records than the `headers` will have items that don't match a header column
-            |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
-            |Default: `false`.""".asOneLine,
+            |elements will be lists of strings. When headers are available (supplied or read from the file), the
+            |resulting elements will be maps of string to string with values accessible using field names in the header
+            |as keys. CSV rows containing more records than the `headers` will have items that don't match a header
+            |column discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing
+            |fields.""".asOneLine +
+          "\nDefault: `false`.",
         )
         @default(Left(false))
         headers: Either[Boolean, List[String]] = Left(false),
@@ -996,43 +1010,28 @@ object ApiIngest {
     object StreamingFormat {
 
       @title("Json")
-      @description(
-        """Records are JSON values. For every record received, the
-          |given Cypher query will be re-executed with the parameter in the query set
-          |equal to the new JSON value.""".asOneLine,
-      )
+      @description("Records are JSON values that will each be ingested individually.")
       case object Json extends StreamingFormat
 
       @title("Raw Bytes")
-      @description(
-        """Records may have any format. For every record received, the
-          |given Cypher query will be re-executed with the parameter in the query set
-          |equal to the new value as a Cypher byte array.""".asOneLine,
-      )
+      @description("Records will be passed along as unmodified byte arrays.")
       case object Raw extends StreamingFormat
 
-      @title("Protobuf via Cypher")
+      @title("Protobuf")
       @description(
-        """Records are serialized instances of `typeName` as described in the schema (a `.desc` descriptor file)
-          |at `schemaUrl`. For every record received, the given Cypher query will be re-executed with the parameter
-          |in the query set equal to the new (deserialized) Protobuf message.""".asOneLine,
+        """Records are serialized instances of `typeName` as described in the schema (a `.desc` descriptor file) at
+          |`schemaUrl`.""".asOneLine,
       )
       final case class Protobuf(
-        @description(
-          "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`.",
-        )
+        @description("URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`.")
         schemaUrl: String,
-        @description(
-          "Message type name to use from the given `.desc` file as the incoming message type.",
-        )
+        @description("Message type name to use from the given `.desc` file as the incoming message type.")
         typeName: String,
       ) extends StreamingFormat
 
       @title("Avro format")
       case class Avro(
-        @description(
-          "URL (or local filename) of the file to load to parse the avro schema.",
-        )
+        @description("URL (or local filename) of the file to load to parse the avro schema.")
         schemaUrl: String,
       ) extends StreamingFormat
 

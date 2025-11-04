@@ -9,6 +9,7 @@ import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
+import com.thatdot.quine.app.util.StringOps.syntax.MultilineTransforms
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.OnRecordErrorHandler
 import com.thatdot.quine.{routes => V1}
 
@@ -42,10 +43,15 @@ object V2IngestEntities {
 
   object IngestStreamStatus {
     case object Running extends IngestStreamStatus
+
     case object Paused extends IngestStreamStatus
+
     case object Restored extends IngestStreamStatus
+
     case object Completed extends IngestStreamStatus
+
     case object Terminated extends IngestStreamStatus
+
     case object Failed extends IngestStreamStatus
   }
 
@@ -53,6 +59,7 @@ object V2IngestEntities {
 
   object ValvePosition {
     case object Open extends ValvePosition
+
     case object Closed extends ValvePosition
   }
 
@@ -96,6 +103,7 @@ object V2IngestEntities {
   sealed trait FileIngestSource extends IngestSource {
     def format: FileFormat
   }
+
   sealed trait StreamingIngestSource extends IngestSource {
     def format: StreamingFormat
   }
@@ -112,7 +120,7 @@ object V2IngestEntities {
     maximumLineSize: Option[Int] = None,
     @description(
       s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
-         |resuming ingest from a partially consumed file.""".stripMargin,
+         |resuming ingest from a partially consumed file.""".asOneLine,
     )
     startOffset: Long,
     @description(s"Optionally limit how many records are ingested from this file.")
@@ -135,8 +143,7 @@ object V2IngestEntities {
   @description(
     """An ingest stream from a file in S3, newline delimited. This ingest source is
       |experimental and is subject to change without warning. In particular, there are
-      |known issues with durability when the stream is inactive for at least 1 minute.""".stripMargin
-      .replace('\n', ' '),
+      |known issues with durability when the stream is inactive for at least 1 minute.""".asOneLine,
   )
   case class S3Ingest(
     @description("Format used to decode each incoming line from a file in S3.")
@@ -150,7 +157,7 @@ object V2IngestEntities {
     maximumLineSize: Option[Int] = None,
     @description(
       s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
-        |resuming ingest from a partially consumed file.""".stripMargin,
+         |resuming ingest from a partially consumed file.""".asOneLine,
     )
     startOffset: Long,
     @description(s"Optionally limit how many records are ingested from this file.")
@@ -174,6 +181,12 @@ object V2IngestEntities {
     url: String,
     port: Int,
   ) extends IngestSource
+
+  @title("WebSocket File Upload")
+  @description("Streamed file upload via WebSocket protocol.")
+  case class WebSocketFileUpload(
+    @description("File format") format: FileFormat,
+  ) extends FileIngestSource
 
   @title("Standard Input Ingest Stream")
   @description("An active stream of data being ingested from standard input to this Quine process.")
@@ -286,8 +299,8 @@ object V2IngestEntities {
 
   /** Settings used when materialising a `KinesisSchedulerSource`.
     *
-    * @param bufferSize               Sets the buffer size. Buffer size must be greater than 0; use size `1` to disable
-    *                                 stage buffering.
+    * @param bufferSize                Sets the buffer size. Buffer size must be greater than 0; use size `1` to disable
+    *                                  stage buffering.
     * @param backpressureTimeoutMillis Sets the back‑pressure timeout in milliseconds.
     */
   case class KinesisSchedulerSourceSettings(
@@ -325,7 +338,10 @@ object V2IngestEntities {
     workerIdentifier: Option[String] = None,
   )
 
-  sealed trait BillingMode { def value: String }
+  sealed trait BillingMode {
+    def value: String
+  }
+
   object BillingMode {
 
     /** Provisioned billing. */
@@ -346,6 +362,7 @@ object V2IngestEntities {
 
   /** Initial position in the shard from which the KCL should start consuming. */
   sealed trait InitialPosition
+
   object InitialPosition {
 
     /** All records added to the shard since subscribing. */
@@ -445,6 +462,7 @@ object V2IngestEntities {
 
   /** Marker trait for shard‑prioritisation strategies. */
   sealed trait ShardPrioritization
+
   object ShardPrioritization {
 
     /** No‑op prioritisation. */
@@ -456,8 +474,10 @@ object V2IngestEntities {
 
   /** Compatibility mode for the KCL client version. */
   sealed trait ClientVersionConfig
+
   object ClientVersionConfig {
     case object CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X extends ClientVersionConfig
+
     case object CLIENT_VERSION_CONFIG_3X extends ClientVersionConfig
   }
 
@@ -491,6 +511,7 @@ object V2IngestEntities {
 
   /** CloudWatch metrics granularity level. */
   sealed trait MetricsLevel
+
   object MetricsLevel {
 
     /** Metrics disabled. */
@@ -504,12 +525,26 @@ object V2IngestEntities {
   }
 
   /** Dimensions that may be attached to CloudWatch metrics. */
-  sealed trait MetricsDimension { def value: String }
+  sealed trait MetricsDimension {
+    def value: String
+  }
+
   object MetricsDimension {
-    case object OPERATION_DIMENSION_NAME extends MetricsDimension { val value = "Operation" }
-    case object SHARD_ID_DIMENSION_NAME extends MetricsDimension { val value = "ShardId" }
-    case object STREAM_IDENTIFIER extends MetricsDimension { val value = "StreamId" }
-    case object WORKER_IDENTIFIER extends MetricsDimension { val value = "WorkerIdentifier" }
+    case object OPERATION_DIMENSION_NAME extends MetricsDimension {
+      val value = "Operation"
+    }
+
+    case object SHARD_ID_DIMENSION_NAME extends MetricsDimension {
+      val value = "ShardId"
+    }
+
+    case object STREAM_IDENTIFIER extends MetricsDimension {
+      val value = "StreamId"
+    }
+
+    case object WORKER_IDENTIFIER extends MetricsDimension {
+      val value = "WorkerIdentifier"
+    }
   }
 
   /** CloudWatch metrics configuration. */
@@ -563,8 +598,7 @@ object V2IngestEntities {
     format: StreamingFormat,
     @description(
       """Kafka topics from which to ingest: Either an array of topic names, or an object whose keys are topic names and
-        |whose values are partition indices.""".stripMargin
-        .replace('\n', ' '),
+        |whose values are partition indices.""".asOneLine,
     )
     topics: Either[V1.KafkaIngest.Topics, V1.KafkaIngest.PartitionAssignments],
     @description("A comma-separated list of Kafka broker servers.")
@@ -596,51 +630,24 @@ object V2IngestEntities {
 
   sealed trait IngestFormat
 
-  @title("Streamed Record Format")
-  @description("Format by which streamed records are decoded.")
+  /** Data format that reads a single value from an externally delimited frame. */
   sealed trait StreamingFormat extends IngestFormat
 
   object StreamingFormat {
 
-    @title("Json")
-    @description("""Records are JSON values. For every record received, the
-        |given Cypher query will be re-executed with the parameter in the query set
-        |equal to the new JSON value.
-  """.stripMargin)
     case object JsonFormat extends StreamingFormat
 
-    @title("Raw Bytes")
-    @description("""Records may have any format. For every record received, the
-        |given Cypher query will be re-executed with the parameter in the query set
-        |equal to the new value as a Cypher byte array.
-  """.stripMargin)
     case object RawFormat extends StreamingFormat
 
-    @title("Protobuf via Cypher")
-    @description(
-      "Records are serialized instances of `typeName` as described in the schema (a `.desc` descriptor file) at " +
-      "`schemaUrl`. For every record received, the given Cypher query will be re-executed with the parameter " +
-      "in the query set equal to the new (deserialized) Protobuf message.",
-    )
     final case class ProtobufFormat(
-      @description(
-        "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`.",
-      ) schemaUrl: String,
-      @description(
-        "Message type name to use from the given `.desc` file as the incoming message type.",
-      ) typeName: String,
+      schemaUrl: String,
+      typeName: String,
     ) extends StreamingFormat
 
-    @title("Avro format")
     case class AvroFormat(
-      @description(
-        "URL (or local filename) of the file to load to parse the avro schema.",
-      )
       schemaUrl: String,
     ) extends StreamingFormat
 
-    @title("Drop")
-    @description("Ignore the data without further processing.")
     case object DropFormat extends StreamingFormat
 
     def apply(v1Format: V1.StreamedRecordFormat): StreamingFormat =
@@ -656,49 +663,24 @@ object V2IngestEntities {
   }
 
   @title("File Ingest Format")
-  @description("Format by which a file will be interpreted as a stream of elements for ingest.")
+  @description("Format for decoding a stream of elements from a file for ingest.")
   sealed trait FileFormat extends IngestFormat
+
   object FileFormat {
 
-    /** Create using a cypher query, passing each line in as a string */
-    @title("Line")
-    @description("""For every line (LF/CRLF delimited) in the source, the given Cypher query will be
-        |re-executed with the parameter in the query set equal to a string matching
-        |the new line value. The newline is not included in this string.
-  """.stripMargin.replace('\n', ' '))
+    /** Read each line in as a single string element. */
     case object LineFormat extends FileFormat
 
-    /** Create using a cypher query, expecting each line to be a JSON record */
-    @title("Json")
-    @description("""Lines in the file should be JSON values. For every value received, the
-        |given Cypher query will be re-executed with the parameter in the query set
-        |equal to the new JSON value.
-  """.stripMargin.replace('\n', ' '))
+    /** Read each line as a JSON value */
+    case object JsonLinesFormat extends FileFormat
+
     case object JsonFormat extends FileFormat
 
-    /** Create using a cypher query, expecting each line to be a single row CSV record */
-    @title("CSV")
-    @description(
-      """For every row in a CSV file, the given Cypher query will be re-executed with the parameter in the query set
-        |to the parsed row. Rows are parsed into either a Cypher List of strings or a Map, depending on whether a
-        |`headers` row is available.""".stripMargin.replace('\n', ' '),
-    )
+    /** Comma (or other delimiter) separated values. Each line is a record, separated by a field delimiter. */
     case class CsvFormat(
-      @description("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`).
-                     |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
-                     |type available to the Cypher query will be a List of strings with values accessible by index. When
-                     |headers are available (supplied or read from the file), the resulting type available to the Cypher
-                     |query will be a Map[String, String], with values accessible using the corresponding header string.
-                     |CSV rows containing more records than the `headers` will have items that don't match a header column
-                     |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
-                     |Default: `false`.""".stripMargin)
       headers: Either[Boolean, List[String]] = Left(false),
-      @description("CSV row delimiter character.")
       delimiter: V1.CsvCharacter = V1.CsvCharacter.Comma,
-      @description("""Character used to quote values in a field. Special characters (like new lines) inside of a quoted
-                     |section will be a part of the CSV value.""".stripMargin)
       quoteChar: V1.CsvCharacter = V1.CsvCharacter.DoubleQuote,
-      @description("Character used to escape special characters.")
       escapeChar: V1.CsvCharacter = V1.CsvCharacter.Backslash,
     ) extends FileFormat {
       require(delimiter != quoteChar, "Different characters must be used for `delimiter` and `quoteChar`.")
@@ -708,7 +690,7 @@ object V2IngestEntities {
 
     def apply(v1Format: V1.FileIngestFormat): FileFormat = v1Format match {
       case V1.FileIngestFormat.CypherLine(_, _) => LineFormat
-      case V1.FileIngestFormat.CypherJson(_, _) => JsonFormat
+      case V1.FileIngestFormat.CypherJson(_, _) => JsonLinesFormat
       case V1.FileIngestFormat.CypherCsv(_, _, headers, delimiter, quoteChar, escapeChar) =>
         CsvFormat(headers, delimiter, quoteChar, escapeChar)
       case _ => sys.error(s"Unsupported version 1 format: $v1Format")
@@ -742,6 +724,7 @@ object V2IngestEntities {
   }
 
   sealed trait Transformation
+
   object Transformation {
     case class JavaScript(
       /* JavaScript source code of the function, must be callable */
@@ -779,7 +762,8 @@ object V2IngestEntities {
 
       def asV1FileIngestFormat(format: FileFormat): Try[V1.FileIngestFormat] = format match {
         case FileFormat.LineFormat => Success(V1.FileIngestFormat.CypherLine(query, parameter))
-        case FileFormat.JsonFormat => Success(V1.FileIngestFormat.CypherJson(query, parameter))
+        case FileFormat.JsonFormat | FileFormat.JsonLinesFormat =>
+          Success(V1.FileIngestFormat.CypherJson(query, parameter))
         case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
           Success(V1.FileIngestFormat.CypherCsv(query, parameter, headers, delimiter, quoteChar, escapeChar))
       }
@@ -917,6 +901,8 @@ object V2IngestEntities {
           Failure(new Exception("v2 KCL Kinesis unsupported in v1 ingests"))
         case _: ReactiveStreamIngest =>
           Failure(new Exception("Reactive Streams unsupported in v1 ingests"))
+        case _: WebSocketFileUpload =>
+          Failure(new Exception("WebSocket File Upload unsupported in v1 ingests"))
       }
       tryConfig match {
         case Success(v1Config) => v1Config
@@ -946,6 +932,7 @@ object V2IngestEntities {
       case Left(v2) => v2.source
       case Right(v1) => IngestSource(v1)
     }
+
     def apply(ingest: V1.IngestStreamConfiguration): IngestSource = ingest match {
       case ingest: V1.KafkaIngest =>
         KafkaIngest(
@@ -1061,4 +1048,30 @@ object V2IngestEntities {
     }
   }
 
+  /** WebSocket file upload feedback messages sent from server to client */
+  object WebSocketFileUploadFeedback {
+
+    /** Type of JSON message sent back in a WebSocket file upload stream */
+    sealed trait FeedbackMessage
+
+    /** Acknowledgement that WebSocket connection is established */
+    case object Ack extends FeedbackMessage
+
+    /** Progress update indicating number of records processed */
+    final case class Progress(count: Long) extends FeedbackMessage
+
+    /** Error occurred during processing */
+    final case class Error(message: String, index: Option[Long], record: Option[String]) extends FeedbackMessage
+
+    object FeedbackMessage {
+
+      import io.circe.Encoder
+      import io.circe.generic.extras.Configuration
+      import io.circe.generic.extras.semiauto
+
+      implicit private val circeConfig: Configuration = Configuration.default.withDiscriminator("type")
+
+      implicit val feedbackMessageEncoder: Encoder[FeedbackMessage] = semiauto.deriveConfiguredEncoder
+    }
+  }
 }

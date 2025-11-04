@@ -7,8 +7,19 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, RetryFlow, Sink, Source, SourceWithContext}
-import org.apache.pekko.{Done, NotUsed}
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{
+  Flow,
+  Keep,
+  MergeHub,
+  RestartSource,
+  RetryFlow,
+  Sink,
+  Source,
+  SourceWithContext,
+}
+import org.apache.pekko.util.ByteString
+import org.apache.pekko.{Done, NotUsed, stream}
 
 import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
@@ -592,7 +603,9 @@ object DecodedSource extends LazySafeLogging {
             _,
             encoding,
           ) =>
-        WebsocketSource(wsUrl, initMessages, keepAliveProtocol, Charset.forName(encoding), meter)(system).framedSource
+        WebSocketClientSource(wsUrl, initMessages, keepAliveProtocol, Charset.forName(encoding), meter)(
+          system,
+        ).framedSource
           .map(_.toDecoded(FrameDecoder(format)))
     }
   }
@@ -653,7 +666,7 @@ object DecodedSource extends LazySafeLogging {
         NumberIteratorSource(IngestBounds(startAtOffset, ingestLimit), meter).decodedSource.valid
 
       case WebsocketIngest(format, wsUrl, initMessages, keepAliveProtocol, charset) =>
-        WebsocketSource(wsUrl, initMessages, keepAliveProtocol, charset, meter)(system).framedSource
+        WebSocketClientSource(wsUrl, initMessages, keepAliveProtocol, charset, meter)(system).framedSource
           .map(_.toDecoded(FrameDecoder(format)))
 
       case KinesisIngest(format, streamName, shardIds, creds, region, iteratorType, numRetries, recordDecoders) =>
@@ -744,6 +757,27 @@ object DecodedSource extends LazySafeLogging {
         ).framedSource.map(_.toDecoded(FrameDecoder(format)))
       case ReactiveStreamIngest(format, url, port) =>
         ReactiveSource(url, port, meter).framedSource.map(_.toDecoded(FrameDecoder(format)))
-    }
+      case WebSocketFileUpload(format) =>
+        val decoding = FileSource.decodingFoldableFrom(format, meter, Int.MaxValue)
 
+        implicit val mat: Materializer = stream.Materializer(system)
+
+        val (hubSink, hubSource) = MergeHub
+          .source[decoding.Element](perProducerBufferSize = 16)
+          .toMat(Sink.asPublisher(fanout = false))(Keep.both)
+          .run()
+        val sourceFromPublisher = Source.fromPublisher(hubSource).mapMaterializedValue(_ => NotUsed)
+
+        val decodingHub = new DecodingHub {
+          override type Element = decoding.Element
+          override val source: Source[decoding.Element, NotUsed] = sourceFromPublisher
+          override val dataFoldableFrom: DataFoldableFrom[decoding.Element] =
+            decoding.dataFoldableFrom
+
+          def decodingFlow: Flow[ByteString, Element, NotUsed] = decoding.decodingFlow
+          def sink: Sink[Element, NotUsed] = hubSink
+        }
+
+        new com.thatdot.quine.app.model.ingest2.sources.WebSocketFileUploadSource(meter, decodingHub).valid
+    }
 }

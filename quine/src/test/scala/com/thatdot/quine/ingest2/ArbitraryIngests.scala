@@ -10,7 +10,7 @@ import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.FileIngestMode.{NamedPipe, Regular}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.KafkaOffsetCommitting.ExplicitCommit
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.WebsocketSimpleStartupIngest.KeepaliveProtocol
+import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.WebSocketClient.KeepaliveProtocol
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.randomString
 
@@ -21,11 +21,11 @@ trait ArbitraryIngests {
 
   implicit val keepAliveProtocolGen: Gen[KeepaliveProtocol] =
     Gen.oneOf[KeepaliveProtocol](
-      Gen.posNum[Int].map(WebsocketSimpleStartupIngest.PingPongInterval(_)),
+      Gen.posNum[Int].map(WebSocketClient.PingPongInterval(_)),
       Gen.zip(Gen.asciiPrintableStr, Gen.posNum[Int]) map { case (message, intervalMillis) =>
-        WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis)
+        WebSocketClient.SendMessageInterval(message, intervalMillis)
       },
-      Gen.const(WebsocketSimpleStartupIngest.NoKeepalive),
+      Gen.const(WebSocketClient.NoKeepalive),
     )
 
   implicit val decoderSeqGen: Gen[Seq[RecordDecodingType]] =
@@ -71,11 +71,11 @@ trait ArbitraryIngests {
   implicit val arbOffset: Arbitrary[KafkaAutoOffsetReset] = Arbitrary(genOffsetReset)
 
   implicit val fileFormatGen: Gen[IngestFormat.FileFormat] = Gen.oneOf(
-    IngestFormat.FileFormat.Json,
+    IngestFormat.FileFormat.JsonL,
     IngestFormat.FileFormat.Line,
-    IngestFormat.FileFormat.Csv(),
-    IngestFormat.FileFormat.Csv(Left(true)),
-    IngestFormat.FileFormat.Csv(Right(List("A", "N", "C"))),
+    IngestFormat.FileFormat.CSV(),
+    IngestFormat.FileFormat.CSV(Left(true)),
+    IngestFormat.FileFormat.CSV(Right(List("A", "N", "C"))),
   )
   implicit val arbFileFormat: Arbitrary[IngestFormat.FileFormat] = Arbitrary(fileFormatGen)
   implicit val streamingFormatGen: Gen[IngestFormat.StreamingFormat] = Gen.oneOf(
@@ -94,7 +94,7 @@ trait ArbitraryIngests {
   //
   implicit val arbStreamingFormat: Arbitrary[IngestFormat.StreamingFormat] = Arbitrary(streamingFormatGen)
   implicit val arbCharset: Arbitrary[Charset] = Arbitrary(genCharset)
-  implicit val arbKeepAliveProtocol: Arbitrary[WebsocketSimpleStartupIngest.KeepaliveProtocol] = Arbitrary(
+  implicit val arbKeepAliveProtocol: Arbitrary[WebSocketClient.KeepaliveProtocol] = Arbitrary(
     keepAliveProtocolGen,
   )
 
@@ -102,7 +102,7 @@ trait ArbitraryIngests {
   implicit val s3Gen: Gen[IngestSource.S3] = Gen.resultOf(IngestSource.S3)
   implicit val stdInGen: Gen[IngestSource.StdInput] = Gen.resultOf(IngestSource.StdInput)
   implicit val numInGen: Gen[IngestSource.NumberIterator] = Gen.resultOf(IngestSource.NumberIterator)
-  implicit val webSocketGen: Gen[IngestSource.Websocket] = Gen.resultOf(IngestSource.Websocket)
+  implicit val webSocketGen: Gen[IngestSource.WebsocketClient] = Gen.resultOf(IngestSource.WebsocketClient)
   implicit val sseInGen: Gen[IngestSource.ServerSentEvent] =
     Gen.resultOf(IngestSource.ServerSentEvent)
   implicit val sqsInGen: Gen[IngestSource.SQS] = Gen.resultOf(IngestSource.SQS)
@@ -113,7 +113,7 @@ trait ArbitraryIngests {
 
   implicit val arbStdIn: Arbitrary[IngestSource.StdInput] = Arbitrary(stdInGen)
   implicit val arbNum: Arbitrary[IngestSource.NumberIterator] = Arbitrary(numInGen)
-  implicit val arbWeb: Arbitrary[IngestSource.Websocket] = Arbitrary(webSocketGen)
+  implicit val arbWeb: Arbitrary[IngestSource.WebsocketClient] = Arbitrary(webSocketGen)
   implicit val arbSse: Arbitrary[IngestSource.ServerSentEvent] = Arbitrary(sseInGen)
   implicit val arbSQS: Arbitrary[IngestSource.SQS] = Arbitrary(sqsInGen)
   implicit val arbKinesis: Arbitrary[IngestSource.Kinesis] = Arbitrary(kinesisGen)

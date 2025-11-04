@@ -16,15 +16,9 @@ import io.circe.Json
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Loggable, SafeLoggableInterpolator}
 import com.thatdot.quine.app.model.ingest.QuineIngestSource
+import com.thatdot.quine.app.model.ingest2.sources.DecodingHub
 import com.thatdot.quine.routes.{IngestStreamStats, IngestStreamStatus, RatesSummary}
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
-
-/** Adds to the ingest stream configuration extra information that will be
-  * materialized only once the ingest stream is running and which may be
-  * needed for stopping the stream
-  *
-  * @param optWs (for websocket ingest streams only) a Sink and IngestMeter via which additional records may be injected into this ingest stream
-  */
 
 /** Adds to the ingest stream configuration extra information that will be
   * materialized only once the ingest stream is running and which may be
@@ -46,6 +40,8 @@ import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
   *                      streams.
   * @param optWs         HACK: opaque stash of additional information for Novelty websocket streams. This should be
   *                      refactored out of this class.
+  * @param optWsV2       HACK: Like optWs for V1, but with the decoding flow packaged up with the hub to the data format
+  *                      to be chosen rather than fixed to just JSON.
   */
 final case class IngestStreamWithControl[+Conf: Loggable](
   settings: Conf,
@@ -55,6 +51,7 @@ final case class IngestStreamWithControl[+Conf: Loggable](
   var close: () => Unit,
   var initialStatus: IngestStreamStatus,
   var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None,
+  var optWsV2: Option[DecodingHub] = None,
 )(implicit logConfig: LogConfig)
     extends LazySafeLogging {
 

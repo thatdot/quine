@@ -1,16 +1,19 @@
 package com.thatdot.quine.app.model.ingest2.sources
 
-import java.nio.charset.Charset
+import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.Paths
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.http.scaladsl.common.EntityStreamingSupport
-import org.apache.pekko.stream.scaladsl.{Flow, Framing, Source}
+import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
+import org.apache.pekko.stream.scaladsl.{Flow, Framing, JsonFraming, Source}
 import org.apache.pekko.util.ByteString
 
 import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxValidatedId
+import cats.syntax.either._
 import com.typesafe.scalalogging.LazyLogging
+import io.circe.parser
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.data.DataFoldableFrom
@@ -103,6 +106,15 @@ object FileSource extends LazyLogging {
           decoders,
           meter,
         ).decodedSource(CypherStringDecoder).valid
+      case FileFormat.JsonLinesFormat =>
+        FramedFileSource(
+          fileSource,
+          charset,
+          lineDelimitingFlow(maximumLineSize),
+          bounds,
+          decoders,
+          meter,
+        ).decodedSource(JsonDecoder).valid
       case FileFormat.JsonFormat =>
         FramedFileSource(
           fileSource,
@@ -112,7 +124,6 @@ object FileSource extends LazyLogging {
           decoders,
           meter,
         ).decodedSource(JsonDecoder).valid
-
       case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
         CsvFileSource(
           fileSource,
@@ -127,5 +138,100 @@ object FileSource extends LazyLogging {
           decoders,
         ).decodedSource.valid
 
+    }
+
+  def decodingFoldableFrom(fileFormat: FileFormat, meter: IngestMeter, maximumLineSize: Int): DecodingFoldableFrom =
+    fileFormat match {
+      case FileFormat.LineFormat =>
+        new DecodingFoldableFrom {
+          override type Element = String
+
+          override def decodingFlow: Flow[ByteString, Element, NotUsed] =
+            lineDelimitingFlow(maximumLineSize).map { byteString =>
+              val bytes = byteString.toArray
+              meter.mark(bytes.length)
+              new String(bytes, StandardCharsets.UTF_8)
+            }
+          override val dataFoldableFrom: DataFoldableFrom[String] = DataFoldableFrom.stringDataFoldable
+        }
+      case FileFormat.JsonLinesFormat =>
+        new DecodingFoldableFrom {
+          override type Element = io.circe.Json
+
+          override def decodingFlow: Flow[ByteString, Element, NotUsed] =
+            Framing
+              .delimiter(ByteString("\n"), maximumFrameLength = Int.MaxValue, allowTruncation = true)
+              .wireTap(line => meter.mark(line.length))
+              .map((bs: ByteString) => parser.parse(bs.utf8String).valueOr(throw _))
+
+          override val dataFoldableFrom: DataFoldableFrom[Element] = DataFoldableFrom.jsonDataFoldable
+        }
+      case FileFormat.JsonFormat =>
+        new DecodingFoldableFrom {
+          override type Element = io.circe.Json
+
+          override def decodingFlow: Flow[ByteString, Element, NotUsed] =
+            JsonFraming
+              .objectScanner(maximumObjectLength = Int.MaxValue)
+              .wireTap(obj => meter.mark(obj.length))
+              .map((bs: ByteString) => parser.parse(bs.utf8String).valueOr(throw _))
+
+          override val dataFoldableFrom: DataFoldableFrom[Element] = DataFoldableFrom.jsonDataFoldable
+        }
+      case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
+        def lineBytes(line: List[ByteString]): Int =
+          line.foldLeft(0)((size, field) => size + field.length)
+
+        def meterLineBytes: List[ByteString] => Unit = { line =>
+          meter.mark(lineBytes(line))
+        }
+
+        headers match {
+          case Left(firstLineIsHeader) =>
+            if (firstLineIsHeader) {
+              new DecodingFoldableFrom {
+                override type Element = Map[String, String]
+                override val dataFoldableFrom: DataFoldableFrom[Element] = DataFoldableFrom.stringMapDataFoldable
+
+                override def decodingFlow: Flow[ByteString, Element, NotUsed] = CsvParsing
+                  .lineScanner(
+                    delimiter = delimiter.byte,
+                    quoteChar = quoteChar.byte,
+                    escapeChar = escapeChar.byte,
+                  )
+                  .wireTap(meterLineBytes)
+                  .via(CsvToMap.toMapAsStrings())
+              }
+            } else {
+              new DecodingFoldableFrom {
+                override type Element = Vector[String]
+                override val dataFoldableFrom: DataFoldableFrom[Element] = DataFoldableFrom.stringVectorDataFoldable
+
+                override def decodingFlow: Flow[ByteString, Element, NotUsed] = CsvParsing
+                  .lineScanner(
+                    delimiter = delimiter.byte,
+                    quoteChar = quoteChar.byte,
+                    escapeChar = escapeChar.byte,
+                  )
+                  .wireTap(meterLineBytes)
+                  .map(byteStringList => byteStringList.map(_.utf8String).toVector)
+              }
+            }
+          case Right(staticFieldNames) =>
+            new DecodingFoldableFrom {
+              override type Element = Map[String, String]
+              override val dataFoldableFrom: DataFoldableFrom[Element] = DataFoldableFrom.stringMapDataFoldable
+
+              override def decodingFlow: Flow[ByteString, Element, NotUsed] = CsvParsing
+                .lineScanner(
+                  delimiter = delimiter.byte,
+                  quoteChar = quoteChar.byte,
+                  escapeChar = escapeChar.byte,
+                )
+                .wireTap(meterLineBytes)
+                .via(CsvToMap.withHeaders(staticFieldNames: _*).map(_.view.mapValues(_.utf8String).toMap))
+            }
+
+        }
     }
 }
