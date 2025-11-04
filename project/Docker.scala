@@ -2,7 +2,7 @@ import scala.concurrent.duration.*
 import scala.sys.process.*
 
 import sbt.*
-import sbt.Keys.{baseDirectory, name, version}
+import sbt.Keys.{baseDirectory, name, streams, version}
 import sbt.io.IO
 import sbtassembly.AssemblyKeys.assembly
 import sbtassembly.AssemblyPlugin
@@ -19,6 +19,7 @@ object Docker extends AutoPlugin {
     val dockerTags = SettingKey[Seq[String]]("docker-tags", "The tag names to push the docker image under")
     val dockerVolume = SettingKey[File]("docker-volume", "Path to where the app should save its data")
     val includeNginx = docker / settingKey[Boolean]("Whether to install and use nginx in app container")
+    val dockerJarTask = docker / taskKey[File]("The JAR file to include in the Docker image")
   }
   import autoImport.*
   override lazy val projectSettings = Seq(
@@ -30,8 +31,11 @@ object Docker extends AutoPlugin {
     docker / includeNginx := true,
     // Enforce Docker image format rather than OCI format (the Podman default), enabling HEALTHCHECK
     docker / dockerBuildArguments := Map("format" -> "docker"),
+    // Default docker jar task - projects can override this to use packageObfuscatedJar
+    docker / dockerJarTask := assembly.value,
     docker / dockerfile := {
-      val jar: sbt.File = assembly.value
+      val jar: sbt.File = dockerJarTask.value
+
       val jarPath = "/" + jar.name
       val jmxPrometheusJarName = "jmx_prometheus_javaagent.jar"
       val temp = IO.createTemporaryDirectory

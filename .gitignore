@@ -67,6 +67,7 @@ metrics-logs
 
 # exclusions
 !/scripts/build/
+!/lib/dasho-annotations.jar
 
 # SBOM files
 *.bom.json
