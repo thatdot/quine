@@ -18,7 +18,12 @@ import org.scalatest.matchers.should.Matchers
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.{CsvFormat, JsonLinesFormat, LineFormat}
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.{
+  CsvFormat,
+  JsonFormat,
+  JsonLinesFormat,
+  LineFormat,
+}
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.model.ingest2.sources.DEFAULT_MAXIMUM_LINE_SIZE
 import com.thatdot.quine.app.model.ingest2.sources.FileSource.decodedSourceFromFileStream
@@ -118,7 +123,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
     it("reads all values w/o line delimiter") {
       val undelimitedSample = generateJsonSample(50, "")
-      val (meter, values) = generateValues(undelimitedSample, JsonLinesFormat)
+      val (meter, values) = generateValues(undelimitedSample, JsonFormat)
       values.length shouldEqual 50
       values.head shouldEqual Expr.Map(
         TreeMap(
