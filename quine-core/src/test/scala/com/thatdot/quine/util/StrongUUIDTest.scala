@@ -3,11 +3,11 @@ package com.thatdot.quine.util
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-class SecureRandomTest extends AnyFlatSpec with Matchers {
+class StrongUUIDTest extends AnyFlatSpec with Matchers {
 
-  "SecureRandom.randomUUID" should "always return a valid UUID" in {
+  "StrongUUID.randomUUID" should "always return a valid UUID" in {
     // Generate multiple UUIDs and verify each one is valid
-    val uuids = (1 to 1000).map(_ => SecureRandom.randomUUID())
+    val uuids = (1 to 1000).map(_ => StrongUUID.randomUUID())
 
     uuids.foreach { uuid =>
       uuid should not be null
@@ -17,7 +17,7 @@ class SecureRandomTest extends AnyFlatSpec with Matchers {
   }
 
   it should "generate RFC 4122 version 4 UUIDs" in {
-    val uuids = (1 to 1000).map(_ => SecureRandom.randomUUID())
+    val uuids = (1 to 1000).map(_ => StrongUUID.randomUUID())
 
     uuids.foreach { uuid =>
       // RFC 4122 section 4.1.3: version 4 UUID has version bits set to 0100 in the most
@@ -31,7 +31,7 @@ class SecureRandomTest extends AnyFlatSpec with Matchers {
   }
 
   it should "set the RFC 4122 variant bits correctly" in {
-    val uuids = (1 to 1000).map(_ => SecureRandom.randomUUID())
+    val uuids = (1 to 1000).map(_ => StrongUUID.randomUUID())
 
     uuids.foreach { uuid =>
       // RFC 4122 section 4.1.1: variant bits should be 10x (binary)
@@ -47,7 +47,7 @@ class SecureRandomTest extends AnyFlatSpec with Matchers {
   it should "generate unique UUIDs with extremely low collision probability" in {
     // Generate a large sample and verify no duplicates
     val sampleSize = 100000
-    val uuids = (1 to sampleSize).map(_ => SecureRandom.randomUUID()).toSet
+    val uuids = (1 to sampleSize).map(_ => StrongUUID.randomUUID()).toSet
 
     // All UUIDs should be unique
     uuids.size shouldBe sampleSize
@@ -55,7 +55,7 @@ class SecureRandomTest extends AnyFlatSpec with Matchers {
 
   it should "demonstrate cryptographic randomness properties" in {
     val sampleSize = 10000
-    val uuids = (1 to sampleSize).map(_ => SecureRandom.randomUUID())
+    val uuids = (1 to sampleSize).map(_ => StrongUUID.randomUUID())
 
     // Test 1: Bit distribution - each bit position should be roughly 50% 0s and 50% 1s
     // We'll check the most significant Long values
@@ -76,7 +76,7 @@ class SecureRandomTest extends AnyFlatSpec with Matchers {
 
   it should "generate UUIDs with unpredictable byte values" in {
     val sampleSize = 1000
-    val uuids = (1 to sampleSize).map(_ => SecureRandom.randomUUID())
+    val uuids = (1 to sampleSize).map(_ => StrongUUID.randomUUID())
 
     // Convert UUIDs to byte arrays and check for patterns
     val byteArrays = uuids.map { uuid =>
@@ -102,9 +102,9 @@ class SecureRandomTest extends AnyFlatSpec with Matchers {
   it should "use cryptographically strong randomness source" in {
     // Verify that the random source is properly initialized
     // by checking multiple UUIDs are truly different and random
-    val uuid1 = SecureRandom.randomUUID()
-    val uuid2 = SecureRandom.randomUUID()
-    val uuid3 = SecureRandom.randomUUID()
+    val uuid1 = StrongUUID.randomUUID()
+    val uuid2 = StrongUUID.randomUUID()
+    val uuid3 = StrongUUID.randomUUID()
 
     // Basic sanity: all different
     uuid1 should not equal uuid2
@@ -121,7 +121,7 @@ class SecureRandomTest extends AnyFlatSpec with Matchers {
   }
 
   it should "correctly encode version bits in byte position 6" in {
-    val uuids = (1 to 100).map(_ => SecureRandom.randomUUID())
+    val uuids = (1 to 100).map(_ => StrongUUID.randomUUID())
 
     uuids.foreach { uuid =>
       val mostSigBits = uuid.getMostSignificantBits
@@ -149,7 +149,7 @@ class SecureRandomTest extends AnyFlatSpec with Matchers {
   }
 
   it should "correctly encode variant bits in byte position 8" in {
-    val uuids = (1 to 100).map(_ => SecureRandom.randomUUID())
+    val uuids = (1 to 100).map(_ => StrongUUID.randomUUID())
 
     uuids.foreach { uuid =>
       val leastSigBits = uuid.getLeastSignificantBits

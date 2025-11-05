@@ -1,7 +1,7 @@
 package com.thatdot.quine.util
 
 import java.nio.ByteBuffer
-import java.security.{SecureRandom => JSecureRandom}
+import java.security.SecureRandom
 import java.util.UUID
 
 import scala.util.Try
@@ -14,10 +14,10 @@ import scala.util.Try
   * Thread-safe. Initializes lazily on first use and may block briefly while
   * gathering entropy.
   */
-object SecureRandom {
+object StrongUUID {
 
-  private lazy val strongRandom: JSecureRandom =
-    Try(JSecureRandom.getInstanceStrong()).getOrElse(new JSecureRandom())
+  private lazy val strongRandom: SecureRandom =
+    Try(SecureRandom.getInstanceStrong()).getOrElse(new SecureRandom())
 
   /** Generate cryptographically strong UUID for security-critical operations
     * (OAuth2 tokens, JWT claims, audit IDs, billing identifiers).
