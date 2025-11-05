@@ -82,6 +82,10 @@ lazy val `quine-serialization`: Project = project
       "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
+      // Netty overrides for CVE-2025-55163 and CVE-2025-58056, required for AWS Glue SDK
+      "io.netty" % "netty-handler" % nettyOverrideV,
+      "io.netty" % "netty-codec-http" % nettyOverrideV,
+      "io.netty" % "netty-codec-http2" % nettyOverrideV,
       "org.apache.avro" % "avro" % avroV,
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
       "org.endpoints4s" %%% "json-schema-circe" % endpoints4sCirceV,
@@ -130,6 +134,10 @@ lazy val `quine-cassandra-persistor`: Project = project
       // at the sbt-assembly step (because they both have the same package names internally).
       "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % "4.0.9" exclude ("com.datastax.oss", "java-driver-core"),
       "software.amazon.awssdk" % "sts" % awsSdkV,
+      // Netty overrides for CVE-2025-55163 and CVE-2025-58056, required for AWS SDK
+      "io.netty" % "netty-handler" % nettyOverrideV,
+      "io.netty" % "netty-codec-http" % nettyOverrideV,
+      "io.netty" % "netty-codec-http2" % nettyOverrideV,
       "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test,
     ),
   )
@@ -416,7 +424,10 @@ lazy val `quine`: Project = project
       // [x] | com.thatdot:quine                              | software.amazon.glue:schema-registry-serde     | 1.1.23
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:sso                     | 2.29.52
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:ssooidc                 | 2.29.52
-      "io.netty" % "netty-handler" % "4.1.127.Final",
+      // Netty overrides for CVE-2025-55163 and CVE-2025-58056, required for AWS SDK
+      "io.netty" % "netty-handler" % nettyOverrideV,
+      "io.netty" % "netty-codec-http" % nettyOverrideV,
+      "io.netty" % "netty-codec-http2" % nettyOverrideV,
       // AWS SDK deps (next 4) effectively bundle sibling JARs needed for certain features, despite no code references
       "software.amazon.awssdk" % "sso" % awsSdkV,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV,

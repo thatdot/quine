@@ -24,6 +24,14 @@ object Packaging extends AutoPlugin {
     case "version.conf" => MergeStrategy.concat
     case PathList("META-INF", "LICENSES.txt") | "AUTHORS" => MergeStrategy.concat
     case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.discard
+    // Discard Kotlin Native metadata files that cause deduplication conflicts.
+    // These "nativeMain/default/manifest" and similar files from okio and wire
+    // libraries are only relevant for Kotlin Native targets, not JVM.
+    case PathList("commonMain", "default", "manifest") => MergeStrategy.discard
+    case PathList("nativeMain", "default", "manifest") => MergeStrategy.discard
+    case PathList("commonMain", "default", "linkdata", "module") => MergeStrategy.discard
+    case PathList("nativeMain", "default", "linkdata", "module") => MergeStrategy.discard
+    case PathList("META-INF", "kotlin-project-structure-metadata.json") => MergeStrategy.discard
     case PathList("META-INF", "kotlinx-serialization-core.kotlin_module") => MergeStrategy.first
     case PathList("META-INF", "okio-fakefilesystem.kotlin_module") => MergeStrategy.first
     case PathList("META-INF", "okio.kotlin_module") => MergeStrategy.first
