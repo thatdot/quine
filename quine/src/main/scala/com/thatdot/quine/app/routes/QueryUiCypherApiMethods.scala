@@ -42,8 +42,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
   private def guessCypherParameters(params: Map[String, Json]): Map[String, CypherValue] =
     params.map { case (k, v) => k -> CypherExpr.fromQuineValue(QuineValue.fromJson(v)) }
 
-  /** Post-process UI nodes. This serves as a hook for last minute modifications to the nodes sen
-    * out to the UI.
+  /** Post-process UI nodes. This serves as a hook for last minute modifications to the nodes sent out to the UI.
     *
     * @param uiNode UI node to modify
     * @return updated UI node
