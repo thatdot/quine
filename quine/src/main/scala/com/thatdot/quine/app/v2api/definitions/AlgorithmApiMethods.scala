@@ -13,6 +13,7 @@ import shapeless.{:+:, CNil, Coproduct}
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, ServerError}
 import com.thatdot.api.v2.ErrorResponseHelpers.toServerError
 import com.thatdot.api.v2.ErrorType
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.routes.AlgorithmMethods
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
@@ -37,7 +38,7 @@ trait AlgorithmApiMethods extends AlgorithmMethods {
     atTime: Option[Milliseconds],
     parallelism: Int,
     saveLocation: TSaveLocation,
-  ): Either[ServerError :+: BadRequest :+: CNil, Option[String]] = {
+  )(implicit logConfig: LogConfig): Either[ServerError :+: BadRequest :+: CNil, Option[String]] = {
 
     graph.requiredGraphIsReady()
     if (!graph.getNamespaces.contains(namespaceId)) Right(None)
@@ -104,7 +105,7 @@ trait AlgorithmApiMethods extends AlgorithmMethods {
     seedOpt: Option[String],
     namespaceId: NamespaceId,
     atTime: Option[Milliseconds],
-  ): Future[Either[ServerError :+: BadRequest :+: CNil, List[String]]] = {
+  )(implicit logConfig: LogConfig): Future[Either[ServerError :+: BadRequest :+: CNil, List[String]]] = {
 
     val errors: Either[ServerError :+: BadRequest :+: CNil, List[String]] = Try {
       require(!lengthOpt.exists(_ < 1), "walk length cannot be less than one.")

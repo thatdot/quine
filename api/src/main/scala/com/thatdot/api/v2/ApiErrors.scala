@@ -1,10 +1,13 @@
 package com.thatdot.api.v2
 
+import java.util.UUID
+
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.{EndpointOutput, Schema, statusCode}
 
 import com.thatdot.api.v2.schema.V2ApiConfiguration.jsonBody
+import com.thatdot.common.logging.Log._
 import com.thatdot.quine.util.BaseError
 
 /** Errors that api v2 cares to distinguish for reporting */
@@ -97,12 +100,17 @@ object ErrorResponse {
 
 }
 
-object ErrorResponseHelpers {
+object ErrorResponseHelpers extends LazySafeLogging {
 
   /** Default error catching for server logic.  Could use a second look once more errors are codified */
-  def toServerError(e: Throwable): ErrorResponse.ServerError = ErrorResponse.ServerError(
-    List(ErrorType.ApiError(e.getMessage)),
-  )
+  def toServerError(e: Throwable)(implicit logConfig: LogConfig): ErrorResponse.ServerError = {
+    val correlationId = UUID.randomUUID().toString
+    logger.error(log"Internal server error [correlationId=${Safe(correlationId)}]" withException e)
+
+    ErrorResponse.ServerError(
+      s"An internal error occurred. Reference ID: $correlationId",
+    )
+  }
 
   def serverError(possibleReasons: String*)(implicit
     enc: Encoder[ErrorResponse.ServerError],
