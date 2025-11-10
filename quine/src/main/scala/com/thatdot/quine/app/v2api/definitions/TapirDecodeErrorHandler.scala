@@ -8,14 +8,24 @@ import sttp.model.{Header, StatusCode}
 import sttp.tapir.DecodeResult.Error.JsonDecodeException
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.interceptor.decodefailure.{DecodeFailureHandler, DefaultDecodeFailureHandler}
+import sttp.tapir.server.interceptor.exception.DefaultExceptionHandler
 import sttp.tapir.server.model.ValuedEndpointOutput
-import sttp.tapir.{DecodeResult, headers, statusCode}
+import sttp.tapir.{DecodeResult, headers, statusCode, stringBody}
 
 import com.thatdot.api.v2.ErrorResponse
 import com.thatdot.api.v2.ErrorType.{ApiError, DecodeError}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 trait TapirDecodeErrorHandler extends V2IngestApiSchemas {
+
+  /** Wrap 500 codes in [[ErrorResponse.ServerError]] use default behavior for other codes. */
+  protected val customExceptionHandler: DefaultExceptionHandler[Future] =
+    DefaultExceptionHandler[Future]((code: StatusCode, body: String) =>
+      code match {
+        case StatusCode.InternalServerError => serverErrorFailureResponse(Nil, body)
+        case _ => ValuedEndpointOutput(statusCode.and(stringBody), (code, body))
+      },
+    )
 
   private def pretty(df: DecodingFailure): String = {
     val path = df.pathToRootString.getOrElse("").stripPrefix(".")

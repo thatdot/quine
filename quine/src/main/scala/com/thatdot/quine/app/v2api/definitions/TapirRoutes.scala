@@ -51,6 +51,7 @@ abstract class TapirRoutes extends FailFastCirceSupport with V2IngestApiSchemas 
   private def serverOptions(implicit ec: ExecutionContext): PekkoHttpServerOptions =
     PekkoHttpServerOptions.customiseInterceptors
       .decodeFailureHandler(customHandler)
+      .exceptionHandler(customExceptionHandler)
       .options
 
   protected def v2ApiRoutes(ingestOnly: Boolean)(implicit ec: ExecutionContext): Route =
