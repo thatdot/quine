@@ -1440,10 +1440,10 @@ import com.thatdot.{visnetwork => vis}
         }
 
       case QueryMethod.Restful =>
-        window.alert("You cannot cancel queries when issuing queries throught the REST api")
+        window.alert("You cannot cancel queries when issuing queries through the REST api")
 
       case QueryMethod.RestfulV2 =>
-        window.alert("You cannot cancel queries when issuing queries throught the REST api")
+        window.alert("You cannot cancel queries when issuing queries through the REST api")
     }
 
   def render(): ReactElement = {
