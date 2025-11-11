@@ -114,6 +114,7 @@ case object resolveCalls extends StatementRewriter {
     CypherDebugSleep,
     ReifyTime,
     RandomWalk,
+    GetFilteredEdges,
   )
 
   /** This map is only meant to maintain backward compatibility for a short time. */

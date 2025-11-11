@@ -155,6 +155,54 @@ trait LiteralOpsGraph extends BaseGraph {
       Source.futureSource(halfEdgesSource).map(_.halfEdge).runWith(Sink.collection)
     }
 
+    /** Get half edges from a node with Set-based filtering. Each Set filters edges INDEPENDENTLY. So the returned
+      * collection size can be up to the size of the Cartesian Product of the cardinality of all non-empty sets.
+      *
+      * Note: this does not check that the other half of the edge exists
+      *
+      * @param node node to query
+      * @param edgeTypes set of allowed edge types (empty = no filter)
+      * @param directions set of allowed directions (empty = no filter)
+      * @param otherIds set of allowed destination node IDs (empty = no filter)
+      * @param atTime optional historical time
+      * @return set of matching half edges
+      */
+    def getHalfEdgesFiltered(
+      node: QuineId,
+      edgeTypes: Set[Symbol] = Set.empty,
+      directions: Set[EdgeDirection] = Set.empty,
+      otherIds: Set[QuineId] = Set.empty,
+      atTime: Option[Milliseconds] = None,
+    )(implicit timeout: Timeout): Future[Set[HalfEdge]] = {
+      requireCompatibleNodeType()
+      val halfEdgesSource =
+        relayAsk(
+          SpaceTimeQuineId(node, namespace, atTime),
+          GetHalfEdgesFilteredCommand(edgeTypes, directions, otherIds, _),
+        )
+      Source.futureSource(halfEdgesSource).map(_.halfEdge).runWith(Sink.collection)
+    }
+
+    /** Validate a set of expected half edges against what actually exists on a target node.
+      * Returns the set of edges that are expected but DO NOT exist on the target node.
+      *
+      * @param targetNode the node to query for validation
+      * @param expectedEdges the set of half edges we expect to find on the target node
+      * @param atTime optional historical time
+      * @return set of expected edges that are missing from the target node
+      */
+    def validateAndReturnMissingHalfEdges(
+      targetNode: QuineId,
+      expectedEdges: Set[HalfEdge],
+      atTime: Option[Milliseconds] = None,
+    )(implicit timeout: Timeout): Future[Set[HalfEdge]] = {
+      requireCompatibleNodeType()
+      relayAsk(
+        SpaceTimeQuineId(targetNode, namespace, atTime),
+        ValidateAndReturnMissingHalfEdgesCommand(expectedEdges, _),
+      ).map(_.missingEdges)(shardDispatcherEC)
+    }
+
     // NB: Checks that the other half of the edge exists
     def getEdges(
       node: QuineId,

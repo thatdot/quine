@@ -28,6 +28,23 @@ object LiteralMessage {
     replyTo: QuineRef,
   ) extends LiteralCommand
       with AskableQuineMessage[Source[HalfEdgeMessage, NotUsed]]
+
+  final case class GetHalfEdgesFilteredCommand(
+    edgeTypes: Set[Symbol],
+    directions: Set[EdgeDirection],
+    otherIds: Set[QuineId],
+    replyTo: QuineRef,
+  ) extends LiteralCommand
+      with AskableQuineMessage[Source[HalfEdgeMessage, NotUsed]]
+
+  final case class ValidateAndReturnMissingHalfEdgesCommand(
+    expectedEdges: Set[HalfEdge],
+    replyTo: QuineRef,
+  ) extends LiteralCommand
+      with AskableQuineMessage[MissingHalfEdgesResponse]
+
+  final case class MissingHalfEdgesResponse(missingEdges: Set[HalfEdge]) extends LiteralMessage
+
   final case class HalfEdgeMessage(halfEdge: HalfEdge) extends LiteralMessage
 
   final case class AddHalfEdgeCommand(

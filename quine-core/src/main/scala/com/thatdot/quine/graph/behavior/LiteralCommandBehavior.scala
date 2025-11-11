@@ -43,6 +43,21 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
         case None => c ?! Source(matchingEdges.map(HalfEdgeMessage).toList)
       }
 
+    case c: GetHalfEdgesFilteredCommand =>
+      // Filter all edges based on the provided Sets (empty Set = no filter)
+      val filtered = edges.all.filter { he =>
+        val typeMatch = c.edgeTypes.isEmpty || c.edgeTypes.contains(he.edgeType)
+        val dirMatch = c.directions.isEmpty || c.directions.contains(he.direction)
+        val idMatch = c.otherIds.isEmpty || c.otherIds.contains(he.other)
+        typeMatch && dirMatch && idMatch
+      }
+      c ?! Source(filtered.map(HalfEdgeMessage).toList)
+
+    case c @ ValidateAndReturnMissingHalfEdgesCommand(expectedEdges, _) =>
+      // Return only the expected edges that are NOT present on this node.
+      // Doing the NOT version of this reduces the amount of data transferred.
+      c ?! MissingHalfEdgesResponse(expectedEdges.filterNot(edges.contains))
+
     case a @ AddHalfEdgeCommand(he, _) => a ?! processEdgeEvents(EdgeAdded(he) :: Nil)
 
     case r @ RemoveHalfEdgeCommand(he, _) => r ?! processEdgeEvents(EdgeRemoved(he) :: Nil)

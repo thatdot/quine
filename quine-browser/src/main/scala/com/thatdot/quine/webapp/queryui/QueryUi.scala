@@ -866,9 +866,8 @@ import com.thatdot.{visnetwork => vis}
 
               case QueryLanguage.Cypher =>
                 """UNWIND $new AS newId
-                  |MATCH (n)-[e]-(m)
-                  |WHERE strId(n) = newId AND strId(m) IN $all
-                  |RETURN DISTINCT e""".stripMargin
+                  |CALL getFilteredEdges(newId, [], [], $all) YIELD edge
+                  |RETURN DISTINCT edge AS e""".stripMargin
             }
             val existingNodes = props.graphData.nodeSet.getIds().map(_.toString).toVector
             val queryParameters = Map(
