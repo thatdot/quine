@@ -13,7 +13,7 @@ import org.apache.pekko.util.Timeout
 
 import org.webjars.WebJarAssetLocator
 
-import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.routes.websocketquinepattern.WebSocketQuinePatternServer
@@ -42,8 +42,6 @@ class QuineAppRoutes(
   val config: BaseConfig,
   val uri: URL,
   val timeout: Timeout,
-  val apiV2Enabled: Boolean,
-  val v2IngestEnabled: Boolean,
 )(implicit val ec: ExecutionContext, protected val logConfig: LogConfig)
     extends BaseAppRoutes
     with QueryUiRoutesImpl
@@ -83,7 +81,7 @@ class QuineAppRoutes(
       getFromResource("web/quine-ui.html")
     } ~
     Directives.path("quine-ui-startup.js") {
-      getFromResource("web/quine-ui-startup.js")
+      getJsWithInjectedConfig("web/quine-ui-startup.js", config.defaultApiVersion == "v2")
     } ~
     Directives.path("browserconfig.xml") {
       getFromResource("web/browserconfig.xml")
@@ -142,21 +140,12 @@ class QuineAppRoutes(
       standingQueryRoutes
     }
 
-    if (apiV2Enabled) {
-      val v2Route = new V2OssRoutes(
-        new OssApiMethods(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
-      ).v2Routes(ingestOnly = false)
-      logger.warn(safe"Starting with Api V2 endpoints enabled")
-      v1Routes ~ v2Route
-    } else if (v2IngestEnabled) {
-      val v2Route = new V2OssRoutes(
-        new OssApiMethods(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
-      ).v2Routes(ingestOnly = true)
-      logger.warn(safe"Starting with V2 ingest enabled")
-      v1Routes ~ v2Route
-    } else {
-      v1Routes
-    }
+    // Always serve both V1 and V2 routes
+    val v2Route = new V2OssRoutes(
+      new OssApiMethods(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
+    ).v2Routes(ingestOnly = false)
 
+    logger.info(safe"API V1 and V2 endpoints available (UI default: ${Safe(config.defaultApiVersion)})")
+    v1Routes ~ v2Route
   }
 }

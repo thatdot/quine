@@ -63,10 +63,8 @@ object GraphNodeHashCode {
           h.hash()
         },
       )
-
       GraphNodeHashCode(resultHashCode.hash().asLong)
     }
-
   // TODO refactor to eliminate duplicated code below and in DomainGraphNode.scala
   private def putPropertyValue(v: PropertyValue, h: Hasher): Hasher =
     h.putBytes(v.serialized) // serialized is stable within a Quine version because serialization is stable + versioned

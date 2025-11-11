@@ -35,7 +35,7 @@ object V2AdministrationEndpointEntities {
   @title("Graph hash code")
   case class TGraphHashCode(
     @description("Hash value derived from the state of the graph (nodes, properties, and edges).")
-    value: Long,
+    value: String,
     @description("Time value used to derive the graph hash code.")
     atTime: Long,
   )
@@ -136,7 +136,10 @@ object V2AdministrationEndpointEntities {
 trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration with StringOps {
 
   implicit lazy val graphHashCodeSchema: Schema[TGraphHashCode] =
-    Schema.derived[TGraphHashCode].description("Graph Hash Code").encodedExample(TGraphHashCode(1000L, 12345L).asJson)
+    Schema
+      .derived[TGraphHashCode]
+      .description("Graph Hash Code")
+      .encodedExample(TGraphHashCode(1000L.toString, 12345L).asJson)
 
   val exampleShardMap: Map[Int, TShardInMemoryLimit] = (0 to 3).map(_ -> TShardInMemoryLimit(10000, 75000)).toMap
 

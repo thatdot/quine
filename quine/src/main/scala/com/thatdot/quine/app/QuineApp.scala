@@ -1519,7 +1519,7 @@ object QuineApp {
           startTime,
           MILLIS.between(startTime, Instant.now()),
           bufferSize,
-          outputHashCode.sum,
+          outputHashCode.sum.toString,
         ),
       ),
     )

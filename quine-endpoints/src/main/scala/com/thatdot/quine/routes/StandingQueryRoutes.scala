@@ -84,7 +84,7 @@ final case class StandingQueryStats(
   @docs("How many standing query results are buffered and waiting to be emitted")
   bufferSize: Int,
   @docs("Accumulated output hash code")
-  outputHashCode: Long,
+  outputHashCode: String,
 )
 
 object StandingQueryStats {
@@ -518,7 +518,7 @@ trait StandingQuerySchemas
         startTime = Instant.parse("2020-06-05T18:02:42.907Z"),
         totalRuntime = 60000L,
         bufferSize = 20,
-        outputHashCode = 14344L,
+        outputHashCode = 14344L.toString,
       ),
     ),
   )

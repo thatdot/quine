@@ -253,7 +253,7 @@ object Main extends App with LazySafeLogging {
   }
 
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
-    new QuineAppRoutes(graph, quineApp, config, resolvableUrl, timeout, config.api2Enabled, config.ingest2Enabled)(
+    new QuineAppRoutes(graph, quineApp, config, resolvableUrl, timeout)(
       ExecutionContext.parasitic,
       logConfig,
     )
@@ -266,9 +266,7 @@ object Main extends App with LazySafeLogging {
         case Success(binding) =>
           binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)
           statusLines.info(log"Quine web server available at ${Safe(resolvableUrl.toString)}")
-          if (config.api2Enabled) {
-            statusLines.info(log"API V2 enabled")
-          }
+          statusLines.info(log"Default API version: ${Safe(config.defaultApiVersion)}")
           quineApp.notifyWebServerStarted()
         case Failure(_) => // pekko will have logged a stacktrace to the debug logger
       }(ec)

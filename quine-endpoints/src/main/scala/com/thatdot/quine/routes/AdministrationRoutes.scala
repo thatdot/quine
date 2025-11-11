@@ -92,7 +92,7 @@ final case class ShardInMemoryLimit(
 @title("Graph hash code")
 @unnamed
 final case class GraphHashCode(
-  @docs("Hash value derived from the state of the graph (nodes, properties, and edges)") value: Long,
+  @docs("Hash value derived from the state of the graph (nodes, properties, and edges)") value: String,
   @docs("Time value used to derive the graph hash code") atTime: Long,
 )
 

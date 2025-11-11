@@ -158,7 +158,7 @@ trait AdministrationRoutesImpl
       val ec = ExecutionContext.parasitic
       graph
         .getGraphHashCode(namespaceFromParam(namespaceParam), Some(at))
-        .map(GraphHashCode(_, at.millis))(ec)
+        .map(code => GraphHashCode(code.toString, at.millis))(ec)
     }
   }
 

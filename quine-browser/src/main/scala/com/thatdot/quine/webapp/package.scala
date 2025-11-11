@@ -82,6 +82,7 @@ package object webapp {
     val component = if (!options.isQueryBarVisible.getOrElse(true)) {
       makeQueryUi(options, clientRoutes)
     } else {
+      val useV2Api = options.queriesOverV2Api.getOrElse(true)
       PageWithSideBar(
         Tab(ExplorerIcon, "Graph Explorer", "/", makeQueryUi(options, clientRoutes), options.baseURI),
         Tab(
@@ -94,6 +95,7 @@ package object webapp {
             logo = options.baseURI + "favicon.ico",
           ),
           options.baseURI,
+          hidden = useV2Api, // Hide v1 docs when using v2
         ),
         Tab(
           DocumentationIcon,
@@ -105,7 +107,7 @@ package object webapp {
             logo = options.baseURI + "favicon.ico",
           ),
           options.baseURI,
-          hidden = true,
+          hidden = !useV2Api, // Hide v2 docs when using v1
         ),
         Tab(
           DashboardIcon,

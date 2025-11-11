@@ -2,6 +2,7 @@ package com.thatdot.quine.app.routes
 
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.io.Source
 
 import org.apache.pekko.http.scaladsl.model.headers._
 import org.apache.pekko.http.scaladsl.model.{HttpCharsets, HttpEntity, MediaType, StatusCodes}
@@ -32,6 +33,28 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
 
   implicit def idProvider: QuineIdProvider = graph.idProvider
   implicit lazy val materializer: Materializer = graph.materializer
+
+  /** Inject config values into JS resource and return as HttpEntity
+    *
+    * @param resourcePath path to the JS resource file
+    * @param defaultV2Api whether to default to V2 API (true) or V1 API (false)
+    * @return Route that serves the JS with injected config
+    */
+  protected def getJsWithInjectedConfig(resourcePath: String, defaultV2Api: Boolean): Route = {
+    val resourceUrl = Option(getClass.getClassLoader.getResource(resourcePath))
+    resourceUrl match {
+      case Some(url) =>
+        val source = Source.fromURL(url)
+        try {
+          val content = source.mkString
+          val injectedContent = content.replace("/*{{DEFAULT_V2_API}}*/true", defaultV2Api.toString)
+          val jsContentType = MediaType.applicationWithFixedCharset("javascript", HttpCharsets.`UTF-8`)
+          complete(HttpEntity(jsContentType, injectedContent))
+        } finally source.close()
+      case None =>
+        complete(StatusCodes.NotFound, s"Resource not found: $resourcePath")
+    }
+  }
 
   /** Serves up the static assets from resources and for JS/CSS dependencies */
   def staticFilesRoute: Route

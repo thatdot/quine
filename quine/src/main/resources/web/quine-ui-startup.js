@@ -15,6 +15,8 @@ function parseMillis(atTime) {
 
 var network = undefined;
 var urlParams = new URLSearchParams(window.location.search);
+// Template variable - replaced by backend with config value
+var defaultQueriesOverV2Api = /*{{DEFAULT_V2_API}}*/true;
 
 var apiPaths = ["dashboard", "v2docs", "docs"];
 
@@ -34,7 +36,7 @@ window.onload = function() {
         isQueryBarVisible: urlParams.get("interactive") != "false",
         layout: urlParams.get("layout") || "graph",
         queriesOverWs: urlParams.get("wsQueries") != "false",
-        queriesOverV2Api: urlParams.get("v2Api") == "true",
+        queriesOverV2Api: urlParams.get("v2Api") !== null ? urlParams.get("v2Api") != "false" : defaultQueriesOverV2Api,
         queryHistoricalTime: parseMillis(urlParams.get("atTime")),
         onNetworkCreate: function(n) {
             network = n;

@@ -84,7 +84,7 @@ trait ApplicationApiMethods {
       val at = atTime.getOrElse(Milliseconds.currentTime())
       graph
         .getGraphHashCode(namespace, Some(at))
-        .map(TGraphHashCode(_, at.millis))(ExecutionContext.parasitic)
+        .map(elt => TGraphHashCode(elt.toString, at.millis))(ExecutionContext.parasitic)
     }
 
   def buildInfo: TQuineInfo = {
