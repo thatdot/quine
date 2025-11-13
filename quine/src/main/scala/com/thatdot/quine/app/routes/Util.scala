@@ -141,8 +141,9 @@ object Util {
       respondWithHeader(
         RawHeader(
           com.google.common.net.HttpHeaders.STRICT_TRANSPORT_SECURITY,
-          // 1 week for now. We should increase this duration when we have exercised this for some time. QU-2380
-          "max-age=604800; includeSubDomains",
+          // 63,072,000 seconds is 2 years, longer than the minimum 1 year when including "preload". "preload" is
+          // considered to be a request for inclusion in preloaded lists of HTTPS only domains found in web browsers.
+          "max-age=63072000; includeSubDomains; preload",
         ),
       )(underlying)
 
@@ -150,7 +151,7 @@ object Util {
       def withXssHardening: server.Route = xssHarden(route)
       def withFrameEmbedHardening: server.Route = frameEmbedHarden(route)
       def withHstsHardening: server.Route = hstsHarden(route)
-      def withSecurityHardening: server.Route = xssHarden(route).withFrameEmbedHardening.withHstsHardening
+      def withSecurityHardening: server.Route = route.withXssHardening.withFrameEmbedHardening.withHstsHardening
     }
   }
 

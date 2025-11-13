@@ -90,9 +90,14 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
           .mapParserSettings(_.withCustomMediaTypes(MediaTypes.`application/yaml`)),
       )
 
+    import Util.RouteHardeningOps.syntax._
+
     //capture unknown addresses with a 404
     val routeWithDefault =
-      mainRoute ~ complete(StatusCodes.NotFound, HttpEntity("The requested resource could not be found."))
+      mainRoute ~ complete(
+        StatusCodes.NotFound,
+        HttpEntity("The requested resource could not be found."),
+      ).withHstsHardening
 
     val sslFactory: Option[SSLFactory] = Option.when(useTls) {
       val keystoreOverride =
