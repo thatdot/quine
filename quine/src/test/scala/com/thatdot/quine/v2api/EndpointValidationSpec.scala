@@ -16,7 +16,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.app.config.QuineConfig
+import com.thatdot.quine.app.config.{FileAccessPolicy, QuineConfig, ResolutionMode}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{Oss, RecordDecodingType}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
@@ -28,7 +28,7 @@ import com.thatdot.quine.util.TestLogging._
 
 object EndpointValidationSupport {
   private val graph = IngestTestGraph.makeGraph("endpoint-test")
-  private val quineApp = new QuineApp(graph, false)
+  private val quineApp = new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic))
   private val app = new OssApiMethods(graph, quineApp, QuineConfig(), Timeout(5.seconds))
   private val apiRoutes = new V2OssRoutes(app)
   implicit val ec: ExecutionContext.parasitic.type = ExecutionContext.parasitic

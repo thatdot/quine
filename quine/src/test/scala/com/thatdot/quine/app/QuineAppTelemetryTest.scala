@@ -16,6 +16,7 @@ import org.scalatest.funsuite.AnyFunSuiteLike
 import org.scalatest.matchers.should
 
 import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
 import com.thatdot.quine.graph.{FakeQuineGraph, GraphService}
 
 class QuineAppTelemetryTest
@@ -89,6 +90,7 @@ class QuineAppTelemetryTest
     val app = new QuineApp(
       graph = graphService,
       helpMakeQuineBetter = true,
+      fileAccessPolicy = FileAccessPolicy(List.empty, ResolutionMode.Dynamic),
     )
     val expectedSources = Some(List("test-source"))
     val testGetSources = () => Future.successful(expectedSources)
@@ -129,6 +131,7 @@ class QuineAppTelemetryTest
     val app = new QuineApp(
       graph = graphService,
       helpMakeQuineBetter = true,
+      fileAccessPolicy = FileAccessPolicy(List.empty, ResolutionMode.Dynamic),
     )
     val expectedSources = Some(List("test-source-1", "test-source-2"))
     val testGetSources = () => Future.successful(expectedSources)

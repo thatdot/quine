@@ -39,6 +39,7 @@ import com.thatdot.outputs2.{
   ResultDestination,
   destination,
 }
+import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.data.QuineDataFoldersTo
 import com.thatdot.quine.app.model.ingest.QuineIngestSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
@@ -415,6 +416,7 @@ object DecodedSource extends LazySafeLogging {
     config: V1.IngestStreamConfiguration,
     meter: IngestMeter,
     system: ActorSystem,
+    fileAccessPolicy: com.thatdot.quine.app.config.FileAccessPolicy,
   )(implicit
     protobufCache: ProtobufSchemaCache,
     logConfig: LogConfig,
@@ -459,15 +461,19 @@ object DecodedSource extends LazySafeLogging {
             _,
             fileIngestMode,
           ) =>
-        FileSource.decodedSourceFromFileStream(
-          FileSource.srcFromIngest(path, fileIngestMode),
-          FileFormat(format),
-          Charset.forName(encoding),
-          maximumLineSize,
-          IngestBounds(startAtOffset, ingestLimit),
-          meter,
-          Seq(), // V1 file ingest does not define recordDecoders
-        )
+        FileSource
+          .srcFromIngest(path, fileIngestMode, fileAccessPolicy)
+          .andThen { validatedSource =>
+            FileSource.decodedSourceFromFileStream(
+              validatedSource,
+              FileFormat(format),
+              Charset.forName(encoding),
+              maximumLineSize,
+              IngestBounds(startAtOffset, ingestLimit),
+              meter,
+              Seq(), // V1 file ingest does not define recordDecoders
+            )
+          }
 
       case V1.S3Ingest(
             format,
@@ -623,6 +629,7 @@ object DecodedSource extends LazySafeLogging {
     config: V2IngestConfiguration,
     meter: IngestMeter,
     system: ActorSystem,
+    fileAccessPolicy: FileAccessPolicy,
   )(implicit
     protobufCache: ProtobufSchemaCache,
     avroCache: AvroSchemaCache,
@@ -630,15 +637,19 @@ object DecodedSource extends LazySafeLogging {
   ): ValidatedNel[BaseError, DecodedSource] =
     config.source match {
       case FileIngest(format, path, mode, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
-        FileSource.decodedSourceFromFileStream(
-          FileSource.srcFromIngest(path, mode),
-          format,
-          charset,
-          maximumLineSize.getOrElse(1000000), //TODO - To optional
-          IngestBounds(startOffset, limit),
-          meter,
-          recordDecoders.map(ContentDecoder(_)),
-        )
+        FileSource
+          .srcFromIngest(path, mode, fileAccessPolicy)
+          .andThen { validatedSource =>
+            FileSource.decodedSourceFromFileStream(
+              validatedSource,
+              format,
+              charset,
+              maximumLineSize.getOrElse(1000000), //TODO - To optional
+              IngestBounds(startOffset, limit),
+              meter,
+              recordDecoders.map(ContentDecoder(_)),
+            )
+          }
 
       case StdInputIngest(format, maximumLineSize, charset) =>
         FileSource.decodedSourceFromFileStream(

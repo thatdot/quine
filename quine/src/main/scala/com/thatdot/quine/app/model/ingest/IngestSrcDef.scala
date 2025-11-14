@@ -1,7 +1,6 @@
 package com.thatdot.quine.app.model.ingest
 
 import java.nio.charset.{Charset, StandardCharsets}
-import java.nio.file.{Files, Paths}
 
 import scala.concurrent.duration.{Duration, DurationInt}
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
@@ -16,15 +15,17 @@ import org.apache.pekko.stream.{KillSwitches, RestartSettings}
 import org.apache.pekko.util.ByteString
 import org.apache.pekko.{Done, NotUsed}
 
-import cats.data.{NonEmptyList, Validated, ValidatedNel}
+import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxValidatedId
 import com.codahale.metrics.Timer
 import org.apache.kafka.common.KafkaException
 import software.amazon.awssdk.core.exception.SdkException
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.serialization._
 import com.thatdot.quine.app.model.ingest.util.AwsOps
+import com.thatdot.quine.app.model.ingest2.sources.FileSource
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.{ControlSwitches, PekkoKillSwitch, QuineAppIngestControl, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
@@ -333,6 +334,7 @@ object IngestSrcDef extends LazySafeLogging {
     intoNamespace: NamespaceId,
     settings: IngestStreamConfiguration,
     initialSwitchMode: SwitchMode,
+    fileAccessPolicy: FileAccessPolicy,
   )(implicit
     graph: CypherOpsGraph,
     protobufSchemaCache: ProtobufSchemaCache,
@@ -501,24 +503,26 @@ object IngestSrcDef extends LazySafeLogging {
           maxPerSecond,
           fileIngestMode,
         ) =>
-      if (!Files.exists(Paths.get(path)))
-        Validated.Invalid(NonEmptyList.one(s"Could not load ingest file $path"))
-      else
-        ContentDelimitedIngestSrcDef
-          .apply(
-            initialSwitchMode,
-            format,
-            NamedPipeSource.fileOrNamedPipeSource(Paths.get(path), fileIngestMode),
-            encodingString,
-            parallelism,
-            maximumLineSize,
-            startAtOffset,
-            ingestLimit,
-            maxPerSecond,
-            name,
-            intoNamespace,
-          )
-          .valid
+      FileSource
+        .srcFromIngest(path, fileIngestMode, fileAccessPolicy)
+        .leftMap(_.map(_.getMessage))
+        .andThen { validatedSource =>
+          ContentDelimitedIngestSrcDef
+            .apply(
+              initialSwitchMode,
+              format,
+              validatedSource,
+              encodingString,
+              parallelism,
+              maximumLineSize,
+              startAtOffset,
+              ingestLimit,
+              maxPerSecond,
+              name,
+              intoNamespace,
+            )
+            .valid
+        }
 
     case S3Ingest(
           format,

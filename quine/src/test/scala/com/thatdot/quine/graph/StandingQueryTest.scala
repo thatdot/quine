@@ -15,6 +15,7 @@ import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app._
+import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
@@ -27,7 +28,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
   test("Distinct ID Standing Query results correctly read MaxLong and produce the right number of results") {
     val graph: GraphService = IngestTestGraph.makeGraph()
     while (!graph.isReady) Thread.sleep(10)
-    val quineApp = new QuineApp(graph, false)(LogConfig.permissive)
+    val quineApp =
+      new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic))(LogConfig.permissive)
     implicit val timeout: Timeout = Timeout(2.seconds)
     implicit val ec: ExecutionContext = graph.shardDispatcherEC
 
@@ -99,7 +101,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
 
     val graph: GraphService = IngestTestGraph.makeGraph()
     implicit val ec: ExecutionContext = graph.shardDispatcherEC
-    val quineApp = new QuineApp(graph, false)(LogConfig.permissive)
+    val quineApp =
+      new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic))(LogConfig.permissive)
     implicit val timeout: Timeout = Timeout(2.seconds)
     while (!graph.isReady) Thread.sleep(10)
 
@@ -232,7 +235,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
   test("MultipleValues standing creates results when property toggles between matching and not") {
     val graph: GraphService = IngestTestGraph.makeGraph()
     implicit val ec: ExecutionContext = graph.shardDispatcherEC
-    val quineApp = new QuineApp(graph, false)(LogConfig.permissive)
+    val quineApp =
+      new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic))(LogConfig.permissive)
     implicit val timeout: Timeout = Timeout(2.seconds)
     while (!graph.isReady) Thread.sleep(10)
 

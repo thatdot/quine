@@ -42,6 +42,11 @@ final case class Recipe(
   @docs("Cypher query to be run periodically while Recipe is running") statusQuery: Option[StatusQuery],
 ) {
   def isVersion(testVersion: Int): Boolean = version == testVersion
+
+  /** Extract all file paths from FileIngest configurations in this recipe */
+  def extractFileIngestPaths: List[String] = ingestStreams.collect { case ingest: FileIngest =>
+    ingest.path
+  }
 }
 
 @docs("A Cypher query to be run periodically while Recipe is running")

@@ -22,7 +22,14 @@ import pureconfig.ConfigSource
 import pureconfig.error.ConfigReaderException
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, SafeLogger}
-import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, QuineConfig, WebServerBindConfig}
+import com.thatdot.quine.app.config.{
+  FileAccessPolicy,
+  PersistenceAgentType,
+  PersistenceBuilder,
+  QuineConfig,
+  ResolutionMode,
+  WebServerBindConfig,
+}
 import com.thatdot.quine.app.migrations.QuineMigrations
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.graph._
@@ -164,9 +171,28 @@ object Main extends App with LazySafeLogging {
 
   implicit val system: ActorSystem = graph.system
   val ec: ExecutionContext = graph.shardDispatcherEC
+
+  // Create FileAccessPolicy once at startup (especially important for static mode which enumerates files)
+  // Extract file paths from recipe to automatically allow them
+  val recipeFilePaths: List[String] = recipe.toList.flatMap(_.extractFileIngestPaths)
+  val fileAccessPolicy: FileAccessPolicy =
+    FileAccessPolicy.fromConfigWithRecipePaths(
+      config.fileIngest.allowedDirectories.getOrElse(List(".")),
+      config.fileIngest.resolutionMode.getOrElse(ResolutionMode.Dynamic),
+      recipeFilePaths,
+    ) match {
+      case cats.data.Validated.Valid(policy) => policy
+      case cats.data.Validated.Invalid(errors) =>
+        errors.toList.foreach { error =>
+          statusLines.error(log"File ingest configuration error: ${Safe(error)}")
+        }
+        sys.exit(1)
+    }
+
   val quineApp = new QuineApp(
     graph = graph,
     helpMakeQuineBetter = config.helpMakeQuineBetter,
+    fileAccessPolicy = fileAccessPolicy,
     recipe = recipe,
     recipeCanonicalName = recipe.flatMap(_ => cmdArgs.recipe.flatMap(Recipe.getCanonicalName)),
   )

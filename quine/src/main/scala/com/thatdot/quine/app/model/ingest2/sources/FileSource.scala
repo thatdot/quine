@@ -1,7 +1,6 @@
 package com.thatdot.quine.app.model.ingest2.sources
 
 import java.nio.charset.{Charset, StandardCharsets}
-import java.nio.file.Paths
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.http.scaladsl.common.EntityStreamingSupport
@@ -18,6 +17,7 @@ import io.circe.parser
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.app.ShutdownSwitch
+import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.NamedPipeSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat
@@ -82,10 +82,16 @@ object FileSource extends LazyLogging {
     .delimiter(ByteString("\n"), maximumLineSize, allowTruncation = true)
     .map(line => if (!line.isEmpty && line.last == '\r') line.dropRight(1) else line)
 
-  def srcFromIngest(path: String, fileIngestMode: Option[FileIngestMode])(implicit
+  def srcFromIngest(
+    path: String,
+    fileIngestMode: Option[FileIngestMode],
+    fileAccessPolicy: FileAccessPolicy,
+  )(implicit
     logConfig: LogConfig,
-  ): Source[ByteString, NotUsed] =
-    NamedPipeSource.fileOrNamedPipeSource(Paths.get(path), fileIngestMode)
+  ): ValidatedNel[BaseError, Source[ByteString, NotUsed]] =
+    FileAccessPolicy.validatePath(path, fileAccessPolicy).map { validatedPath =>
+      NamedPipeSource.fileOrNamedPipeSource(validatedPath, fileIngestMode)
+    }
 
   def decodedSourceFromFileStream(
     fileSource: Source[ByteString, NotUsed],

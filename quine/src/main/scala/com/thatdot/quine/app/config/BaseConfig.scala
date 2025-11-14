@@ -11,6 +11,8 @@ trait BaseConfig {
 
   def configVal: Config
 
+  def fileIngest: FileIngestConfig
+
   def defaultApiVersion: String
 
   /** @return JSON representation of the current config with sensitive values masked */

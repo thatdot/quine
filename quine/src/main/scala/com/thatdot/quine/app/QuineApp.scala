@@ -20,6 +20,7 @@ import cats.syntax.all._
 import com.thatdot.api.{v2 => Api2}
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
+import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.model.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
@@ -65,6 +66,7 @@ import com.thatdot.quine.{routes => V1}
 final class QuineApp(
   graph: GraphService,
   helpMakeQuineBetter: Boolean,
+  val fileAccessPolicy: FileAccessPolicy,
   recipe: Option[Recipe] = None,
   recipeCanonicalName: Option[String] = None,
 )(implicit val logConfig: LogConfig)
@@ -757,6 +759,7 @@ final class QuineApp(
                 intoNamespace,
                 settings,
                 initialValveSwitchMode,
+                fileAccessPolicy,
               )(graph, protobufSchemaCache, logConfig)
 
           src
@@ -1314,6 +1317,8 @@ final class QuineApp(
       }
       is2.foreach { case (namespace, ingestMap) =>
         ingestMap.foreach { case (name, ingest) =>
+          // Use the FileAccessPolicy that was computed at app startup
+          // This validates restored ingests against the current configuration
           restoreV2IngestStream(
             name,
             ingest.config,

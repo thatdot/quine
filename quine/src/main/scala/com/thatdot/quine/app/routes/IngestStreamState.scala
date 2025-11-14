@@ -10,6 +10,7 @@ import cats.data.Validated.{invalidNel, validNel}
 import cats.data.ValidatedNel
 
 import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.QuineIngestSource
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
   QuineIngestConfiguration => V2IngestConfiguration,
@@ -44,6 +45,7 @@ trait IngestStreamState {
 
   def defaultExecutionContext: ExecutionContext
   implicit def materializer: Materializer
+  def fileAccessPolicy: FileAccessPolicy
 
   /** Add a new ingest stream to the running application.
     *
@@ -171,7 +173,7 @@ trait IngestStreamState {
           determineSwitchModeAndStatus(previousStatus, shouldResumeRestoredIngests)
 
         val decodedSourceNel: ValidatedNel[BaseError, DecodedSource] =
-          DecodedSource.apply(name, settings, meter, graph.system)(
+          DecodedSource.apply(name, settings, meter, graph.system, fileAccessPolicy)(
             protobufCache,
             avroCache,
             logConfig,
