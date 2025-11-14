@@ -86,7 +86,7 @@ object PersistenceAgentType extends PureconfigInstances {
     clientId: String,
     certFile: String,
     certAlias: Option[String],
-    certFilePassword: String,
+    certFilePassword: Array[Char],
     keyAlias: Option[String],
     adfsEnv: Option[String],
     resourceURI: Option[String],
@@ -160,6 +160,9 @@ object PersistenceAgentType extends PureconfigInstances {
     }
     ConfigConvert(reader, writer)
   }
+  implicit val charArrayReader: ConfigReader[Array[Char]] = QuineConfig.charArrayReader
+  implicit val charArrayWriter: ConfigWriter[Array[Char]] = QuineConfig.charArrayWriter
+
   implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
     // This assumes the Cassandra port if port is omitted! (so beware about re-using it)
     implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =

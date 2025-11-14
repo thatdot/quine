@@ -51,6 +51,9 @@ object QuineConfig extends PureconfigInstances {
   val webserverPortLens: Lens[QuineConfig, Int] = webserverLens >> Symbol("port") >> Symbol("asInt")
   val webserverEnabledLens: Lens[QuineConfig, Boolean] = webserverLens >> Symbol("enabled")
 
+  val charArrayReader: ConfigReader[Array[Char]] = ConfigReader[String].map(_.toCharArray)
+  val charArrayWriter: ConfigWriter[Array[Char]] = ConfigWriter[String].contramap(new String(_))
+
   implicit val configConvert: ConfigConvert[QuineConfig] = {
     implicit val configConvert = deriveConvert[QuineConfig]
 
