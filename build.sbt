@@ -434,6 +434,9 @@ lazy val `quine`: Project = project
       "software.amazon.awssdk" % "sts" % awsSdkV,
       "software.amazon.awssdk" % "aws-query-protocol" % awsSdkV,
     ),
+    // Add JVM options for tests to allow reflection access to java.util (needed for env var manipulation in tests)
+    Test / javaOptions += "--add-opens=java.base/java.util=ALL-UNNAMED",
+    Test / fork := true,
   )
   .enablePlugins(WebScalaJSBundlerPlugin)
   .settings(
