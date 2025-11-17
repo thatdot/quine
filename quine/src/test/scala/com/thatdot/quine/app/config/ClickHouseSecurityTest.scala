@@ -26,58 +26,49 @@ class ClickHouseSecurityTest extends AnyFunSpec with Matchers {
   }
 
   describe("ClickHouse configuration security") {
-    it("should throw SecurityException when env vars are not set") {
+    it("should have None for username and password when env vars are not set") {
       // Ensure the env vars are not set
       unsetEnv("CLICKHOUSE_USER")
       unsetEnv("CLICKHOUSE_PASSWORD")
 
-      val exception = intercept[SecurityException] {
-        PersistenceAgentType.ClickHouse(
-          url = "http://localhost:8123",
-          database = "quine",
-        )
-      }
+      val config = PersistenceAgentType.ClickHouse(
+        url = "http://localhost:8123",
+        database = "quine",
+      )
 
-      exception.getMessage should (include("CLICKHOUSE_USER") or include("CLICKHOUSE_PASSWORD"))
-      exception.getMessage should include("must be set")
-      exception.getMessage should include("security reasons")
+      config.username shouldBe None
+      config.password shouldBe None
     }
 
-    it("should throw SecurityException when CLICKHOUSE_USER env var is not set") {
+    it("should have None for username when CLICKHOUSE_USER env var is not set") {
       // Set password but not username
       setEnv("CLICKHOUSE_PASSWORD", "test_pass")
       unsetEnv("CLICKHOUSE_USER")
 
-      val exception = intercept[SecurityException] {
-        PersistenceAgentType.ClickHouse(
-          url = "http://localhost:8123",
-          database = "quine",
-        )
-      }
+      val config = PersistenceAgentType.ClickHouse(
+        url = "http://localhost:8123",
+        database = "quine",
+      )
 
-      exception.getMessage should include("CLICKHOUSE_USER")
-      exception.getMessage should include("must be set")
-      exception.getMessage should include("security reasons")
+      config.username shouldBe None
+      config.password shouldBe Some("test_pass")
 
       // Cleanup
       unsetEnv("CLICKHOUSE_PASSWORD")
     }
 
-    it("should throw SecurityException when CLICKHOUSE_PASSWORD env var is not set") {
+    it("should have None for password when CLICKHOUSE_PASSWORD env var is not set") {
       // Set username but not password
       setEnv("CLICKHOUSE_USER", "test_user")
       unsetEnv("CLICKHOUSE_PASSWORD")
 
-      val exception = intercept[SecurityException] {
-        PersistenceAgentType.ClickHouse(
-          url = "http://localhost:8123",
-          database = "quine",
-        )
-      }
+      val config = PersistenceAgentType.ClickHouse(
+        url = "http://localhost:8123",
+        database = "quine",
+      )
 
-      exception.getMessage should include("CLICKHOUSE_PASSWORD")
-      exception.getMessage should include("must be set")
-      exception.getMessage should include("security reasons")
+      config.username shouldBe Some("test_user")
+      config.password shouldBe None
 
       // Cleanup
       unsetEnv("CLICKHOUSE_USER")
@@ -95,8 +86,8 @@ class ClickHouseSecurityTest extends AnyFunSpec with Matchers {
 
       config.url shouldBe "http://localhost:8123"
       config.database shouldBe "quine"
-      config.username shouldBe "test_user"
-      config.password shouldBe "test_password"
+      config.username shouldBe Some("test_user")
+      config.password shouldBe Some("test_password")
 
       // Cleanup
       unsetEnv("CLICKHOUSE_USER")
@@ -114,8 +105,8 @@ class ClickHouseSecurityTest extends AnyFunSpec with Matchers {
 
       config.url shouldBe "http://example.com:8123"
       config.database shouldBe "test_db"
-      config.username shouldBe "env_user"
-      config.password shouldBe "env_password"
+      config.username shouldBe Some("env_user")
+      config.password shouldBe Some("env_password")
 
       // Cleanup
       unsetEnv("CLICKHOUSE_USER")
@@ -132,14 +123,14 @@ class ClickHouseSecurityTest extends AnyFunSpec with Matchers {
       val config = PersistenceAgentType.ClickHouse(
         url = "http://localhost:8123",
         database = "quine",
-        username = "explicit_user",
-        password = "explicit_password",
+        username = Some("explicit_user"),
+        password = Some("explicit_password"),
       )
 
       config.url shouldBe "http://localhost:8123"
       config.database shouldBe "quine"
-      config.username shouldBe "explicit_user"
-      config.password shouldBe "explicit_password"
+      config.username shouldBe Some("explicit_user")
+      config.password shouldBe Some("explicit_password")
 
       // Cleanup
       unsetEnv("CLICKHOUSE_USER")

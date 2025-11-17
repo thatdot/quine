@@ -116,18 +116,8 @@ object PersistenceAgentType extends PureconfigInstances {
   final case class ClickHouse(
     url: String = sys.env.getOrElse("CLICKHOUSE_URL", "http://localhost:8123"),
     database: String = sys.env.getOrElse("CLICKHOUSE_DATABASE", "quine"),
-    username: String = sys.env.getOrElse(
-      "CLICKHOUSE_USER",
-      throw new SecurityException(
-        "CLICKHOUSE_USER environment variable must be set. No default is provided for security reasons.",
-      ),
-    ),
-    password: String = sys.env.getOrElse(
-      "CLICKHOUSE_PASSWORD",
-      throw new SecurityException(
-        "CLICKHOUSE_PASSWORD environment variable must be set. No default is provided for security reasons.",
-      ),
-    ),
+    username: Option[String] = sys.env.get("CLICKHOUSE_USER"),
+    password: Option[String] = sys.env.get("CLICKHOUSE_PASSWORD"),
     bloomFilterSize: Option[Long] = None,
   ) extends PersistenceAgentType(isLocal = false, "clickhouse")
       with LazySafeLogging {
