@@ -18,7 +18,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.app.config.FileAccessPolicy
+import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
 import com.thatdot.quine.app.model.ingest.{ContentDelimitedIngestSrcDef, IngestSrcDef}
 import com.thatdot.quine.app.{IngestTestGraph, QuineAppIngestControl, StdInStream, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Expr
@@ -178,7 +178,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
           10,
         ),
         SwitchMode.Open,
-        FileAccessPolicy.Unrestricted,
+        FileAccessPolicy(List.empty, ResolutionMode.Dynamic),
       )
 
     maybeIngestSrcDef match {
@@ -226,7 +226,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
           None,
         ),
         SwitchMode.Open,
-        FileAccessPolicy.Unrestricted,
+        FileAccessPolicy(List.empty, ResolutionMode.Dynamic),
       )
 
     maybeIngestSrcDef match {

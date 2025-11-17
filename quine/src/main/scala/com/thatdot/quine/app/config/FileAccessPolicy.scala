@@ -6,7 +6,6 @@ import cats.data.ValidatedNel
 import cats.implicits._
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.app.config.ResolutionMode.Dynamic
 import com.thatdot.quine.exceptions.FileIngestSecurityException
 import com.thatdot.quine.util.BaseError
 
@@ -25,11 +24,6 @@ final case class FileAccessPolicy(
 )
 
 object FileAccessPolicy extends LazySafeLogging {
-
-  val Unrestricted: FileAccessPolicy = FileAccessPolicy(
-    allowedDirectories = List.empty,
-    resolutionMode = Dynamic,
-  )
 
   /** Create a FileAccessPolicy from FileIngestConfig, including recipe file paths
     *
