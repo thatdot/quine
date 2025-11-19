@@ -19,9 +19,9 @@ import cats.syntax.either._
 import ch.qos.logback.classic.LoggerContext
 import org.slf4j.LoggerFactory
 import pureconfig.ConfigSource
-import pureconfig.error.ConfigReaderException
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, SafeLogger}
+import com.thatdot.quine.app.config.errors.ErrorFormatterConfig
 import com.thatdot.quine.app.config.{
   FileAccessPolicy,
   PersistenceAgentType,
@@ -44,6 +44,14 @@ object Main extends App with LazySafeLogging {
       SafeLogger("thatdot.Interactive"),
       System.err,
     )
+
+  /** Configuration for error message formatting */
+  private val configErrorFormatterConfig = ErrorFormatterConfig(
+    expectedRootKey = "quine",
+    productName = "Quine",
+    requiredFields = Set.empty,
+    docsUrl = "https://docs.quine.io/",
+  )
 
   // Warn if character encoding is unexpected
   if (Charset.defaultCharset != StandardCharsets.UTF_8) {
@@ -76,9 +84,10 @@ object Main extends App with LazySafeLogging {
   val config: QuineConfig = {
     // Regular HOCON loading of options (from java properties and `conf` files)
     val withoutOverrides = ConfigSource.default.load[QuineConfig] valueOr { failures =>
-      Console.err.println(new ConfigReaderException[QuineConfig](failures).getMessage)
+      Console.err.println(ErrorFormatterConfig.formatErrors(configErrorFormatterConfig, failures))
       sys.exit(1)
     }
+
     // Override webserver options
     import QuineConfig.{webserverEnabledLens, webserverPortLens}
     val withPortOverride = cmdArgs.port.fold(withoutOverrides)(webserverPortLens.set(withoutOverrides))
