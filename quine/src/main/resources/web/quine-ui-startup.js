@@ -16,6 +16,9 @@ function parseMillis(atTime) {
 var network = undefined;
 var urlParams = new URLSearchParams(window.location.search);
 // Template variable - replaced by backend with config value
+// WARNING: Do NOT change the 'true' literal below! The backend searches for the exact string
+// "/*{{DEFAULT_V2_API}}*/true" and replaces it with the config value (true or false).
+// See: BaseAppRoutes.scala:50 - content.replace("/*{{DEFAULT_V2_API}}*/true", defaultV2Api.toString)
 var defaultQueriesOverV2Api = /*{{DEFAULT_V2_API}}*/true;
 
 var apiPaths = ["dashboard", "v2docs", "docs"];
