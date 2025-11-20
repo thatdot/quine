@@ -28,10 +28,11 @@ import com.thatdot.quine.app.config.{
   PersistenceBuilder,
   QuineConfig,
   ResolutionMode,
+  UseMtls,
   WebServerBindConfig,
 }
 import com.thatdot.quine.app.migrations.QuineMigrations
-import com.thatdot.quine.app.routes.QuineAppRoutes
+import com.thatdot.quine.app.routes.{HealthAppRoutes, QuineAppRoutes}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.migrations.{MigrationError, MigrationVersion}
 import com.thatdot.quine.util.Log.implicits._
@@ -296,6 +297,7 @@ object Main extends App with LazySafeLogging {
         bindAddress.address.asString,
         bindAddress.port.asInt,
         bindAddress.useTls,
+        bindAddress.useMtls,
       )
       .onComplete {
         case Success(binding) =>
@@ -305,6 +307,29 @@ object Main extends App with LazySafeLogging {
           quineApp.notifyWebServerStarted()
         case Failure(_) => // pekko will have logged a stacktrace to the debug logger
       }(ec)
+
+    // Bind health endpoints if enabled
+    if (bindAddress.useMtls.healthEndpoints.enabled) {
+      val healthRoutes = new HealthAppRoutes(graph, quineApp, config, timeout)(ec, logConfig)
+      healthRoutes
+        .bindWebServer(
+          "127.0.0.1",
+          bindAddress.useMtls.healthEndpoints.port.asInt,
+          useTls = false,
+          useMTls = UseMtls(enabled = false),
+        )
+        .onComplete {
+          case Success(binding) =>
+            binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)
+            statusLines.info(
+              log"Health endpoints available at http://127.0.0.1:${Safe(bindAddress.useMtls.healthEndpoints.port.asInt.toString)}",
+            )
+          case Failure(ex) =>
+            statusLines.warn(
+              log"Failed to start health endpoints on port ${Safe(bindAddress.useMtls.healthEndpoints.port.asInt.toString)}" withException ex,
+            )
+        }(ec)
+    }
   }
 
   CoordinatedShutdown(system).addTask(CoordinatedShutdown.PhaseBeforeClusterShutdown, "Shutdown") { () =>

@@ -10,11 +10,25 @@ import com.thatdot.quine.util.{Host, Port}
 
 final case class SslConfig(path: File, password: Array[Char])
 
+final case class MtlsTrustStore(path: File, password: String)
+
+final case class MtlsHealthEndpoints(
+  enabled: Boolean = false,
+  port: Port = Port(8081),
+)
+
+final case class UseMtls(
+  enabled: Boolean = false,
+  trustStore: Option[MtlsTrustStore] = None,
+  healthEndpoints: MtlsHealthEndpoints = MtlsHealthEndpoints(),
+)
+
 final case class WebServerBindConfig(
   address: Host = Host("0.0.0.0"),
   port: Port = Port(8080),
   enabled: Boolean = true,
   useTls: Boolean = sys.env.contains(KeystorePathEnvVar) && sys.env.contains(KeystorePasswordEnvVar),
+  useMtls: UseMtls = UseMtls(),
 ) {
   def protocol: String = if (useTls) "https" else "http"
 

@@ -1,5 +1,7 @@
 package com.thatdot.quine.app.routes
 
+import java.nio.file.Paths
+
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.io.Source
@@ -15,7 +17,7 @@ import org.apache.pekko.util.Timeout
 import nl.altindag.ssl.SSLFactory
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.app.config.WebServerBindConfig
+import com.thatdot.quine.app.config.{UseMtls, WebServerBindConfig}
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Tls.SSLFactoryBuilderOps
@@ -80,7 +82,12 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
   }
 
   /** Bind a webserver to server up the main route */
-  def bindWebServer(interface: String, port: Int, useTls: Boolean): Future[Http.ServerBinding] = {
+  def bindWebServer(
+    interface: String,
+    port: Int,
+    useTls: Boolean,
+    useMTls: UseMtls = UseMtls(),
+  ): Future[Http.ServerBinding] = {
     import graph.system
     val serverBuilder = Http()(system)
       .newServerAt(interface, port)
@@ -129,13 +136,69 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
       val builderWithOverride = keystoreOverride.fold(baseBuilder) { case (file, password) =>
         baseBuilder.withIdentityMaterial(file, password)
       }
-      builderWithOverride.build()
+
+      // Add truststore material for mTLS if enabled
+      val builderWithTruststore = if (useMTls.enabled) {
+        val truststoreOverride =
+          // First priority: explicit truststore configuration
+          useMTls.trustStore
+            .map { mtlsTs =>
+              mtlsTs.path.getAbsolutePath -> mtlsTs.password.toCharArray
+            }
+            .orElse {
+              // Fallback: system properties
+              (sys.props.get("javax.net.ssl.trustStore") -> sys.props.get("javax.net.ssl.trustStorePassword")) match {
+                case (Some(truststorePath), Some(password)) => Some(truststorePath -> password.toCharArray)
+                case (Some(_), None) =>
+                  logger.warn(
+                    safe"""'javax.net.ssl.trustStore' was specified but 'javax.net.ssl.trustStorePassword' was not.
+                        |Client certificate validation will not work as expected.
+                        |""".cleanLines,
+                  )
+                  None
+                case (None, Some(_)) =>
+                  logger.warn(
+                    safe"""'javax.net.ssl.trustStorePassword' was specified but 'javax.net.ssl.trustStore' was not.
+                        |Client certificate validation will not work as expected.
+                        |""".cleanLines,
+                  )
+                  None
+                case (None, None) =>
+                  logger.warn(
+                    safe"""mTLS is enabled but no truststore is configured. Neither 'useMtls.trustStore' was set
+                        |nor were 'javax.net.ssl.trustStore' and 'javax.net.ssl.trustStorePassword' system properties.
+                        |Client certificates will not be validated.
+                        |""".cleanLines,
+                  )
+                  None
+              }
+            }
+        truststoreOverride.fold(builderWithOverride) { case (filePath, password) =>
+          builderWithOverride.withTrustMaterial(Paths.get(filePath), password)
+        }
+      } else {
+        builderWithOverride
+      }
+
+      builderWithTruststore.build()
     }
 
-    sslFactory
-      .fold(serverBuilder)(sslFactory =>
-        serverBuilder.enableHttps(ConnectionContext.httpsServer(sslFactory.getSslContext)),
-      )
+    // Create connection context with mTLS support if enabled
+    val connectionContext = sslFactory.map { factory =>
+      if (useMTls.enabled) {
+        ConnectionContext.httpsServer { () =>
+          val engine = factory.getSslContext.createSSLEngine()
+          engine.setUseClientMode(false)
+          engine.setNeedClientAuth(true)
+          engine
+        }
+      } else {
+        ConnectionContext.httpsServer(factory.getSslContext)
+      }
+    }
+
+    connectionContext
+      .fold(serverBuilder)(serverBuilder.enableHttps(_))
       .bind(Route.toFunction(routeWithDefault)(system))
   }
 }

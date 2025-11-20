@@ -247,7 +247,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
   protected[endpoints] val livenessLogic: Unit => Future[Either[ServerError, SuccessEnvelope.NoContent.type]] = _ =>
     recoverServerError(Future.successful(()))(_ => SuccessEnvelope.NoContent)
 
-  private val livenessServerEndpoint: Full[
+  val livenessServerEndpoint: Full[
     Unit,
     Unit,
     Unit,
@@ -297,7 +297,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
           ),
       )(identity)
 
-  private val readinessServerEndpoint: Full[
+  val readinessServerEndpoint: Full[
     Unit,
     Unit,
     Unit,
