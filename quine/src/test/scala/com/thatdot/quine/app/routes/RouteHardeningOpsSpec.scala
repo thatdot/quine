@@ -35,12 +35,12 @@ class RouteHardeningOpsSpec extends AnyFlatSpec with Matchers with ScalatestRout
     }
   }
 
-  "withHstsHardening" should "add Strict-Transport-Security header with 1 week max-age" in {
+  "withHstsHardening" should "add Strict-Transport-Security header with 2 years max-age and preload" in {
     Get("/") ~> okRoute.withHstsHardening ~> check {
       val hstsValue = header("Strict-Transport-Security").get.value()
-      hstsValue should include("max-age=604800")
+      hstsValue should include("max-age=63072000")
       hstsValue should include("includeSubDomains")
-      hstsValue should not include "preload"
+      hstsValue should include("preload")
     }
   }
 
