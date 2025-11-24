@@ -3,16 +3,17 @@ package com.thatdot.api.v2.schema
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
-import sttp.tapir.generic.auto._
 
+import com.thatdot.api.v2.SuccessEnvelope
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 
 trait V2ApiSchemas extends V2ApiConfiguration {
 
   // Kafka Property Value codec, hand-rolled for like-a-String representation instead of as-an-Object with a field
-  implicit val kafkaPropertyValueEncoder: Encoder[KafkaPropertyValue] = Encoder.encodeString.contramap(_.s)
-  implicit val kafkaPropertyValueDecoder: Decoder[KafkaPropertyValue] =
+  implicit lazy val kafkaPropertyValueEncoder: Encoder[KafkaPropertyValue] = Encoder.encodeString.contramap(_.s)
+  implicit lazy val kafkaPropertyValueDecoder: Decoder[KafkaPropertyValue] =
     Decoder.decodeString.map(KafkaPropertyValue.apply)
+  implicit lazy val kafkaPropertyValueSchema: Schema[KafkaPropertyValue] = Schema.derived
 
   // Attempting schema for type alias to string without overriding all Map_String
   implicit class StringKafkaPropertyValue(s: String) {
@@ -31,6 +32,16 @@ trait V2ApiSchemas extends V2ApiConfiguration {
       .schemaForMap[KafkaPropertyValue]
       // Cannot get `.default` to work here
       .encodedExample(exampleKafkaProperties.asJson)
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Explicit Schema definitions for SuccessEnvelope wrappers to avoid repeated automatic derivation (QU-2417)
+  // Notably, for this to be effective, this file MUST NOT import `sttp.tapir.generic.auto._`.
+  // (This may not be the ideal long-term organization, but it's low-hanging fruit for faster compilation).
+  implicit def okSchema[A](implicit inner: Schema[A]): Schema[SuccessEnvelope.Ok[A]] = Schema.derived
+  implicit def createdSchema[A](implicit inner: Schema[A]): Schema[SuccessEnvelope.Created[A]] = Schema.derived
+  implicit lazy val acceptedSchema: Schema[SuccessEnvelope.Accepted] = Schema.derived
+  implicit lazy val noContentSchema: Schema[SuccessEnvelope.NoContent.type] = Schema.derived
+
 }
 
 object V2ApiSchemas extends V2ApiSchemas
