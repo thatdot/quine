@@ -80,23 +80,22 @@ class EndpointValidationSpec
   }
 
   "A kafka ingest with unrecognized properties" should "fail with 400" in {
-    val url = s"$baseUrl/ingests"
-    val kafkaIngest: Api.IngestSource.Kafka = kafkaGen.sample.get.copy(kafkaProperties =
-      Map(
-        "Unrecognized.property.name" -> "anything",
-        "bootstrap.servers" -> "this is an illegal field and should not be used",
-      ),
-    )
-
-    val quineIngestConfiguration: Oss.QuineIngestConfiguration =
-      arbIngest.arbitrary.sample.get.copy(source = kafkaIngest)
-    // tests:
-    post(url, quineIngestConfiguration) ~> routes ~> check {
-      status.intValue() shouldEqual 400
-      //TODO this should also inspect the output and check that validation strings are correctly generated
-      println(s"\n\nSTATUS = $status")
+    forAll(kafkaGen, arbIngest.arbitrary) { (kafka, ingest) =>
+      val url = s"$baseUrl/ingests"
+      val kafkaIngest: Api.IngestSource.Kafka = kafka.copy(kafkaProperties =
+        Map(
+          "Unrecognized.property.name" -> "anything",
+          "bootstrap.servers" -> "this is an illegal field and should not be used",
+        ),
+      )
+      val quineIngestConfiguration: Oss.QuineIngestConfiguration =
+        ingest.copy(source = kafkaIngest)
+      // tests:
+      post(url, quineIngestConfiguration) ~> routes ~> check {
+        status.intValue() shouldEqual 400
+        //TODO this should also inspect the output and check that validation strings are correctly generated
+      }
     }
-
   }
 
 }

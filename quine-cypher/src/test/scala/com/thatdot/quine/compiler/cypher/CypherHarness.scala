@@ -35,7 +35,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
   implicit val relayAskTimeout: Timeout = Timeout(3.seconds)
   implicit val idProv: QuineIdLongProvider = QuineIdLongProvider()
   implicit protected val logConfig: LogConfig = LogConfig.permissive
-  val graph: BaseGraph with CypherOpsGraph with LiteralOpsGraph = Await.result(
+  lazy val graph: BaseGraph with CypherOpsGraph with LiteralOpsGraph = Await.result(
     GraphService(
       graphName,
       effectOrder = EventEffectOrder.PersistorFirst,

@@ -19,8 +19,10 @@ object QuineSettings {
     else Seq()
 
   val integrationTestTag = "com.thatdot.quine.test.tags.IntegrationTest"
+  val licenseRequiredTestTag = "com.thatdot.quine.test.tags.LicenseRequiredTest"
 
   lazy val Integration = config("integration").extend(Test)
+  lazy val LicenseTest = config("licenseTest").extend(Test)
 
   val commonSettings: Seq[Setting[_]] = Seq(
     organization := "com.thatdot",
@@ -58,6 +60,7 @@ object QuineSettings {
       //  use oG for full stack traces, oT for short ones
       Tests.Argument(TestFrameworks.ScalaTest, "-oT"),
       Tests.Argument(TestFrameworks.ScalaTest, "-l", integrationTestTag),
+      Tests.Argument(TestFrameworks.ScalaTest, "-l", licenseRequiredTestTag),
     ),
     excludeDependencies ++= Seq(
       ExclusionRule("commons-logging", "commons-logging"),
@@ -73,6 +76,14 @@ object QuineSettings {
     Integration / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-n", integrationTestTag),
     Integration / parallelExecution := false,
   ) ++ inConfig(Integration)(Defaults.testTasks)
+
+  /* Settings for projects with license-required tests */
+  val licenseTestSettings: Seq[Setting[_]] = Seq(
+    LicenseTest / testOptions -= Tests.Argument(TestFrameworks.ScalaTest, "-l", licenseRequiredTestTag),
+    LicenseTest / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-n", licenseRequiredTestTag),
+    LicenseTest / parallelExecution := false,
+    LicenseTest / fork := true,
+  ) ++ inConfig(LicenseTest)(Defaults.testTasks)
 
   /* Settings for building a Scala.js/React webapp using Slinky
    *

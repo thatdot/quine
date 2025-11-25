@@ -1,7 +1,10 @@
 package com.thatdot.quine.app.model.ingest2.sources
 
+import java.util.UUID
+
 import scala.concurrent.duration.{Duration, FiniteDuration, MILLISECONDS}
 import scala.jdk.OptionConverters.RichOptional
+import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.kafka.scaladsl.{Committer, Consumer}
@@ -19,12 +22,15 @@ import org.apache.pekko.{Done, NotUsed}
 import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxOption
 import cats.syntax.functor._
+import cats.syntax.validated._
 import org.apache.kafka.clients.CommonClientConfigs.SECURITY_PROTOCOL_CONFIG
 import org.apache.kafka.clients.consumer.ConsumerConfig.AUTO_OFFSET_RESET_CONFIG
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.config.ConfigException
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
 
+import com.thatdot.common.logging.Log._
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
@@ -220,9 +226,10 @@ case class KafkaSource(
   decoders: Seq[ContentDecoder],
   meter: IngestMeter,
   system: ActorSystem,
-) extends FramedSourceProvider {
+) extends FramedSourceProvider
+    with LazySafeLogging {
 
-  def framedSource: ValidatedNel[BaseError, FramedSource] = {
+  def framedSource: ValidatedNel[BaseError, FramedSource] = Try {
     val subs = subscription(topics)
     val consumerSettings: ConsumerSettings[Array[Byte], Array[Byte]] =
       buildConsumerSettings(
@@ -272,6 +279,24 @@ case class KafkaSource(
           FramedSource[NoOffset](source, meter, noOffset => noOffset.value(), noOffsetFoldable)
         }
     }
+  } match {
+    case Success(result) => result
+    case Failure(configEx: ConfigException) =>
+      val correlationId = UUID.randomUUID()
+      logger.error(
+        safe"Kafka ConfigException during source creation [correlationId: ${Safe(correlationId.toString)}]: ${Safe(configEx.getMessage)}",
+      )
+      KafkaValidationException(
+        s"Kafka configuration error check logs for [correlationId: ${correlationId.toString}]",
+      ).invalidNel
+    case Failure(exception) =>
+      val correlationId = UUID.randomUUID()
+      logger.error(
+        safe"Error during source creation [correlationId: ${Safe(correlationId.toString)}]: ${Safe(exception.getMessage)},",
+      )
+      KafkaValidationException(
+        s"A configuration error occurred check logs for [correlationId: ${correlationId.toString}]",
+      ).invalidNel
   }
 
 }
