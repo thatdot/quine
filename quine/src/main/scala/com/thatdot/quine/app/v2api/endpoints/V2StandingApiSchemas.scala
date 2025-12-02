@@ -9,12 +9,15 @@ import com.thatdot.api.v2.schema.V2ApiSchemas
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.Predicate.OnlyPositiveMatch
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.RegisteredStandingQuery
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultTransformation.InlineData
 import com.thatdot.quine.app.v2api.definitions.query.standing.{
   Predicate,
+  StandingQueryPattern,
   StandingQueryResultTransformation,
   StandingQueryResultWorkflow,
+  StandingQueryStats,
 }
 
 trait V2StandingApiSchemas extends V2ApiSchemas {
@@ -31,6 +34,7 @@ trait V2StandingApiSchemas extends V2ApiSchemas {
   private val sqModesMap: Map[String, StandingQueryMode] = StandingQueryMode.values.map(s => s.toString -> s).toMap
   implicit val sqModeEncoder: Encoder[StandingQueryMode] = Encoder.encodeString.contramap(_.toString)
   implicit val sqModeDecoder: Decoder[StandingQueryMode] = Decoder.decodeString.map(sqModesMap(_))
+  implicit val sqModeSchema: Schema[StandingQueryMode] = Schema.derivedEnumeration.defaultStringBased
 
   // Schema for Standing Query Result Workflow list because `@encodedExample` does not work as expected
   val exampleStandingQueryResultWorkflowToStandardOut: StandingQueryResultWorkflow = StandingQueryResultWorkflow(
@@ -61,5 +65,8 @@ trait V2StandingApiSchemas extends V2ApiSchemas {
     Schema.schemaForIterable[A, List].map(list => NonEmptyList.fromList(list))(_.toList)
 
   implicit lazy val standingQueryResultWorkflowSchema: Schema[StandingQueryResultWorkflow] = Schema.derived
+  implicit lazy val standingQueryPatternSchema: Schema[StandingQueryPattern] = Schema.derived
+  implicit lazy val standingQueryStatsSchema: Schema[StandingQueryStats] = Schema.derived
+  implicit lazy val registeredStandingQuerySchema: Schema[RegisteredStandingQuery] = Schema.derived
 
 }

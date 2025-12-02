@@ -4,8 +4,8 @@ import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 
-import com.thatdot.api.v2.SuccessEnvelope
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
+import com.thatdot.api.v2.{RatesSummary, SuccessEnvelope}
 
 trait V2ApiSchemas extends V2ApiConfiguration {
 
@@ -32,6 +32,8 @@ trait V2ApiSchemas extends V2ApiConfiguration {
       .schemaForMap[KafkaPropertyValue]
       // Cannot get `.default` to work here
       .encodedExample(exampleKafkaProperties.asJson)
+
+  implicit lazy val ratesSummarySchema: Schema[RatesSummary] = Schema.derived
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Explicit Schema definitions for SuccessEnvelope wrappers to avoid repeated automatic derivation (QU-2417)

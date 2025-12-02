@@ -11,11 +11,11 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
-import com.thatdot.api.v2.schema.V2ApiConfiguration
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
+import com.thatdot.api.v2.schema.V2ApiSchemas
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 
-trait V2IngestApiSchemas extends V2ApiConfiguration {
+trait V2IngestApiSchemas extends V2ApiSchemas {
   implicit val config: Configuration = typeDiscriminatorConfig
 
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] = Schema.derived[RecordDecodingType]
@@ -92,7 +92,6 @@ trait V2IngestApiSchemas extends V2ApiConfiguration {
   implicit lazy val kclConfigurationSchema: Schema[KCLConfiguration] = Schema.derived
 
   // IngestStreamInfo dependencies
-  implicit lazy val ratesSummarySchema: Schema[RatesSummary] = Schema.derived
   implicit lazy val ingestStreamStatsSchema: Schema[IngestStreamStats] = Schema.derived
   implicit lazy val ingestStreamStatusSchema: Schema[IngestStreamStatus] = Schema.derived
   implicit lazy val ingestSourceSchema: Schema[IngestSource] = Schema.derived
