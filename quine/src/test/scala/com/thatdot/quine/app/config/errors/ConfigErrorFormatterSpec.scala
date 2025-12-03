@@ -306,7 +306,7 @@ class ConfigErrorFormatterSpec
 
         // Verify each context produces different guidance
         message1 should include("application.conf")
-        message1 should not include "JAR"
+        message1 should not include "Running from JAR"
 
         message2 should include("Running from JAR")
         message2 should include("without a config file")

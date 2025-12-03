@@ -95,9 +95,14 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
       val ctl: QuineAppIngestControl = Await.result(fc, Duration.Inf)
       val g = graph.asInstanceOf[LiteralOpsGraph]
 
-      writableInputStream.close()
+      // Close only the output stream to signal EOF, allowing the input stream
+      // to finish reading gracefully before termination
+      writableInputStream.out.close()
 
       Await.result(ctl.termSignal, 10.seconds)
+
+      // Now safe to close the input stream after the stream has terminated
+      writableInputStream.in.close()
 
       (1 to 10).map { i =>
         val prop: Map[Symbol, PropertyValue] = Await.result(g.literalOps(namespace).getProps(quineId(i)), 2.seconds)
