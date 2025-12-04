@@ -767,7 +767,7 @@ object DecodedSource extends LazySafeLogging {
           system,
         ).framedSource.map(_.toDecoded(FrameDecoder(format)))
       case ReactiveStreamIngest(format, url, port) =>
-        ReactiveSource(url, port, meter).framedSource.map(_.toDecoded(FrameDecoder(format)))
+        ReactiveSource(url, port, meter)(system).framedSource.map(_.toDecoded(FrameDecoder(format)))
       case WebSocketFileUpload(format) =>
         val decoding = FileSource.decodingFoldableFrom(format, meter, Int.MaxValue)
 

@@ -254,8 +254,6 @@ lazy val `outputs2`: Project = project
       "org.apache.pekko" %% "pekko-connectors-sns" % pekkoConnectorsV,
       "software.amazon.awssdk" % "netty-nio-client" % awsSdkV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
-      "io.rsocket" % "rsocket-core" % rsocketV,
-      "io.rsocket" % "rsocket-transport-netty" % rsocketV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test,
       "org.apache.pekko" %% "pekko-http-testkit" % pekkoHttpV % Test,
@@ -411,15 +409,12 @@ lazy val `quine`: Project = project
       "org.webjars.npm" % "sugar-date" % sugarV,
       "org.webjars.npm" % "vis-network" % visNetworkV,
       "org.apache.avro" % "avro" % avroV,
-      "io.rsocket" % "rsocket-core" % rsocketV,
-      "io.rsocket" % "rsocket-transport-netty" % rsocketV,
       // Transitive dep of several others. Vulnerable >= 4.1.91.Final, <= 4.1.117.Final.
       // When checklist is complete, remove this override.
       //     | Project                                        | Dependency                                     | Known vulnerable version
       // ----+------------------------------------------------+------------------------------------------------+-------------------------
       // [ ] | com.thatdot:[quine, quine-cassandra-persistor] | software.amazon.awssdk:sts                     | 2.29.52
       // [ ] | com.thatdot:quine-cassandra-persistor          | org.apache.cassandra:java-driver-query-builder | 4.18.1 (note: lower version evicted by sibling dep)
-      // [ ] | com.thatdot:quine                              | io.rsocket:rsocket-transport-netty             | 1.1.5
       // [ ] | com.thatdot:quine                              | org.apache.peko:pekko-connectors-kinesis_2.13  | 1.0.2
       // [x] | com.thatdot:quine                              | software.amazon.glue:schema-registry-serde     | 1.1.23
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:sso                     | 2.29.52

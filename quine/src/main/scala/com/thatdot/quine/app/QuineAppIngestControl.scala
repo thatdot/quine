@@ -5,7 +5,6 @@ import scala.concurrent.{ExecutionContext, Future}
 import org.apache.pekko.Done
 import org.apache.pekko.stream.UniqueKillSwitch
 
-import io.rsocket.RSocket
 import org.apache.pekko
 
 import com.thatdot.quine.graph.IngestControl
@@ -43,12 +42,5 @@ case class PekkoKillSwitch(killSwitch: UniqueKillSwitch) extends ShutdownSwitch 
 case class KafkaKillSwitch(killSwitch: pekko.kafka.scaladsl.Consumer.Control) extends ShutdownSwitch {
   def terminate(termSignal: Future[Done]): Future[Done] =
     killSwitch.drainAndShutdown(termSignal)(ExecutionContext.parasitic)
-}
-
-case class RSocketKillSwitch(socket: RSocket) extends ShutdownSwitch {
-  def terminate(termSignal: Future[Done]): Future[Done] = {
-    socket.dispose()
-    termSignal
-  }
 
 }

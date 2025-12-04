@@ -1,16 +1,9 @@
 package com.thatdot.outputs2.destination
 
-import java.nio.ByteBuffer
-
 import org.apache.pekko.NotUsed
-import org.apache.pekko.stream.scaladsl.Sink
-
-import io.rsocket.core.RSocketServer
-import io.rsocket.transport.netty.server.TcpServerTransport
-import io.rsocket.util.DefaultPayload
-import io.rsocket.{Payload, SocketAcceptor}
-import org.reactivestreams.{Publisher, Subscriber, Subscription}
-import reactor.core.publisher.Flux
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.{BroadcastHub, Flow, Keep, Sink, Tcp}
+import org.apache.pekko.util.ByteString
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.outputs2.ResultDestination
@@ -19,23 +12,48 @@ import com.thatdot.quine.graph.NamespaceId
 final case class ReactiveStream(
   address: String = "localhost",
   port: Int,
-) extends ResultDestination.Bytes.ReactiveStream {
+)(implicit system: ActorSystem)
+    extends ResultDestination.Bytes.ReactiveStream {
   override def slug: String = "reactive-stream"
-  override def sink(name: String, inNamespace: NamespaceId)(implicit logConfig: LogConfig): Sink[Array[Byte], NotUsed] =
-    Sink
-      .asPublisher(fanout = false)
-      .mapMaterializedValue { pub: Publisher[Payload] =>
-        val server = RSocketServer
-          .create(SocketAcceptor.forRequestStream(_ => Flux.from(pub)))
-          .bindNow(TcpServerTransport.create(address, port))
-        pub.subscribe(new Subscriber[Payload] {
-          override def onComplete(): Unit = if (!server.isDisposed) server.dispose()
-          override def onError(t: Throwable): Unit = if (!server.isDisposed) server.dispose()
-          override def onNext(t: Payload): Unit = ()
-          override def onSubscribe(s: Subscription): Unit = s.request(Long.MaxValue)
-        })
+
+  override def sink(name: String, inNamespace: NamespaceId)(implicit
+    logConfig: LogConfig,
+  ): Sink[Array[Byte], NotUsed] = {
+
+    // Convert Array[Byte] to length-prefixed ByteString for framing
+    val lengthFieldFraming = Flow[Array[Byte]].map { bytes =>
+      val data = ByteString(bytes)
+      val length = ByteString.fromArray(java.nio.ByteBuffer.allocate(4).putInt(data.length).array())
+      length ++ data
+    }
+
+    // BroadcastHub with a dummy sink attached to prevent blocking when no consumers
+    // When TCP consumers connect, BroadcastHub backpressures to the slowest one
+    Flow[Array[Byte]]
+      .via(lengthFieldFraming)
+      .toMat(
+        Sink.fromGraph(
+          BroadcastHub.sink[ByteString](bufferSize = 256),
+        ),
+      )(Keep.right)
+      .mapMaterializedValue { broadcastSource =>
+        // Attach a dummy sink that drops all messages - prevents backpressure when no TCP clients
+        broadcastSource.runWith(Sink.ignore)
+
+        // Bind TCP server that connects each client to the broadcast source
+        Tcp()
+          .bind(address, port)
+          .to(Sink.foreach { connection: Tcp.IncomingConnection =>
+            // Each client gets data from BroadcastHub
+            // Silences the non-Unit value of type org.apache.pekko.NotUsed
+            val _ = broadcastSource
+              .via(connection.flow)
+              .to(Sink.ignore)
+              .run()
+          })
+          .run()
         NotUsed
       }
-      .contramap[Array[Byte]](bytes => DefaultPayload.create(ByteBuffer.wrap(bytes)))
       .named(sinkName(name))
+  }
 }
