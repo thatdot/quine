@@ -1,5 +1,7 @@
 package com.thatdot.api.v2
 
+import io.circe.generic.semiauto._
+import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
 
 @title("AWS Region")
@@ -10,3 +12,8 @@ final case class AwsRegion(
   @encodedExample("us-west-2")
   region: String,
 )
+
+object AwsRegion {
+  implicit val encoder: Encoder[AwsRegion] = deriveEncoder
+  implicit val decoder: Decoder[AwsRegion] = deriveDecoder
+}

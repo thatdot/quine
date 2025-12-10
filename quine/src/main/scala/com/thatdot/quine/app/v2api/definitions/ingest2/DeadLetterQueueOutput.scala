@@ -1,47 +1,22 @@
 package com.thatdot.quine.app.v2api.definitions.ingest2
 
+import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.generic.semiauto._
+import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{default, description, title}
 
 import com.thatdot.api.v2.outputs.{DestinationSteps, DestinationSteps => Outputs, OutputFormat => OutputFormats}
+import com.thatdot.api.v2.schema.V2ApiConfiguration._
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.app.v2api.definitions.ingest2.OutputFormat.JSON
 
 sealed trait DeadLetterQueueOutput
 
-@title("Error Output Format")
-sealed trait OutputFormat
-
-object OutputFormat {
-  case object Bytes extends OutputFormat
-
-  @title("JSON")
-  case class JSON(
-    @default(false)
-    @description("Should extra information be included about the cause of a record ending up in the dead letter queue.")
-    withInfoEnvelope: Boolean = false,
-  ) extends OutputFormat
-
-  @title("Protobuf")
-  final case class Protobuf(
-    @description(
-      "URL (or local filename) of the Protobuf .desc file to load that contains the desired typeName to serialize to",
-    )
-    schemaUrl: String,
-    @description("Message type name to use (from the given .desc file) as the message type.")
-    typeName: String,
-    @default(false)
-    @description("Should extra information be included about the cause of a record ending up in the dead letter queue.")
-    withInfoEnvelope: Boolean = false,
-  ) extends OutputFormat
-}
-
-case class DeadLetterQueueSettings(
-  @description("The list of dead letter queue destinations to send failing records to.")
-  destinations: List[DeadLetterQueueOutput] = Nil,
-)
-
 object DeadLetterQueueOutput {
   import com.thatdot.quine.app.util.StringOps.syntax._
+
+  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   @title("POST to HTTP[S] Webhook")
   @description("Makes an HTTP[S] POST for each message.")
@@ -181,4 +156,53 @@ object DeadLetterQueueOutput {
       DeadLetterQueueOutput.SNS(credentials, region, topic, formatMatchesOutput(format))
   }
 
+  implicit val encoder: Encoder[DeadLetterQueueOutput] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[DeadLetterQueueOutput] = deriveConfiguredDecoder
+}
+
+@title("Error Output Format")
+sealed trait OutputFormat
+
+object OutputFormat {
+  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+
+  case object Bytes extends OutputFormat
+
+  @title("JSON")
+  case class JSON(
+    @default(false)
+    @description("Should extra information be included about the cause of a record ending up in the dead letter queue.")
+    withInfoEnvelope: Boolean = false,
+  ) extends OutputFormat
+
+  object JSON {
+    implicit val encoder: Encoder[JSON] = deriveEncoder
+    implicit val decoder: Decoder[JSON] = deriveDecoder
+  }
+
+  @title("Protobuf")
+  final case class Protobuf(
+    @description(
+      "URL (or local filename) of the Protobuf .desc file to load that contains the desired typeName to serialize to",
+    )
+    schemaUrl: String,
+    @description("Message type name to use (from the given .desc file) as the message type.")
+    typeName: String,
+    @default(false)
+    @description("Should extra information be included about the cause of a record ending up in the dead letter queue.")
+    withInfoEnvelope: Boolean = false,
+  ) extends OutputFormat
+
+  implicit val encoder: Encoder[OutputFormat] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[OutputFormat] = deriveConfiguredDecoder
+}
+
+case class DeadLetterQueueSettings(
+  @description("The list of dead letter queue destinations to send failing records to.")
+  destinations: List[DeadLetterQueueOutput] = Nil,
+)
+
+object DeadLetterQueueSettings {
+  implicit val encoder: Encoder[DeadLetterQueueSettings] = deriveEncoder
+  implicit val decoder: Decoder[DeadLetterQueueSettings] = deriveDecoder
 }

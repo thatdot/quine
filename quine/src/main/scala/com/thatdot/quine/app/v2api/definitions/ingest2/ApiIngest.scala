@@ -3,13 +3,31 @@ package com.thatdot.quine.app.v2api.definitions.ingest2
 import java.nio.charset.{Charset, StandardCharsets}
 import java.time.Instant
 
+import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.semiauto.{
+  deriveConfiguredDecoder,
+  deriveConfiguredEncoder,
+  deriveEnumerationDecoder,
+  deriveEnumerationEncoder,
+}
+import io.circe.generic.semiauto._
+import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
+import com.thatdot.api.v2.schema.V2ApiConfiguration._
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.{routes => V1}
 
 object ApiIngest {
   import com.thatdot.quine.app.util.StringOps.syntax._
+
+  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+
+  implicit val charsetEncoder: Encoder[Charset] = Encoder.encodeString.contramap(_.name)
+  implicit val charsetDecoder: Decoder[Charset] = Decoder.decodeString.map(s => Charset.forName(s))
+
+  implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
+  implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.map(Instant.parse)
 
   sealed abstract class ValvePosition(position: String)
 
@@ -41,6 +59,11 @@ object ApiIngest {
     @description("Time (in milliseconds) that that the ingest has been running.") totalRuntime: Long,
   )
 
+  object IngestStreamStats {
+    implicit val encoder: Encoder[IngestStreamStats] = deriveEncoder
+    implicit val decoder: Decoder[IngestStreamStats] = deriveDecoder
+  }
+
   @title("Ingest Stream Info")
   @description("An active stream of data being ingested.")
   final case class IngestStreamInfo(
@@ -68,6 +91,11 @@ object ApiIngest {
     @description("Configuration of the ingest stream.") settings: IngestSource,
     @description("Statistics on progress of running ingest stream") stats: IngestStreamStats,
   )
+
+  object IngestStreamInfoWithName {
+    implicit val encoder: Encoder[IngestStreamInfoWithName] = deriveEncoder
+    implicit val decoder: Decoder[IngestStreamInfoWithName] = deriveDecoder
+  }
 
   sealed abstract class IngestStreamStatus(val isTerminal: Boolean, val position: ValvePosition)
 
@@ -119,6 +147,9 @@ object ApiIngest {
 
     @description("The stream has been stopped by a failure during processing.")
     case object Failed extends TerminalStatus
+
+    implicit val encoder: Encoder[IngestStreamStatus] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[IngestStreamStatus] = deriveConfiguredDecoder
   }
 
   sealed trait CsvCharacter
@@ -139,6 +170,9 @@ object ApiIngest {
     case object DoubleQuote extends CsvCharacter
 
     val values: Seq[CsvCharacter] = Seq(Backslash, Comma, Semicolon, Colon, Tab, Pipe)
+
+    implicit val encoder: Encoder[CsvCharacter] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[CsvCharacter] = deriveEnumerationDecoder
   }
 
   @title("Kafka Auto Offset Reset")
@@ -156,6 +190,9 @@ object ApiIngest {
 
     @default(Seq(Latest, Earliest, None))
     val values: Seq[KafkaAutoOffsetReset] = Seq(Latest, Earliest, None)
+
+    implicit val encoder: Encoder[KafkaAutoOffsetReset] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[KafkaAutoOffsetReset] = deriveEnumerationDecoder
   }
 
   @title("Kafka offset tracking mechanism")
@@ -185,6 +222,9 @@ object ApiIngest {
       @default(true)
       waitForCommitConfirmation: Boolean = true,
     ) extends KafkaOffsetCommitting
+
+    implicit val encoder: Encoder[KafkaOffsetCommitting] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[KafkaOffsetCommitting] = deriveConfiguredDecoder
   }
 
   sealed abstract class KafkaSecurityProtocol(val name: String)
@@ -197,11 +237,25 @@ object ApiIngest {
     case object Sasl_Ssl extends KafkaSecurityProtocol("SASL_SSL")
 
     case object Sasl_Plaintext extends KafkaSecurityProtocol("SASL_PLAINTEXT")
+
+    implicit val encoder: Encoder[KafkaSecurityProtocol] = Encoder.encodeString.contramap(_.name)
+    implicit val decoder: Decoder[KafkaSecurityProtocol] = Decoder.decodeString.emap {
+      case s if s == PlainText.name => Right(PlainText)
+      case s if s == Ssl.name => Right(Ssl)
+      case s if s == Sasl_Ssl.name => Right(Sasl_Ssl)
+      case s if s == Sasl_Plaintext.name => Right(Sasl_Plaintext)
+      case s => Left(s"$s is not a valid KafkaSecurityProtocol")
+    }
   }
 
   object WebSocketClient {
     @title("Websockets Keepalive Protocol")
     sealed trait KeepaliveProtocol
+
+    object KeepaliveProtocol {
+      implicit val encoder: Encoder[KeepaliveProtocol] = deriveConfiguredEncoder
+      implicit val decoder: Decoder[KeepaliveProtocol] = deriveConfiguredDecoder
+    }
 
     @title("Ping/Pong on interval")
     @description("Send empty websocket messages at the specified interval (in milliseconds).")
@@ -232,6 +286,8 @@ object ApiIngest {
     @default(Seq(Zlib, Gzip, Base64))
     val values: Seq[RecordDecodingType] = Seq(Zlib, Gzip, Base64)
 
+    implicit val encoder: Encoder[RecordDecodingType] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[RecordDecodingType] = deriveEnumerationDecoder
   }
 
   sealed abstract class FileIngestMode
@@ -245,6 +301,9 @@ object ApiIngest {
 
     @default(Seq(Regular, NamedPipe))
     val values: Seq[FileIngestMode] = Seq(Regular, NamedPipe)
+
+    implicit val encoder: Encoder[FileIngestMode] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[FileIngestMode] = deriveEnumerationDecoder
   }
 
   sealed trait Transformation
@@ -254,6 +313,9 @@ object ApiIngest {
       @encodedExample("that => that")
       function: String,
     ) extends Transformation
+
+    implicit val encoder: Encoder[Transformation] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[Transformation] = deriveConfiguredDecoder
   }
 
   object Oss {
@@ -286,7 +348,6 @@ object ApiIngest {
   sealed trait IngestSource
 
   object IngestSource {
-
     @title("Server Sent Events Stream")
     @description(
       """A server-issued event stream, as might be handled by the EventSource JavaScript API.
@@ -544,6 +605,9 @@ object ApiIngest {
         @title("AtTimestamp")
         @description("All records starting from the provided unix millisecond timestamp.")
         final case class AtTimestamp(millisSinceEpoch: Long) extends Parameterized
+
+        implicit val encoder: Encoder[IteratorType] = deriveConfiguredEncoder
+        implicit val decoder: Decoder[IteratorType] = deriveConfiguredDecoder
       }
     }
 
@@ -589,6 +653,9 @@ object ApiIngest {
       )
       advancedSettings: Option[KCLConfiguration],
     ) extends IngestSource
+
+    implicit val encoder: Encoder[IngestSource] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[IngestSource] = deriveConfiguredDecoder
   }
 
   @title("Scheduler Checkpoint Settings")
@@ -604,6 +671,11 @@ object ApiIngest {
     maxBatchWaitMillis: Option[Long] = None,
   )
 
+  object KinesisCheckpointSettings {
+    implicit val encoder: Encoder[KinesisCheckpointSettings] = deriveEncoder
+    implicit val decoder: Decoder[KinesisCheckpointSettings] = deriveDecoder
+  }
+
   case class KinesisSchedulerSourceSettings(
     @description(
       """Sets the KinesisSchedulerSourceSettings buffer size. Buffer size must be greater than 0; use size 1 to disable
@@ -613,6 +685,11 @@ object ApiIngest {
     @description("Sets the KinesisSchedulerSourceSettings backpressureTimeout in milliseconds")
     backpressureTimeoutMillis: Option[Long] = None,
   )
+
+  object KinesisSchedulerSourceSettings {
+    implicit val encoder: Encoder[KinesisSchedulerSourceSettings] = deriveEncoder
+    implicit val decoder: Decoder[KinesisSchedulerSourceSettings] = deriveDecoder
+  }
 
   @title("KCLConfiguration")
   @description(
@@ -629,6 +706,11 @@ object ApiIngest {
     metricsConfig: Option[MetricsConfig] = None,
   )
 
+  object KCLConfiguration {
+    implicit val encoder: Encoder[KCLConfiguration] = deriveEncoder
+    implicit val decoder: Decoder[KCLConfiguration] = deriveDecoder
+  }
+
   @title("ConfigsBuilder")
   @description("Abbreviated configuration for the KCL configurations builder.")
   case class ConfigsBuilder(
@@ -640,6 +722,11 @@ object ApiIngest {
     )
     workerIdentifier: Option[String],
   )
+
+  object ConfigsBuilder {
+    implicit val encoder: Encoder[ConfigsBuilder] = deriveEncoder
+    implicit val decoder: Decoder[ConfigsBuilder] = deriveDecoder
+  }
 
   sealed trait BillingMode {
     def value: String
@@ -663,6 +750,9 @@ object ApiIngest {
     case object UNKNOWN_TO_SDK_VERSION extends BillingMode {
       val value = "UNKNOWN_TO_SDK_VERSION"
     }
+
+    implicit val encoder: Encoder[BillingMode] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[BillingMode] = deriveEnumerationDecoder
   }
 
   sealed trait InitialPosition
@@ -681,6 +771,9 @@ object ApiIngest {
     @description("All records starting from the provided data time.")
     final case class AtTimestamp(year: Int, month: Int, date: Int, hourOfDay: Int, minute: Int, second: Int)
         extends InitialPosition
+
+    implicit val encoder: Encoder[InitialPosition] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[InitialPosition] = deriveConfiguredDecoder
   }
 
   case class LeaseManagementConfig(
@@ -776,6 +869,11 @@ object ApiIngest {
     gracefulLeaseHandoffTimeoutMillis: Option[Long],
   )
 
+  object LeaseManagementConfig {
+    implicit val encoder: Encoder[LeaseManagementConfig] = deriveEncoder
+    implicit val decoder: Decoder[LeaseManagementConfig] = deriveDecoder
+  }
+
   sealed trait RetrievalSpecificConfig
 
   object RetrievalSpecificConfig {
@@ -818,12 +916,20 @@ object ApiIngest {
       )
       idleTimeBetweenReadsInMillis: Option[Long],
     ) extends RetrievalSpecificConfig
+
+    implicit val encoder: Encoder[RetrievalSpecificConfig] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[RetrievalSpecificConfig] = deriveConfiguredDecoder
   }
 
   case class ProcessorConfig(
     @description("When set, the record processor is called even when no records were provided from Kinesis.")
     callProcessRecordsEvenForEmptyRecordList: Option[Boolean],
   )
+
+  object ProcessorConfig {
+    implicit val encoder: Encoder[ProcessorConfig] = deriveEncoder
+    implicit val decoder: Decoder[ProcessorConfig] = deriveDecoder
+  }
 
   sealed trait ShardPrioritization
 
@@ -832,6 +938,9 @@ object ApiIngest {
 
     @description("Processes shard parents first, limited by a 'max depth' argument.")
     case class ParentsFirstShardPrioritization(maxDepth: Int) extends ShardPrioritization
+
+    implicit val encoder: Encoder[ShardPrioritization] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[ShardPrioritization] = deriveConfiguredDecoder
   }
 
   sealed trait ClientVersionConfig
@@ -840,6 +949,9 @@ object ApiIngest {
     case object CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X extends ClientVersionConfig
 
     case object CLIENT_VERSION_CONFIG_3X extends ClientVersionConfig
+
+    implicit val encoder: Encoder[ClientVersionConfig] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[ClientVersionConfig] = deriveEnumerationDecoder
   }
 
   case class CoordinatorConfig(
@@ -861,12 +973,22 @@ object ApiIngest {
     clientVersionConfig: Option[ClientVersionConfig],
   )
 
+  object CoordinatorConfig {
+    implicit val encoder: Encoder[CoordinatorConfig] = deriveEncoder
+    implicit val decoder: Decoder[CoordinatorConfig] = deriveDecoder
+  }
+
   case class LifecycleConfig(
     @description("The time to wait to retry failed KCL tasks. The unit is milliseconds.")
     taskBackoffTimeMillis: Option[Long],
     @description("How long to wait before a warning is logged if a task hasn't completed.")
     logWarningForTaskAfterMillis: Option[Long],
   )
+
+  object LifecycleConfig {
+    implicit val encoder: Encoder[LifecycleConfig] = deriveEncoder
+    implicit val decoder: Decoder[LifecycleConfig] = deriveDecoder
+  }
 
   case class RetrievalConfig(
     @description(
@@ -876,6 +998,11 @@ object ApiIngest {
     @description("The maximum number of times that `ListShards` retries before giving up.")
     maxListShardsRetryAttempts: Option[Int],
   )
+
+  object RetrievalConfig {
+    implicit val encoder: Encoder[RetrievalConfig] = deriveEncoder
+    implicit val decoder: Decoder[RetrievalConfig] = deriveDecoder
+  }
 
   sealed trait MetricsLevel
 
@@ -887,6 +1014,9 @@ object ApiIngest {
 
     /** DETAILED metrics level can be used to emit all metrics. */
     case object DETAILED extends MetricsLevel
+
+    implicit val encoder: Encoder[MetricsLevel] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[MetricsLevel] = deriveEnumerationDecoder
   }
 
   @title("Dimensions that may be attached to CloudWatch metrics.")
@@ -911,6 +1041,9 @@ object ApiIngest {
     case object WORKER_IDENTIFIER extends MetricsDimension {
       val value = "WorkerIdentifier"
     }
+
+    implicit val encoder: Encoder[MetricsDimension] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[MetricsDimension] = deriveEnumerationDecoder
   }
 
   case class MetricsConfig(
@@ -925,6 +1058,11 @@ object ApiIngest {
     @description("Controls allowed dimensions for CloudWatch Metrics.")
     metricsEnabledDimensions: Option[Set[MetricsDimension]],
   )
+
+  object MetricsConfig {
+    implicit val encoder: Encoder[MetricsConfig] = deriveEncoder
+    implicit val decoder: Decoder[MetricsConfig] = deriveDecoder
+  }
 
   @title("WebSocket File Upload")
   @description("Streamed file upload via WebSocket protocol.")
@@ -1001,6 +1139,9 @@ object ApiIngest {
         @default(CsvCharacter.Backslash)
         escapeChar: CsvCharacter = CsvCharacter.Backslash,
       ) extends FileFormat
+
+      implicit val encoder: Encoder[FileFormat] = deriveConfiguredEncoder
+      implicit val decoder: Decoder[FileFormat] = deriveConfiguredDecoder
     }
 
     @title("Streamed Record Format")
@@ -1038,6 +1179,9 @@ object ApiIngest {
       @title("Drop")
       @description("Ignore the data without further processing.")
       case object Drop extends StreamingFormat
+
+      implicit val encoder: Encoder[StreamingFormat] = deriveConfiguredEncoder
+      implicit val decoder: Decoder[StreamingFormat] = deriveConfiguredDecoder
     }
   }
   sealed trait OnStreamErrorHandler
@@ -1049,6 +1193,11 @@ object ApiIngest {
   @title("Log Stream Error Handler")
   @description("If the stream fails log a message but do not retry.")
   case object LogStreamError extends OnStreamErrorHandler
+
+  object OnStreamErrorHandler {
+    implicit val encoder: Encoder[OnStreamErrorHandler] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[OnStreamErrorHandler] = deriveConfiguredDecoder
+  }
 
   // --------------------
   // Stream Error Handler
@@ -1069,6 +1218,11 @@ object ApiIngest {
     maxRetries: Int = 6,
   )
 
+  object RecordRetrySettings {
+    implicit val encoder: Encoder[RecordRetrySettings] = deriveEncoder
+    implicit val decoder: Decoder[RecordRetrySettings] = deriveDecoder
+  }
+
   /** Error handler defined for errors that affect only a single record. This is intended to handle errors in
     * a configurable way distinct from stream-level errors, where the entire stream fails - e.g. handling
     * a single corrupt record rather than a failure in the stream communication.
@@ -1088,4 +1242,9 @@ object ApiIngest {
     @default(DeadLetterQueueSettings())
     deadLetterQueueSettings: DeadLetterQueueSettings = DeadLetterQueueSettings(),
   )
+
+  object OnRecordErrorHandler {
+    implicit val encoder: Encoder[OnRecordErrorHandler] = deriveEncoder
+    implicit val decoder: Decoder[OnRecordErrorHandler] = deriveDecoder
+  }
 }

@@ -1,7 +1,6 @@
 package com.thatdot.api.v2.schema
 
 import io.circe.syntax.EncoderOps
-import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
@@ -9,10 +8,6 @@ import com.thatdot.api.v2.{RatesSummary, SuccessEnvelope}
 
 trait V2ApiSchemas extends V2ApiConfiguration {
 
-  // Kafka Property Value codec, hand-rolled for like-a-String representation instead of as-an-Object with a field
-  implicit lazy val kafkaPropertyValueEncoder: Encoder[KafkaPropertyValue] = Encoder.encodeString.contramap(_.s)
-  implicit lazy val kafkaPropertyValueDecoder: Decoder[KafkaPropertyValue] =
-    Decoder.decodeString.map(KafkaPropertyValue.apply)
   implicit lazy val kafkaPropertyValueSchema: Schema[KafkaPropertyValue] = Schema.derived
 
   // Attempting schema for type alias to string without overriding all Map_String

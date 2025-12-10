@@ -1,11 +1,18 @@
 package com.thatdot.api.v2.outputs
 
+import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
+
+import com.thatdot.api.v2.schema.V2ApiConfiguration._
 
 @title("Result Output Format")
 sealed trait OutputFormat
 
 object OutputFormat {
+  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+
   @title("JSON")
   @encodedExample("JSON")
   case object JSON extends OutputFormat
@@ -26,4 +33,7 @@ object OutputFormat {
     @encodedExample("ExampleType")
     typeName: String,
   ) extends OutputFormat
+
+  implicit val encoder: Encoder[OutputFormat] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[OutputFormat] = deriveConfiguredDecoder
 }

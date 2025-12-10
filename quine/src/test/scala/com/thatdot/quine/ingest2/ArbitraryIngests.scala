@@ -6,15 +6,14 @@ import scala.jdk.CollectionConverters._
 
 import org.scalacheck.{Arbitrary, Gen}
 
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.quine.ArbitraryAwsTypes
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.FileIngestMode.{NamedPipe, Regular}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.KafkaOffsetCommitting.ExplicitCommit
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.WebSocketClient.KeepaliveProtocol
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
-import com.thatdot.quine.ingest2.IngestSourceTestSupport.randomString
 
-trait ArbitraryIngests {
+trait ArbitraryIngests extends ArbitraryAwsTypes {
 
   implicit val genCharset: Gen[Charset] =
     Gen.oneOf[String](Charset.availableCharsets().keySet().asScala).map(Charset.forName)
@@ -32,12 +31,7 @@ trait ArbitraryIngests {
     Gen.someOf(RecordDecodingType.Zlib, RecordDecodingType.Gzip, RecordDecodingType.Base64)
 
   implicit val arbF: Arbitrary[FileIngestMode] = Arbitrary(Gen.oneOf(Regular, NamedPipe))
-  implicit val arbAWS: Arbitrary[Option[AwsCredentials]] = Arbitrary(
-    Gen.option(Gen.const(AwsCredentials(randomString(), randomString()))),
-  )
-  implicit val arbReg: Arbitrary[Option[AwsRegion]] = Arbitrary(
-    Gen.option(Gen.oneOf("us-west-1", "us-east-1").map(AwsRegion.apply)),
-  )
+
   implicit val arbRec: Arbitrary[Seq[RecordDecodingType]] = Arbitrary(
     Gen.containerOf[Seq, RecordDecodingType](
       Gen.oneOf(RecordDecodingType.Gzip, RecordDecodingType.Base64, RecordDecodingType.Zlib),

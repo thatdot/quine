@@ -1,5 +1,7 @@
 package com.thatdot.api.v2
 
+import io.circe.generic.semiauto._
+import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{description, title}
 
 @title("Rates Summary")
@@ -11,3 +13,8 @@ final case class RatesSummary(
   @description("Approximate rate per second in the last fifteen minutes") fifteenMinute: Double,
   @description("Approximate rate per second since the meter was started") overall: Double,
 )
+
+object RatesSummary {
+  implicit val encoder: Encoder[RatesSummary] = deriveEncoder
+  implicit val decoder: Decoder[RatesSummary] = deriveDecoder
+}

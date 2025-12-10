@@ -1,5 +1,7 @@
 package com.thatdot.api.v2.outputs
 
+import io.circe.{Decoder, Encoder}
+
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 
 /** The ADT for shared result destinations. These correspond to the API types in each product, but only exist
@@ -48,6 +50,11 @@ object DestinationSteps {
   }
 
   case class KafkaPropertyValue(s: String) extends AnyVal
+
+  object KafkaPropertyValue {
+    implicit val encoder: Encoder[KafkaPropertyValue] = Encoder.encodeString.contramap(_.s)
+    implicit val decoder: Decoder[KafkaPropertyValue] = Decoder.decodeString.map(KafkaPropertyValue.apply)
+  }
 
   final case class Kafka(
     topic: String,

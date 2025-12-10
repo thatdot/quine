@@ -1,6 +1,8 @@
 package com.thatdot.quine.app.v2api.definitions.query.standing
 
 import cats.data.NonEmptyList
+import io.circe.generic.semiauto._
+import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
@@ -23,6 +25,9 @@ case class StandingQueryResultWorkflow(
 
 object StandingQueryResultWorkflow {
   import com.thatdot.quine.app.util.StringOps.syntax._
+
+  implicit val encoder: Encoder[StandingQueryResultWorkflow] = deriveEncoder
+  implicit val decoder: Decoder[StandingQueryResultWorkflow] = deriveDecoder
 
   val apiTitle: String = "Standing Query Result Workflow"
   val apiDescription: String =

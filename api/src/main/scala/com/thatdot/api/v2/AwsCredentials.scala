@@ -1,5 +1,7 @@
 package com.thatdot.api.v2
 
+import io.circe.generic.semiauto._
+import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
 
 @title("AWS Credentials")
@@ -12,3 +14,8 @@ final case class AwsCredentials(
   @encodedExample("MDwbQe5XT4uOA3jQB/FhPaZpJdFkW13ryAL29bAk")
   secretAccessKey: String,
 )
+
+object AwsCredentials {
+  implicit val encoder: Encoder[AwsCredentials] = deriveEncoder
+  implicit val decoder: Decoder[AwsCredentials] = deriveDecoder
+}
