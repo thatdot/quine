@@ -2,6 +2,7 @@ package com.thatdot.quine.outputs
 
 import io.circe.syntax.EncoderOps
 import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
@@ -16,6 +17,7 @@ import com.thatdot.quine.app.v2api.definitions.query.standing.{
 
 class StandingQueryOutputCodecSpec
     extends AnyFunSuite
+    with Matchers
     with ScalaCheckDrivenPropertyChecks
     with ArbitraryStandingQueryOutputs
     with CirceCodecTestSupport {
@@ -218,6 +220,24 @@ class StandingQueryOutputCodecSpec
       }
       val ugly = checkForUglyJson(json, allowedEmpty)
       assert(ugly.isRight, ugly)
+    }
+  }
+
+  test("CypherQuery decodes from minimal JSON with defaults applied") {
+    forAll { cypherQuery: QuineDestinationSteps.CypherQuery =>
+      // Drop fields that have defaults to simulate minimal client payloads
+      val minimalJson = cypherQuery.asJson.deepDropNullValues.asObject.get
+        .remove("parameter")
+        .remove("parallelism")
+        .remove("allowAllNodeScan")
+        .remove("shouldRetry")
+        .toJson
+      val expectedMinimalDecoded = QuineDestinationSteps.CypherQuery(query = cypherQuery.query)
+
+      val decoded = minimalJson
+        .as[QuineDestinationSteps.CypherQuery]
+        .getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
+      decoded shouldEqual expectedMinimalDecoded
     }
   }
 }

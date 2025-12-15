@@ -1244,7 +1244,7 @@ object ApiIngest {
   )
 
   object OnRecordErrorHandler {
-    implicit val encoder: Encoder[OnRecordErrorHandler] = deriveEncoder
-    implicit val decoder: Decoder[OnRecordErrorHandler] = deriveDecoder
+    implicit val encoder: Encoder[OnRecordErrorHandler] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[OnRecordErrorHandler] = deriveConfiguredDecoder
   }
 }

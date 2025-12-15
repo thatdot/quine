@@ -7,6 +7,7 @@ import io.circe.Json
 import io.circe.generic.extras.auto._
 import io.circe.syntax.EncoderOps
 import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
@@ -21,6 +22,7 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
   KafkaAutoOffsetReset,
   KafkaOffsetCommitting,
   KafkaSecurityProtocol,
+  OnRecordErrorHandler,
   Oss,
   WebSocketClient,
 }
@@ -28,6 +30,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 class IngestCodecSpec
     extends AnyFunSuite
+    with Matchers
     with ScalaCheckDrivenPropertyChecks
     with V2IngestApiSchemas
     with ArbitraryIngests
@@ -204,6 +207,23 @@ class IngestCodecSpec
       }
       val ugly = checkForUglyJson(j, allowedEmpty)
       assert(ugly.isRight, ugly)
+    }
+  }
+
+  test("OnRecordErrorHandler decodes from minimal JSON with defaults applied") {
+    forAll { handler: ApiIngest.OnRecordErrorHandler =>
+      // Drop fields that have defaults to simulate minimal client payloads
+      val minimalJson = handler.asJson.deepDropNullValues.asObject.get
+        .remove("retrySettings")
+        .remove("logRecord")
+        .remove("deadLetterQueueSettings")
+        .toJson
+      val expectedMinimalDecoded = OnRecordErrorHandler()
+
+      val decoded = minimalJson
+        .as[ApiIngest.OnRecordErrorHandler]
+        .getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
+      decoded shouldEqual expectedMinimalDecoded
     }
   }
 

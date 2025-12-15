@@ -2,7 +2,6 @@ package com.thatdot.quine.app.v2api.definitions.outputs
 
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
-import io.circe.generic.semiauto._
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
@@ -163,8 +162,8 @@ object QuineDestinationSteps {
     val queryDescription: String = "Cypher query to execute on Standing Query result"
     val exampleQuery: String = "MATCH (n) WHERE id(n) = $that.id RETURN (n)"
 
-    implicit val encoder: Encoder[CypherQuery] = deriveEncoder
-    implicit val decoder: Decoder[CypherQuery] = deriveDecoder
+    implicit val encoder: Encoder[CypherQuery] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[CypherQuery] = deriveConfiguredDecoder
   }
 
   @title("Publish to Slack Webhook")
