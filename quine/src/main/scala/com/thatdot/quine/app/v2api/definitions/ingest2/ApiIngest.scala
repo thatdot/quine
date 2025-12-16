@@ -672,8 +672,8 @@ object ApiIngest {
   )
 
   object KinesisCheckpointSettings {
-    implicit val encoder: Encoder[KinesisCheckpointSettings] = deriveEncoder
-    implicit val decoder: Decoder[KinesisCheckpointSettings] = deriveDecoder
+    implicit val encoder: Encoder[KinesisCheckpointSettings] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[KinesisCheckpointSettings] = deriveConfiguredDecoder
   }
 
   case class KinesisSchedulerSourceSettings(
@@ -687,8 +687,8 @@ object ApiIngest {
   )
 
   object KinesisSchedulerSourceSettings {
-    implicit val encoder: Encoder[KinesisSchedulerSourceSettings] = deriveEncoder
-    implicit val decoder: Decoder[KinesisSchedulerSourceSettings] = deriveDecoder
+    implicit val encoder: Encoder[KinesisSchedulerSourceSettings] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[KinesisSchedulerSourceSettings] = deriveConfiguredDecoder
   }
 
   @title("KCLConfiguration")
@@ -707,8 +707,8 @@ object ApiIngest {
   )
 
   object KCLConfiguration {
-    implicit val encoder: Encoder[KCLConfiguration] = deriveEncoder
-    implicit val decoder: Decoder[KCLConfiguration] = deriveDecoder
+    implicit val encoder: Encoder[KCLConfiguration] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[KCLConfiguration] = deriveConfiguredDecoder
   }
 
   @title("ConfigsBuilder")
@@ -1219,8 +1219,8 @@ object ApiIngest {
   )
 
   object RecordRetrySettings {
-    implicit val encoder: Encoder[RecordRetrySettings] = deriveEncoder
-    implicit val decoder: Decoder[RecordRetrySettings] = deriveDecoder
+    implicit val encoder: Encoder[RecordRetrySettings] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[RecordRetrySettings] = deriveConfiguredDecoder
   }
 
   /** Error handler defined for errors that affect only a single record. This is intended to handle errors in

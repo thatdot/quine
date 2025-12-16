@@ -240,4 +240,24 @@ class StandingQueryOutputCodecSpec
       decoded shouldEqual expectedMinimalDecoded
     }
   }
+
+  test("StandingQueryResultWorkflow decodes from minimal JSON with defaults applied") {
+    forAll { workflow: StandingQueryResultWorkflow =>
+      // Drop fields with defaults to simulate minimal client payloads
+      val minimalJson = workflow.asJson.deepDropNullValues.asObject.get
+        .remove("filter")
+        .remove("preEnrichmentTransformation")
+        .remove("resultEnrichment")
+        .toJson
+      val expectedMinimalDecoded = StandingQueryResultWorkflow(
+        name = workflow.name,
+        destinations = workflow.destinations,
+      )
+
+      val decoded = minimalJson
+        .as[StandingQueryResultWorkflow]
+        .getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
+      decoded shouldEqual expectedMinimalDecoded
+    }
+  }
 }

@@ -12,20 +12,24 @@ import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.CirceCodecTestSupport
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.RecordDecodingType._
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
   FileIngestMode,
   IngestFormat,
   IngestSource,
+  KCLConfiguration,
   KafkaAutoOffsetReset,
   KafkaOffsetCommitting,
   KafkaSecurityProtocol,
+  KinesisCheckpointSettings,
+  KinesisSchedulerSourceSettings,
   OnRecordErrorHandler,
   Oss,
+  RecordRetrySettings,
   WebSocketClient,
 }
+import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest, DeadLetterQueueSettings, OutputFormat}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 class IngestCodecSpec
@@ -223,6 +227,107 @@ class IngestCodecSpec
       val decoded = minimalJson
         .as[ApiIngest.OnRecordErrorHandler]
         .getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
+      decoded shouldEqual expectedMinimalDecoded
+    }
+  }
+
+  test("RecordRetrySettings decodes from minimal JSON with defaults applied") {
+    forAll { settings: RecordRetrySettings =>
+      // Drop all fields with defaults to simulate minimal client payloads
+      val minimalJson = settings.asJson.deepDropNullValues.asObject.get
+        .remove("minBackoff")
+        .remove("maxBackoff")
+        .remove("randomFactor")
+        .remove("maxRetries")
+        .toJson
+      val expectedMinimalDecoded = RecordRetrySettings()
+
+      val decoded = minimalJson
+        .as[RecordRetrySettings]
+        .getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
+      decoded shouldEqual expectedMinimalDecoded
+    }
+  }
+
+  test("KinesisCheckpointSettings decodes from minimal JSON with defaults applied") {
+    forAll { settings: KinesisCheckpointSettings =>
+      // Drop fields with defaults to simulate minimal client payloads
+      val minimalJson = settings.asJson.deepDropNullValues.asObject.get
+        .remove("disableCheckpointing")
+        .remove("maxBatchSize")
+        .remove("maxBatchWaitMillis")
+        .toJson
+      val expectedMinimalDecoded = KinesisCheckpointSettings()
+
+      val decoded = minimalJson
+        .as[KinesisCheckpointSettings]
+        .getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
+      decoded shouldEqual expectedMinimalDecoded
+    }
+  }
+
+  test("KinesisSchedulerSourceSettings decodes from minimal JSON with defaults applied") {
+    forAll { settings: KinesisSchedulerSourceSettings =>
+      // Drop fields with defaults to simulate minimal client payloads
+      val minimalJson = settings.asJson.deepDropNullValues.asObject.get
+        .remove("bufferSize")
+        .remove("backpressureTimeoutMillis")
+        .toJson
+      val expectedMinimalDecoded = KinesisSchedulerSourceSettings()
+
+      val decoded = minimalJson
+        .as[KinesisSchedulerSourceSettings]
+        .getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
+      decoded shouldEqual expectedMinimalDecoded
+    }
+  }
+
+  test("KCLConfiguration decodes from minimal JSON with defaults applied") {
+    forAll { config: KCLConfiguration =>
+      // Drop all Option fields with defaults to simulate minimal client payloads
+      val minimalJson = config.asJson.deepDropNullValues.asObject.get
+        .remove("configsBuilder")
+        .remove("leaseManagementConfig")
+        .remove("retrievalSpecificConfig")
+        .remove("processorConfig")
+        .remove("coordinatorConfig")
+        .remove("lifecycleConfig")
+        .remove("retrievalConfig")
+        .remove("metricsConfig")
+        .toJson
+      val expectedMinimalDecoded = KCLConfiguration()
+
+      val decoded =
+        minimalJson.as[KCLConfiguration].getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
+      decoded shouldEqual expectedMinimalDecoded
+    }
+  }
+
+  test("DeadLetterQueueSettings decodes from minimal JSON with defaults applied") {
+    forAll { settings: DeadLetterQueueSettings =>
+      // Drop fields with defaults to simulate minimal client payloads
+      val minimalJson = settings.asJson.deepDropNullValues.asObject.get
+        .remove("destinations")
+        .toJson
+      val expectedMinimalDecoded = DeadLetterQueueSettings()
+
+      val decoded = minimalJson
+        .as[DeadLetterQueueSettings]
+        .getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
+      decoded shouldEqual expectedMinimalDecoded
+    }
+  }
+
+  test("OutputFormat.JSON decodes from minimal JSON with defaults applied") {
+    forAll { json: OutputFormat.JSON =>
+      // Drop fields with defaults to simulate minimal client payloads
+      val minimalJson = json.asJson.deepDropNullValues.asObject.get
+        .remove("withInfoEnvelope")
+        .toJson
+      val expectedMinimalDecoded = OutputFormat.JSON()
+
+      val decoded =
+        minimalJson.as[OutputFormat.JSON].getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
       decoded shouldEqual expectedMinimalDecoded
     }
   }

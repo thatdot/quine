@@ -12,6 +12,7 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.FileIngestMode.
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.KafkaOffsetCommitting.ExplicitCommit
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.WebSocketClient.KeepaliveProtocol
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
+import com.thatdot.quine.app.v2api.definitions.ingest2.{DeadLetterQueueOutput, DeadLetterQueueSettings, OutputFormat}
 
 trait ArbitraryIngests extends ArbitraryAwsTypes {
 
@@ -80,25 +81,82 @@ trait ArbitraryIngests extends ArbitraryAwsTypes {
     IngestFormat.StreamingFormat.Avro("url"),
   )
 
+  implicit val genRecordRetrySettings: Gen[RecordRetrySettings] = Gen.resultOf(RecordRetrySettings.apply _)
+  implicit val arbRecordRetrySettings: Arbitrary[RecordRetrySettings] = Arbitrary(genRecordRetrySettings)
+
+  implicit val genKinesisCheckpointSettings: Gen[KinesisCheckpointSettings] =
+    Gen.resultOf(KinesisCheckpointSettings.apply _)
+  implicit val arbKinesisCheckpointSettings: Arbitrary[KinesisCheckpointSettings] =
+    Arbitrary(genKinesisCheckpointSettings)
+
+  implicit val genKinesisSchedulerSourceSettings: Gen[KinesisSchedulerSourceSettings] =
+    Gen.resultOf(KinesisSchedulerSourceSettings.apply _)
+  implicit val arbKinesisSchedulerSourceSettings: Arbitrary[KinesisSchedulerSourceSettings] =
+    Arbitrary(genKinesisSchedulerSourceSettings)
+
+  implicit val arbConfigsBuilder: Arbitrary[ConfigsBuilder] = Arbitrary(Gen.const(ConfigsBuilder(None, None)))
+  implicit val arbLeaseManagementConfig: Arbitrary[LeaseManagementConfig] = Arbitrary(
+    Gen.const(
+      LeaseManagementConfig(
+        failoverTimeMillis = None,
+        shardSyncIntervalMillis = None,
+        cleanupLeasesUponShardCompletion = None,
+        ignoreUnexpectedChildShards = None,
+        maxLeasesForWorker = None,
+        maxLeaseRenewalThreads = None,
+        billingMode = None,
+        initialLeaseTableReadCapacity = None,
+        initialLeaseTableWriteCapacity = None,
+        reBalanceThresholdPercentage = None,
+        dampeningPercentage = None,
+        allowThroughputOvershoot = None,
+        disableWorkerMetrics = None,
+        maxThroughputPerHostKBps = None,
+        isGracefulLeaseHandoffEnabled = None,
+        gracefulLeaseHandoffTimeoutMillis = None,
+      ),
+    ),
+  )
+  implicit val arbRetrievalSpecificConfig: Arbitrary[RetrievalSpecificConfig] = Arbitrary(
+    Gen.const(RetrievalSpecificConfig.PollingConfig(None, None, None, None)),
+  )
+  implicit val arbProcessorConfig: Arbitrary[ProcessorConfig] = Arbitrary(Gen.const(ProcessorConfig(None)))
+  implicit val arbCoordinatorConfig: Arbitrary[CoordinatorConfig] = Arbitrary(
+    Gen.const(CoordinatorConfig(None, None, None, None)),
+  )
+  implicit val arbLifecycleConfig: Arbitrary[LifecycleConfig] = Arbitrary(Gen.const(LifecycleConfig(None, None)))
+  implicit val arbRetrievalConfig: Arbitrary[RetrievalConfig] = Arbitrary(Gen.const(RetrievalConfig(None, None)))
+  implicit val arbMetricsConfig: Arbitrary[MetricsConfig] = Arbitrary(Gen.const(MetricsConfig(None, None, None, None)))
+
+  implicit val genKCLConfiguration: Gen[KCLConfiguration] = Gen.resultOf(KCLConfiguration.apply _)
+  implicit val arbKCLConfiguration: Arbitrary[KCLConfiguration] = Arbitrary(genKCLConfiguration)
+
   implicit val genOnRecordError: Gen[OnRecordErrorHandler] = Gen.const(OnRecordErrorHandler())
   implicit val arbOnRecordError: Arbitrary[OnRecordErrorHandler] = Arbitrary(genOnRecordError)
 
   implicit val genOnStreamError: Gen[OnStreamErrorHandler] = Gen.oneOf(LogStreamError, RetryStreamError(1))
   implicit val arbOnStreamError: Arbitrary[OnStreamErrorHandler] = Arbitrary(genOnStreamError)
-  //
+
+  implicit val genDeadLetterQueueOutput: Gen[DeadLetterQueueOutput] =
+    Gen.asciiPrintableStr.map(DeadLetterQueueOutput.File(_))
+  implicit val arbDeadLetterQueueOutput: Arbitrary[DeadLetterQueueOutput] = Arbitrary(genDeadLetterQueueOutput)
+
+  implicit val genDeadLetterQueueSettings: Gen[DeadLetterQueueSettings] = Gen.resultOf(DeadLetterQueueSettings.apply _)
+  implicit val arbDeadLetterQueueSettings: Arbitrary[DeadLetterQueueSettings] = Arbitrary(genDeadLetterQueueSettings)
+
+  implicit val genOutputFormatJSON: Gen[OutputFormat.JSON] = Gen.resultOf(OutputFormat.JSON.apply _)
+  implicit val arbOutputFormatJSON: Arbitrary[OutputFormat.JSON] = Arbitrary(genOutputFormatJSON)
+
   implicit val arbStreamingFormat: Arbitrary[IngestFormat.StreamingFormat] = Arbitrary(streamingFormatGen)
   implicit val arbCharset: Arbitrary[Charset] = Arbitrary(genCharset)
-  implicit val arbKeepAliveProtocol: Arbitrary[WebSocketClient.KeepaliveProtocol] = Arbitrary(
-    keepAliveProtocolGen,
-  )
+  implicit val arbKeepAliveProtocol: Arbitrary[WebSocketClient.KeepaliveProtocol] = Arbitrary(keepAliveProtocolGen)
 
   implicit val fileGen: Gen[IngestSource.File] = Gen.resultOf(IngestSource.File)
   implicit val s3Gen: Gen[IngestSource.S3] = Gen.resultOf(IngestSource.S3)
   implicit val stdInGen: Gen[IngestSource.StdInput] = Gen.resultOf(IngestSource.StdInput)
   implicit val numInGen: Gen[IngestSource.NumberIterator] = Gen.resultOf(IngestSource.NumberIterator)
   implicit val webSocketGen: Gen[IngestSource.WebsocketClient] = Gen.resultOf(IngestSource.WebsocketClient)
-  implicit val sseInGen: Gen[IngestSource.ServerSentEvent] =
-    Gen.resultOf(IngestSource.ServerSentEvent)
+  implicit val sseInGen: Gen[IngestSource.ServerSentEvent] = Gen.resultOf(IngestSource.ServerSentEvent)
   implicit val sqsInGen: Gen[IngestSource.SQS] = Gen.resultOf(IngestSource.SQS)
   implicit val kinesisGen: Gen[IngestSource.Kinesis] = Gen.resultOf(IngestSource.Kinesis(_, _, _, _, _, _, _, _))
   implicit val kafkaGen: Gen[IngestSource.Kafka] = Gen.resultOf(IngestSource.Kafka(_, _, _, _, _, _, _, _, _, _))
@@ -115,7 +173,7 @@ trait ArbitraryIngests extends ArbitraryAwsTypes {
 
   implicit val v2IngestSourceGen: Gen[IngestSource] =
     Gen.oneOf(fileGen, s3Gen, stdInGen, numInGen, webSocketGen, sseInGen, sqsInGen, kinesisGen, kafkaGen)
-  implicit val arbInbestSource: Arbitrary[IngestSource] = Arbitrary(v2IngestSourceGen)
+  implicit val arbIngestSource: Arbitrary[IngestSource] = Arbitrary(v2IngestSourceGen)
   implicit val v2IngestConfigurationGen: Gen[Oss.QuineIngestConfiguration] = for {
     initChar <- Gen.alphaChar
     nameTail <- Gen.alphaNumStr

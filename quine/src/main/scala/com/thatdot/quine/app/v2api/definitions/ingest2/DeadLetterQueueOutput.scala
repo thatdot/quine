@@ -2,7 +2,6 @@ package com.thatdot.quine.app.v2api.definitions.ingest2
 
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
-import io.circe.generic.semiauto._
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{default, description, title}
 
@@ -176,8 +175,8 @@ object OutputFormat {
   ) extends OutputFormat
 
   object JSON {
-    implicit val encoder: Encoder[JSON] = deriveEncoder
-    implicit val decoder: Decoder[JSON] = deriveDecoder
+    implicit val encoder: Encoder[JSON] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[JSON] = deriveConfiguredDecoder
   }
 
   @title("Protobuf")
@@ -203,6 +202,7 @@ case class DeadLetterQueueSettings(
 )
 
 object DeadLetterQueueSettings {
-  implicit val encoder: Encoder[DeadLetterQueueSettings] = deriveEncoder
-  implicit val decoder: Decoder[DeadLetterQueueSettings] = deriveDecoder
+  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit val encoder: Encoder[DeadLetterQueueSettings] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[DeadLetterQueueSettings] = deriveConfiguredDecoder
 }
