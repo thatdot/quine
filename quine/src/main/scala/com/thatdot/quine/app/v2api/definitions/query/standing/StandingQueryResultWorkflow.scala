@@ -1,10 +1,12 @@
 package com.thatdot.quine.app.v2api.definitions.query.standing
 
 import cats.data.NonEmptyList
-import io.circe.generic.semiauto._
+import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{description, title}
 
+import com.thatdot.api.v2.schema.V2ApiConfiguration._
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.CypherQuery
 
@@ -26,8 +28,9 @@ case class StandingQueryResultWorkflow(
 object StandingQueryResultWorkflow {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
-  implicit val encoder: Encoder[StandingQueryResultWorkflow] = deriveEncoder
-  implicit val decoder: Decoder[StandingQueryResultWorkflow] = deriveDecoder
+  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit val encoder: Encoder[StandingQueryResultWorkflow] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[StandingQueryResultWorkflow] = deriveConfiguredDecoder
 
   val apiTitle: String = "Standing Query Result Workflow"
   val apiDescription: String =

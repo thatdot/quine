@@ -10,7 +10,6 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationDecoder,
   deriveEnumerationEncoder,
 }
-import io.circe.generic.semiauto._
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
@@ -60,8 +59,8 @@ object ApiIngest {
   )
 
   object IngestStreamStats {
-    implicit val encoder: Encoder[IngestStreamStats] = deriveEncoder
-    implicit val decoder: Decoder[IngestStreamStats] = deriveDecoder
+    implicit val encoder: Encoder[IngestStreamStats] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[IngestStreamStats] = deriveConfiguredDecoder
   }
 
   @title("Ingest Stream Info")
@@ -93,8 +92,8 @@ object ApiIngest {
   )
 
   object IngestStreamInfoWithName {
-    implicit val encoder: Encoder[IngestStreamInfoWithName] = deriveEncoder
-    implicit val decoder: Decoder[IngestStreamInfoWithName] = deriveDecoder
+    implicit val encoder: Encoder[IngestStreamInfoWithName] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[IngestStreamInfoWithName] = deriveConfiguredDecoder
   }
 
   sealed abstract class IngestStreamStatus(val isTerminal: Boolean, val position: ValvePosition)
@@ -724,8 +723,8 @@ object ApiIngest {
   )
 
   object ConfigsBuilder {
-    implicit val encoder: Encoder[ConfigsBuilder] = deriveEncoder
-    implicit val decoder: Decoder[ConfigsBuilder] = deriveDecoder
+    implicit val encoder: Encoder[ConfigsBuilder] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[ConfigsBuilder] = deriveConfiguredDecoder
   }
 
   sealed trait BillingMode {
@@ -870,8 +869,8 @@ object ApiIngest {
   )
 
   object LeaseManagementConfig {
-    implicit val encoder: Encoder[LeaseManagementConfig] = deriveEncoder
-    implicit val decoder: Decoder[LeaseManagementConfig] = deriveDecoder
+    implicit val encoder: Encoder[LeaseManagementConfig] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[LeaseManagementConfig] = deriveConfiguredDecoder
   }
 
   sealed trait RetrievalSpecificConfig
@@ -927,8 +926,8 @@ object ApiIngest {
   )
 
   object ProcessorConfig {
-    implicit val encoder: Encoder[ProcessorConfig] = deriveEncoder
-    implicit val decoder: Decoder[ProcessorConfig] = deriveDecoder
+    implicit val encoder: Encoder[ProcessorConfig] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[ProcessorConfig] = deriveConfiguredDecoder
   }
 
   sealed trait ShardPrioritization
@@ -974,8 +973,8 @@ object ApiIngest {
   )
 
   object CoordinatorConfig {
-    implicit val encoder: Encoder[CoordinatorConfig] = deriveEncoder
-    implicit val decoder: Decoder[CoordinatorConfig] = deriveDecoder
+    implicit val encoder: Encoder[CoordinatorConfig] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[CoordinatorConfig] = deriveConfiguredDecoder
   }
 
   case class LifecycleConfig(
@@ -986,8 +985,8 @@ object ApiIngest {
   )
 
   object LifecycleConfig {
-    implicit val encoder: Encoder[LifecycleConfig] = deriveEncoder
-    implicit val decoder: Decoder[LifecycleConfig] = deriveDecoder
+    implicit val encoder: Encoder[LifecycleConfig] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[LifecycleConfig] = deriveConfiguredDecoder
   }
 
   case class RetrievalConfig(
@@ -1000,8 +999,8 @@ object ApiIngest {
   )
 
   object RetrievalConfig {
-    implicit val encoder: Encoder[RetrievalConfig] = deriveEncoder
-    implicit val decoder: Decoder[RetrievalConfig] = deriveDecoder
+    implicit val encoder: Encoder[RetrievalConfig] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[RetrievalConfig] = deriveConfiguredDecoder
   }
 
   sealed trait MetricsLevel
@@ -1060,8 +1059,8 @@ object ApiIngest {
   )
 
   object MetricsConfig {
-    implicit val encoder: Encoder[MetricsConfig] = deriveEncoder
-    implicit val decoder: Decoder[MetricsConfig] = deriveDecoder
+    implicit val encoder: Encoder[MetricsConfig] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[MetricsConfig] = deriveConfiguredDecoder
   }
 
   @title("WebSocket File Upload")
