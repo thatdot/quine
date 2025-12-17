@@ -38,7 +38,7 @@ object Dependencies {
   val mapDbV = "3.1.0"
   val metricsInfluxdbV = "1.1.0"
   val msgPackV = "0.9.10"
-  val nettyOverrideV = "4.1.128.Final"
+  val nettyOverrideV = "4.1.129.Final"
   val openApiCirceYamlV = "0.11.9"
   val openCypherV = "9.2.3"
   val parboiledV = "1.4.1"
