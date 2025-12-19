@@ -89,14 +89,6 @@ class V2CypherCodecSpec
 
 trait V2CypherCodecSpecGenerators extends ArbitraryCommon {
 
-  val genJsonPrimitive: Gen[Json] = Gen.oneOf(
-    Gen.const(Json.Null),
-    Arbitrary.arbBool.arbitrary.map(Json.fromBoolean),
-    Arbitrary.arbLong.arbitrary.map(Json.fromLong),
-    Arbitrary.arbDouble.arbitrary.map(Json.fromDoubleOrNull),
-    Arbitrary.arbString.arbitrary.map(Json.fromString),
-  )
-
   val genMapStringJson: Gen[Map[String, Json]] =
     Gen.mapOf(Gen.zip(Gen.alphaNumStr, genJsonPrimitive))
 

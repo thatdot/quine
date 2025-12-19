@@ -56,27 +56,28 @@ class EndpointValidationSpec
   val baseUrl = "/api/v2"
 
   "A kinesis ingest with illegal iterator type" should "fail with 400" in {
-    val url = s"$baseUrl/ingests"
-    val kinesisIngest = kinesisGen.sample.get.copy(
-      iteratorType = IteratorType.AfterSequenceNumber("ignore"),
-      numRetries = 3, //TODO java.lang.IllegalArgumentException: maxAttempts must be positive
-      shardIds = Some(Set("ignore1", "ignore2")),
-      recordDecoders =
-        Seq(RecordDecodingType.Gzip, RecordDecodingType.Gzip, RecordDecodingType.Gzip, RecordDecodingType.Gzip),
-    )
+    forAll(kinesisGen, arbIngest.arbitrary) { (kinesis, ingest) =>
+      val url = s"$baseUrl/ingests"
+      val kinesisIngest = kinesis.copy(
+        iteratorType = IteratorType.AfterSequenceNumber("ignore"),
+        numRetries = 3, //TODO java.lang.IllegalArgumentException: maxAttempts must be positive
+        shardIds = Some(Set("ignore1", "ignore2")),
+        recordDecoders =
+          Seq(RecordDecodingType.Gzip, RecordDecodingType.Gzip, RecordDecodingType.Gzip, RecordDecodingType.Gzip),
+      )
 
-    val quineIngestConfiguration: Api.Oss.QuineIngestConfiguration =
-      arbIngest.arbitrary.sample.get.copy(source = kinesisIngest)
+      val quineIngestConfiguration: Api.Oss.QuineIngestConfiguration =
+        ingest.copy(source = kinesisIngest)
 
-    // Increase timeout for check using implicit, for use when many tests are running at once and longer timeouts may be needed.
-    implicit val timeout: RouteTestTimeout = RouteTestTimeout(5.seconds.dilated)
-    post(url, quineIngestConfiguration) ~> routes ~> check {
+      // Increase timeout for check using implicit, for use when many tests are running at once and longer timeouts may be needed.
+      implicit val timeout: RouteTestTimeout = RouteTestTimeout(5.seconds.dilated)
+      post(url, quineIngestConfiguration) ~> routes ~> check {
 
-      status.intValue() shouldEqual 400
+        status.intValue() shouldEqual 400
 
-      //TODO this should also inspect the output and check that validation strings are correctly generated
+        //TODO this should also inspect the output and check that validation strings are correctly generated
+      }
     }
-
   }
 
   "A kafka ingest with unrecognized properties" should "fail with 400" in {
