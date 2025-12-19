@@ -5,7 +5,6 @@ import scala.concurrent.{ExecutionContext, Future}
 import io.circe.generic.extras.auto._
 import shapeless.{:+:, CNil, Coproduct}
 import sttp.model.StatusCode
-import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Endpoint, EndpointInput, path, statusCode}

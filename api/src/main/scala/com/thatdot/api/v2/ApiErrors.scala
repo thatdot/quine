@@ -24,18 +24,29 @@ object ErrorType {
 
   /** General Api error that we don't have any extra information about */
   case class ApiError(message: String) extends ErrorType
+  object ApiError {
+    implicit val schema: Schema[ApiError] = Schema.derived[ApiError]
+  }
 
   /** Api error type for any sort of Decode Failure
     *
     * Used currently for a custom decode failure handler passed to Pekko Server Options.
     */
   case class DecodeError(message: String, help: Option[String] = None) extends ErrorType
+  object DecodeError {
+    implicit val schema: Schema[DecodeError] = Schema.derived[DecodeError]
+  }
 
   /** Api error type for any Cypher Error
     *
     *  This could be further broken down based upon CypherException later.
     */
   case class CypherError(message: String) extends ErrorType
+  object CypherError {
+    implicit val schema: Schema[CypherError] = Schema.derived[CypherError]
+  }
+
+  implicit val schema: Schema[ErrorType] = Schema.derived[ErrorType]
 }
 
 trait HasErrors extends Product with Serializable {
@@ -55,6 +66,8 @@ object ErrorResponse {
   case class Unauthorized(errors: List[ErrorType]) extends HasErrors
   case class ServiceUnavailable(errors: List[ErrorType]) extends HasErrors
 
+  implicit private val errorListSchema: Schema[List[ErrorType]] = ErrorType.schema.asIterable[List]
+
   object ServerError {
     def apply(error: String): ServerError = ServerError(List(ErrorType.ApiError(error)))
     def apply(error: ErrorType): ServerError = ServerError(List(error))
@@ -64,6 +77,7 @@ object ErrorResponse {
     def ofErrors(errors: List[BaseError]): ServerError = ServerError(
       errors.map(err => ErrorType.ApiError(err.getMessage)),
     )
+    implicit val schema: Schema[ServerError] = Schema.derived[ServerError]
   }
 
   // It would be nice to take away the below methods once we have our errors properly coded.
@@ -75,6 +89,7 @@ object ErrorResponse {
     def ofErrors(errors: List[BaseError]): BadRequest = BadRequest(
       errors.map(err => ErrorType.ApiError(err.getMessage)),
     )
+    implicit val schema: Schema[BadRequest] = Schema.derived[BadRequest]
   }
 
   object NotFound {
@@ -82,11 +97,13 @@ object ErrorResponse {
     def apply(error: ErrorType): NotFound = NotFound(List(error))
     def apply(error: BaseError): NotFound = NotFound(List(ErrorType.ApiError(error.getMessage)))
     def ofErrors(errors: List[BaseError]): NotFound = NotFound(errors.map(err => ErrorType.ApiError(err.getMessage)))
+    implicit val schema: Schema[NotFound] = Schema.derived[NotFound]
   }
 
   object Unauthorized {
     def apply(reason: String): Unauthorized = Unauthorized(List(ErrorType.ApiError(reason)))
     def apply(reason: ErrorType) = new Unauthorized(List(reason))
+    implicit val schema: Schema[Unauthorized] = Schema.derived[Unauthorized]
   }
 
   object ServiceUnavailable {
@@ -96,6 +113,7 @@ object ErrorResponse {
     def ofErrors(errors: List[BaseError]): ServiceUnavailable = ServiceUnavailable(
       errors.map(err => ErrorType.ApiError(err.getMessage)),
     )
+    implicit val schema: Schema[ServiceUnavailable] = Schema.derived[ServiceUnavailable]
   }
 
 }

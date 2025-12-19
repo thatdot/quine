@@ -11,6 +11,7 @@ import sttp.tapir.{Codec, DecodeResult, Schema}
 import com.thatdot.api.v2.schema.V2ApiSchemas
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
+import com.thatdot.quine.app.v2api.definitions.ingest2.{DeadLetterQueueOutput, DeadLetterQueueSettings, OutputFormat}
 
 trait V2IngestApiSchemas extends V2ApiSchemas {
   implicit val config: Configuration = typeDiscriminatorConfig
@@ -78,4 +79,13 @@ trait V2IngestApiSchemas extends V2ApiSchemas {
   // Top-level (-ish) types, dependent on above schemas
   implicit lazy val ingestStreamInfoSchema: Schema[IngestStreamInfo] = Schema.derived
   implicit lazy val ingestStreamInfoWithNameSchema: Schema[IngestStreamInfoWithName] = Schema.derived
+  implicit lazy val transformationSchema: Schema[Transformation] = Schema.derived
+  implicit lazy val recordRetrySettingsSchema: Schema[RecordRetrySettings] = Schema.derived
+  implicit lazy val dlqOutputFormatJsonSchema: Schema[OutputFormat.JSON] = Schema.derived
+  implicit lazy val dlqOutputFormatSchema: Schema[OutputFormat] = Schema.derived
+  implicit lazy val deadLetterQueueOutputSchema: Schema[DeadLetterQueueOutput] = Schema.derived
+  implicit lazy val deadLetterQueueSettingsSchema: Schema[DeadLetterQueueSettings] = Schema.derived
+  implicit lazy val onRecordErrorHandlerSchema: Schema[OnRecordErrorHandler] = Schema.derived
+  implicit lazy val onStreamErrorHandlerSchema: Schema[OnStreamErrorHandler] = Schema.derived
+  implicit lazy val quineIngestConfigurationSchema: Schema[Oss.QuineIngestConfiguration] = Schema.derived
 }

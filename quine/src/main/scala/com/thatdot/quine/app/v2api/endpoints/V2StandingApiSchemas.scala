@@ -9,7 +9,10 @@ import com.thatdot.api.v2.schema.V2ApiSchemas
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.Predicate.OnlyPositiveMatch
-import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.RegisteredStandingQuery
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.{
+  RegisteredStandingQuery,
+  StandingQueryDefinition,
+}
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultTransformation.InlineData
 import com.thatdot.quine.app.v2api.definitions.query.standing.{
@@ -67,6 +70,7 @@ trait V2StandingApiSchemas extends V2ApiSchemas {
   implicit lazy val standingQueryResultWorkflowSchema: Schema[StandingQueryResultWorkflow] = Schema.derived
   implicit lazy val standingQueryPatternSchema: Schema[StandingQueryPattern] = Schema.derived
   implicit lazy val standingQueryStatsSchema: Schema[StandingQueryStats] = Schema.derived
+  implicit lazy val standingQueryDefinitionSchema: Schema[StandingQueryDefinition] = Schema.derived
   implicit lazy val registeredStandingQuerySchema: Schema[RegisteredStandingQuery] = Schema.derived
 
 }

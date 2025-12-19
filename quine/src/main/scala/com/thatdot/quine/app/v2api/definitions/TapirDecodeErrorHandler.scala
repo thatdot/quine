@@ -6,7 +6,6 @@ import io.circe.DecodingFailure
 import io.circe.generic.auto._
 import sttp.model.{Header, StatusCode}
 import sttp.tapir.DecodeResult.Error.JsonDecodeException
-import sttp.tapir.generic.auto._
 import sttp.tapir.server.interceptor.decodefailure.{DecodeFailureHandler, DefaultDecodeFailureHandler}
 import sttp.tapir.server.interceptor.exception.DefaultExceptionHandler
 import sttp.tapir.server.model.ValuedEndpointOutput

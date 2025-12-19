@@ -54,6 +54,7 @@ object DestinationSteps {
   object KafkaPropertyValue {
     implicit val encoder: Encoder[KafkaPropertyValue] = Encoder.encodeString.contramap(_.s)
     implicit val decoder: Decoder[KafkaPropertyValue] = Decoder.decodeString.map(KafkaPropertyValue.apply)
+    implicit val schema: sttp.tapir.Schema[KafkaPropertyValue] = sttp.tapir.Schema.string[KafkaPropertyValue]
   }
 
   final case class Kafka(

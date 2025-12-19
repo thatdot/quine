@@ -16,12 +16,12 @@ import sttp.tapir._
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.ErrorResponseHelpers.toServerError
-import com.thatdot.api.v2.schema.V2ApiConfiguration
+import com.thatdot.api.v2.schema.V2ApiSchemas
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 
-trait V2EndpointDefinitions extends V2ApiConfiguration with LazySafeLogging {
+trait V2EndpointDefinitions extends V2ApiSchemas with LazySafeLogging {
 
   implicit protected def logConfig: LogConfig
 

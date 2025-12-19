@@ -4,7 +4,6 @@ import scala.concurrent.Future
 
 import io.circe.generic.extras.auto._
 import sttp.model.StatusCode
-import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Endpoint, EndpointInput, emptyOutputAs, path, query, statusCode}

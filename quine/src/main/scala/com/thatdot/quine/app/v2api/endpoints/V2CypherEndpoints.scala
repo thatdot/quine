@@ -5,12 +5,10 @@ import scala.concurrent.duration.FiniteDuration
 
 import endpoints4s.generic.title
 import io.circe.generic.extras.auto._
-import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.Schema.annotations.description
-import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, oneOfBody, statusCode}
@@ -26,16 +24,38 @@ import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TUiEdge,
   TUiNode,
 }
-import com.thatdot.quine.model.Milliseconds
+import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 
 object V2CypherEndpointEntities {
   import StringOps.syntax._
+  import io.circe.generic.extras.Configuration
+  import io.circe.generic.extras.semiauto.{deriveConfiguredEncoder, deriveConfiguredDecoder}
+  import io.circe.syntax.EncoderOps
+
+  implicit private val circeConfig: Configuration = Configuration.default.withDefaults
+
+  implicit private val jsonSchema: Schema[Json] = Schema.any[Json]
+  implicit private val mapStringJsonSchema: Schema[Map[String, Json]] = Schema.schemaForMap[Json](jsonSchema)
+  implicit private val seqSeqJsonSchema: Schema[Seq[Seq[Json]]] = jsonSchema.asIterable[Seq].asIterable[Seq]
+  implicit private val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
 
   @title("Cypher Query")
   final case class TCypherQuery(
     @description("Text of the query to execute.") text: String,
     @description("Parameters the query expects, if any.") parameters: Map[String, Json] = Map.empty,
   )
+  object TCypherQuery {
+    implicit val encoder: Encoder[TCypherQuery] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[TCypherQuery] = deriveConfiguredDecoder
+    implicit val schema: Schema[TCypherQuery] = Schema
+      .derived[TCypherQuery]
+      .encodedExample(
+        TCypherQuery(
+          "MATCH (n) RETURN n LIMIT $lim",
+          Map("lim" -> Json.fromInt(1)),
+        ).asJson,
+      )
+  }
 
   @title("Cypher Query Result")
   @description(
@@ -48,43 +68,44 @@ object V2CypherEndpointEntities {
     @description("Return values of the Cypher query.") columns: Seq[String],
     @description("Rows of results.") results: Seq[Seq[Json]],
   )
+  object TCypherQueryResult {
+    implicit val schema: Schema[TCypherQueryResult] = Schema.derived[TCypherQueryResult]
+  }
 
   case class TUiNode(id: QuineId, hostIndex: Int, label: String, properties: Map[String, Json])
+  object TUiNode {
+    implicit val schema: Schema[TUiNode] = Schema.derived[TUiNode]
+  }
 
   case class TUiEdge(from: QuineId, edgeType: String, to: QuineId, isDirected: Boolean = true)
+  object TUiEdge {
+    implicit val schema: Schema[TUiEdge] = Schema.derived[TUiEdge]
+  }
 }
 
-trait V2CypherEndpoints extends V2EndpointDefinitions with V2IngestApiSchemas with CommonParameters with StringOps { // V2EndpointDefinitions with V2ApiSchemas
-  val appMethods: ApplicationApiMethods with CypherApiMethods
+trait V2CypherSchemas {
+  val idProvider: QuineIdProvider
 
-  import com.thatdot.api.v2.schema.V2ApiSchemas._
-
-  def namespaceParameter: EndpointInput[Option[String]]
-  def memberIdxParameter: EndpointInput[Option[Int]]
-
-  // QuineId JSON serialization support for UI APIv2 handling
+  implicit lazy val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
   implicit val quineIdEncoder: Encoder[QuineId] = Encoder.encodeString.contramap(idProvider.qidToPrettyString)
   implicit val quineIdDecoder: Decoder[QuineId] = Decoder.decodeString.emap { str =>
     idProvider.qidFromPrettyString(str).toEither.left.map(_.getMessage)
   }
-  implicit val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
-  implicit val tuiNodeSchema: Schema[TUiNode] = Schema.derived[TUiNode]
-  implicit val tuiEdgeSchema: Schema[TUiEdge] = Schema.derived[TUiEdge]
+}
 
-  implicit val cypherQuerySchema: Schema[TCypherQuery] = Schema
-    .derived[TCypherQuery]
-    .encodedExample(
-      TCypherQuery(
-        "MATCH (n) RETURN n LIMIT $lim",
-        Map("lim" -> Json.fromInt(1)),
-      ).asJson,
-    )
+trait V2CypherEndpoints
+    extends V2EndpointDefinitions
+    with V2IngestApiSchemas
+    with V2CypherSchemas
+    with CommonParameters
+    with StringOps {
+  val appMethods: ApplicationApiMethods with CypherApiMethods
+
+  def namespaceParameter: EndpointInput[Option[String]]
+  def memberIdxParameter: EndpointInput[Option[Int]]
 
   private val cypherQueryAsStringCodec: Codec[String, TCypherQuery, TextPlain] =
     Codec.string.mapDecode(s => DecodeResult.Value(TCypherQuery(s)))(_.text)
-
-  implicit lazy val mapSchema: Schema[Map[String, Json]] = Schema
-    .schemaForMap[String, Json](identity)
 
   private val cypherLanguageUrl = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
 

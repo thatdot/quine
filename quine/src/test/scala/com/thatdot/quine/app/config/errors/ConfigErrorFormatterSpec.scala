@@ -6,6 +6,8 @@ import org.scalatest.wordspec.AnyWordSpec
 import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 import pureconfig.error._
 
+import com.thatdot.quine.ArbitraryCommon
+
 class ConfigErrorFormatterSpec
     extends AnyWordSpec
     with Matchers
@@ -68,23 +70,28 @@ class ConfigErrorFormatterSpec
     }
 
     "handle type mismatches with path and type information" in {
-      forAll(errorFormatterConfigGen, startupContextGen, nonEmptyAlphaStr, nonEmptyAlphaStr, nonEmptyAlphaStr) {
-        (config, context, path, foundType, expectedType) =>
+      forAll(
+        errorFormatterConfigGen,
+        startupContextGen,
+        genNonEmptyAlphaStr,
+        genNonEmptyAlphaStr,
+        genNonEmptyAlphaStr,
+      ) { (config, context, path, foundType, expectedType) =>
 
-          val formatter = new ConfigErrorFormatter(config, context)
-          val failure = createTypeMismatchFailure(path, foundType, expectedType)
-          val failures = ConfigReaderFailures(failure)
+        val formatter = new ConfigErrorFormatter(config, context)
+        val failure = createTypeMismatchFailure(path, foundType, expectedType)
+        val failures = ConfigReaderFailures(failure)
 
-          val message = formatter.messageFor(failures)
+        val message = formatter.messageFor(failures)
 
-          val pathDisplay = if (path.isEmpty) "root" else s"'$path'"
-          val contextGuidance = context.configFile match {
-            case Some(file) => s"\nConfiguration file: $file\nSee: ${config.docsUrl}"
-            case None => s"\nSee: ${config.docsUrl}"
-          }
+        val pathDisplay = if (path.isEmpty) "root" else s"'$path'"
+        val contextGuidance = context.configFile match {
+          case Some(file) => s"\nConfiguration file: $file\nSee: ${config.docsUrl}"
+          case None => s"\nSee: ${config.docsUrl}"
+        }
 
-          message shouldBe
-          s"""Configuration error: Invalid type at $pathDisplay.
+        message shouldBe
+        s"""Configuration error: Invalid type at $pathDisplay.
              |
              |Expected: $expectedType
              |Found: $foundType
@@ -93,7 +100,7 @@ class ConfigErrorFormatterSpec
     }
 
     "handle unknown configuration keys" in {
-      forAll(errorFormatterConfigGen, startupContextGen, nonEmptyAlphaStr, nonEmptyAlphaStr) {
+      forAll(errorFormatterConfigGen, startupContextGen, genNonEmptyAlphaStr, genNonEmptyAlphaStr) {
         (config, context, path, unknownKey) =>
 
           val formatter = new ConfigErrorFormatter(config, context)
@@ -118,7 +125,7 @@ class ConfigErrorFormatterSpec
     }
 
     "handle unclassified errors by preserving description" in {
-      forAll(errorFormatterConfigGen, startupContextGen, nonEmptyAlphaStr) { (config, context, errorDesc) =>
+      forAll(errorFormatterConfigGen, startupContextGen, genNonEmptyAlphaStr) { (config, context, errorDesc) =>
         val formatter = new ConfigErrorFormatter(config, context)
         val failure = createGenericFailure(errorDesc)
         val failures = ConfigReaderFailures(failure)
@@ -290,7 +297,7 @@ class ConfigErrorFormatterSpec
     }
 
     "handle all StartupContext variations appropriately" in {
-      forAll(errorFormatterConfigGen, nonEmptyAlphaStr) { (config, confFile) =>
+      forAll(errorFormatterConfigGen, genNonEmptyAlphaStr) { (config, confFile) =>
         val formatter1 = new ConfigErrorFormatter(config, StartupContext(None, isJar = false))
         val formatter2 = new ConfigErrorFormatter(config, StartupContext(None, isJar = true))
         val formatter3 = new ConfigErrorFormatter(config, StartupContext(Some(confFile), isJar = false))
@@ -347,28 +354,27 @@ protected trait ConfigErrorFormatterHelpers {
     createConvertFailure(description, path = "")
 }
 
-protected trait ConfigErrorFormatterGen {
-  val nonEmptyAlphaStr: Gen[String] = Gen.nonEmptyListOf(Gen.alphaChar).map(_.mkString)
-  val nonEmptyAlphaStrLower: Gen[String] = nonEmptyAlphaStr.map(_.toLowerCase)
-  val nonEmptyAlphaStrNonEmptyList: Gen[List[String]] = Gen.nonEmptyListOf(nonEmptyAlphaStr)
+protected trait ConfigErrorFormatterGen extends ArbitraryCommon {
+  val genNonEmptyAlphaStrLower: Gen[String] = genNonEmptyAlphaStr.map(_.toLowerCase)
+  val genNonEmptyAlphaStrNonEmptyList: Gen[List[String]] = Gen.nonEmptyListOf(genNonEmptyAlphaStr)
 
   val kebabCaseStr: Gen[String] = for {
-    parts <- nonEmptyAlphaStrNonEmptyList
+    parts <- genNonEmptyAlphaStrNonEmptyList
   } yield parts.mkString("-")
 
   val camelCaseStr: Gen[String] = for {
-    first <- nonEmptyAlphaStrLower
-    rest <- Gen.listOf(nonEmptyAlphaStr.map(_.capitalize))
+    first <- genNonEmptyAlphaStrLower
+    rest <- Gen.listOf(genNonEmptyAlphaStr.map(_.capitalize))
   } yield first + rest.mkString
 
   val urlGen: Gen[String] = for {
-    domain <- nonEmptyAlphaStrLower
+    domain <- genNonEmptyAlphaStrLower
     tld <- Gen.oneOf("com", "io", "org", "net")
   } yield s"https://$domain.$tld/"
 
   val filePathGen: Gen[String] = for {
-    segments <- nonEmptyAlphaStrNonEmptyList
-    filename <- nonEmptyAlphaStr
+    segments <- genNonEmptyAlphaStrNonEmptyList
+    filename <- genNonEmptyAlphaStr
   } yield "/" + segments.mkString("/") + "/" + filename + ".conf"
 
   val startupContextGen: Gen[StartupContext] = for {
@@ -378,7 +384,7 @@ protected trait ConfigErrorFormatterGen {
 
   val errorFormatterConfigGen: Gen[ErrorFormatterConfig] = for {
     expectedRootKey <- kebabCaseStr
-    productName <- nonEmptyAlphaStr.map(_.capitalize + " Product")
+    productName <- genNonEmptyAlphaStr.map(_.capitalize + " Product")
     requiredFieldCount <- Gen.choose(0, 5)
     requiredFields <- Gen.listOfN(requiredFieldCount, camelCaseStr).map(_.toSet)
     docsUrl <- urlGen

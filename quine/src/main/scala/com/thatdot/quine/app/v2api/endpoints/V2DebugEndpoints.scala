@@ -7,10 +7,9 @@ import io.circe.generic.extras.auto._
 import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.Schema.annotations.{description, title}
-import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, path, query, statusCode}
+import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, path, query, statusCode}
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
@@ -23,6 +22,9 @@ import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirec
 object V2DebugEndpointEntities {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
+  private val jsonSchema: Schema[Json] = Schema.any[Json]
+  private val mapStringJsonSchema: Schema[Map[String, Json]] = Schema.schemaForMap[Json](jsonSchema)
+
   sealed abstract class TEdgeDirection
   object TEdgeDirection {
     case object Outgoing extends TEdgeDirection
@@ -30,19 +32,9 @@ object V2DebugEndpointEntities {
     case object Undirected extends TEdgeDirection
 
     val values: Seq[TEdgeDirection] = Seq(Outgoing, Incoming, Undirected)
-  }
 
-  @title("Node Data")
-  @description("Data locally available on a node in the graph.")
-  final case class TLiteralNode[ID](
-    @description(
-      """Properties on the node; note that values are represented as closely as possible
-        |to how they would be emitted by
-        |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post).""".asOneLine,
-    )
-    properties: Map[String, Json],
-    edges: Seq[TRestHalfEdge[ID]],
-  )
+    implicit val schema: Schema[TEdgeDirection] = Schema.derivedEnumeration[TEdgeDirection].defaultStringBased
+  }
 
   @title("Half Edge")
   @description(
@@ -59,11 +51,39 @@ object V2DebugEndpointEntities {
     direction: TEdgeDirection,
     @description("Id of node at the other end of the edge.") other: ID,
   )
+  object TRestHalfEdge {
+    implicit def schema[ID](implicit idSchema: Schema[ID]): Schema[TRestHalfEdge[ID]] =
+      Schema.derived[TRestHalfEdge[ID]]
+  }
 
+  @title("Node Data")
+  @description("Data locally available on a node in the graph.")
+  final case class TLiteralNode[ID](
+    @description(
+      """Properties on the node; note that values are represented as closely as possible
+        |to how they would be emitted by
+        |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post).""".asOneLine,
+    )
+    properties: Map[String, Json],
+    edges: Seq[TRestHalfEdge[ID]],
+  )
+  object TLiteralNode {
+    implicit def schema[ID](implicit idSchema: Schema[ID]): Schema[TLiteralNode[ID]] = {
+      implicit val mapSchema: Schema[Map[String, Json]] = mapStringJsonSchema
+      implicit val halfEdgeSchema: Schema[TRestHalfEdge[ID]] = TRestHalfEdge.schema[ID]
+      Schema.derived[TLiteralNode[ID]]
+    }
+  }
 }
 
 trait V2DebugEndpoints extends V2EndpointDefinitions with V2IngestApiSchemas with CommonParameters with StringOps {
   val appMethods: ApplicationApiMethods with DebugApiMethods
+
+  implicit lazy val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
+
+  implicit lazy val tEdgeDirectionSchema: Schema[TEdgeDirection] = TEdgeDirection.schema
+  implicit def tRestHalfEdgeSchema[ID: Schema]: Schema[TRestHalfEdge[ID]] = TRestHalfEdge.schema[ID]
+  implicit def tLiteralNodeSchema[ID: Schema]: Schema[TLiteralNode[ID]] = TLiteralNode.schema[ID]
 
   implicit val tEdgeDirectionCodec: Codec[String, TEdgeDirection, TextPlain] = {
 

@@ -8,7 +8,6 @@ import io.circe.syntax.EncoderOps
 import shapeless.{:+:, CNil, Coproduct}
 import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
-import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Endpoint, Schema, emptyOutputAs, path, statusCode}
@@ -147,6 +146,13 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     .schemaForMap[Int, TShardInMemoryLimit](_.toString)
     .description("A map of shard IDs to shard in-memory node limits")
     .encodedExample(exampleShardMap.asJson)
+
+  implicit lazy val tQuineInfoSchema: Schema[TQuineInfo] = Schema.derived[TQuineInfo]
+  implicit lazy val tCounterSchema: Schema[TCounter] = Schema.derived[TCounter]
+  implicit lazy val tNumericGaugeSchema: Schema[TNumericGauge] = Schema.derived[TNumericGauge]
+  implicit lazy val tTimerSummarySchema: Schema[TTimerSummary] = Schema.derived[TTimerSummary]
+  implicit lazy val tMetricsReportSchema: Schema[TMetricsReport] = Schema.derived[TMetricsReport]
+  implicit lazy val tShardInMemoryLimitSchema: Schema[TShardInMemoryLimit] = Schema.derived[TShardInMemoryLimit]
 
   def adminBase(path: String): EndpointBase = rawEndpoint("admin")
     .in(path)
