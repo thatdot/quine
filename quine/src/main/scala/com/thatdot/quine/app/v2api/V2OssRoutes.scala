@@ -4,10 +4,9 @@ import scala.concurrent.Future
 
 import sttp.apispec.openapi.Info
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.{EndpointInput, Schema, query}
+import sttp.tapir.{EndpointInput, query}
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.{
   V2AlgorithmEndpoints,
@@ -30,9 +29,6 @@ class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfi
     with V2AlgorithmEndpoints
     with V2DebugEndpoints
     with V2IngestEndpoints {
-
-  // Resolve conflict between V2CypherSchemas and V2DebugEndpoints
-  implicit override lazy val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
 
   override val apiEndpoints: List[ServerEndpoint[Any, Future]] = {
     uiEndpoints ++ adminEndpoints ++ debugEndpoints ++ ingestEndpoints ++ algorithmEndpoints ++ standingQueryEndpoints ++ cypherEndpoints

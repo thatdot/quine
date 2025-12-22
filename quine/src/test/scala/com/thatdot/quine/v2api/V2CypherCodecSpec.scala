@@ -9,8 +9,8 @@ import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.ArbitraryCommon
+import com.thatdot.quine.app.v2api.definitions.QuineIdCodec
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.TCypherQuery
-import com.thatdot.quine.app.v2api.endpoints.V2CypherSchemas
 import com.thatdot.quine.graph.{ArbitraryInstances, QuineIdLongProvider}
 import com.thatdot.quine.model.QuineIdProvider
 
@@ -19,7 +19,7 @@ class V2CypherCodecSpec
     with Matchers
     with ScalaCheckDrivenPropertyChecks
     with ArbitraryInstances
-    with V2CypherSchemas
+    with QuineIdCodec
     with V2CypherCodecSpecGenerators {
 
   private val longProvider = QuineIdLongProvider()

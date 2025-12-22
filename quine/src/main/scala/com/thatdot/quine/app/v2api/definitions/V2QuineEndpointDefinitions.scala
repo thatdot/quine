@@ -13,7 +13,8 @@ trait V2QuineEndpointDefinitions
     extends V2EndpointDefinitions
     with V2IngestApiSchemas
     with CommonParameters
-    with ParallelismParameter {
+    with ParallelismParameter
+    with QuineIdCodec {
 
   val appMethods: QuineApiMethods
 

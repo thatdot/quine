@@ -4,7 +4,10 @@ import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
 import endpoints4s.generic.title
+import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.auto._
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
@@ -17,7 +20,7 @@ import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
 import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions._
+import com.thatdot.quine.app.v2api.definitions.{JsonSchemas, QuineIdCodec, QuineIdSchemas, _}
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TCypherQuery,
   TCypherQueryResult,
@@ -28,23 +31,14 @@ import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 
 object V2CypherEndpointEntities {
   import StringOps.syntax._
-  import io.circe.generic.extras.Configuration
-  import io.circe.generic.extras.semiauto.{deriveConfiguredEncoder, deriveConfiguredDecoder}
-  import io.circe.syntax.EncoderOps
-
   implicit private val circeConfig: Configuration = Configuration.default.withDefaults
-
-  implicit private val jsonSchema: Schema[Json] = Schema.any[Json]
-  implicit private val mapStringJsonSchema: Schema[Map[String, Json]] = Schema.schemaForMap[Json](jsonSchema)
-  implicit private val seqSeqJsonSchema: Schema[Seq[Seq[Json]]] = jsonSchema.asIterable[Seq].asIterable[Seq]
-  implicit private val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
 
   @title("Cypher Query")
   final case class TCypherQuery(
     @description("Text of the query to execute.") text: String,
     @description("Parameters the query expects, if any.") parameters: Map[String, Json] = Map.empty,
   )
-  object TCypherQuery {
+  object TCypherQuery extends JsonSchemas {
     implicit val encoder: Encoder[TCypherQuery] = deriveConfiguredEncoder
     implicit val decoder: Decoder[TCypherQuery] = deriveConfiguredDecoder
     implicit val schema: Schema[TCypherQuery] = Schema
@@ -68,38 +62,32 @@ object V2CypherEndpointEntities {
     @description("Return values of the Cypher query.") columns: Seq[String],
     @description("Rows of results.") results: Seq[Seq[Json]],
   )
-  object TCypherQueryResult {
+  object TCypherQueryResult extends JsonSchemas {
+    implicit val encoder: Encoder[TCypherQueryResult] = deriveConfiguredEncoder
     implicit val schema: Schema[TCypherQueryResult] = Schema.derived[TCypherQueryResult]
   }
 
   case class TUiNode(id: QuineId, hostIndex: Int, label: String, properties: Map[String, Json])
-  object TUiNode {
+  object TUiNode extends QuineIdSchemas with JsonSchemas {
+    implicit def encoder(implicit quineIdEncoder: Encoder[QuineId]): Encoder[TUiNode] = deriveConfiguredEncoder
     implicit val schema: Schema[TUiNode] = Schema.derived[TUiNode]
   }
 
   case class TUiEdge(from: QuineId, edgeType: String, to: QuineId, isDirected: Boolean = true)
-  object TUiEdge {
+  object TUiEdge extends QuineIdSchemas {
+    implicit def encoder(implicit quineIdEncoder: Encoder[QuineId]): Encoder[TUiEdge] = deriveConfiguredEncoder
     implicit val schema: Schema[TUiEdge] = Schema.derived[TUiEdge]
-  }
-}
-
-trait V2CypherSchemas {
-  val idProvider: QuineIdProvider
-
-  implicit lazy val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
-  implicit val quineIdEncoder: Encoder[QuineId] = Encoder.encodeString.contramap(idProvider.qidToPrettyString)
-  implicit val quineIdDecoder: Decoder[QuineId] = Decoder.decodeString.emap { str =>
-    idProvider.qidFromPrettyString(str).toEither.left.map(_.getMessage)
   }
 }
 
 trait V2CypherEndpoints
     extends V2EndpointDefinitions
     with V2IngestApiSchemas
-    with V2CypherSchemas
+    with QuineIdCodec
     with CommonParameters
     with StringOps {
   val appMethods: ApplicationApiMethods with CypherApiMethods
+  val idProvider: QuineIdProvider
 
   def namespaceParameter: EndpointInput[Option[String]]
   def memberIdxParameter: EndpointInput[Option[Int]]

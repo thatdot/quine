@@ -92,10 +92,13 @@ object V2DebugEndpointEntities {
   }
 }
 
-trait V2DebugEndpoints extends V2EndpointDefinitions with V2IngestApiSchemas with CommonParameters with StringOps {
+trait V2DebugEndpoints
+    extends V2EndpointDefinitions
+    with V2IngestApiSchemas
+    with CommonParameters
+    with QuineIdSchemas
+    with StringOps {
   val appMethods: ApplicationApiMethods with DebugApiMethods
-
-  implicit lazy val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
 
   implicit lazy val tEdgeDirectionSchema: Schema[TEdgeDirection] = TEdgeDirection.schema
   implicit def tRestHalfEdgeSchema[ID: Schema]: Schema[TRestHalfEdge[ID]] = TRestHalfEdge.schema[ID]
