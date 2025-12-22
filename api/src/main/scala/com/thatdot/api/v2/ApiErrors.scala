@@ -2,11 +2,13 @@ package com.thatdot.api.v2
 
 import java.util.UUID
 
+import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.{EndpointOutput, Schema, statusCode}
 
-import com.thatdot.api.v2.schema.V2ApiConfiguration.jsonBody
+import com.thatdot.api.v2.schema.V2ApiConfiguration.{jsonBody, typeDiscriminatorConfig}
 import com.thatdot.common.logging.Log._
 import com.thatdot.quine.util.BaseError
 
@@ -21,11 +23,14 @@ sealed trait ErrorType {
   *  See: [[BaseError]] for future extension.
   */
 object ErrorType {
+  implicit private val errorTypeCirceConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   /** General Api error that we don't have any extra information about */
   case class ApiError(message: String) extends ErrorType
   object ApiError {
     implicit val schema: Schema[ApiError] = Schema.derived[ApiError]
+    implicit val encoder: Encoder[ApiError] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[ApiError] = deriveConfiguredDecoder
   }
 
   /** Api error type for any sort of Decode Failure
@@ -35,6 +40,8 @@ object ErrorType {
   case class DecodeError(message: String, help: Option[String] = None) extends ErrorType
   object DecodeError {
     implicit val schema: Schema[DecodeError] = Schema.derived[DecodeError]
+    implicit val encoder: Encoder[DecodeError] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[DecodeError] = deriveConfiguredDecoder
   }
 
   /** Api error type for any Cypher Error
@@ -44,9 +51,13 @@ object ErrorType {
   case class CypherError(message: String) extends ErrorType
   object CypherError {
     implicit val schema: Schema[CypherError] = Schema.derived[CypherError]
+    implicit val encoder: Encoder[CypherError] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[CypherError] = deriveConfiguredDecoder
   }
 
   implicit val schema: Schema[ErrorType] = Schema.derived[ErrorType]
+  implicit val encoder: Encoder[ErrorType] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[ErrorType] = deriveConfiguredDecoder
 }
 
 trait HasErrors extends Product with Serializable {
@@ -60,6 +71,8 @@ trait HasErrors extends Product with Serializable {
   *  They are combined with Coproduct from shapeless where used. This should be updated to Union in scala 3.
   */
 object ErrorResponse {
+  implicit private val errorResponseCirceConfig: Configuration = typeDiscriminatorConfig.asCirce
+
   case class ServerError(errors: List[ErrorType]) extends HasErrors
   case class BadRequest(errors: List[ErrorType]) extends HasErrors
   case class NotFound(errors: List[ErrorType]) extends HasErrors
@@ -78,6 +91,8 @@ object ErrorResponse {
       errors.map(err => ErrorType.ApiError(err.getMessage)),
     )
     implicit val schema: Schema[ServerError] = Schema.derived[ServerError]
+    implicit val encoder: Encoder[ServerError] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[ServerError] = deriveConfiguredDecoder
   }
 
   // It would be nice to take away the below methods once we have our errors properly coded.
@@ -90,6 +105,8 @@ object ErrorResponse {
       errors.map(err => ErrorType.ApiError(err.getMessage)),
     )
     implicit val schema: Schema[BadRequest] = Schema.derived[BadRequest]
+    implicit val encoder: Encoder[BadRequest] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[BadRequest] = deriveConfiguredDecoder
   }
 
   object NotFound {
@@ -98,12 +115,16 @@ object ErrorResponse {
     def apply(error: BaseError): NotFound = NotFound(List(ErrorType.ApiError(error.getMessage)))
     def ofErrors(errors: List[BaseError]): NotFound = NotFound(errors.map(err => ErrorType.ApiError(err.getMessage)))
     implicit val schema: Schema[NotFound] = Schema.derived[NotFound]
+    implicit val encoder: Encoder[NotFound] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[NotFound] = deriveConfiguredDecoder
   }
 
   object Unauthorized {
     def apply(reason: String): Unauthorized = Unauthorized(List(ErrorType.ApiError(reason)))
     def apply(reason: ErrorType) = new Unauthorized(List(reason))
     implicit val schema: Schema[Unauthorized] = Schema.derived[Unauthorized]
+    implicit val encoder: Encoder[Unauthorized] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[Unauthorized] = deriveConfiguredDecoder
   }
 
   object ServiceUnavailable {
@@ -114,6 +135,8 @@ object ErrorResponse {
       errors.map(err => ErrorType.ApiError(err.getMessage)),
     )
     implicit val schema: Schema[ServiceUnavailable] = Schema.derived[ServiceUnavailable]
+    implicit val encoder: Encoder[ServiceUnavailable] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[ServiceUnavailable] = deriveConfiguredDecoder
   }
 
 }

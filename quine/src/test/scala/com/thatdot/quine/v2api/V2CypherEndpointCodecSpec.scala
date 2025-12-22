@@ -2,13 +2,10 @@ package com.thatdot.quine.v2api
 
 import io.circe.Json
 import io.circe.syntax.EncoderOps
-import org.scalacheck.{Arbitrary, Gen}
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.ArbitraryJson
 import com.thatdot.quine.app.v2api.definitions.QuineIdCodec
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TCypherQuery,
@@ -23,9 +20,10 @@ class V2CypherEndpointCodecSpec
     extends AnyFunSuite
     with Matchers
     with ScalaCheckDrivenPropertyChecks
-    with QuineIdCodec
-    with V2CypherEndpointCodecSpecGenerators {
+    with QuineIdCodec {
+  import V2CypherEndpointGenerators.Arbs._
 
+  private val longProvider: QuineIdLongProvider = QuineIdLongProvider()
   override val idProvider: QuineIdProvider = longProvider
 
   test("TCypherQuery roundtrip encoding/decoding") {
@@ -83,48 +81,13 @@ class V2CypherEndpointCodecSpec
   }
 
   test("TUiEdge encodes with default isDirected when true") {
-    val edge = TUiEdge(intToQuineId(1), "KNOWS", intToQuineId(2))
+    val edge = TUiEdge(
+      from = longProvider.customIdToQid(1.toLong),
+      edgeType = "KNOWS",
+      to = longProvider.customIdToQid(2.toLong),
+    )
     val json = edge.asJson
     val obj = json.asObject.get
     obj("isDirected").flatMap(_.asBoolean) shouldBe Some(true)
   }
-}
-
-trait V2CypherEndpointCodecSpecGenerators extends ArbitraryJson {
-  protected val longProvider: QuineIdLongProvider = QuineIdLongProvider()
-
-  val genQuineId: Gen[QuineId] = Arbitrary.arbLong.arbitrary.map(longProvider.customIdToQid)
-  implicit val arbQuineId: Arbitrary[QuineId] = Arbitrary(genQuineId)
-
-  def intToQuineId(i: Int): QuineId = longProvider.customIdToQid(i.toLong)
-
-  implicit val genTCypherQuery: Gen[TCypherQuery] = for {
-    text <- genNonEmptyAlphaNumStr
-    params <- genJsonDictionary
-  } yield TCypherQuery(text, params)
-  implicit val arbTCypherQuery: Arbitrary[TCypherQuery] = Arbitrary(genTCypherQuery)
-
-  implicit val genTCypherQueryResult: Gen[TCypherQueryResult] = for {
-    numCols <- genSmallPosNum
-    columns <- Gen.listOfN(numCols, genNonEmptyAlphaStr)
-    numRows <- genSmallNum
-    results <- Gen.listOfN(numRows, Gen.listOfN(numCols, genJsonPrimitive))
-  } yield TCypherQueryResult(columns, results)
-  implicit val arbTCypherQueryResult: Arbitrary[TCypherQueryResult] = Arbitrary(genTCypherQueryResult)
-
-  implicit val genTUiNode: Gen[TUiNode] = for {
-    id <- genQuineId
-    hostIndex <- genSmallNum
-    label <- genNonEmptyAlphaStr
-    properties <- genJsonDictionary
-  } yield TUiNode(id, hostIndex, label, properties)
-  implicit val arbTUiNode: Arbitrary[TUiNode] = Arbitrary(genTUiNode)
-
-  implicit val genTUiEdge: Gen[TUiEdge] = for {
-    from <- genQuineId
-    edgeType <- genNonEmptyAlphaStr
-    to <- genQuineId
-    isDirected <- genBool
-  } yield TUiEdge(from, edgeType, to, isDirected)
-  implicit val arbTUiEdge: Arbitrary[TUiEdge] = Arbitrary(genTUiEdge)
 }

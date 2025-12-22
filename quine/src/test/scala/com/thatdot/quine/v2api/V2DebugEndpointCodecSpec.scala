@@ -5,14 +5,10 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.ArbitraryJson
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 
-class V2DebugEndpointCodecSpec
-    extends AnyFunSuite
-    with Matchers
-    with ScalaCheckDrivenPropertyChecks
-    with V2DebugEndpointCodecSpecGenerators {
+class V2DebugEndpointCodecSpec extends AnyFunSuite with Matchers with ScalaCheckDrivenPropertyChecks {
+  import V2DebugEndpointGenerators.Arbs._
 
   test("TEdgeDirection.Outgoing encodes correctly") {
     val json = (TEdgeDirection.Outgoing: TEdgeDirection).asJson
@@ -63,32 +59,4 @@ class V2DebugEndpointCodecSpec
       }
     }
   }
-}
-
-trait V2DebugEndpointCodecSpecGenerators extends ArbitraryJson {
-  import io.circe.Json
-  import org.scalacheck.{Arbitrary, Gen}
-
-  implicit val genTEdgeDirection: Gen[TEdgeDirection] = Gen.oneOf(TEdgeDirection.values)
-  implicit val arbTEdgeDirection: Arbitrary[TEdgeDirection] = Arbitrary(genTEdgeDirection)
-
-  val genJsonValue: Gen[Json] = Gen.frequency(
-    (5, genJsonPrimitive),
-    (1, Gen.listOfN(3, genJsonPrimitive).map(Json.fromValues)),
-  )
-
-  implicit def genTRestHalfEdge[ID: Arbitrary]: Gen[TRestHalfEdge[ID]] = for {
-    edgeType <- genNonEmptyAlphaStr
-    direction <- genTEdgeDirection
-    other <- Arbitrary.arbitrary[ID]
-  } yield TRestHalfEdge(edgeType, direction, other)
-  implicit def arbTRestHalfEdge[ID: Arbitrary]: Arbitrary[TRestHalfEdge[ID]] = Arbitrary(genTRestHalfEdge[ID])
-
-  implicit def genTLiteralNode[ID: Arbitrary]: Gen[TLiteralNode[ID]] = for {
-    propertiesSize <- genSmallNum
-    properties <- Gen.mapOfN(propertiesSize, Gen.zip(genNonEmptyAlphaStr, genJsonValue))
-    edgesSize <- genSmallNum
-    edges <- Gen.listOfN(edgesSize, genTRestHalfEdge[ID])
-  } yield TLiteralNode(properties, edges)
-  implicit def arbTLiteralNode[ID: Arbitrary]: Arbitrary[TLiteralNode[ID]] = Arbitrary(genTLiteralNode[ID])
 }

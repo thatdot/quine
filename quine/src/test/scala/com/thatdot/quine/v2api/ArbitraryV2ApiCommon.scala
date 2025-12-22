@@ -4,9 +4,10 @@ import org.scalacheck.{Arbitrary, Gen}
 
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.OutputFormat
-import com.thatdot.quine.{ArbitraryAwsTypes, ArbitraryCommon}
+import com.thatdot.quine.{ArbitraryAwsTypes, ScalaPrimitiveGenerators}
 
-trait ArbitraryV2ApiCommon extends ArbitraryCommon with ArbitraryAwsTypes {
+trait ArbitraryV2ApiCommon extends ArbitraryAwsTypes {
+  import ScalaPrimitiveGenerators.Gens.nonEmptyAlphaStr
 
   implicit val genOutputFormat: Gen[OutputFormat] = Gen.oneOf(
     Gen.const(OutputFormat.JSON),
@@ -23,7 +24,7 @@ trait ArbitraryV2ApiCommon extends ArbitraryCommon with ArbitraryAwsTypes {
 
   implicit val arbKafkaProperties: Arbitrary[Map[String, KafkaPropertyValue]] = Arbitrary(
     Gen.mapOf(
-      Gen.zip(genNonEmptyAlphaStr, genKafkaPropertyValue),
+      Gen.zip(nonEmptyAlphaStr, genKafkaPropertyValue),
     ),
   )
 }

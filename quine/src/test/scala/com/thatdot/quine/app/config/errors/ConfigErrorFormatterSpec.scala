@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 import pureconfig.error._
 
-import com.thatdot.quine.ArbitraryCommon
+import com.thatdot.quine.ScalaPrimitiveGenerators
 
 class ConfigErrorFormatterSpec
     extends AnyWordSpec
@@ -70,12 +70,13 @@ class ConfigErrorFormatterSpec
     }
 
     "handle type mismatches with path and type information" in {
+      import ScalaPrimitiveGenerators.Gens.nonEmptyAlphaStr
       forAll(
         errorFormatterConfigGen,
         startupContextGen,
-        genNonEmptyAlphaStr,
-        genNonEmptyAlphaStr,
-        genNonEmptyAlphaStr,
+        nonEmptyAlphaStr,
+        nonEmptyAlphaStr,
+        nonEmptyAlphaStr,
       ) { (config, context, path, foundType, expectedType) =>
 
         val formatter = new ConfigErrorFormatter(config, context)
@@ -100,7 +101,8 @@ class ConfigErrorFormatterSpec
     }
 
     "handle unknown configuration keys" in {
-      forAll(errorFormatterConfigGen, startupContextGen, genNonEmptyAlphaStr, genNonEmptyAlphaStr) {
+      import ScalaPrimitiveGenerators.Gens.nonEmptyAlphaStr
+      forAll(errorFormatterConfigGen, startupContextGen, nonEmptyAlphaStr, nonEmptyAlphaStr) {
         (config, context, path, unknownKey) =>
 
           val formatter = new ConfigErrorFormatter(config, context)
@@ -125,7 +127,8 @@ class ConfigErrorFormatterSpec
     }
 
     "handle unclassified errors by preserving description" in {
-      forAll(errorFormatterConfigGen, startupContextGen, genNonEmptyAlphaStr) { (config, context, errorDesc) =>
+      import ScalaPrimitiveGenerators.Gens.nonEmptyAlphaStr
+      forAll(errorFormatterConfigGen, startupContextGen, nonEmptyAlphaStr) { (config, context, errorDesc) =>
         val formatter = new ConfigErrorFormatter(config, context)
         val failure = createGenericFailure(errorDesc)
         val failures = ConfigReaderFailures(failure)
@@ -297,7 +300,8 @@ class ConfigErrorFormatterSpec
     }
 
     "handle all StartupContext variations appropriately" in {
-      forAll(errorFormatterConfigGen, genNonEmptyAlphaStr) { (config, confFile) =>
+      import ScalaPrimitiveGenerators.Gens.nonEmptyAlphaStr
+      forAll(errorFormatterConfigGen, nonEmptyAlphaStr) { (config, confFile) =>
         val formatter1 = new ConfigErrorFormatter(config, StartupContext(None, isJar = false))
         val formatter2 = new ConfigErrorFormatter(config, StartupContext(None, isJar = true))
         val formatter3 = new ConfigErrorFormatter(config, StartupContext(Some(confFile), isJar = false))
@@ -354,9 +358,11 @@ protected trait ConfigErrorFormatterHelpers {
     createConvertFailure(description, path = "")
 }
 
-protected trait ConfigErrorFormatterGen extends ArbitraryCommon {
-  val genNonEmptyAlphaStrLower: Gen[String] = genNonEmptyAlphaStr.map(_.toLowerCase)
-  val genNonEmptyAlphaStrNonEmptyList: Gen[List[String]] = Gen.nonEmptyListOf(genNonEmptyAlphaStr)
+protected trait ConfigErrorFormatterGen {
+  import ScalaPrimitiveGenerators.Gens.nonEmptyAlphaStr
+
+  val genNonEmptyAlphaStrLower: Gen[String] = nonEmptyAlphaStr.map(_.toLowerCase)
+  val genNonEmptyAlphaStrNonEmptyList: Gen[List[String]] = Gen.nonEmptyListOf(nonEmptyAlphaStr)
 
   val kebabCaseStr: Gen[String] = for {
     parts <- genNonEmptyAlphaStrNonEmptyList
@@ -364,7 +370,7 @@ protected trait ConfigErrorFormatterGen extends ArbitraryCommon {
 
   val camelCaseStr: Gen[String] = for {
     first <- genNonEmptyAlphaStrLower
-    rest <- Gen.listOf(genNonEmptyAlphaStr.map(_.capitalize))
+    rest <- Gen.listOf(nonEmptyAlphaStr.map(_.capitalize))
   } yield first + rest.mkString
 
   val urlGen: Gen[String] = for {
@@ -374,7 +380,7 @@ protected trait ConfigErrorFormatterGen extends ArbitraryCommon {
 
   val filePathGen: Gen[String] = for {
     segments <- genNonEmptyAlphaStrNonEmptyList
-    filename <- genNonEmptyAlphaStr
+    filename <- nonEmptyAlphaStr
   } yield "/" + segments.mkString("/") + "/" + filename + ".conf"
 
   val startupContextGen: Gen[StartupContext] = for {
@@ -384,7 +390,7 @@ protected trait ConfigErrorFormatterGen extends ArbitraryCommon {
 
   val errorFormatterConfigGen: Gen[ErrorFormatterConfig] = for {
     expectedRootKey <- kebabCaseStr
-    productName <- genNonEmptyAlphaStr.map(_.capitalize + " Product")
+    productName <- nonEmptyAlphaStr.map(_.capitalize + " Product")
     requiredFieldCount <- Gen.choose(0, 5)
     requiredFields <- Gen.listOfN(requiredFieldCount, camelCaseStr).map(_.toSet)
     docsUrl <- urlGen

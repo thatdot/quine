@@ -24,6 +24,8 @@ import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirec
 object V2DebugEndpointEntities {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
+  implicit private val circeConfig: Configuration = Configuration.default
+
   private val jsonSchema: Schema[Json] = Schema.any[Json]
   private val mapStringJsonSchema: Schema[Map[String, Json]] = Schema.schemaForMap[Json](jsonSchema)
 
@@ -57,10 +59,8 @@ object V2DebugEndpointEntities {
     @description("Id of node at the other end of the edge.") other: ID,
   )
   object TRestHalfEdge {
-    implicit def encoder[ID](implicit idEncoder: Encoder[ID]): Encoder[TRestHalfEdge[ID]] = {
-      implicit val config: Configuration = Configuration.default
+    implicit def encoder[ID](implicit idEncoder: Encoder[ID]): Encoder[TRestHalfEdge[ID]] =
       deriveConfiguredEncoder
-    }
 
     implicit def schema[ID](implicit idSchema: Schema[ID]): Schema[TRestHalfEdge[ID]] =
       Schema.derived[TRestHalfEdge[ID]]
@@ -79,7 +79,6 @@ object V2DebugEndpointEntities {
   )
   object TLiteralNode {
     implicit def encoder[ID](implicit idEncoder: Encoder[ID]): Encoder[TLiteralNode[ID]] = {
-      implicit val config: Configuration = Configuration.default
       implicit val halfEdgeEncoder: Encoder[TRestHalfEdge[ID]] = TRestHalfEdge.encoder[ID]
       deriveConfiguredEncoder
     }

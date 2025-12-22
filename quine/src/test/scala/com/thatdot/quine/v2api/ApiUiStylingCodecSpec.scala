@@ -1,19 +1,14 @@
 package com.thatdot.quine.v2api
 
 import io.circe.syntax.EncoderOps
-import org.scalacheck.{Arbitrary, Gen}
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.ArbitraryJson
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling._
 
-class ApiUiStylingCodecSpec
-    extends AnyFunSuite
-    with Matchers
-    with ScalaCheckDrivenPropertyChecks
-    with ApiUiStylingCodecSpecGenerators {
+class ApiUiStylingCodecSpec extends AnyFunSuite with Matchers with ScalaCheckDrivenPropertyChecks {
+  import ApiUiStylingGenerators.Arbs._
 
   test("QuerySort roundtrip encoding/decoding") {
     forAll { (sort: QuerySort) =>
@@ -140,56 +135,4 @@ class ApiUiStylingCodecSpec
       obj("quickQuery") shouldBe defined
     }
   }
-}
-
-trait ApiUiStylingCodecSpecGenerators extends ArbitraryJson {
-
-  implicit val genQuerySort: Gen[QuerySort] = Gen.oneOf(QuerySort.Node, QuerySort.Text)
-  implicit val arbQuerySort: Arbitrary[QuerySort] = Arbitrary(genQuerySort)
-
-  implicit val genQuickQuery: Gen[QuickQuery] = for {
-    name <- genNonEmptyAlphaNumStr
-    querySuffix <- genNonEmptyAlphaNumStr
-    sort <- genQuerySort
-    edgeLabel <- genOptNonEmptyAlphaNumStr
-  } yield QuickQuery(name, querySuffix, sort, edgeLabel)
-  implicit val arbQuickQuery: Arbitrary[QuickQuery] = Arbitrary(genQuickQuery)
-
-  implicit val genSampleQuery: Gen[SampleQuery] = for {
-    name <- genNonEmptyAlphaNumStr
-    query <- genNonEmptyAlphaNumStr
-  } yield SampleQuery(name, query)
-  implicit val arbSampleQuery: Arbitrary[SampleQuery] = Arbitrary(genSampleQuery)
-
-  implicit val genUiNodePredicate: Gen[UiNodePredicate] = for {
-    propertyKeysSize <- genSmallNum
-    propertyKeys <- Gen.containerOfN[Vector, String](propertyKeysSize, genNonEmptyAlphaStr)
-    knownValues <- genJsonDictionary
-    dbLabel <- genOptNonEmptyAlphaNumStr
-  } yield UiNodePredicate(propertyKeys, knownValues, dbLabel)
-  implicit val arbUiNodePredicate: Arbitrary[UiNodePredicate] = Arbitrary(genUiNodePredicate)
-
-  implicit val genUiNodeLabel: Gen[UiNodeLabel] = Gen.oneOf(
-    genNonEmptyAlphaNumStr.map(UiNodeLabel.Constant(_)),
-    for {
-      key <- genNonEmptyAlphaStr
-      prefix <- genOptNonEmptyAlphaNumStr
-    } yield UiNodeLabel.Property(key, prefix),
-  )
-  implicit val arbUiNodeLabel: Arbitrary[UiNodeLabel] = Arbitrary(genUiNodeLabel)
-
-  implicit val genUiNodeAppearance: Gen[UiNodeAppearance] = for {
-    predicate <- genUiNodePredicate
-    size <- Gen.option(Gen.chooseNum(10.0, 100.0))
-    icon <- genOptNonEmptyAlphaNumStr
-    color <- genOptNonEmptyAlphaNumStr
-    label <- Gen.option(genUiNodeLabel)
-  } yield UiNodeAppearance(predicate, size, icon, color, label)
-  implicit val arbUiNodeAppearance: Arbitrary[UiNodeAppearance] = Arbitrary(genUiNodeAppearance)
-
-  implicit val genUiNodeQuickQuery: Gen[UiNodeQuickQuery] = for {
-    predicate <- genUiNodePredicate
-    quickQuery <- genQuickQuery
-  } yield UiNodeQuickQuery(predicate, quickQuery)
-  implicit val arbUiNodeQuickQuery: Arbitrary[UiNodeQuickQuery] = Arbitrary(genUiNodeQuickQuery)
 }

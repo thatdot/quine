@@ -237,6 +237,8 @@ lazy val `api`: Project = project
       "io.circe" %% "circe-core" % circeV,
       "io.circe" %% "circe-generic-extras" % circeGenericExtrasV,
       "io.circe" %% "circe-yaml" % circeYamlV,
+      "org.scalatest" %% "scalatest" % scalaTestV % Test,
+      "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
     ),
   )
 
@@ -344,7 +346,7 @@ lazy val `quine`: Project = project
     `quine-cypher` % "compile->compile;test->test",
     `quine-endpoints`.jvm % "compile->compile;test->test",
     `data` % "compile->compile;test->test",
-    `api`,
+    `api` % "compile->compile;test->test",
     `model-converters`,
     `outputs2` % "compile->compile;test->test",
     `quine-gremlin`,

@@ -2,13 +2,11 @@ package com.thatdot.quine.v2api
 
 import io.circe.Json
 import io.circe.syntax._
-import org.scalacheck.{Arbitrary, Gen}
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.ArbitraryJson
 import com.thatdot.quine.app.v2api.definitions.QuineIdCodec
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.TCypherQuery
 import com.thatdot.quine.graph.{ArbitraryInstances, QuineIdLongProvider}
@@ -19,15 +17,12 @@ class V2CypherCodecSpec
     with Matchers
     with ScalaCheckDrivenPropertyChecks
     with ArbitraryInstances
-    with QuineIdCodec
-    with V2CypherCodecSpecGenerators {
+    with QuineIdCodec {
+  import V2CypherEndpointGenerators.Arbs.tCypherQuery
+  import V2CypherEndpointGenerators.Gens.quineIdFromLong
 
   private val longProvider = QuineIdLongProvider()
   override val idProvider: QuineIdProvider = longProvider
-
-  // QuineId generator needs the concrete provider type
-  private val genValidQuineIdFromLong: Gen[QuineId] =
-    Arbitrary.arbLong.arbitrary.map(longProvider.customIdToQid)
 
   test("TCypherQuery roundtrip encoding/decoding preserves data") {
     forAll { (query: TCypherQuery) =>
@@ -61,7 +56,7 @@ class V2CypherCodecSpec
   }
 
   test("QuineId roundtrip encoding/decoding preserves data") {
-    forAll(genValidQuineIdFromLong) { qid =>
+    forAll(quineIdFromLong) { qid =>
       val json = qid.asJson
       val decoded = json.as[QuineId]
       decoded shouldBe Right(qid)
@@ -85,17 +80,4 @@ class V2CypherCodecSpec
     val decoded = json.as[QuineId]
     decoded.isLeft shouldBe true
   }
-}
-
-trait V2CypherCodecSpecGenerators extends ArbitraryJson {
-
-  val genMapStringJson: Gen[Map[String, Json]] =
-    Gen.mapOf(Gen.zip(Gen.alphaNumStr, genJsonPrimitive))
-
-  implicit val arbTCypherQuery: Arbitrary[TCypherQuery] = Arbitrary(
-    for {
-      text <- genNonEmptyAlphaNumStr
-      params <- genMapStringJson
-    } yield TCypherQuery(text, params),
-  )
 }
