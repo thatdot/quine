@@ -150,7 +150,7 @@ object StandingQueryPatterns extends LazySafeLogging {
             )
           case None =>
             throw CypherException.Compile(
-              s"Must include exactly one label in a standing query pattern (got none)",
+              s"Edges in standing query patterns must have exactly one label (got none)",
               relPos,
             )
         }

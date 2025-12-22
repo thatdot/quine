@@ -706,6 +706,18 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       )
     }
 
+    // should reject giving no label to an edge
+    {
+      val query = "MATCH (n)<--(m) RETURN id(n), id(m)"
+      interceptQuery(
+        query,
+        CypherException.Compile(
+          "Edges in standing query patterns must have exactly one label (got none)",
+          Some(Position(1, 10, 9, SourceText(query))),
+        ),
+      )
+    }
+
     // should reject undirected edge patterns
     {
       val query = "MATCH (n)-[:Foo]-(m) RETURN id(n), id(m)"
