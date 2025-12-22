@@ -104,6 +104,15 @@ object LiteralMessage {
 
   final case class GetNodeHashCode(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[GraphNodeHashCode]
 
+  /** Check if a node is "interesting" (has at least one property (including labels) or edge).
+    * Used to filter out empty nodes from scan results.
+    */
+  final case class CheckNodeIsInteresting(replyTo: QuineRef)
+      extends LiteralCommand
+      with AskableQuineMessage[NodeIsInteresting]
+
+  final case class NodeIsInteresting(isInteresting: Boolean) extends LiteralMessage
+
   /** Request the current results of the standing query matches on this node. */
   final case class GetSqState(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[SqStateResults]
 

@@ -165,14 +165,20 @@ object RecentNodeIds extends UserDefinedProcedure {
       case Seq(Expr.Integer(l)) => l.toInt
       case other => throw wrongSignature(other)
     }
+    val atTime = location.atTime
+    val graph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
+    val literalOps = graph.literalOps(location.namespace)
 
     Source.lazyFutureSource { () =>
-      location.graph
-        .recentNodes(limit, location.namespace, location.atTime)
+      graph
+        .recentNodes(limit, location.namespace, atTime)
         .map { (nodes: Set[QuineId]) =>
           Source(nodes)
-            .map(qid => Vector(Expr.Str(qid.pretty)))
-        }(location.graph.nodeDispatcherEC)
+            .mapAsync(parallelism = 1)(qid =>
+              literalOps.nodeIsInteresting(qid, atTime).map(qid -> _)(graph.nodeDispatcherEC),
+            )
+            .collect { case (qid, true) => Vector(Expr.Str(qid.pretty)) }
+        }(graph.nodeDispatcherEC)
     }
   }
 }
@@ -205,15 +211,20 @@ object RecentNodes extends UserDefinedProcedure {
     }
     val atTime = location.atTime
     val graph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
+    val literalOps = graph.literalOps(location.namespace)
 
     Source.lazyFutureSource { () =>
       graph
         .recentNodes(limit, location.namespace, atTime)
         .map { (nodes: Set[QuineId]) =>
           Source(nodes)
+            .mapAsync(parallelism = 1)(qid =>
+              literalOps.nodeIsInteresting(qid, atTime).map(qid -> _)(graph.nodeDispatcherEC),
+            )
+            .collect { case (qid, true) => qid }
             .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, location.namespace, atTime, graph))
             .map(Vector(_))
-        }(location.graph.nodeDispatcherEC)
+        }(graph.nodeDispatcherEC)
     }
   }
 }

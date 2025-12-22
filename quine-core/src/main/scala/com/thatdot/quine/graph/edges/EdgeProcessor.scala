@@ -56,6 +56,8 @@ abstract class EdgeProcessor(
 
   def nonEmpty: Boolean = toSyncFuture(edges.nonEmpty)
 
+  def isEmpty: Boolean = !nonEmpty
+
   def matching(edgeType: Symbol): Iterator[HalfEdge] = toSyncStream(edges.edgesByType(edgeType))
 
   def matching(edgeType: Symbol, direction: EdgeDirection): Iterator[HalfEdge] =

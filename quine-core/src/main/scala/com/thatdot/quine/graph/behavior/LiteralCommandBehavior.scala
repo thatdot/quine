@@ -171,5 +171,7 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
     case h: GetNodeHashCode => h ?! getNodeHashCode()
 
     case m @ GetSqState(_) => m ?! getSqState()
+
+    case c: CheckNodeIsInteresting => c ?! NodeIsInteresting(properties.nonEmpty || edges.nonEmpty)
   }
 }

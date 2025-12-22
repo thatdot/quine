@@ -41,6 +41,21 @@ trait LiteralOpsGraph extends BaseGraph {
       relayAsk(SpaceTimeQuineId(node, namespace, None), GetSqState)
     }
 
+    /** Check if a node is "interesting" (has at least one property or edge).
+      * Used to filter out empty nodes from scan results.
+      *
+      * @param node   which node to query
+      * @param atTime the historical moment to query, or None for the moving present
+      * @return true if the node has properties or edges
+      */
+    def nodeIsInteresting(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
+      timeout: Timeout,
+    ): Future[Boolean] = {
+      requireCompatibleNodeType()
+      relayAsk(SpaceTimeQuineId(node, namespace, atTime), CheckNodeIsInteresting)
+        .map(_.isInteresting)(shardDispatcherEC)
+    }
+
     def deleteNode(node: QuineId)(implicit timeout: Timeout): Future[Unit] = {
       requireCompatibleNodeType()
       relayAsk(SpaceTimeQuineId(node, namespace, None), DeleteNodeCommand(deleteEdges = true, _)).flatten

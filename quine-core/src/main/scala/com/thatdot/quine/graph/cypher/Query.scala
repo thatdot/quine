@@ -353,11 +353,14 @@ object Query {
     * @param labelsOpt labels that should be on the node
     * @param propertiesOpt map of properties that should be on the node
     * @param bindName name under which to add the node to context
+    * @param mustBeInteresting if true, filter out nodes that have no properties (including labels) and no edges
+    *        (used by AllNodesScan to exclude empty/deleted nodes)
     */
   final case class LocalNode(
     labelsOpt: Option[Seq[Symbol]],
     propertiesOpt: Option[Expr],
     bindName: Option[Symbol],
+    mustBeInteresting: Boolean = false,
     columns: Columns = Columns.Omitted,
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = true

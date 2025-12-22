@@ -71,8 +71,17 @@ trait BaseNodeActor extends BaseNodeActorView {
     * @return future signaling when the write is done
     */
   protected def setLabels(labels: Set[Symbol]): Future[Done.type] = {
-    val labelsValue = QuineValue.List(labels.map(_.name).toVector.sorted.map(QuineValue.Str))
-    val propertyEvent = PropertyEvent.PropertySet(graph.labelsProperty, PropertyValue(labelsValue))
+    val propertyEvent = if (labels.isEmpty) {
+      // When all labels are removed, remove the property entirely rather than setting to empty list.
+      // This ensures properties.isEmpty returns true when the node has no labels.
+      properties.get(graph.labelsProperty) match {
+        case Some(oldValue) => PropertyEvent.PropertyRemoved(graph.labelsProperty, oldValue)
+        case None => return Future.successful(Done) // Already no labels, nothing to do
+      }
+    } else {
+      val labelsValue = QuineValue.List(labels.map(_.name).toVector.sorted.map(QuineValue.Str))
+      PropertyEvent.PropertySet(graph.labelsProperty, PropertyValue(labelsValue))
+    }
     processPropertyEvent(propertyEvent)
   }
 

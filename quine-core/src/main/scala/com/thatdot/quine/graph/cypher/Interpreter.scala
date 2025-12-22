@@ -504,6 +504,11 @@ trait OnNodeInterpreter
     parameters: Parameters,
     logConfig: LogConfig,
   ): InterpM[CypherException, QueryContext] = {
+    // Filter out empty nodes if mustBeInteresting is set (used by AllNodesScan)
+    if (query.mustBeInteresting && properties.isEmpty && edges.isEmpty) {
+      return InterpM.empty
+    }
+
     val requiredPropsOpt: Option[Map[String, Value]] = query.propertiesOpt.map { expr =>
       expr.evalUnsafe(context) match {
         case Expr.Map(map) => map

@@ -39,6 +39,7 @@ class CypherMatch extends CypherHarness("cypher-match-rewrite-tests") with Match
                 labelsOpt = Some(Vector()),
                 propertiesOpt = None,
                 bindName = Some(Symbol("a")),
+                mustBeInteresting = true,
                 columns = Columns.Specified(Vector(Symbol("a"))),
               ),
               columns = Columns.Specified(Vector(Symbol("a"))),

@@ -59,7 +59,7 @@ final case class Graph(
       /* There is a starting spot */
       case Some((otherNodeLv, otherNodeAnchorExpr)) =>
         for {
-          andThen <- synthesizeFetchOnNode(otherNodeLv, freeConstraints, avng)
+          andThen <- synthesizeFetchOnNode(otherNodeLv, freeConstraints, avng, mustBeInteresting = false)
           enterAndThen = cypher.Query.ArgumentEntry(otherNodeAnchorExpr, andThen)
         } yield enterAndThen
 
@@ -81,7 +81,7 @@ final case class Graph(
       case None =>
         val (nodeLv, _) = nodes.head
         for {
-          andThen <- synthesizeFetchOnNode(nodeLv, freeConstraints, avng)
+          andThen <- synthesizeFetchOnNode(nodeLv, freeConstraints, avng, mustBeInteresting = true)
           enterAndThen = cypher.Query.AnchoredEntry(cypher.EntryPoint.AllNodesScan, andThen)
         } yield enterAndThen
     }
@@ -91,11 +91,13 @@ final case class Graph(
     *
     * @param atNode starting position in the graph
     * @param freeConstraints constraints on the graph pattern
+    * @param mustBeInteresting if true, filter out nodes with no properties and no edges
     */
   def synthesizeFetchOnNode(
     atNode: expressions.LogicalVariable,
     freeConstraints: WithFreeVariables[expressions.LogicalVariable, expressions.Expression],
     avng: AnonymousVariableNameGenerator,
+    mustBeInteresting: Boolean,
   ): CompM[cypher.Query[cypher.Location.OnNode]] = for {
     scopeInfo: QueryScopeInfo <- CompM.getQueryScopeInfo
 
@@ -119,6 +121,7 @@ final case class Graph(
             labelsOpt = None,
             propertiesOpt = None,
             bindName = Some(tempVarExpr.id),
+            mustBeInteresting = mustBeInteresting,
           )
           filter = cypher.Query.filter(
             condition = cypher.Expr.Equal(
@@ -165,6 +168,7 @@ final case class Graph(
               Some(labelsOpt.toVector),
               propertiesOpt = props,
               bindName,
+              mustBeInteresting = mustBeInteresting,
             )
           }
           returnQuery = (cont: cypher.Query[cypher.Location.OnNode]) => {
@@ -254,7 +258,7 @@ final case class Graph(
           }
 
           remainingGraph = Graph(remainingNodes, remainingEdges, namedParts)
-          andThen <- remainingGraph.synthesizeFetchOnNode(otherNodeLv, constraints2, avng)
+          andThen <- remainingGraph.synthesizeFetchOnNode(otherNodeLv, constraints2, avng, mustBeInteresting = false)
         } yield cypher.Query.Expand(
           edgeName.map(_.toVector),
           toNode = otherNode,
