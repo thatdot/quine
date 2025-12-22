@@ -51,7 +51,7 @@ final case class VisitedVariableEdgeMatches private (
     visited.toVector
       .sortBy(_._2)
       .map { case ((q1, HalfEdge(typ, dir, q2)), _) =>
-        if (dir == EdgeDirection.Incoming) Expr.Relationship(q1, typ, Map.empty, q2)
+        if (dir == EdgeDirection.Outgoing) Expr.Relationship(q1, typ, Map.empty, q2)
         else Expr.Relationship(q2, typ, Map.empty, q1)
       }
       .toVector

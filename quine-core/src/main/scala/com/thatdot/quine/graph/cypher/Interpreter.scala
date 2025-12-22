@@ -380,7 +380,8 @@ trait OnNodeInterpreter
     }
 
     // Get edges matching the direction / name constraint.
-    val halfEdgesIterator: Iterator[HalfEdge] = (edgeName, direction, literalFarNodeId) match {
+    val actualFarNodeId = if (range.isDefined) None else literalFarNodeId
+    val halfEdgesIterator: Iterator[HalfEdge] = (edgeName, direction, actualFarNodeId) match {
       case (None, None, None) =>
         edges.all
       case (None, None, Some(id)) =>
@@ -471,16 +472,22 @@ trait OnNodeInterpreter
           case None => andThenSource
           case Some(range) =>
             // Match the far node (if it is in range)
+            val inRange = range match {
+              case (Some(lower), None) => visited.size + 1L >= lower
+              case (None, Some(upper)) => visited.size + 1L <= upper
+              case (Some(lower), Some(upper)) => visited.size + 1L >= lower && visited.size + 1L <= upper
+              case (None, None) => false
+            }
             val andThenMatch =
-              if (
-                range match {
-                  case (Some(lower), None) => visited.size + 1L >= lower
-                  case (None, Some(upper)) => visited.size + 1L <= upper
-                  case (Some(lower), Some(upper)) => visited.size + 1L >= lower && visited.size + 1L <= upper
-                  case (None, None) => false
+              if (inRange) {
+                // For variable-length patterns, validate endpoint if target is specified
+                literalFarNodeId match {
+                  case Some(targetId) if halfEdgeFarNode != targetId =>
+                    InterpM.empty[CypherException, QueryContext] // Not at target, skip
+                  case _ =>
+                    andThenSource // At target (or no target specified)
                 }
-              ) andThenSource
-              else InterpM.empty[CypherException, QueryContext]
+              } else InterpM.empty[CypherException, QueryContext]
             // Recursively expand the same query for a variable-length edge
             // (if relatives of the far node will be in range)
             val recursiveMatch = {

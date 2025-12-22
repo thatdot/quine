@@ -462,3 +462,50 @@ class VariableLengthRelationshipPatternMatrix extends CypherHarness("variable-le
     )
   }
 }
+
+class VariableLengthRelationshipPatternAnchoredEndpoints
+    extends CypherHarness("variable-length-relationship-pattern-anchored") {
+
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    // Create graph: (a) -> (b) and (a) -> (c) -> (b) -> (d) -> (e)
+    Await.result(
+      queryCypherValues(
+        """MATCH (a), (b), (c), (d), (e)
+          |WHERE id(a) = idFrom(1) AND id(b) = idFrom(2) AND id(c) = idFrom(3) AND id(d) = idFrom(4) AND id(e) = idFrom(5)
+          |SET a.name = 'a', b.name = 'b', c.name = 'c', d.name = 'd', e.name = 'e'
+          |CREATE (a)-[:TO]->(c)-[:TO]->(b)-[:TO]->(d)-[:TO]->(e)
+          |""".stripMargin,
+        cypherHarnessNamespace,
+      )(graph).results.runWith(Sink.ignore),
+      timeout.duration,
+    )
+    Await.result(
+      queryCypherValues(
+        """MATCH (a), (b)
+          |WHERE id(a) = idFrom(1) AND id(b) = idFrom(2)
+          |CREATE (a)-[:TO]->(b)
+          |""".stripMargin,
+        cypherHarnessNamespace,
+      )(graph).results.runWith(Sink.ignore),
+      timeout.duration,
+    )
+    ()
+  }
+
+  describe("Variable length patterns with both endpoints anchored by ID") {
+    testQuery(
+      """MATCH (a)-[r*1..3]->(b)
+        |WHERE id(a) = idFrom(1) AND id(b) = idFrom(2)
+        |RETURN size(r) AS hops
+        |ORDER BY hops
+        |""".stripMargin,
+      expectedColumns = Vector("hops"),
+      expectedRows = Seq(
+        Vector(Expr.Integer(1)), // direct path: a -> b
+        Vector(Expr.Integer(2)), // indirect path: a -> c -> b
+      ),
+      expectedCanContainAllNodeScan = false,
+    )
+  }
+}
