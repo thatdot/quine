@@ -8,7 +8,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.ArbitraryCommon
+import com.thatdot.quine.ArbitraryJson
 import com.thatdot.quine.app.v2api.definitions.QuineIdCodec
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TCypherQuery,
@@ -90,7 +90,7 @@ class V2CypherEndpointCodecSpec
   }
 }
 
-trait V2CypherEndpointCodecSpecGenerators extends ArbitraryCommon {
+trait V2CypherEndpointCodecSpecGenerators extends ArbitraryJson {
   protected val longProvider: QuineIdLongProvider = QuineIdLongProvider()
 
   val genQuineId: Gen[QuineId] = Arbitrary.arbLong.arbitrary.map(longProvider.customIdToQid)
@@ -100,8 +100,7 @@ trait V2CypherEndpointCodecSpecGenerators extends ArbitraryCommon {
 
   implicit val genTCypherQuery: Gen[TCypherQuery] = for {
     text <- genNonEmptyAlphaNumStr
-    paramsSize <- genSmallNum
-    params <- genJsonDictionary(paramsSize)
+    params <- genJsonDictionary
   } yield TCypherQuery(text, params)
   implicit val arbTCypherQuery: Arbitrary[TCypherQuery] = Arbitrary(genTCypherQuery)
 
@@ -117,8 +116,7 @@ trait V2CypherEndpointCodecSpecGenerators extends ArbitraryCommon {
     id <- genQuineId
     hostIndex <- genSmallNum
     label <- genNonEmptyAlphaStr
-    propsSize <- genSmallNum
-    properties <- genJsonDictionary(propsSize)
+    properties <- genJsonDictionary
   } yield TUiNode(id, hostIndex, label, properties)
   implicit val arbTUiNode: Arbitrary[TUiNode] = Arbitrary(genTUiNode)
 

@@ -1,16 +1,24 @@
 package com.thatdot.quine.app.v2api.definitions
 
-import io.circe.Json
+import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.{Decoder, Encoder, Json}
 import sttp.tapir.Schema.annotations.{description, title}
 
 object ApiUiStyling {
   import com.thatdot.quine.app.util.StringOps.syntax._
+
+  implicit private val circeConfig: Configuration =
+    Configuration.default.withDiscriminator("type").withDefaults
 
   /** Enumeration for the kinds of queries we can issue */
   sealed abstract class QuerySort
   object QuerySort {
     case object Node extends QuerySort
     case object Text extends QuerySort
+
+    implicit val encoder: Encoder[QuerySort] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[QuerySort] = deriveConfiguredDecoder
   }
 
   /** Queries like the ones that show up when right-clicking nodes
@@ -56,6 +64,8 @@ object ApiUiStyling {
   }
 
   object QuickQuery {
+    implicit val encoder: Encoder[QuickQuery] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[QuickQuery] = deriveConfiguredDecoder
 
     /** Open up adjacent nodes */
     def adjacentNodes: QuickQuery = {
@@ -146,6 +156,9 @@ object ApiUiStyling {
   )
 
   object SampleQuery {
+    implicit val encoder: Encoder[SampleQuery] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[SampleQuery] = deriveConfiguredDecoder
+
     def recentNodes: SampleQuery = SampleQuery(
       name = "Get a few recent nodes",
       query = "CALL recentNodes(10)",
@@ -184,6 +197,9 @@ object ApiUiStyling {
   }
 
   object UiNodePredicate {
+    implicit val encoder: Encoder[UiNodePredicate] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[UiNodePredicate] = deriveConfiguredDecoder
+
     val every: UiNodePredicate = UiNodePredicate(Vector.empty, Map.empty, None)
   }
 
@@ -204,6 +220,8 @@ object ApiUiStyling {
   )
 
   object UiNodeAppearance {
+    implicit val encoder: Encoder[UiNodeAppearance] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[UiNodeAppearance] = deriveConfiguredDecoder
 
     def apply(
       predicate: UiNodePredicate,
@@ -231,6 +249,8 @@ object ApiUiStyling {
   sealed abstract class UiNodeLabel
 
   object UiNodeLabel {
+    implicit val encoder: Encoder[UiNodeLabel] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[UiNodeLabel] = deriveConfiguredDecoder
 
     @title("Fixed Label")
     @description("Use a specified, fixed value as a label.")
@@ -256,6 +276,9 @@ object ApiUiStyling {
   )
 
   object UiNodeQuickQuery {
+    implicit val encoder: Encoder[UiNodeQuickQuery] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[UiNodeQuickQuery] = deriveConfiguredDecoder
+
     def every(query: QuickQuery): UiNodeQuickQuery = UiNodeQuickQuery(UiNodePredicate.every, query)
 
     val defaults: Vector[UiNodeQuickQuery] = Vector(

@@ -5,7 +5,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.ArbitraryCommon
+import com.thatdot.quine.ArbitraryJson
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 
 class V2DebugEndpointCodecSpec
@@ -65,7 +65,7 @@ class V2DebugEndpointCodecSpec
   }
 }
 
-trait V2DebugEndpointCodecSpecGenerators extends ArbitraryCommon {
+trait V2DebugEndpointCodecSpecGenerators extends ArbitraryJson {
   import io.circe.Json
   import org.scalacheck.{Arbitrary, Gen}
 
@@ -78,19 +78,16 @@ trait V2DebugEndpointCodecSpecGenerators extends ArbitraryCommon {
   )
 
   implicit def genTRestHalfEdge[ID: Arbitrary]: Gen[TRestHalfEdge[ID]] = for {
-    edgeType <- Gen.alphaStr.suchThat(_.nonEmpty)
+    edgeType <- genNonEmptyAlphaStr
     direction <- genTEdgeDirection
     other <- Arbitrary.arbitrary[ID]
   } yield TRestHalfEdge(edgeType, direction, other)
   implicit def arbTRestHalfEdge[ID: Arbitrary]: Arbitrary[TRestHalfEdge[ID]] = Arbitrary(genTRestHalfEdge[ID])
 
   implicit def genTLiteralNode[ID: Arbitrary]: Gen[TLiteralNode[ID]] = for {
-    propertiesSize <- Gen.chooseNum(0, 5)
-    properties <- Gen.mapOfN(
-      propertiesSize,
-      Gen.zip(Gen.alphaStr.suchThat(_.nonEmpty), genJsonValue),
-    )
-    edgesSize <- Gen.chooseNum(0, 5)
+    propertiesSize <- genSmallNum
+    properties <- Gen.mapOfN(propertiesSize, Gen.zip(genNonEmptyAlphaStr, genJsonValue))
+    edgesSize <- genSmallNum
     edges <- Gen.listOfN(edgesSize, genTRestHalfEdge[ID])
   } yield TLiteralNode(properties, edges)
   implicit def arbTLiteralNode[ID: Arbitrary]: Arbitrary[TLiteralNode[ID]] = Arbitrary(genTLiteralNode[ID])

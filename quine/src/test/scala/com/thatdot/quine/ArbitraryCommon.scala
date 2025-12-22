@@ -1,8 +1,8 @@
 package com.thatdot.quine
 
-import io.circe.Json
 import org.scalacheck.{Arbitrary, Gen}
 
+/** Common generators and arbitraries, focused on Scala primitives. This should remain independent. */
 trait ArbitraryCommon {
   val genBool: Gen[Boolean] = Arbitrary.arbitrary[Boolean]
 
@@ -15,14 +15,6 @@ trait ArbitraryCommon {
   val genNonEmptyAlphaNumStr: Gen[String] = Gen.nonEmptyListOf(Gen.alphaNumChar).map(_.mkString)
   val arbNonEmptyAlphaNumStr: Arbitrary[String] = Arbitrary(genNonEmptyAlphaNumStr)
 
-  val genJsonPrimitive: Gen[Json] = Gen.oneOf(
-    Gen.const(Json.Null),
-    Arbitrary.arbBool.arbitrary.map(Json.fromBoolean),
-    Arbitrary.arbLong.arbitrary.map(Json.fromLong),
-    Arbitrary.arbDouble.arbitrary.map(Json.fromDoubleOrNull),
-    Arbitrary.arbString.arbitrary.map(Json.fromString),
-  )
-
-  def genJsonDictionary(propsSize: Int): Gen[Map[String, Json]] =
-    Gen.mapOfN(propsSize, Gen.zip(genNonEmptyAlphaStr, genJsonPrimitive))
+  val genOptNonEmptyAlphaStr: Gen[Option[String]] = Gen.option(genNonEmptyAlphaStr)
+  val genOptNonEmptyAlphaNumStr: Gen[Option[String]] = Gen.option(genNonEmptyAlphaNumStr)
 }

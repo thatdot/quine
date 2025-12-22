@@ -8,7 +8,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.ArbitraryCommon
+import com.thatdot.quine.ArbitraryJson
 import com.thatdot.quine.app.v2api.definitions.QuineIdCodec
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.TCypherQuery
 import com.thatdot.quine.graph.{ArbitraryInstances, QuineIdLongProvider}
@@ -87,7 +87,7 @@ class V2CypherCodecSpec
   }
 }
 
-trait V2CypherCodecSpecGenerators extends ArbitraryCommon {
+trait V2CypherCodecSpecGenerators extends ArbitraryJson {
 
   val genMapStringJson: Gen[Map[String, Json]] =
     Gen.mapOf(Gen.zip(Gen.alphaNumStr, genJsonPrimitive))
