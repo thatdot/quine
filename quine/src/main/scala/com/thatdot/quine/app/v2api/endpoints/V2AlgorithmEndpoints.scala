@@ -11,6 +11,9 @@ import org.apache.pekko.stream.scaladsl.{FileIO, Sink}
 import org.apache.pekko.util.ByteString
 
 import io.circe.generic.extras.auto._
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.generic.extras.{Configuration => CirceConfiguration}
+import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
 import sttp.tapir._
@@ -32,6 +35,9 @@ import com.thatdot.quine.app.v2api.definitions.{
 import com.thatdot.quine.graph.{AlgorithmGraph, BaseGraph, CypherOpsGraph, LiteralOpsGraph}
 
 object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
+
+  implicit private val circeConfig: CirceConfiguration = typeDiscriminatorConfig.asCirce
+
   /* WARNING: these values duplicate `AlgorithmGraph.defaults.walkPrefix` and `walkSuffix` from the
    * `com.thatdot.quine.graph` package which is not available here.
    * Beware of changes in one place not mirrored to the other!
@@ -104,6 +110,10 @@ object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
       FileIO.toPath(p)
     }
   }
+  object LocalFile {
+    implicit val encoder: Encoder[LocalFile] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[LocalFile] = deriveConfiguredDecoder
+  }
 
   @title("S3 Bucket")
   case class S3Bucket(
@@ -114,6 +124,15 @@ object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
 
     def toSink(fname: String): Sink[ByteString, Future[MultipartUploadResult]] = S3.multipartUpload(bucketName, fname)
 
+  }
+  object S3Bucket {
+    implicit val encoder: Encoder[S3Bucket] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[S3Bucket] = deriveConfiguredDecoder
+  }
+
+  object TSaveLocation {
+    implicit val encoder: Encoder[TSaveLocation] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[TSaveLocation] = deriveConfiguredDecoder
   }
 
 }
