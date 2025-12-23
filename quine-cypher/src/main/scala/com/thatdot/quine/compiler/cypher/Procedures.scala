@@ -680,7 +680,8 @@ object CypherLogging extends UserDefinedProcedure with StrictSafeLogging {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("level" -> Type.Str, "value" -> Type.Anything),
     outputs = Vector("log" -> Type.Str),
-    description = "Log the input argument to console",
+    description =
+      "Log a value to the system console during query execution. Supports levels: error, warn, info, debug, trace.",
   )
 
   def call(
@@ -739,7 +740,8 @@ object CypherDebugNode extends UserDefinedProcedure {
       "journal" -> Type.ListOfAnything,
       "graphNodeHashCode" -> Type.Integer,
     ),
-    description = "Log the internal state of a node",
+    description =
+      "Returns comprehensive internal state of a node including properties, edges, standing query states, and event journal. Useful for debugging why standing queries match or don't match.",
   )
 
   private[this] def halfEdge2Value(edge: HalfEdge)(implicit idProvider: QuineIdProvider): Value =
@@ -838,7 +840,8 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
       "receiverId" -> Type.Str,
       "lastResult" -> Type.Anything,
     ),
-    description = "Return the current state of the standing query subscribers.",
+    description =
+      "Returns nodes subscribed to this node for standing query updates. Useful for tracing standing query propagation.",
   )
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
@@ -891,7 +894,8 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
       "receiverId" -> Type.Str,
       "lastResult" -> Type.Anything,
     ),
-    description = "Return the current state of the standing query subscriptions.",
+    description =
+      "Returns nodes this node subscribes to for standing query updates. Useful for tracing standing query propagation.",
   )
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
@@ -1511,7 +1515,7 @@ class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[Standi
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("options" -> Type.Map),
     outputs = Vector("data" -> Type.Map, "meta" -> Type.Map),
-    description = "Wire-tap the results of a standing query",
+    description = "Stream live results from a running standing query. Returns data and metadata for each match.",
   )
 
   def call(
