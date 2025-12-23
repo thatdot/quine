@@ -14,6 +14,9 @@ module.exports = {
             }, {
                 test: /\.(gif|png|jpe?g|svg)$/i,
                 type: 'asset/resource'
+            }, {
+                test: /\.(woff|woff2|eot|ttf|otf)$/i,
+                type: 'asset/resource'
             }
         ]
     },
@@ -54,7 +57,11 @@ module.exports = {
     output: {
         filename: 'quine-browser-bundle.js',
         library: 'quineBrowser',
-        libraryTarget: 'umd'
+        libraryTarget: 'umd',
+        // By default, webpack 5 asset modules include query strings in filenames (e.g., "abc123.svg?64h6xh").
+        // scalajs-bundler checks if these files exist, but the actual files don't have query strings.
+        // This setting ensures clean filenames without query strings for compatibility with scalajs-bundler.
+        assetModuleFilename: '[hash][ext]'
     },
     externals: {
         vis: 'vis',

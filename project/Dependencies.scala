@@ -7,6 +7,8 @@ object Dependencies {
   val betterMonadicForV = "0.3.1"
   val boopickleV = "1.4.0"
   val bootstrapV = "5.3.6"
+  val coreuiV = "5.4.3"
+  val coreuiIconsV = "3.0.1"
   val caffeineV = "3.2.3"
   val cassandraClientV = "4.19.1"
   val catsV = "2.13.0"
@@ -34,6 +36,8 @@ object Dependencies {
   val kindProjectorV = "0.13.4"
   val logbackV = "1.5.20"
   val logstashLogbackV = "8.0"
+  val laminarV = "17.2.1"
+  val waypointV = "10.0.0-M1"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
   val mapDbV = "3.1.0"
   val metricsInfluxdbV = "1.1.0"

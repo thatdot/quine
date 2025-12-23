@@ -173,7 +173,7 @@ object MetricsDashboard {
     div(
       style := js.Dynamic.literal(padding = "1em"),
     )(
-      h2(className := "px-3")("System Dashboard"),
+      h2(className := "px-3 h2")("System Dashboard"),
       // aesthetic invariant: each `col` will have `mt-3`
       div(className := "dashboard grid px-3")(
         div(key := "header-row", className := "row")( // header row

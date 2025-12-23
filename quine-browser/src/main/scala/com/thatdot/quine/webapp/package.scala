@@ -3,27 +3,36 @@ package com.thatdot.quine
 import scala.scalajs.js
 import scala.scalajs.js.annotation.{JSExportTopLevel, JSImport}
 
+import com.raquo.laminar.api.L._
 import org.scalajs.dom
 import slinky.core.KeyAndRefAddingStage
-import slinky.core.facade.{ReactElement, ReactInstance}
+import slinky.core.facade.ReactElement
 
-import com.thatdot.quine.Util.{DashboardIcon, DocumentationIcon, ExplorerIcon}
 import com.thatdot.quine.routes.ClientRoutes
-import com.thatdot.quine.webapp.components.{MetricsDashboard, PageWithSideBar, StoplightElements, Tab, VisData}
+import com.thatdot.quine.webapp.components.VisData
 import com.thatdot.quine.webapp.queryui.{NetworkLayout, QueryMethod, QueryUi}
+import com.thatdot.quine.webapp2.LaminarRoot.LaminarRootProps
+import com.thatdot.quine.webapp2.router.QuineOssRouter
+import com.thatdot.quine.webapp2.views.QuineOssViews
+import com.thatdot.quine.webapp2.{LaminarRoot, QuineOssNavItems}
 import com.thatdot.{visnetwork => vis}
 
 package object webapp {
 
-  @JSImport("bootstrap/dist/css/bootstrap.min.css", JSImport.Namespace)
+  @JSImport("@coreui/coreui/dist/css/coreui.min.css", JSImport.Namespace)
   @js.native
-  object BootstrapCSS extends js.Object
-  BootstrapCSS
+  object CoreuiCSS extends js.Object
+  CoreuiCSS
 
-  @JSImport("bootstrap/dist/js/bootstrap.bundle.min.js", JSImport.Namespace)
+  @JSImport("@coreui/icons/css/free.min.css", JSImport.Namespace)
   @js.native
-  object BootstrapBundle extends js.Object
-  BootstrapBundle
+  object CoreuiIconsCSS extends js.Object
+  CoreuiIconsCSS
+
+  @JSImport("@coreui/coreui/dist/js/coreui.bundle.min.js", JSImport.Namespace)
+  @js.native
+  object CoreuiBundle extends js.Object
+  CoreuiBundle
 
   @JSImport("resources/index.css", JSImport.Default)
   @js.native
@@ -74,53 +83,28 @@ package object webapp {
     * @param options configuration options
     */
   @JSExportTopLevel("quineAppMount")
-  def quineAppMount(target: dom.Element, options: QuineUiOptions): ReactInstance = {
+  def quineAppMount(target: dom.Element, options: QuineUiOptions): RootNode = {
+    val apiV1 = !options.queriesOverV2Api.getOrElse(false)
     val clientRoutes = new ClientRoutes(options.serverUrl)
-
     val queryMethod = QueryMethod.parseQueryMethod(options)
 
-    val component = if (!options.isQueryBarVisible.getOrElse(true)) {
-      makeQueryUi(options, clientRoutes)
-    } else {
-      val useV2Api = options.queriesOverV2Api.getOrElse(true)
-      PageWithSideBar(
-        Tab(ExplorerIcon, "Graph Explorer", "/", makeQueryUi(options, clientRoutes), options.baseURI),
-        Tab(
-          DocumentationIcon,
-          "Interactive Docs",
-          "/docs",
-          StoplightElements(
-            apiDescriptionUrl = options.documentationUrl,
-            basePath = "/docs",
-            logo = options.baseURI + "favicon.ico",
-          ),
-          options.baseURI,
-          hidden = useV2Api, // Hide v1 docs when using v2
+    val router = QuineOssRouter(apiV1)
+    val laminarRoot = LaminarRoot(
+      LaminarRootProps(
+        productName = "Quine",
+        navItems = QuineOssNavItems(apiV1),
+        router = router,
+        views = QuineOssViews(
+          router,
+          clientRoutes,
+          queryMethod,
+          options = options,
         ),
-        Tab(
-          DocumentationIcon,
-          "Interactive Docs v2",
-          "/v2docs",
-          StoplightElements(
-            apiDescriptionUrl = options.documentationV2Url,
-            basePath = "/v2docs",
-            logo = options.baseURI + "favicon.ico",
-          ),
-          options.baseURI,
-          hidden = !useV2Api, // Hide v2 docs when using v1
-        ),
-        Tab(
-          DashboardIcon,
-          "System Dashboard",
-          "/dashboard",
-          MetricsDashboard(clientRoutes, queryMethod),
-          options.baseURI,
-        ),
-        // Tab(ExplorerIcon, "Interactive Client - TS", "/client-ts", InteractiveClient(), options.baseURI)
-      )
-    }
+        userAvatar = None,
+      ),
+    )
 
-    slinky.web.ReactDOM.render(component, target)
+    render(target, laminarRoot)
   }
 }
 

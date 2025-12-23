@@ -71,3 +71,12 @@ metrics-logs
 
 # SBOM files
 *.bom.json
+
+# Playwright MCP Artifacts
+.playwright-mcp
+
+# npm/node (Vite dev workspaces - development only)
+node_modules/
+/package-lock.json
+
+.vite

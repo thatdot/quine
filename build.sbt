@@ -305,6 +305,10 @@ lazy val `quine-browser`: Project = project
       "org.scala-js" %%% "scalajs-dom" % scalajsDomV,
       "org.scala-js" %%% "scala-js-macrotask-executor" % scalajsMacroTaskExecutorV,
       "org.endpoints4s" %%% "xhr-client" % endpoints4sXhrClientV,
+      "io.circe" %%% "circe-generic" % circeV,
+      "io.circe" %%% "circe-parser" % circeV,
+      "com.raquo" %%% "laminar" % laminarV,
+      "com.raquo" %%% "waypoint" % waypointV,
     ),
     Compile / npmDevDependencies ++= Seq(
       "ts-loader" -> "8.0.0",
@@ -321,7 +325,8 @@ lazy val `quine-browser`: Project = project
       "plotly.js" -> s"npm:plotly.js-dist-min@${plotlyV}",
       "@stoplight/elements" -> stoplightElementsV,
       "mkdirp" -> "1.0.0",
-      "bootstrap" -> bootstrapV,
+      "@coreui/coreui" -> coreuiV,
+      "@coreui/icons" -> coreuiIconsV,
       "@popperjs/core" -> "2.11.8",
     ),
     webpackNodeArgs := nodeLegacySslIfAvailable,
@@ -335,7 +340,7 @@ lazy val `quine-browser`: Project = project
     Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js"),
     test := {},
     useYarn := true,
-    yarnExtraArgs := Seq("--frozen-lockfile"),
+    // yarnExtraArgs := Seq("--frozen-lockfile"),
   )
 
 // Streaming graph application built on top of the Quine library

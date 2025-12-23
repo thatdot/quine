@@ -1,0 +1,17 @@
+{
+  "name": "@quine/vite-shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./plugins/*": "./plugins/*.ts",
+    "./utils/*": "./utils/*.ts",
+    "./fixtures/*": "./fixtures/*.ts"
+  },
+  "peerDependencies": {
+    "vite": "^5.0.0"
+  }
+}
