@@ -490,13 +490,33 @@ import com.thatdot.{visnetwork => vis}
   def downloadSvgSnapshot(fileName: String = "graph.svg"): Unit = {
     val positions = network.get.getPositions(props.graphData.nodeSet.getIds())
     SvgSnapshot(props.graphData, positions).map { svgGraph =>
+      // Temporarily attach the SVG to the DOM so we can measure it.
+      // getBBox() only returns accurate dimensions when the element is rendered.
       val tempElement = document.createElement("div")
+      tempElement.setAttribute("style", "position: absolute; visibility: hidden; pointer-events: none;")
+      document.body.appendChild(tempElement)
       slinky.web.ReactDOM.render(svgGraph, tempElement)
+
+      // Measure the actual bounding box of all rendered content (including text labels)
+      // and update the viewBox to fit. The initial viewBox from SvgSnapshot only estimates
+      // bounds based on node positions, which clips long labels.
+      val svgElement = tempElement.firstElementChild.asInstanceOf[dom.svg.SVG]
+      val bbox = svgElement.getBBox()
+      val padding = 10
+      val viewBoxMinX = bbox.x - padding
+      val viewBoxMinY = bbox.y - padding
+      val viewBoxWidth = bbox.width + 2 * padding
+      val viewBoxHeight = bbox.height + 2 * padding
+      svgElement.setAttribute("viewBox", s"$viewBoxMinX $viewBoxMinY $viewBoxWidth $viewBoxHeight")
+      svgElement.setAttribute("width", s"${viewBoxWidth}px")
+      svgElement.setAttribute("height", s"${viewBoxHeight}px")
 
       val blob = new dom.Blob(
         js.Array(tempElement.innerHTML),
         new dom.BlobPropertyBag { `type` = "image/svg" },
       )
+
+      document.body.removeChild(tempElement)
 
       val a = document.createElement("a").asInstanceOf[dom.HTMLAnchorElement]
       a.setAttribute("download", fileName)
