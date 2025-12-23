@@ -2,9 +2,10 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import io.circe.Json
 import io.circe.generic.extras.auto._
+import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.syntax.EncoderOps
+import io.circe.{Decoder, Encoder, Json}
 import shapeless.{:+:, CNil, Coproduct}
 import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
@@ -38,6 +39,9 @@ object V2AdministrationEndpointEntities {
     @description("Time value used to derive the graph hash code.")
     atTime: Long,
   )
+  object TGraphHashCode {
+    implicit val encoder: Encoder[TGraphHashCode] = deriveEncoder
+  }
 
   @title("System Build Information")
   @description("Information collected when this version of the system was compiled.")
@@ -52,6 +56,9 @@ object V2AdministrationEndpointEntities {
     @description("Persistence data format version.") persistenceWriteVersion: String,
     @description("Quine Type.") quineType: String,
   )
+  object TQuineInfo {
+    implicit val encoder: Encoder[TQuineInfo] = deriveEncoder
+  }
 
   @title("Metrics Counter")
   @description("Counters record a single shared count, and give that count a name.")
@@ -59,6 +66,9 @@ object V2AdministrationEndpointEntities {
     @description("Name of the metric being reported.") name: String,
     @description("The value tracked by this counter.") count: Long,
   )
+  object TCounter {
+    implicit val encoder: Encoder[TCounter] = deriveEncoder
+  }
 
   @title("Metrics Numeric Gauge")
   @description("Gauges provide a single point-in-time measurement, and give that measurement a name.")
@@ -66,6 +76,9 @@ object V2AdministrationEndpointEntities {
     @description("Name of the metric being reported.") name: String,
     @description("The latest measurement recorded by this gauge.") value: Double,
   )
+  object TNumericGauge {
+    implicit val encoder: Encoder[TNumericGauge] = deriveEncoder
+  }
 
   @title("Metrics Timer Summary")
   @description(
@@ -89,6 +102,9 @@ object V2AdministrationEndpointEntities {
     @description("20th percentile time.") `20`: Double,
     @description("10th percentile time.") `10`: Double,
   )
+  object TTimerSummary {
+    implicit val encoder: Encoder[TTimerSummary] = deriveEncoder
+  }
 
   @title("Metrics Report")
   @description(
@@ -109,11 +125,19 @@ object V2AdministrationEndpointEntities {
     @description("Gauges which report an instantaneously-sampled reading of a particular metric.")
     gauges: Seq[TNumericGauge],
   )
+  object TMetricsReport {
+    implicit val encoder: Encoder[TMetricsReport] = deriveEncoder
+  }
+
   @title("Shard In-Memory Limits")
   final case class TShardInMemoryLimit(
     @description("Number of in-memory nodes past which shards will try to shut down nodes.") softLimit: Int,
     @description("Number of in-memory nodes past which shards will not load in new nodes.") hardLimit: Int,
   )
+  object TShardInMemoryLimit {
+    implicit val encoder: Encoder[TShardInMemoryLimit] = deriveEncoder
+    implicit val decoder: Decoder[TShardInMemoryLimit] = deriveDecoder
+  }
 
   private val genCounter = Generic[Counter]
   private val genTCounter = Generic[TCounter]
