@@ -2,9 +2,16 @@ package com.thatdot.quine.app.v2api.definitions.query.standing
 
 import java.util.UUID
 
+import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{default, description, title}
 
+import com.thatdot.api.v2.schema.V2ApiConfiguration._
+
 object StandingQuery {
+
+  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   @title("Standing Query")
   @description("Standing Query.")
@@ -27,6 +34,10 @@ object StandingQuery {
     /** @see [[com.thatdot.quine.graph.StandingQueryInfo.DefaultQueueBackpressureThreshold]] */
     inputBufferSize: Int = 32,
   )
+  object StandingQueryDefinition {
+    implicit val encoder: Encoder[StandingQueryDefinition] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[StandingQueryDefinition] = deriveConfiguredDecoder
+  }
 
   @title("Registered Standing Query")
   @description("Registered Standing Query.")
@@ -50,5 +61,9 @@ object StandingQuery {
     @description(s"Statistics on progress of running the Standing Query, per host - see ${StandingQueryStats.title}")
     stats: Map[String, StandingQueryStats],
   )
+  object RegisteredStandingQuery {
+    implicit val encoder: Encoder[RegisteredStandingQuery] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[RegisteredStandingQuery] = deriveConfiguredDecoder
+  }
 
 }

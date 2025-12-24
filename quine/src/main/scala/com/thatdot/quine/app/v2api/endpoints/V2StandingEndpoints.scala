@@ -20,12 +20,6 @@ import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResul
 
 trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiSchemas with StringOps {
 
-  /** `io.circe.generic.extras.auto._` appears to require a local reference to a
-    * Configuration in order to find implicit Encoders through a mixed-in TapirJsonCirce
-    * (here provided via V2StandingApiSchemas->V2ApiConfiguration), even though such
-    * a Configuration is also available in a mixin or ancestor. Thus, a trait-named
-    * config that refers to our standard config.
-    */
   implicit val v2StandingEndpointsConfig: Configuration = typeDiscriminatorConfig
 
   /** SQ Name path element */

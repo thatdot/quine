@@ -14,13 +14,16 @@ import com.thatdot.quine.app.v2api.definitions.query.standing.{
   StandingQueryResultTransformation,
   StandingQueryResultWorkflow,
 }
+import com.thatdot.quine.v2api.V2ApiCommonGenerators
 
 class StandingQueryOutputCodecSpec
     extends AnyFunSuite
     with Matchers
     with ScalaCheckDrivenPropertyChecks
-    with ArbitraryStandingQueryOutputs
     with CirceCodecTestSupport {
+
+  import StandingQueryOutputGenerators.Arbs._
+  import V2ApiCommonGenerators.Arbs._
 
   test("OutputFormat.JSON roundtrip") {
     testJsonRoundtrip[OutputFormat](OutputFormat.JSON)

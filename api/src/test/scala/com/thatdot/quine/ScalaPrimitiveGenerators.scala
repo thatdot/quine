@@ -8,6 +8,14 @@ object ScalaPrimitiveGenerators {
     val bool: Gen[Boolean] = Arbitrary.arbitrary[Boolean]
     val smallNum: Gen[Int] = Gen.chooseNum(0, 10)
     val smallPosNum: Gen[Int] = Gen.chooseNum(1, 10)
+
+    /** Generates positive integers within the range representable by `2^pow` bits (`1` to `2^pow - 1`).
+      *
+      * @param pow the "power" (exponent) of base-2 from which a bit range may be derived (e.g. `7` yields `2^7` or `128` bits)
+      * @return an integer between `1` and `2^pow - 1`
+      */
+    def numWithinBits(pow: Int): Gen[Int] = Gen.chooseNum(1, (1 << pow) - 1)
+
     val nonEmptyAlphaStr: Gen[String] = Gen.nonEmptyListOf(Gen.alphaChar).map(_.mkString)
     val nonEmptyAlphaNumStr: Gen[String] = Gen.nonEmptyListOf(Gen.alphaNumChar).map(_.mkString)
     val optNonEmptyAlphaStr: Gen[Option[String]] = Gen.option(nonEmptyAlphaStr)
