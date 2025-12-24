@@ -341,6 +341,11 @@ object ApiIngest {
       @default(LogStreamError)
       onStreamError: OnStreamErrorHandler = LogStreamError,
     )
+
+    object QuineIngestConfiguration {
+      implicit val encoder: Encoder[QuineIngestConfiguration] = deriveConfiguredEncoder
+      implicit val decoder: Decoder[QuineIngestConfiguration] = deriveConfiguredDecoder
+    }
   }
 
   @title("Ingest source")
