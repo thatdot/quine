@@ -1,7 +1,12 @@
 package com.thatdot.quine.app.v2api.definitions.query.standing
 
 import io.circe.generic.extras.Configuration
-import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.generic.extras.semiauto.{
+  deriveConfiguredDecoder,
+  deriveConfiguredEncoder,
+  deriveEnumerationDecoder,
+  deriveEnumerationEncoder,
+}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema.annotations.{default, description, title}
 
@@ -40,7 +45,7 @@ object StandingQueryPattern {
 
     val values: Seq[StandingQueryMode] = Seq(DistinctId, MultipleValues, QuinePattern)
 
-    implicit val encoder: Encoder[StandingQueryMode] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[StandingQueryMode] = deriveConfiguredDecoder
+    implicit val encoder: Encoder[StandingQueryMode] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[StandingQueryMode] = deriveEnumerationDecoder
   }
 }

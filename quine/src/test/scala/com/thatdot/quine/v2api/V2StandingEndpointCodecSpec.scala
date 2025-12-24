@@ -42,11 +42,11 @@ class V2StandingEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaChe
       }
     }
 
-    it("should include type discriminator") {
+    it("should encode as simple string (enumeration style)") {
       forAll { (mode: StandingQueryMode) =>
         val json = mode.asJson
-        val expectedType = mode.getClass.getSimpleName.stripSuffix("$")
-        json.hcursor.downField("type").as[String] shouldBe Right(expectedType)
+        val expectedValue = mode.getClass.getSimpleName.stripSuffix("$")
+        json.as[String] shouldBe Right(expectedValue)
       }
     }
   }
