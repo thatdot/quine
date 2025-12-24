@@ -183,4 +183,66 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
     deriveConfiguredEncoder[OnStreamErrorHandler]
   implicit lazy val OnStreamErrorHandlerDecoder: Decoder[OnStreamErrorHandler] =
     deriveConfiguredDecoder[OnStreamErrorHandler]
+
+  implicit lazy val billingModeEncoder: Encoder[BillingMode] = deriveConfiguredEncoder[BillingMode]
+  implicit lazy val billingModeDecoder: Decoder[BillingMode] = deriveConfiguredDecoder[BillingMode]
+
+  implicit lazy val metricsLevelEncoder: Encoder[MetricsLevel] = deriveEnumerationEncoder[MetricsLevel]
+  implicit lazy val metricsLevelDecoder: Decoder[MetricsLevel] = deriveEnumerationDecoder[MetricsLevel]
+
+  implicit lazy val metricsDimensionEncoder: Encoder[MetricsDimension] = deriveConfiguredEncoder[MetricsDimension]
+  implicit lazy val metricsDimensionDecoder: Decoder[MetricsDimension] = deriveConfiguredDecoder[MetricsDimension]
+
+  implicit lazy val clientVersionConfigEncoder: Encoder[ClientVersionConfig] =
+    deriveEnumerationEncoder[ClientVersionConfig]
+  implicit lazy val clientVersionConfigDecoder: Decoder[ClientVersionConfig] =
+    deriveEnumerationDecoder[ClientVersionConfig]
+
+  implicit lazy val shardPrioritizationEncoder: Encoder[ShardPrioritization] =
+    deriveConfiguredEncoder[ShardPrioritization]
+  implicit lazy val shardPrioritizationDecoder: Decoder[ShardPrioritization] =
+    deriveConfiguredDecoder[ShardPrioritization]
+
+  implicit lazy val kinesisCheckpointSettingsEncoder: Encoder[KinesisCheckpointSettings] =
+    deriveConfiguredEncoder[KinesisCheckpointSettings]
+  implicit lazy val kinesisCheckpointSettingsDecoder: Decoder[KinesisCheckpointSettings] =
+    deriveConfiguredDecoder[KinesisCheckpointSettings]
+
+  implicit lazy val kinesisSchedulerSourceSettingsEncoder: Encoder[KinesisSchedulerSourceSettings] =
+    deriveConfiguredEncoder[KinesisSchedulerSourceSettings]
+  implicit lazy val kinesisSchedulerSourceSettingsDecoder: Decoder[KinesisSchedulerSourceSettings] =
+    deriveConfiguredDecoder[KinesisSchedulerSourceSettings]
+
+  implicit lazy val configsBuilderEncoder: Encoder[ConfigsBuilder] = deriveConfiguredEncoder[ConfigsBuilder]
+  implicit lazy val configsBuilderDecoder: Decoder[ConfigsBuilder] = deriveConfiguredDecoder[ConfigsBuilder]
+
+  implicit lazy val lifecycleConfigEncoder: Encoder[LifecycleConfig] = deriveConfiguredEncoder[LifecycleConfig]
+  implicit lazy val lifecycleConfigDecoder: Decoder[LifecycleConfig] = deriveConfiguredDecoder[LifecycleConfig]
+
+  implicit lazy val retrievalConfigEncoder: Encoder[RetrievalConfig] = deriveConfiguredEncoder[RetrievalConfig]
+  implicit lazy val retrievalConfigDecoder: Decoder[RetrievalConfig] = deriveConfiguredDecoder[RetrievalConfig]
+
+  implicit lazy val processorConfigEncoder: Encoder[ProcessorConfig] = deriveConfiguredEncoder[ProcessorConfig]
+  implicit lazy val processorConfigDecoder: Decoder[ProcessorConfig] = deriveConfiguredDecoder[ProcessorConfig]
+
+  implicit lazy val retrievalSpecificConfigEncoder: Encoder[RetrievalSpecificConfig] =
+    deriveConfiguredEncoder[RetrievalSpecificConfig]
+  implicit lazy val retrievalSpecificConfigDecoder: Decoder[RetrievalSpecificConfig] =
+    deriveConfiguredDecoder[RetrievalSpecificConfig]
+
+  implicit lazy val leaseManagementConfigEncoder: Encoder[LeaseManagementConfig] =
+    deriveConfiguredEncoder[LeaseManagementConfig]
+  implicit lazy val leaseManagementConfigDecoder: Decoder[LeaseManagementConfig] =
+    deriveConfiguredDecoder[LeaseManagementConfig]
+
+  implicit lazy val coordinatorConfigEncoder: Encoder[CoordinatorConfig] =
+    deriveConfiguredEncoder[CoordinatorConfig]
+  implicit lazy val coordinatorConfigDecoder: Decoder[CoordinatorConfig] =
+    deriveConfiguredDecoder[CoordinatorConfig]
+
+  implicit lazy val metricsConfigEncoder: Encoder[MetricsConfig] = deriveConfiguredEncoder[MetricsConfig]
+  implicit lazy val metricsConfigDecoder: Decoder[MetricsConfig] = deriveConfiguredDecoder[MetricsConfig]
+
+  implicit lazy val kclConfigurationEncoder: Encoder[KCLConfiguration] = deriveConfiguredEncoder[KCLConfiguration]
+  implicit lazy val kclConfigurationDecoder: Decoder[KCLConfiguration] = deriveConfiguredDecoder[KCLConfiguration]
 }
