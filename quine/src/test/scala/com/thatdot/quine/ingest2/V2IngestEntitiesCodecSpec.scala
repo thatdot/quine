@@ -7,6 +7,7 @@ import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.model.ingest2.V2IngestEntityEncoderDecoders._
+import com.thatdot.quine.{routes => V1}
 
 class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheckDrivenPropertyChecks {
 
@@ -179,6 +180,101 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
         val json = kcl.asJson
         val decoded = json.as[KCLConfiguration]
         decoded shouldBe Right(kcl)
+      }
+    }
+  }
+
+  describe("V1.AwsCredentials codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (creds: V1.AwsCredentials) =>
+        val json = creds.asJson
+        val decoded = json.as[V1.AwsCredentials]
+        decoded shouldBe Right(creds)
+      }
+    }
+  }
+
+  describe("V1.AwsRegion codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (region: V1.AwsRegion) =>
+        val json = region.asJson
+        val decoded = json.as[V1.AwsRegion]
+        decoded shouldBe Right(region)
+      }
+    }
+  }
+
+  describe("V1.KinesisIngest.IteratorType codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (it: V1.KinesisIngest.IteratorType) =>
+        val json = it.asJson
+        val decoded = json.as[V1.KinesisIngest.IteratorType]
+        decoded shouldBe Right(it)
+      }
+    }
+
+    it("should include type discriminator") {
+      forAll { (it: V1.KinesisIngest.IteratorType) =>
+        val json = it.asJson
+        val expectedType = it match {
+          case V1.KinesisIngest.IteratorType.TrimHorizon => "TrimHorizon"
+          case V1.KinesisIngest.IteratorType.Latest => "Latest"
+          case _: V1.KinesisIngest.IteratorType.AtSequenceNumber => "AtSequenceNumber"
+          case _: V1.KinesisIngest.IteratorType.AfterSequenceNumber => "AfterSequenceNumber"
+          case _: V1.KinesisIngest.IteratorType.AtTimestamp => "AtTimestamp"
+        }
+        json.hcursor.downField("type").as[String] shouldBe Right(expectedType)
+      }
+    }
+  }
+
+  describe("Transformation codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (t: Transformation) =>
+        val json = t.asJson
+        val decoded = json.as[Transformation]
+        decoded shouldBe Right(t)
+      }
+    }
+
+    it("should include type discriminator") {
+      forAll { (t: Transformation) =>
+        val json = t.asJson
+        val expectedType = t match {
+          case _: Transformation.JavaScript => "JavaScript"
+        }
+        json.hcursor.downField("type").as[String] shouldBe Right(expectedType)
+      }
+    }
+  }
+
+  describe("IngestSource codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (is: IngestSource) =>
+        val json = is.asJson
+        val decoded = json.as[IngestSource]
+        decoded shouldBe Right(is)
+      }
+    }
+
+    it("should include type discriminator") {
+      forAll { (is: IngestSource) =>
+        val json = is.asJson
+        val expectedType = is match {
+          case _: FileIngest => "FileIngest"
+          case _: S3Ingest => "S3Ingest"
+          case _: ReactiveStreamIngest => "ReactiveStreamIngest"
+          case _: WebSocketFileUpload => "WebSocketFileUpload"
+          case _: StdInputIngest => "StdInputIngest"
+          case _: NumberIteratorIngest => "NumberIteratorIngest"
+          case _: WebsocketIngest => "WebsocketIngest"
+          case _: KinesisIngest => "KinesisIngest"
+          case _: KinesisKclIngest => "KinesisKclIngest"
+          case _: ServerSentEventIngest => "ServerSentEventIngest"
+          case _: SQSIngest => "SQSIngest"
+          case _: KafkaIngest => "KafkaIngest"
+        }
+        json.hcursor.downField("type").as[String] shouldBe Right(expectedType)
       }
     }
   }

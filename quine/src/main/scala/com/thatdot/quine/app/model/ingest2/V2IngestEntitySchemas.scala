@@ -245,4 +245,21 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
 
   implicit lazy val kclConfigurationEncoder: Encoder[KCLConfiguration] = deriveConfiguredEncoder[KCLConfiguration]
   implicit lazy val kclConfigurationDecoder: Decoder[KCLConfiguration] = deriveConfiguredDecoder[KCLConfiguration]
+
+  implicit lazy val awsCredentialsEncoder: Encoder[V1.AwsCredentials] = deriveConfiguredEncoder[V1.AwsCredentials]
+  implicit lazy val awsCredentialsDecoder: Decoder[V1.AwsCredentials] = deriveConfiguredDecoder[V1.AwsCredentials]
+
+  implicit lazy val awsRegionEncoder: Encoder[V1.AwsRegion] = deriveConfiguredEncoder[V1.AwsRegion]
+  implicit lazy val awsRegionDecoder: Decoder[V1.AwsRegion] = deriveConfiguredDecoder[V1.AwsRegion]
+
+  implicit lazy val kinesisIteratorTypeEncoder: Encoder[V1.KinesisIngest.IteratorType] =
+    deriveConfiguredEncoder[V1.KinesisIngest.IteratorType]
+  implicit lazy val kinesisIteratorTypeDecoder: Decoder[V1.KinesisIngest.IteratorType] =
+    deriveConfiguredDecoder[V1.KinesisIngest.IteratorType]
+
+  implicit lazy val transformationEncoder: Encoder[Transformation] = deriveConfiguredEncoder[Transformation]
+  implicit lazy val transformationDecoder: Decoder[Transformation] = deriveConfiguredDecoder[Transformation]
+
+  implicit lazy val ingestSourceEncoder: Encoder[IngestSource] = deriveConfiguredEncoder[IngestSource]
+  implicit lazy val ingestSourceDecoder: Decoder[IngestSource] = deriveConfiguredDecoder[IngestSource]
 }

@@ -1,7 +1,6 @@
 package com.thatdot.quine
 
 import java.time.Instant
-import java.time.temporal.ChronoUnit.YEARS
 
 import org.scalacheck.{Arbitrary, Gen}
 
@@ -11,22 +10,23 @@ object TimeGenerators {
     /** Generates timestamps from the full possible range. */
     val instant: Gen[Instant] = Arbitrary.arbLong.arbitrary.map(Instant.ofEpochMilli)
 
-    /** Generates timestamps from epoch to now. */
-    val instantPositive: Gen[Instant] = Gen.chooseNum(0L, Instant.now().toEpochMilli).map(Instant.ofEpochMilli)
-
-    /** Generates timestamps between two years before a reference point and itself (default `now`). */
-    def instantRecentBefore(reference: Instant = Instant.now()): Gen[Instant] =
-      Gen.chooseNum(reference.minus(2, YEARS).toEpochMilli, reference.toEpochMilli).map(Instant.ofEpochMilli)
-
-    /** Generates timestamps between a reference point (default `now`) and two years after it. */
-    def instantSoonAfter(reference: Instant = Instant.now()): Gen[Instant] =
-      Gen.chooseNum(reference.toEpochMilli, reference.plus(2, YEARS).toEpochMilli).map(Instant.ofEpochMilli)
-
-    /** Generates timestamps surrounding a reference point by up to two years on either side. */
-    def instantNearTo(reference: Instant = Instant.now()): Gen[Instant] =
-      Gen
-        .chooseNum(reference.minus(2, YEARS).toEpochMilli, reference.plus(2, YEARS).toEpochMilli)
-        .map(Instant.ofEpochMilli)
+    /** Generates timestamps within a specified range.
+      *
+      * @param from
+      *   Optional start of range. Uses `Instant.now()` if not provided and `to` is provided.
+      * @param to
+      *   Optional end of range. Uses `Instant.now()` if not provided and `from` is provided.
+      * @return
+      *   A generator for Instants within the range. If neither bound is provided, returns the full-range [[instant]]
+      *   generator.
+      */
+    def instantWithinRange(from: Option[Instant] = None, to: Option[Instant] = None): Gen[Instant] =
+      (from, to) match {
+        case (Some(f), Some(t)) => Gen.chooseNum(f.toEpochMilli, t.toEpochMilli).map(Instant.ofEpochMilli)
+        case (Some(f), None) => Gen.chooseNum(f.toEpochMilli, Instant.now().toEpochMilli).map(Instant.ofEpochMilli)
+        case (None, Some(t)) => Gen.chooseNum(Instant.now().toEpochMilli, t.toEpochMilli).map(Instant.ofEpochMilli)
+        case (None, None) => instant
+      }
   }
 
 }
