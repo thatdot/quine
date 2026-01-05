@@ -4,8 +4,8 @@ const path = require("path");
 module.exports = {
     module: {
         rules: [
-            { 
-                test: /\.(ts|tsx)$/, 
+            {
+                test: /\.(ts|tsx)$/,
                 use: 'ts-loader',
                 exclude: /node_modules/
             }, {
@@ -22,9 +22,9 @@ module.exports = {
     },
     resolve: {
         modules: [
-          "node_modules",
-          path.resolve(__dirname, "../../scalajs-bundler/main/node_modules"),
-          path.resolve(__dirname, "../../../../src/main/scala/com/thatdot/quine/webapp")
+            "node_modules",
+            path.resolve(__dirname, "../../scalajs-bundler/main/node_modules"),
+            path.resolve(__dirname, "../../../../src/main/scala/com/thatdot/quine/webapp")
         ],
         // good packages for fallbacks are listed at
         // https://webpack.js.org/configuration/resolve/#resolvefallback
@@ -64,7 +64,6 @@ module.exports = {
         assetModuleFilename: '[hash][ext]'
     },
     externals: {
-        vis: 'vis',
         'plotly.js/dist/plotly': 'Plotly'
     }
 }

@@ -7,7 +7,7 @@ import js.annotation._
 import js.|
 
 @js.native
-@JSGlobal("vis.DataSet")
+@JSImport("vis-data/peer", "DataSet")
 class DataSet[T <: js.Object](elems: js.Array[T]) extends js.Object {
   @nowarn
   var length: Int = js.native

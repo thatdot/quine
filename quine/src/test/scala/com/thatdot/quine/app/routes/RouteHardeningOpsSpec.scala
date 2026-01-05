@@ -17,7 +17,7 @@ class RouteHardeningOpsSpec extends AnyFlatSpec with Matchers with ScalatestRout
     Get("/") ~> okRoute.withXssHardening ~> check {
       val cspValue = header("Content-Security-Policy").get.value()
       cspValue should include("default-src 'self'")
-      cspValue should include("script-src 'self' 'unsafe-eval'")
+      cspValue should include("script-src 'self'")
       cspValue should include("object-src 'none'")
       cspValue should include("style-src 'self' 'unsafe-inline'")
       cspValue should include("img-src 'self' data:")

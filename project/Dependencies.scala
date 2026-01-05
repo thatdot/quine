@@ -83,6 +83,14 @@ object Dependencies {
   val circeV = "0.14.12"
   val circeGenericExtrasV = "0.14.4"
   val circeOpticsV = "0.15.0"
-  val visNetworkV = "8.2.0"
+  val visNetworkV = "10.0.2"
+  // vis-network peer dependencies
+  val visDataV = "8.0.3"
+  val visUtilV = "6.0.0"
+  val egjsHammerjsV = "2.0.17"
+  val componentEmitterV = "2.0.0"
+  val keycharmV = "0.4.0"
+  val uuidV = "11.1.0"
+  //
   val webjarsLocatorV = "0.52"
 }

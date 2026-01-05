@@ -297,7 +297,7 @@ lazy val `model-converters`: Project = project
 
 // Quine web application
 lazy val `quine-browser`: Project = project
-  .settings(commonSettings, slinkySettings)
+  .settings(commonSettings, slinkySettings, visNetworkSettings)
   .dependsOn(`quine-endpoints`.js, `visnetwork-facade`)
   .enablePlugins(ScalaJSBundlerPlugin)
   .settings(
@@ -322,7 +322,7 @@ lazy val `quine-browser`: Project = project
       "react-dom" -> reactV,
       "es6-shim" -> "0.35.7",
       "react-plotly.js" -> reactPlotlyV,
-      "plotly.js" -> s"npm:plotly.js-dist-min@${plotlyV}",
+      "plotly.js" -> s"npm:plotly.js-strict-dist-min@${plotlyV}", // CSP-compliant strict bundle
       "@stoplight/elements" -> stoplightElementsV,
       "mkdirp" -> "1.0.0",
       "@coreui/coreui" -> coreuiV,
@@ -414,7 +414,6 @@ lazy val `quine`: Project = project
       "org.webjars" % "jquery" % jqueryV,
       "org.webjars" % "webjars-locator" % webjarsLocatorV,
       "org.webjars.npm" % "sugar-date" % sugarV,
-      "org.webjars.npm" % "vis-network" % visNetworkV,
       "org.apache.avro" % "avro" % avroV,
       // Transitive dep of several others. Vulnerable >= 4.1.91.Final, <= 4.1.117.Final.
       // When checklist is complete, remove this override.

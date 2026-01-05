@@ -95,10 +95,7 @@ object Util {
 
             val Csp = Map(
               "default-src" -> Vector(self), // in general, allow resources when they match the same origin policy
-              "script-src" -> Vector( // only allow scripts that match the same origin policy... and allow eval() for plotly and vis-network
-                self,
-                eval,
-              ),
+              "script-src" -> Vector(self), // only allow scripts that match the same origin policy
               "object-src" -> Vector(none), // don't allow <object>, <embed>, or <applet>
               "style-src" -> Vector(self, inline), // allow scripts that match same origin or are provided inline
               "img-src" -> Vector( // allow images that match same origin or are provided as data: blobs

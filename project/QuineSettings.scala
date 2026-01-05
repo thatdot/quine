@@ -121,4 +121,21 @@ object QuineSettings {
 
   val startupMessage = settingKey[String]("If non-empty, print this message on startup")
     .withRank(KeyRanks.Invisible)
+
+  /* Settings for projects using vis-network (CSP-compliant peer build)
+   *
+   * The peer build avoids dynamic code evaluation (eval), allowing stricter
+   * Content Security Policy without 'unsafe-eval' in script-src.
+   */
+  val visNetworkSettings: Seq[Setting[_]] = Seq(
+    Compile / npmDependencies ++= Seq(
+      "vis-network" -> Dependencies.visNetworkV,
+      "vis-data" -> Dependencies.visDataV,
+      "vis-util" -> Dependencies.visUtilV,
+      "@egjs/hammerjs" -> Dependencies.egjsHammerjsV,
+      "component-emitter" -> Dependencies.componentEmitterV,
+      "keycharm" -> Dependencies.keycharmV,
+      "uuid" -> Dependencies.uuidV,
+    ),
+  )
 }

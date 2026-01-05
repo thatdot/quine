@@ -8,9 +8,13 @@ import org.scalajs.dom
 import js.annotation._
 import js.|
 
+@js.native
+@JSImport("vis-network/dist/dist/vis-network.min.css", JSImport.Namespace)
+object VisNetworkStyles extends js.Object
+
 /** See [[https://visjs.github.io/vis-network/docs/network/#methods]] */
 @js.native
-@JSGlobal("vis.Network")
+@JSImport("vis-network/peer", "Network")
 class Network(container: dom.HTMLElement, data: Data, options: Network.Options) extends js.Object {
   def destroy(): Unit = js.native
   def setData(data: Data): Unit = js.native
@@ -89,6 +93,8 @@ class Network(container: dom.HTMLElement, data: Data, options: Network.Options) 
   def getOptionsFromConfigurator(): js.Dynamic = js.native
 }
 object Network {
+  // Ensure CSS is loaded when Network is used
+  @nowarn private val _css = VisNetworkStyles
 
   /** See [[https://visjs.github.io/vis-network/docs/network/#options]] */
   trait Options extends js.Object {
