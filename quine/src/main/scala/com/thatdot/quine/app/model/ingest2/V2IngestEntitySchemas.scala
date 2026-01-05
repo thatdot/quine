@@ -6,7 +6,6 @@ import scala.util.{Failure, Success}
 
 import cats.implicits.catsSyntaxEitherId
 import io.circe.Encoder.encodeString
-import io.circe.generic.extras.auto._
 import io.circe.generic.extras.semiauto.{
   deriveConfiguredDecoder,
   deriveConfiguredEncoder,
@@ -57,7 +56,9 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit val ingestFormatTypeSchema: Schema[IngestFormat] =
     Schema.derived
       .description("Ingest format")
-      .encodedExample(CsvFormat(Right(List("header1", "header2")), Comma, DoubleQuote, Backslash).asJson)
+      .encodedExample(
+        (CsvFormat(Right(List("header1", "header2")), Comma, DoubleQuote, Backslash): IngestFormat).asJson,
+      )
 
   implicit val charsetCodec: Codec[String, Charset, TextPlain] = Codec.string.mapDecode(s =>
     scala.util.Try(Charset.forName(s)) match {
@@ -173,11 +174,31 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
 
   implicit lazy val FileFormatDecoder: Decoder[FileFormat] =
     deriveConfiguredDecoder[FileFormat]
+
   implicit lazy val StreamingFormatEncoder: Encoder[StreamingFormat] =
     deriveConfiguredEncoder[StreamingFormat]
 
   implicit lazy val StreamingFormatDecoder: Decoder[StreamingFormat] =
     deriveConfiguredDecoder[StreamingFormat]
+
+  implicit lazy val IngestFormatEncoder: Encoder[IngestFormat] = Encoder.instance {
+    case f: FileFormat => FileFormatEncoder(f)
+    case s: StreamingFormat => StreamingFormatEncoder(s)
+  }
+
+  /** Decoder for the IngestFormat union type.
+    *
+    * Note: This decoder has an inherent ambiguity for JsonFormat because both FileFormat.JsonFormat
+    * and StreamingFormat.JsonFormat serialize to `{"type": "JsonFormat"}`. This decoder tries
+    * FileFormat first, so `{"type": "JsonFormat"}` always decodes to FileFormat.JsonFormat.
+    *
+    * This is not a problem in practice because runtime code uses specific types (FileFormat or
+    * StreamingFormat) based on the IngestSource subtype, not this union decoder. The field type
+    * annotation determines which decoder is used—StreamingIngestSource.format uses
+    * StreamingFormatDecoder directly, which has no ambiguity within its own hierarchy.
+    */
+  implicit lazy val IngestFormatDecoder: Decoder[IngestFormat] =
+    FileFormatDecoder.map(f => f: IngestFormat).or(StreamingFormatDecoder.map(s => s: IngestFormat))
 
   implicit lazy val OnStreamErrorHandlerEncoder: Encoder[OnStreamErrorHandler] =
     deriveConfiguredEncoder[OnStreamErrorHandler]
@@ -257,9 +278,24 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit lazy val kinesisIteratorTypeDecoder: Decoder[V1.KinesisIngest.IteratorType] =
     deriveConfiguredDecoder[V1.KinesisIngest.IteratorType]
 
+  implicit lazy val ingestStreamStatusEncoder: Encoder[V1.IngestStreamStatus] =
+    deriveEnumerationEncoder[V1.IngestStreamStatus]
+  implicit lazy val ingestStreamStatusDecoder: Decoder[V1.IngestStreamStatus] =
+    deriveEnumerationDecoder[V1.IngestStreamStatus]
+
   implicit lazy val transformationEncoder: Encoder[Transformation] = deriveConfiguredEncoder[Transformation]
   implicit lazy val transformationDecoder: Decoder[Transformation] = deriveConfiguredDecoder[Transformation]
 
   implicit lazy val ingestSourceEncoder: Encoder[IngestSource] = deriveConfiguredEncoder[IngestSource]
   implicit lazy val ingestSourceDecoder: Decoder[IngestSource] = deriveConfiguredDecoder[IngestSource]
+
+  implicit lazy val quineIngestConfigurationEncoder: Encoder[QuineIngestConfiguration] =
+    deriveConfiguredEncoder[QuineIngestConfiguration]
+  implicit lazy val quineIngestConfigurationDecoder: Decoder[QuineIngestConfiguration] =
+    deriveConfiguredDecoder[QuineIngestConfiguration]
+
+  implicit lazy val quineIngestStreamWithStatusEncoder: Encoder[QuineIngestStreamWithStatus] =
+    deriveConfiguredEncoder[QuineIngestStreamWithStatus]
+  implicit lazy val quineIngestStreamWithStatusDecoder: Decoder[QuineIngestStreamWithStatus] =
+    deriveConfiguredDecoder[QuineIngestStreamWithStatus]
 }

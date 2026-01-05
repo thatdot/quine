@@ -459,6 +459,40 @@ object V2IngestEntitiesGenerators {
       sqsIngest,
       kafkaIngest,
     )
+
+    val v1IngestStreamStatus: Gen[V1.IngestStreamStatus] = Gen.oneOf(
+      V1.IngestStreamStatus.Running,
+      V1.IngestStreamStatus.Paused,
+      V1.IngestStreamStatus.Restored,
+      V1.IngestStreamStatus.Completed,
+      V1.IngestStreamStatus.Terminated,
+      V1.IngestStreamStatus.Failed,
+    )
+
+    val ingestFormat: Gen[IngestFormat] = Gen.oneOf(fileFormat, streamingFormat)
+
+    val quineIngestConfiguration: Gen[QuineIngestConfiguration] = for {
+      name <- nonEmptyAlphaNumStr
+      source <- ingestSource
+      query <- nonEmptyAlphaNumStr
+      parameter <- Gen.alphaNumStr
+      transformation <- Gen.option(transformation)
+      parallelism <- smallPosNum
+      maxPerSecond <- Gen.option(smallPosNum)
+    } yield QuineIngestConfiguration(
+      name = name,
+      source = source,
+      query = query,
+      parameter = if (parameter.isEmpty) "that" else parameter,
+      transformation = transformation,
+      parallelism = parallelism,
+      maxPerSecond = maxPerSecond,
+    )
+
+    val quineIngestStreamWithStatus: Gen[QuineIngestStreamWithStatus] = for {
+      config <- quineIngestConfiguration
+      status <- Gen.option(v1IngestStreamStatus)
+    } yield QuineIngestStreamWithStatus(config, status)
   }
 
   object Arbs {
@@ -502,5 +536,13 @@ object V2IngestEntitiesGenerators {
     implicit val sqsIngest: Arbitrary[SQSIngest] = Arbitrary(Gens.sqsIngest)
     implicit val kafkaIngest: Arbitrary[KafkaIngest] = Arbitrary(Gens.kafkaIngest)
     implicit val ingestSource: Arbitrary[IngestSource] = Arbitrary(Gens.ingestSource)
+
+    implicit val v1IngestStreamStatus: Arbitrary[V1.IngestStreamStatus] = Arbitrary(Gens.v1IngestStreamStatus)
+    implicit val ingestFormat: Arbitrary[IngestFormat] = Arbitrary(Gens.ingestFormat)
+    implicit val quineIngestConfiguration: Arbitrary[QuineIngestConfiguration] = Arbitrary(
+      Gens.quineIngestConfiguration,
+    )
+    implicit val quineIngestStreamWithStatus: Arbitrary[QuineIngestStreamWithStatus] =
+      Arbitrary(Gens.quineIngestStreamWithStatus)
   }
 }

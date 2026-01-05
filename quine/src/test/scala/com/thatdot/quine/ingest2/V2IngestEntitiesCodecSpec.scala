@@ -278,4 +278,104 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
       }
     }
   }
+
+  describe("V1.IngestStreamStatus codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (status: V1.IngestStreamStatus) =>
+        val json = status.asJson
+        val decoded = json.as[V1.IngestStreamStatus]
+        decoded shouldBe Right(status)
+      }
+    }
+
+    it("should encode as simple string (enumeration style)") {
+      forAll { (status: V1.IngestStreamStatus) =>
+        val json = status.asJson
+        val expectedValue = status match {
+          case V1.IngestStreamStatus.Running => "Running"
+          case V1.IngestStreamStatus.Paused => "Paused"
+          case V1.IngestStreamStatus.Restored => "Restored"
+          case V1.IngestStreamStatus.Completed => "Completed"
+          case V1.IngestStreamStatus.Terminated => "Terminated"
+          case V1.IngestStreamStatus.Failed => "Failed"
+        }
+        json.as[String] shouldBe Right(expectedValue)
+      }
+    }
+  }
+
+  describe("IngestFormat codec") {
+    // Note: IngestFormat roundtrip has ambiguity for JsonFormat because both
+    // FileFormat.JsonFormat and StreamingFormat.JsonFormat serialize to {"type": "JsonFormat"}.
+    // FileFormat and StreamingFormat are tested separately (via "IngestSource codec" tests above).
+    it("should encode with correct type discriminator") {
+      forAll { (format: IngestFormat) =>
+        val json = format.asJson
+        val typeField = json.hcursor.downField("type").as[String]
+        val expectedType = format.getClass.getSimpleName.stripSuffix("$")
+        typeField shouldBe Right(expectedType)
+      }
+    }
+
+    it("should decode non-JsonFormat types correctly") {
+      // Filter out JsonFormat types; they are differentiable only given their IngestSource context
+      forAll { (format: IngestFormat) =>
+        whenever(
+          !format.isInstanceOf[FileFormat.JsonFormat.type] && !format.isInstanceOf[StreamingFormat.JsonFormat.type],
+        ) {
+          val json = format.asJson
+          val decoded = json.as[IngestFormat]
+          decoded shouldBe Right(format)
+        }
+      }
+    }
+  }
+
+  describe("QuineIngestConfiguration codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (config: QuineIngestConfiguration) =>
+        val json = config.asJson
+        val decoded = json.as[QuineIngestConfiguration]
+        decoded shouldBe Right(config)
+      }
+    }
+
+    it("should encode with correct field names") {
+      forAll { (config: QuineIngestConfiguration) =>
+        val json = config.asJson
+        json.hcursor.downField("name").as[String] shouldBe Right(config.name)
+        json.hcursor.downField("query").as[String] shouldBe Right(config.query)
+        json.hcursor.downField("parallelism").as[Int] shouldBe Right(config.parallelism)
+      }
+    }
+  }
+
+  describe("QuineIngestStreamWithStatus codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (ingest: QuineIngestStreamWithStatus) =>
+        val json = ingest.asJson
+        val decoded = json.as[QuineIngestStreamWithStatus]
+        decoded shouldBe Right(ingest)
+      }
+    }
+
+    it("should encode with correct structure") {
+      forAll { (ingest: QuineIngestStreamWithStatus) =>
+        val json = ingest.asJson
+        json.hcursor.downField("config").succeeded shouldBe true
+        // status is optional
+        ingest.status.foreach { status =>
+          val expectedValue = status match {
+            case V1.IngestStreamStatus.Running => "Running"
+            case V1.IngestStreamStatus.Paused => "Paused"
+            case V1.IngestStreamStatus.Restored => "Restored"
+            case V1.IngestStreamStatus.Completed => "Completed"
+            case V1.IngestStreamStatus.Terminated => "Terminated"
+            case V1.IngestStreamStatus.Failed => "Failed"
+          }
+          json.hcursor.downField("status").as[String] shouldBe Right(expectedValue)
+        }
+      }
+    }
+  }
 }
