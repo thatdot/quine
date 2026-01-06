@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.routes
 
-import com.codahale.metrics.{Meter, Metered, MetricRegistry, Timer}
+import com.codahale.metrics.{Meter, Metered, Timer}
 
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
@@ -32,8 +32,8 @@ object IngestMetered {
     IngestMeter(
       name,
       namespaceId,
-      metrics.metricRegistry.meter(mkCountMeterName(namespaceId, name)),
-      metrics.metricRegistry.meter(mkBytesMeterName(namespaceId, name)),
+      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List("ingest", name, "count"))),
+      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List("ingest", name, "bytes"))),
       metrics,
     )
 
@@ -41,18 +41,8 @@ object IngestMetered {
     * @see com.codahale.metrics.MetricRegistry#remove
     */
   def removeIngestMeter(namespaceId: NamespaceId, name: String, metrics: HostQuineMetrics): Boolean =
-    metrics.metricRegistry.remove(mkCountMeterName(namespaceId, name)) &&
-    metrics.metricRegistry.remove(mkBytesMeterName(namespaceId, name))
-
-  private def mkCountMeterName(namespaceId: NamespaceId, name: String): String =
-    namespaceId.fold(MetricRegistry.name("ingest", name, "count"))(ns =>
-      MetricRegistry.name("ns", ns.name, "ingest", name, "count"),
-    )
-
-  private def mkBytesMeterName(namespaceId: NamespaceId, name: String): String =
-    namespaceId.fold(MetricRegistry.name("ingest", name, "bytes"))(ns =>
-      MetricRegistry.name("ns", ns.name, "ingest", name, "bytes"),
-    )
+    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List("ingest", name, "count"))) &&
+    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List("ingest", name, "bytes")))
 }
 
 final case class IngestMeter private[routes] (

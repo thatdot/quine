@@ -28,8 +28,6 @@ final case class HostQuineMetrics(
 
   lazy val noOpRegistry: NoopMetricRegistry = new NoopMetricRegistry
 
-  // TODO either remove this or use it universally. Customers using Grafana will need consideration.
-  // Which convention should be used for metrics that are split by namespace?
   def metricName(namespaceId: NamespaceId, components: List[String]): String =
     if (omitDefaultNamespace) {
       // here, the namespace "default" is omitted from the metric name, while all others are included.
