@@ -117,7 +117,7 @@ object PersistenceBuilder {
 
       case _: ClickHouse =>
         throw new IllegalArgumentException(
-          "ClickHouse is not available in Quine. If you are interested in using ClickHouse, please contact us to discuss upgrading to thatDot Streaming Graph.",
+          "ClickHouse is not available in Quine. If you are interested in using ClickHouse, please contact us to discuss upgrading to Quine Enterprise.",
         )
     }
   }
