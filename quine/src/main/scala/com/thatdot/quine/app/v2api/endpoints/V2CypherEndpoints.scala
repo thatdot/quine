@@ -121,7 +121,8 @@ trait V2CypherEndpoints
     SuccessEnvelope.Ok[TCypherQueryResult],
     Any,
   ] = cypherQueryBase
-    .name("Cypher Query")
+    .name("query-cypher")
+    .summary("Cypher Query")
     .description(s"Execute an arbitrary [Cypher]($cypherLanguageUrl) query.")
     .in("query-graph")
     .in(atTimeParameter)
@@ -164,7 +165,8 @@ trait V2CypherEndpoints
     SuccessEnvelope.Ok[Seq[TUiNode]],
     Any,
   ] = cypherQueryBase
-    .name("Cypher Query Return Nodes")
+    .name("query-cypher-nodes")
+    .summary("Cypher Query Return Nodes")
     .description(
       s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
         |Queries that do not return nodes will fail with a type error.""".asOneLine,
@@ -213,7 +215,8 @@ trait V2CypherEndpoints
     SuccessEnvelope.Ok[Seq[TUiEdge]],
     Any,
   ] = cypherQueryBase
-    .name("Cypher Query Return Edges")
+    .name("query-cypher-edges")
+    .summary("Cypher Query Return Edges")
     .description(
       s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
          |Queries that do not return edges will fail with a type error.""".asOneLine,

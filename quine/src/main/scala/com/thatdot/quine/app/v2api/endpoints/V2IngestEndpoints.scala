@@ -53,7 +53,8 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
       ServerError,
       BadRequest,
     ], SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName], Any] = ingestBase
-    .name("Create Ingest Stream")
+    .name("create-ingest")
+    .summary("Create Ingest Stream")
     .description(
       """Create an [Ingest Stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
         |that connects a streaming event source to Quine and loads data into the graph.""".asOneLine + "\n\n" +
@@ -101,7 +102,8 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
   ] = rawIngest
-    .name("Pause Ingest Stream")
+    .name("pause-ingest")
+    .summary("Pause Ingest Stream")
     .description("Temporarily pause processing new events by the named Ingest Stream.")
     .in(ingestStreamNameElement)
     .in("pause")
@@ -154,7 +156,8 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
   ] = rawIngest
-    .name("Unpause Ingest Stream")
+    .name("unpause-ingest")
+    .summary("Unpause Ingest Stream")
     .description("Resume processing new events by the named Ingest Stream.")
     .in(ingestStreamNameElement)
     .in("start")
@@ -205,7 +208,8 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
   ] = ingestBase
-    .name("Delete Ingest Stream")
+    .name("delete-ingest")
+    .summary("Delete Ingest Stream")
     .description(
       "Immediately halt and remove the named Ingest Stream from Quine.\n\n" +
       """The Ingest Stream will complete any pending operations and return stream
@@ -244,7 +248,8 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
   ] = ingestBase
-    .name("Ingest Stream Status")
+    .name("get-ingest-status")
+    .summary("Ingest Stream Status")
     .description("Return the Ingest Stream status information for a configured Ingest Stream by name.")
     .in(ingestStreamNameElement)
     .in(namespaceParameter)
@@ -288,7 +293,8 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     Any,
   ] =
     ingestBase
-      .name("List Ingest Streams")
+      .name("list-ingests")
+      .summary("List Ingest Streams")
       .description(
         """Return a JSON object containing the configured [Ingest Streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
         |and their associated stream metrics keyed by the stream name.""".asOneLine,

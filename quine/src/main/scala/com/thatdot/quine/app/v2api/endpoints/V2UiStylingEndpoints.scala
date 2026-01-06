@@ -43,7 +43,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
 
   protected[endpoints] val queryUiSampleQueries
     : Endpoint[Unit, Unit, ErrorResponse.ServerError, SuccessEnvelope.Ok[Vector[SampleQuery]], Any] = uiStylingBase
-    .name("List Sample Queries")
+    .name("list-sample-queries")
+    .summary("List Sample Queries")
     .description("Queries provided here will be available via a drop-down menu from the Quine UI search bar.")
     .get
     .in("sample-queries")
@@ -61,7 +62,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
   protected[endpoints] val updateQueryUiSampleQueries
     : Endpoint[Unit, Vector[SampleQuery], ErrorResponse.ServerError, SuccessEnvelope.NoContent.type, Any] =
     uiStylingBase
-      .name("Replace Sample Queries")
+      .name("replace-sample-queries")
+      .summary("Replace Sample Queries")
       .description(
         "Queries provided here will be available via a drop-down menu from the Quine UI search bar.\n\n" +
         "Queries applied here will replace any currently existing sample queries.",
@@ -84,7 +86,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
   protected[endpoints] val queryUiAppearance
     : Endpoint[Unit, Unit, ErrorResponse.ServerError, SuccessEnvelope.Ok[Vector[UiNodeAppearance]], Any] =
     uiStylingBase
-      .name("List Node Appearances")
+      .name("list-node-appearances")
+      .summary("List Node Appearances")
       .description(
         """When rendering a node in the UI, a node's style is decided by picking the first style in this list whose
         |`predicate` matches the node.""".asOneLine,
@@ -107,7 +110,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
   protected[endpoints] val updateQueryUiAppearance
     : Endpoint[Unit, Vector[UiNodeAppearance], ErrorResponse.ServerError, SuccessEnvelope.NoContent.type, Any] =
     uiStylingBase
-      .name("Replace Node Appearances")
+      .name("replace-node-appearances")
+      .summary("Replace Node Appearances")
       .description("For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)")
       .put
       .in("node-appearances")
@@ -136,7 +140,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
     SuccessEnvelope.Ok[Vector[UiNodeQuickQuery]],
     Any,
   ] = uiStylingBase
-    .name("List Quick Queries")
+    .name("list-quick-queries")
+    .summary("List Quick Queries")
     .description(
       """Quick queries are queries that appear when right-clicking a node in the UI.
         |Nodes will only display quick queries that satisfy any provided predicates.""".asOneLine,
@@ -159,7 +164,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
   protected[endpoints] val updateQueryUiQuickQueries
     : Endpoint[Unit, Vector[UiNodeQuickQuery], ErrorResponse.ServerError, SuccessEnvelope.NoContent.type, Any] =
     uiStylingBase
-      .name("Replace Quick Queries")
+      .name("replace-quick-queries")
+      .summary("Replace Quick Queries")
       .description(
         """Quick queries are queries that appear when right-clicking a node in the UI.
         |Queries applied here will replace any currently existing quick queries.""".asOneLine,

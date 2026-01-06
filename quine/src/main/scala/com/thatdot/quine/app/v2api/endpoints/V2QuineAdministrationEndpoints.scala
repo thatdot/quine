@@ -185,7 +185,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
 
   protected[endpoints] val systemInfo: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Ok[TQuineInfo], Any] =
     adminBase("system-info")
-      .name("System Information")
+      .name("get-system-info")
+      .summary("System Information")
       .description(
         "Returns a JSON object containing information about how Quine was built and system runtime information.",
       )
@@ -208,7 +209,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
 
   protected[endpoints] val configE: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Ok[Json], Any] =
     adminBase("config")
-      .name("Running Configuration")
+      .name("get-config")
+      .summary("Running Configuration")
       .description(
         """Fetch the full configuration of the running system.
           |"Full" means that this every option value is specified including all specified config files,
@@ -237,7 +239,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
         """Because this relies on historical nodes, results may be inconsistent if running on a configuration with
           |journals disabled.""".asOneLine,
       )
-      .name("Graph Hashcode")
+      .name("get-graph-hashcode")
+      .summary("Graph Hashcode")
       .in(atTimeParameter)
       .in(namespaceParameter)
       .get
@@ -264,7 +267,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
 
   protected[endpoints] val liveness: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.NoContent.type, Any] =
     adminBase("liveness")
-      .name("Process Liveness")
+      .name("get-liveness")
+      .summary("Process Liveness")
       .description(
         """This is a basic no-op endpoint for use when checking if the system is hung or responsive.
           |The intended use is for a process manager to restart the process if the app is hung (non-responsive).
@@ -297,7 +301,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     Any,
   ] =
     adminBase("readiness")
-      .name("Process Readiness")
+      .name("get-readiness")
+      .summary("Process Readiness")
       .description(
         """This indicates whether the system is fully up and ready to service user requests.
           |The intended use is for a load balancer to use this to know when the instance is
@@ -339,7 +344,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
 
   protected[endpoints] val gracefulShutdown: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Accepted, Any] =
     adminBase("shutdown")
-      .name("Graceful Shutdown")
+      .name("initiate-shutdown")
+      .summary("Graceful Shutdown")
       .description(
         """Initiate a graceful graph shutdown. Final shutdown may take a little longer.
           |`202` indicates a shutdown has been successfully initiated.""".asOneLine,
@@ -357,8 +363,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
 
   protected[endpoints] val metadata: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Ok[Map[String, String]], Any] =
     adminBase("metadata")
-      .name("Persisted Metadata")
-      .summary("Metadata")
+      .name("get-metadata")
+      .summary("Persisted Metadata")
       .attribute(Visibility.attributeKey, Visibility.Hidden)
       .get
       .out(statusCode(StatusCode.Ok))
@@ -376,9 +382,9 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
 
   protected[endpoints] val metrics: Endpoint[Unit, Option[Int], ServerError, SuccessEnvelope.Ok[TMetricsReport], Any] =
     adminBase("metrics")
-      .name("Metrics")
+      .name("get-metrics")
+      .summary("Metrics")
       .in(memberIdxParameter)
-      .summary("Metrics Summary")
       .description(
         """Returns a JSON object containing metrics data used in the Quine
           |[Monitoring](https://docs.quine.io/core-concepts/operational-considerations.html#monitoring)
@@ -426,7 +432,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
     Any,
   ] = adminBase("shards").get
-    .name("Shard Sizes")
+    .name("get-shard-sizes")
+    .summary("Get Shard Sizes")
     .description("Get the in-memory node limits for all shards.")
     .in("size-limits")
     .out(statusCode(StatusCode.Ok))
@@ -458,7 +465,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
     SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
     Any,
   ] = adminBase("shards").post
-    .name("Shard Sizes")
+    .name("update-shard-sizes")
+    .summary("Update Shard Sizes")
     .description(
       """Update the in-memory node limits. Shards not mentioned in the request are unaffected.
         |
@@ -491,7 +499,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with V2A
   protected[endpoints] val requestNodeSleep
     : Endpoint[Unit, (QuineId, Option[String]), ServerError, SuccessEnvelope.Accepted, Any] =
     adminBase("nodes").post
-      .name("Sleep Node")
+      .name("sleep-node")
+      .summary("Sleep Node")
       .description(
         """Attempt to put the specified node to sleep.
           |

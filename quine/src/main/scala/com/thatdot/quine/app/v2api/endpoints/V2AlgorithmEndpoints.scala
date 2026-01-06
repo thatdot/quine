@@ -171,7 +171,8 @@ trait V2AlgorithmEndpoints
     SuccessEnvelope.Accepted,
     Any,
   ] = algorithmBase
-    .name("Save Random Walks")
+    .name("save-random-walks")
+    .summary("Save Random Walks")
     .description(
       """Generate random walks from all nodes in the graph (optionally: at a specific historical time),
         |and save the results.""".asOneLine + "\n\n" +
@@ -299,7 +300,8 @@ trait V2AlgorithmEndpoints
     SuccessEnvelope.Ok[List[String]],
     Any,
   ] = algorithmBase
-    .name("Generate Random Walk")
+    .name("generate-random-walk")
+    .summary("Generate Random Walk")
     .description("Generate a random walk from a node in the graph and return the results.")
     .post
     .in("nodes")

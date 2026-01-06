@@ -45,7 +45,8 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
   protected[endpoints] val listStandingQueries
     : Endpoint[Unit, Option[String], ServerError, SuccessEnvelope.Ok[List[RegisteredStandingQuery]], Any] =
     standingQueryBase
-      .name("List Standing Queries")
+      .name("list-standing-queries")
+      .summary("List Standing Queries")
       .description(
         """Individual Standing Queries are issued into the graph one time;
           |result outputs are produced as new data is written into Quine and matches are found.""".asOneLine + "\n\n" +
@@ -84,7 +85,8 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     Any,
   ] =
     standingQueryBase
-      .name("Propagate Standing Queries")
+      .name("propagate-standing-queries")
+      .summary("Propagate Standing Queries")
       .description(
         """When a new Standing Query is registered in the system, it gets automatically
           |registered on new nodes (or old nodes that are loaded back into the cache). This behavior
@@ -131,7 +133,8 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
       ServerError,
       Either[BadRequest, NotFound],
     ], SuccessEnvelope.Created[Unit], Any] = rawStandingQuery
-    .name("Create Standing Query Output Workflow")
+    .name("create-standing-query-output")
+    .summary("Create Standing Query Output")
     .description(
       "Each Standing Query can have any number of destinations to which `StandingQueryResults` will be routed.",
     )
@@ -188,7 +191,8 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     SuccessEnvelope.Created[RegisteredStandingQuery],
     Any,
   ] = rawStandingQuery
-    .name("Create Standing Query")
+    .name("create-standing-query")
+    .summary("Create Standing Query")
     .description(
       """Individual Standing Queries are issued into the graph one time;
         |result outputs are produced as new data is written into Quine and matches are found.""".asOneLine + "\n\n" +
@@ -240,7 +244,8 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
       RegisteredStandingQuery,
     ], Any] =
     standingQueryBase
-      .name("Delete Standing Query")
+      .name("delete-standing-query")
+      .summary("Delete Standing Query")
       .description("Immediately halt and remove the named Standing Query from Quine.")
       .in(sqName)
       .in(namespaceParameter)
@@ -275,7 +280,8 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     Any,
   ] =
     standingQueryBase
-      .name("Delete Standing Query Output")
+      .name("delete-standing-query-output")
+      .summary("Delete Standing Query Output")
       .description("Remove an output from a Standing Query.")
       .in(sqName)
       .in("outputs")
@@ -311,7 +317,8 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     SuccessEnvelope.Ok[RegisteredStandingQuery],
     Any,
   ] = standingQueryBase
-    .name("Standing Query Status")
+    .name("get-standing-query-status")
+    .summary("Standing Query Status")
     .description("Return the status information for a configured Standing Query by name.")
     .in(sqName)
     .in(namespaceParameter)

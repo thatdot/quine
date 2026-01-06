@@ -160,7 +160,8 @@ trait V2DebugEndpoints
     SuccessEnvelope.Ok[Option[Json]],
     Any,
   ] = debugBase
-    .name("Get Property")
+    .name("get-node-property")
+    .summary("Get Property")
     .description(
       """Retrieve a single property from the node; note that values are represented as closely as possible to how they
           |would be emitted by
@@ -202,7 +203,8 @@ trait V2DebugEndpoints
     SuccessEnvelope.Ok[TLiteralNode[QuineId]],
     Any,
   ] = debugBase
-    .name("List Properties/Edges")
+    .name("get-node")
+    .summary("List Properties/Edges")
     .description(s"Retrieve a node's list of properties and list of edges." + debugEndpointIntentionAddendum)
     .attribute(Visibility.attributeKey, Visibility.Hidden)
     .in(idPathElement)
@@ -238,7 +240,8 @@ trait V2DebugEndpoints
     SuccessEnvelope.Ok[String],
     Any,
   ] = debugBase
-    .name("List Node State (Verbose)")
+    .name("get-node-verbose")
+    .summary("List Node State (Verbose)")
     .description(s"Returns information relating to the node's internal state." + debugEndpointIntentionAddendum)
     .attribute(Visibility.attributeKey, Visibility.Hidden)
     .in(idPathElement)
@@ -282,7 +285,8 @@ trait V2DebugEndpoints
     Any,
   ] =
     debugBase
-      .name("List Edges")
+      .name("list-node-edges")
+      .summary("List Edges")
       .description(s"Retrieve all node edges." + debugEndpointIntentionAddendum)
       .attribute(Visibility.attributeKey, Visibility.Hidden)
       .in(idPathElement)
