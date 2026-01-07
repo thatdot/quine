@@ -20,8 +20,9 @@ import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest, Uri}
 import org.apache.pekko.pattern.retry
 
-import io.circe.generic.auto._
+import io.circe.generic.semiauto.deriveEncoder
 import io.circe.syntax._
+import io.circe.{Encoder => CirceEncoder}
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, StrictSafeLogging}
 import com.thatdot.quine.app.routes.IngestStreamWithControl
@@ -186,9 +187,12 @@ object ImproveQuine {
   /** Telemetry event sent during a regular interval */
   private case object InstanceHeartbeat extends Event("instance.heartbeat")
 
-  private case class RecipeInfo(recipe_name_hash: String, recipe_contents_hash: String)
+  private[app] case class RecipeInfo(recipe_name_hash: String, recipe_contents_hash: String)
+  private[app] object RecipeInfo {
+    implicit val encoder: CirceEncoder[RecipeInfo] = deriveEncoder
+  }
 
-  private case class TelemetryData(
+  private[app] case class TelemetryData(
     event: String,
     service: String,
     version: String,
@@ -204,6 +208,9 @@ object ImproveQuine {
     recipe_info: Option[RecipeInfo],
     apiKey: Option[String],
   )
+  private[app] object TelemetryData {
+    implicit val encoder: CirceEncoder[TelemetryData] = deriveEncoder
+  }
 
   private val eventUri: Uri = Uri("https://improve.quine.io/event")
   private case class TelemetryRequest(
