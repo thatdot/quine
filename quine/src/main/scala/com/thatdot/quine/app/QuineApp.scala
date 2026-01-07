@@ -2,6 +2,7 @@ package com.thatdot.quine.app
 
 import java.time.Instant
 import java.time.temporal.ChronoUnit.MILLIS
+import java.util.UUID
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future, blocking}
@@ -1421,7 +1422,10 @@ object QuineApp {
     Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, Api2Defs.query.standing.StandingQueryResultWorkflow])]
 
   implicit val sqOutputs2Codec: EncoderDecoder[V2StandingQueryDataMap] = {
-    import io.circe.generic.auto._
+    import io.circe.{Decoder, Encoder}
+    // `StandingQueryId` is in `quine-core` where we shouldn't have codec concerns, so encoder/decoder defined only here
+    implicit val standingQueryIdEncoder: Encoder[StandingQueryId] = Encoder[UUID].contramap(_.uuid)
+    implicit val standingQueryIdDecoder: Decoder[StandingQueryId] = Decoder[UUID].map(StandingQueryId(_))
     EncoderDecoder.ofEncodeDecode
   }
 
