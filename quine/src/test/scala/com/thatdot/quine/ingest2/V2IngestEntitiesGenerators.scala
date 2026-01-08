@@ -119,7 +119,7 @@ object V2IngestEntitiesGenerators {
       dampeningPercentage <- Gen.option(smallPosNum)
       allowThroughputOvershoot <- Gen.option(bool)
       disableWorkerMetrics <- Gen.option(bool)
-      maxThroughputPerHostKBps <- Gen.option(mediumPosDouble)
+      maxThroughputPerHostKBps <- Gen.option(mediumDouble)
       isGracefulLeaseHandoffEnabled <- Gen.option(bool)
       gracefulLeaseHandoffTimeoutMillis <- Gen.option(smallPosLong)
     } yield LeaseManagementConfig(

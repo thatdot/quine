@@ -8,8 +8,11 @@ object ScalaPrimitiveGenerators {
     val bool: Gen[Boolean] = Arbitrary.arbitrary[Boolean]
     val smallNum: Gen[Int] = Gen.chooseNum(0, 10)
     val smallPosNum: Gen[Int] = Gen.chooseNum(1, 10)
+    val mediumPosNum: Gen[Int] = Gen.chooseNum(1, 1000)
+    val port: Gen[Int] = Gen.choose(1, 65535)
     val smallPosLong: Gen[Long] = Gen.chooseNum(1L, 10000L)
-    val mediumPosDouble: Gen[Double] = Gen.chooseNum(0.0, 1000.0)
+    val percentage: Gen[Double] = Gen.choose(0.0, 100.0)
+    val mediumDouble: Gen[Double] = Gen.chooseNum(0.0, 1000.0)
 
     /** Generates positive integers within the range representable by `2^pow` bits (`1` to `2^pow - 1`).
       *
