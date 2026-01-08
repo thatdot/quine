@@ -2,7 +2,6 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import io.circe.generic.extras.auto._
 import shapeless.{:+:, CNil, Coproduct}
 import sttp.model.StatusCode
 import sttp.tapir.server.ServerEndpoint

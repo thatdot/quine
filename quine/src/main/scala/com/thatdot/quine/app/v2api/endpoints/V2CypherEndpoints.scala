@@ -5,7 +5,6 @@ import scala.concurrent.duration.FiniteDuration
 
 import endpoints4s.generic.title
 import io.circe.generic.extras.Configuration
-import io.circe.generic.extras.auto._
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
@@ -64,18 +63,21 @@ object V2CypherEndpointEntities {
   )
   object TCypherQueryResult extends JsonSchemas {
     implicit val encoder: Encoder[TCypherQueryResult] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[TCypherQueryResult] = deriveConfiguredDecoder
     implicit val schema: Schema[TCypherQueryResult] = Schema.derived[TCypherQueryResult]
   }
 
   case class TUiNode(id: QuineId, hostIndex: Int, label: String, properties: Map[String, Json])
   object TUiNode extends QuineIdSchemas with JsonSchemas {
     implicit def encoder(implicit quineIdEncoder: Encoder[QuineId]): Encoder[TUiNode] = deriveConfiguredEncoder
+    implicit def decoder(implicit quineIdDecoder: Decoder[QuineId]): Decoder[TUiNode] = deriveConfiguredDecoder
     implicit val schema: Schema[TUiNode] = Schema.derived[TUiNode]
   }
 
   case class TUiEdge(from: QuineId, edgeType: String, to: QuineId, isDirected: Boolean = true)
   object TUiEdge extends QuineIdSchemas {
     implicit def encoder(implicit quineIdEncoder: Encoder[QuineId]): Encoder[TUiEdge] = deriveConfiguredEncoder
+    implicit def decoder(implicit quineIdDecoder: Decoder[QuineId]): Decoder[TUiEdge] = deriveConfiguredDecoder
     implicit val schema: Schema[TUiEdge] = Schema.derived[TUiEdge]
   }
 }

@@ -3,9 +3,8 @@ package com.thatdot.quine.app.v2api.endpoints
 import scala.concurrent.Future
 
 import io.circe.generic.extras.Configuration
-import io.circe.generic.extras.auto._
-import io.circe.generic.extras.semiauto.deriveConfiguredEncoder
-import io.circe.{Encoder, Json}
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.Schema.annotations.{description, title}
@@ -40,6 +39,13 @@ object V2DebugEndpointEntities {
     implicit val encoder: Encoder[TEdgeDirection] =
       Encoder.encodeString.contramap(_.toString)
 
+    implicit val decoder: Decoder[TEdgeDirection] = Decoder.decodeString.emap {
+      case "Outgoing" => Right(Outgoing)
+      case "Incoming" => Right(Incoming)
+      case "Undirected" => Right(Undirected)
+      case other => Left(s"Unknown edge direction: $other")
+    }
+
     implicit val schema: Schema[TEdgeDirection] = Schema.derivedEnumeration[TEdgeDirection].defaultStringBased
   }
 
@@ -59,11 +65,9 @@ object V2DebugEndpointEntities {
     @description("Id of node at the other end of the edge.") other: ID,
   )
   object TRestHalfEdge {
-    implicit def encoder[ID](implicit idEncoder: Encoder[ID]): Encoder[TRestHalfEdge[ID]] =
-      deriveConfiguredEncoder
-
-    implicit def schema[ID](implicit idSchema: Schema[ID]): Schema[TRestHalfEdge[ID]] =
-      Schema.derived[TRestHalfEdge[ID]]
+    implicit def encoder[ID: Encoder]: Encoder[TRestHalfEdge[ID]] = deriveConfiguredEncoder
+    implicit def decoder[ID: Decoder]: Decoder[TRestHalfEdge[ID]] = deriveConfiguredDecoder
+    implicit def schema[ID: Schema]: Schema[TRestHalfEdge[ID]] = Schema.derived[TRestHalfEdge[ID]]
   }
 
   @title("Node Data")
@@ -78,14 +82,10 @@ object V2DebugEndpointEntities {
     edges: Seq[TRestHalfEdge[ID]],
   )
   object TLiteralNode {
-    implicit def encoder[ID](implicit idEncoder: Encoder[ID]): Encoder[TLiteralNode[ID]] = {
-      implicit val halfEdgeEncoder: Encoder[TRestHalfEdge[ID]] = TRestHalfEdge.encoder[ID]
-      deriveConfiguredEncoder
-    }
-
-    implicit def schema[ID](implicit idSchema: Schema[ID]): Schema[TLiteralNode[ID]] = {
+    implicit def encoder[ID: Encoder]: Encoder[TLiteralNode[ID]] = deriveConfiguredEncoder
+    implicit def decoder[ID: Decoder]: Decoder[TLiteralNode[ID]] = deriveConfiguredDecoder
+    implicit def schema[ID: Schema]: Schema[TLiteralNode[ID]] = {
       implicit val mapSchema: Schema[Map[String, Json]] = mapStringJsonSchema
-      implicit val halfEdgeSchema: Schema[TRestHalfEdge[ID]] = TRestHalfEdge.schema[ID]
       Schema.derived[TLiteralNode[ID]]
     }
   }
@@ -96,6 +96,7 @@ trait V2DebugEndpoints
     with V2IngestApiSchemas
     with CommonParameters
     with QuineIdSchemas
+    with QuineIdCodec
     with StringOps {
   val appMethods: ApplicationApiMethods with DebugApiMethods
 

@@ -10,7 +10,6 @@ import org.apache.pekko.stream.connectors.s3.scaladsl.S3
 import org.apache.pekko.stream.scaladsl.{FileIO, Sink}
 import org.apache.pekko.util.ByteString
 
-import io.circe.generic.extras.auto._
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.generic.extras.{Configuration => CirceConfiguration}
 import io.circe.{Decoder, Encoder}

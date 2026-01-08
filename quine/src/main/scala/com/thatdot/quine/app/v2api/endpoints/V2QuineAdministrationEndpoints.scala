@@ -2,7 +2,6 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import io.circe.generic.extras.auto._
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
@@ -41,6 +40,7 @@ object V2AdministrationEndpointEntities {
   )
   object TGraphHashCode {
     implicit val encoder: Encoder[TGraphHashCode] = deriveEncoder
+    implicit val decoder: Decoder[TGraphHashCode] = deriveDecoder
   }
 
   @title("System Build Information")
@@ -58,6 +58,7 @@ object V2AdministrationEndpointEntities {
   )
   object TQuineInfo {
     implicit val encoder: Encoder[TQuineInfo] = deriveEncoder
+    implicit val decoder: Decoder[TQuineInfo] = deriveDecoder
   }
 
   @title("Metrics Counter")
@@ -68,6 +69,7 @@ object V2AdministrationEndpointEntities {
   )
   object TCounter {
     implicit val encoder: Encoder[TCounter] = deriveEncoder
+    implicit val decoder: Decoder[TCounter] = deriveDecoder
   }
 
   @title("Metrics Numeric Gauge")
@@ -78,6 +80,7 @@ object V2AdministrationEndpointEntities {
   )
   object TNumericGauge {
     implicit val encoder: Encoder[TNumericGauge] = deriveEncoder
+    implicit val decoder: Decoder[TNumericGauge] = deriveDecoder
   }
 
   @title("Metrics Timer Summary")
@@ -104,6 +107,7 @@ object V2AdministrationEndpointEntities {
   )
   object TTimerSummary {
     implicit val encoder: Encoder[TTimerSummary] = deriveEncoder
+    implicit val decoder: Decoder[TTimerSummary] = deriveDecoder
   }
 
   @title("Metrics Report")
@@ -127,6 +131,7 @@ object V2AdministrationEndpointEntities {
   )
   object TMetricsReport {
     implicit val encoder: Encoder[TMetricsReport] = deriveEncoder
+    implicit val decoder: Decoder[TMetricsReport] = deriveDecoder
   }
 
   @title("Shard In-Memory Limits")

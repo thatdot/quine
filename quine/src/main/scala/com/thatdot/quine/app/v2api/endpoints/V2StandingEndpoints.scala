@@ -2,7 +2,6 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
-import io.circe.generic.extras.auto._
 import sttp.model.StatusCode
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
@@ -19,8 +18,6 @@ import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPatte
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultWorkflow
 
 trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiSchemas with StringOps {
-
-  implicit val v2StandingEndpointsConfig: Configuration = typeDiscriminatorConfig
 
   /** SQ Name path element */
   val sqName: EndpointInput.PathCapture[String] =

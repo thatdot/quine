@@ -25,14 +25,6 @@ import com.thatdot.quine.app.v2api.definitions.query.standing.{
 
 trait V2StandingApiSchemas extends V2ApiSchemas {
 
-  /** `io.circe.generic.extras.auto._` appears to require a local reference to a
-    * Configuration in order to find implicit Encoders through a mixed-in TapirJsonCirce
-    * (here provided via V2ApiConfiguration), even though such
-    * a Configuration is also available in a mixin or ancestor. Thus, a trait-named
-    * config that refers to our standard config.
-    */
-  implicit val v2StandingApiSchemasConfig: Configuration = typeDiscriminatorConfig
-
   // Standing Query Mode codec, hand-rolled for [some reason]
   private val sqModesMap: Map[String, StandingQueryMode] = StandingQueryMode.values.map(s => s.toString -> s).toMap
   implicit val sqModeEncoder: Encoder[StandingQueryMode] = Encoder.encodeString.contramap(_.toString)
