@@ -1423,7 +1423,7 @@ object QuineApp {
 
   implicit val sqOutputs2Codec: EncoderDecoder[V2StandingQueryDataMap] = {
     import io.circe.{Decoder, Encoder}
-    // `StandingQueryId` is in `quine-core` where we shouldn't have codec concerns, so encoder/decoder defined only here
+    // `StandingQueryId` is in `quine-core` where we shouldn't have codec concerns, so encoder/decoder defined at call sites for the moment
     implicit val standingQueryIdEncoder: Encoder[StandingQueryId] = Encoder[UUID].contramap(_.uuid)
     implicit val standingQueryIdDecoder: Decoder[StandingQueryId] = Decoder[UUID].map(StandingQueryId(_))
     EncoderDecoder.ofEncodeDecode

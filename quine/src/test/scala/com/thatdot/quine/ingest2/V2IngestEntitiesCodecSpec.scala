@@ -304,6 +304,112 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
     }
   }
 
+  describe("V2 IngestStreamStatus codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (status: IngestStreamStatus) =>
+        val json = status.asJson
+        val decoded = json.as[IngestStreamStatus]
+        decoded shouldBe Right(status)
+      }
+    }
+
+    it("should include type discriminator") {
+      forAll { (status: IngestStreamStatus) =>
+        val json = status.asJson
+        val expectedType = status match {
+          case IngestStreamStatus.Running => "Running"
+          case IngestStreamStatus.Paused => "Paused"
+          case IngestStreamStatus.Restored => "Restored"
+          case IngestStreamStatus.Completed => "Completed"
+          case IngestStreamStatus.Terminated => "Terminated"
+          case IngestStreamStatus.Failed => "Failed"
+        }
+        json.hcursor.downField("type").as[String] shouldBe Right(expectedType)
+      }
+    }
+  }
+
+  describe("RatesSummary codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (rs: RatesSummary) =>
+        val json = rs.asJson
+        val decoded = json.as[RatesSummary]
+        decoded shouldBe Right(rs)
+      }
+    }
+
+    it("should encode with correct field names") {
+      forAll { (rs: RatesSummary) =>
+        val json = rs.asJson
+        json.hcursor.downField("count").as[Long] shouldBe Right(rs.count)
+        json.hcursor.downField("oneMinute").as[Double] shouldBe Right(rs.oneMinute)
+        json.hcursor.downField("fiveMinute").as[Double] shouldBe Right(rs.fiveMinute)
+        json.hcursor.downField("fifteenMinute").as[Double] shouldBe Right(rs.fifteenMinute)
+        json.hcursor.downField("overall").as[Double] shouldBe Right(rs.overall)
+      }
+    }
+  }
+
+  describe("IngestStreamStats codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (iss: IngestStreamStats) =>
+        val json = iss.asJson
+        val decoded = json.as[IngestStreamStats]
+        decoded shouldBe Right(iss)
+      }
+    }
+
+    it("should encode with correct field names") {
+      forAll { (iss: IngestStreamStats) =>
+        val json = iss.asJson
+        json.hcursor.downField("ingestedCount").as[Long] shouldBe Right(iss.ingestedCount)
+        json.hcursor.downField("rates").succeeded shouldBe true
+        json.hcursor.downField("byteRates").succeeded shouldBe true
+        json.hcursor.downField("startTime").succeeded shouldBe true
+        json.hcursor.downField("totalRuntime").as[Long] shouldBe Right(iss.totalRuntime)
+      }
+    }
+  }
+
+  describe("IngestStreamInfo codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (isi: IngestStreamInfo) =>
+        val json = isi.asJson
+        val decoded = json.as[IngestStreamInfo]
+        decoded shouldBe Right(isi)
+      }
+    }
+
+    it("should encode with correct field names") {
+      forAll { (isi: IngestStreamInfo) =>
+        val json = isi.asJson
+        json.hcursor.downField("status").succeeded shouldBe true
+        json.hcursor.downField("settings").succeeded shouldBe true
+        json.hcursor.downField("stats").succeeded shouldBe true
+      }
+    }
+  }
+
+  describe("IngestStreamInfoWithName codec") {
+    it("should roundtrip encode/decode") {
+      forAll { (isi: IngestStreamInfoWithName) =>
+        val json = isi.asJson
+        val decoded = json.as[IngestStreamInfoWithName]
+        decoded shouldBe Right(isi)
+      }
+    }
+
+    it("should encode with correct field names") {
+      forAll { (isi: IngestStreamInfoWithName) =>
+        val json = isi.asJson
+        json.hcursor.downField("name").as[String] shouldBe Right(isi.name)
+        json.hcursor.downField("status").succeeded shouldBe true
+        json.hcursor.downField("settings").succeeded shouldBe true
+        json.hcursor.downField("stats").succeeded shouldBe true
+      }
+    }
+  }
+
   describe("IngestFormat codec") {
     // Note: IngestFormat roundtrip has ambiguity for JsonFormat because both
     // FileFormat.JsonFormat and StreamingFormat.JsonFormat serialize to {"type": "JsonFormat"}.

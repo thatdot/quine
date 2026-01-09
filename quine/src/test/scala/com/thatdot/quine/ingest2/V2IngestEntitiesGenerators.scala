@@ -469,6 +469,46 @@ object V2IngestEntitiesGenerators {
       V1.IngestStreamStatus.Failed,
     )
 
+    val v2IngestStreamStatus: Gen[IngestStreamStatus] = Gen.oneOf(
+      IngestStreamStatus.Running,
+      IngestStreamStatus.Paused,
+      IngestStreamStatus.Restored,
+      IngestStreamStatus.Completed,
+      IngestStreamStatus.Terminated,
+      IngestStreamStatus.Failed,
+    )
+
+    val ratesSummary: Gen[RatesSummary] = for {
+      count <- Arbitrary.arbitrary[Long]
+      oneMinute <- Gen.posNum[Double]
+      fiveMinute <- Gen.posNum[Double]
+      fifteenMinute <- Gen.posNum[Double]
+      overall <- Gen.posNum[Double]
+    } yield RatesSummary(count, oneMinute, fiveMinute, fifteenMinute, overall)
+
+    val ingestStreamStats: Gen[IngestStreamStats] = for {
+      ingestedCount <- Arbitrary.arbitrary[Long]
+      rates <- ratesSummary
+      byteRates <- ratesSummary
+      startTime <- TimeGenerators.Gens.instant
+      totalRuntime <- Arbitrary.arbitrary[Long]
+    } yield IngestStreamStats(ingestedCount, rates, byteRates, startTime, totalRuntime)
+
+    val ingestStreamInfo: Gen[IngestStreamInfo] = for {
+      status <- v2IngestStreamStatus
+      message <- Gen.option(nonEmptyAlphaNumStr)
+      settings <- ingestSource
+      stats <- ingestStreamStats
+    } yield IngestStreamInfo(status, message, settings, stats)
+
+    val ingestStreamInfoWithName: Gen[IngestStreamInfoWithName] = for {
+      name <- nonEmptyAlphaNumStr
+      status <- v2IngestStreamStatus
+      message <- Gen.option(nonEmptyAlphaNumStr)
+      settings <- ingestSource
+      stats <- ingestStreamStats
+    } yield IngestStreamInfoWithName(name, status, message, settings, stats)
+
     val ingestFormat: Gen[IngestFormat] = Gen.oneOf(fileFormat, streamingFormat)
 
     val quineIngestConfiguration: Gen[QuineIngestConfiguration] = for {
@@ -538,6 +578,12 @@ object V2IngestEntitiesGenerators {
     implicit val ingestSource: Arbitrary[IngestSource] = Arbitrary(Gens.ingestSource)
 
     implicit val v1IngestStreamStatus: Arbitrary[V1.IngestStreamStatus] = Arbitrary(Gens.v1IngestStreamStatus)
+    implicit val v2IngestStreamStatus: Arbitrary[IngestStreamStatus] = Arbitrary(Gens.v2IngestStreamStatus)
+    implicit val ratesSummary: Arbitrary[RatesSummary] = Arbitrary(Gens.ratesSummary)
+    implicit val ingestStreamStats: Arbitrary[IngestStreamStats] = Arbitrary(Gens.ingestStreamStats)
+    implicit val ingestStreamInfo: Arbitrary[IngestStreamInfo] = Arbitrary(Gens.ingestStreamInfo)
+    implicit val ingestStreamInfoWithName: Arbitrary[IngestStreamInfoWithName] =
+      Arbitrary(Gens.ingestStreamInfoWithName)
     implicit val ingestFormat: Arbitrary[IngestFormat] = Arbitrary(Gens.ingestFormat)
     implicit val quineIngestConfiguration: Arbitrary[QuineIngestConfiguration] = Arbitrary(
       Gens.quineIngestConfiguration,

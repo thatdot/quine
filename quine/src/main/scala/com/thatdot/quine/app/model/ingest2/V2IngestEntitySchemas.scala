@@ -1,8 +1,9 @@
 package com.thatdot.quine.app.model.ingest2
 
 import java.nio.charset.Charset
+import java.time.Instant
 
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 import cats.implicits.catsSyntaxEitherId
 import io.circe.Encoder.encodeString
@@ -298,4 +299,26 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
     deriveConfiguredEncoder[QuineIngestStreamWithStatus]
   implicit lazy val quineIngestStreamWithStatusDecoder: Decoder[QuineIngestStreamWithStatus] =
     deriveConfiguredDecoder[QuineIngestStreamWithStatus]
+
+  implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
+  implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.emapTry(s => Try(Instant.parse(s)))
+
+  implicit lazy val v2IngestStreamStatusEncoder: Encoder[IngestStreamStatus] =
+    deriveConfiguredEncoder[IngestStreamStatus]
+  implicit lazy val v2IngestStreamStatusDecoder: Decoder[IngestStreamStatus] =
+    deriveConfiguredDecoder[IngestStreamStatus]
+
+  implicit lazy val ratesSummaryEncoder: Encoder[RatesSummary] = deriveConfiguredEncoder[RatesSummary]
+  implicit lazy val ratesSummaryDecoder: Decoder[RatesSummary] = deriveConfiguredDecoder[RatesSummary]
+
+  implicit lazy val ingestStreamStatsEncoder: Encoder[IngestStreamStats] = deriveConfiguredEncoder[IngestStreamStats]
+  implicit lazy val ingestStreamStatsDecoder: Decoder[IngestStreamStats] = deriveConfiguredDecoder[IngestStreamStats]
+
+  implicit lazy val ingestStreamInfoEncoder: Encoder[IngestStreamInfo] = deriveConfiguredEncoder[IngestStreamInfo]
+  implicit lazy val ingestStreamInfoDecoder: Decoder[IngestStreamInfo] = deriveConfiguredDecoder[IngestStreamInfo]
+
+  implicit lazy val ingestStreamInfoWithNameEncoder: Encoder[IngestStreamInfoWithName] =
+    deriveConfiguredEncoder[IngestStreamInfoWithName]
+  implicit lazy val ingestStreamInfoWithNameDecoder: Decoder[IngestStreamInfoWithName] =
+    deriveConfiguredDecoder[IngestStreamInfoWithName]
 }
