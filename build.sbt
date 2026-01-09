@@ -452,7 +452,8 @@ lazy val `quine`: Project = project
   )
 
 lazy val `quine-docs`: Project = {
-  val docJson = Def.setting((Compile / sourceManaged).value / "reference" / "openapi.json")
+  val docJsonV1 = Def.setting((Compile / sourceManaged).value / "reference" / "openapi-v1.json")
+  val docJsonV2 = Def.setting((Compile / sourceManaged).value / "reference" / "openapi-v2.json")
   val cypherTable1 = Def.setting((Compile / sourceManaged).value / "reference" / "cypher-builtin-functions.md")
   val cypherTable2 =
     Def.setting((Compile / sourceManaged).value / "reference" / "cypher-user-defined-functions.md")
@@ -480,7 +481,11 @@ lazy val `quine-docs`: Project = {
           },
           Def.taskDyn {
             (Compile / runMain)
-              .toTask(s" com.thatdot.quine.docs.GenerateOpenApi ${docJson.value.getAbsolutePath}")
+              .toTask(s" com.thatdot.quine.docs.GenerateOpenApi ${docJsonV1.value.getAbsolutePath}")
+          },
+          Def.taskDyn {
+            (Compile / runMain)
+              .toTask(s" com.thatdot.quine.docs.GenerateOpenApiV2 ${docJsonV2.value.getAbsolutePath}")
           },
         )
         .value,

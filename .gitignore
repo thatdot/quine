@@ -30,6 +30,10 @@ project/target/
 target/
 .sbtopts
 
+# virtual machine crash logs (http://www.java.com/en/download/help/error_hotspot.xml)
+hs_err_pid*
+replay_pid*
+
 # eclipse
 build/
 .classpath
@@ -78,5 +82,4 @@ metrics-logs
 # npm/node (Vite dev workspaces - development only)
 node_modules/
 /package-lock.json
-
 .vite

@@ -24,7 +24,7 @@ class V2CypherEndpointCodecSpec
   import V2CypherEndpointGenerators.Arbs._
 
   private val longProvider: QuineIdLongProvider = QuineIdLongProvider()
-  override val idProvider: QuineIdProvider = longProvider
+  override lazy val idProvider: QuineIdProvider = longProvider
 
   test("TCypherQuery roundtrip encoding/decoding") {
     forAll { (query: TCypherQuery) =>

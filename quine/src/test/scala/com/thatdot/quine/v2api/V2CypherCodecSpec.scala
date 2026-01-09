@@ -22,7 +22,7 @@ class V2CypherCodecSpec
   import V2CypherEndpointGenerators.Gens.quineIdFromLong
 
   private val longProvider = QuineIdLongProvider()
-  override val idProvider: QuineIdProvider = longProvider
+  override lazy val idProvider: QuineIdProvider = longProvider
 
   test("TCypherQuery roundtrip encoding/decoding preserves data") {
     forAll { (query: TCypherQuery) =>

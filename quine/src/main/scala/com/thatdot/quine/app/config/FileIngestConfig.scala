@@ -32,7 +32,7 @@ object ResolutionMode {
 
 /** Configuration for file ingest security
   *
-  * @param allowedDirectories Whitelist of allowed directories for file ingestion.
+  * @param allowedDirectories Allowlist of allowed directories for file ingestion.
   *                            - None: Use product defaults
   *                           - Some(dirs): Only specified directories allowed. Note: Empty means no paths are allowed
   *                           - Relative paths are resolved against working directory at startup

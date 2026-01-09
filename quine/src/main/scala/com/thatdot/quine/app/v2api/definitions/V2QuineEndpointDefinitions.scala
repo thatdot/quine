@@ -18,7 +18,7 @@ trait V2QuineEndpointDefinitions
 
   val appMethods: QuineApiMethods
 
-  val idProvider: QuineIdProvider = appMethods.graph.idProvider
+  lazy val idProvider: QuineIdProvider = appMethods.graph.idProvider
 
   def ifNamespaceFound[A](namespaceId: NamespaceId)(
     ifFound: => Future[Either[ServerError, A]],

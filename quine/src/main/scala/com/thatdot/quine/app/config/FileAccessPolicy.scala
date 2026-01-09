@@ -11,7 +11,7 @@ import com.thatdot.quine.util.BaseError
 
 /** File access policy for ingest security
   *
-  * @param allowedDirectories Whitelist of canonicalized absolute directory paths
+  * @param allowedDirectories Allowlist of canonicalized absolute directory paths
   *                           - Empty list: Deny all file ingests (except recipe files which are automatically added)
   *                           - Non-empty list: Only specified directories allowed
   * @param resolutionMode File resolution mode (static or dynamic)
@@ -106,7 +106,7 @@ object FileAccessPolicy extends LazySafeLogging {
                 .toSet
             } catch {
               case e: Exception =>
-                logger.info(log"File from whitelist was not found at startup. Will not be loaded" withException e)
+                logger.info(log"File from allowlist was not found at startup. Will not be loaded" withException e)
                 Set.empty[Path]
             }
           }.toSet
@@ -130,12 +130,12 @@ object FileAccessPolicy extends LazySafeLogging {
       val absolutePath = if (path.isAbsolute) path else path.toAbsolutePath
       val realPath = absolutePath.toRealPath()
 
-      // Handle whitelist scenarios
+      // Handle allowlist scenarios
       if (policy.allowedDirectories.isEmpty) {
-        // Empty whitelist = deny all file ingests
+        // Empty allowlist = deny all file ingests
         FileIngestSecurityException(
           s"File path not allowed: $pathString (resolved to: $realPath). " +
-          s"No allowed directories configured (empty whitelist denies all file ingests).",
+          s"No allowed directories configured (empty allowlist denies all file ingests).",
         ).invalidNel[Path]
       } else {
         // Check if the file's parent directory exactly matches one of the allowed directories

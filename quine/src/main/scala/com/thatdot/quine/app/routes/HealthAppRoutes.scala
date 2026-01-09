@@ -41,7 +41,7 @@ class HealthAppRoutes(
 
   implicit val system: org.apache.pekko.actor.ActorSystem = graph.system
 
-  override val idProvider = graph.idProvider
+  override lazy val idProvider = graph.idProvider
 
   val appMethods = new OssApiMethods(graph, quineApp, appConfig, timeout)
 
