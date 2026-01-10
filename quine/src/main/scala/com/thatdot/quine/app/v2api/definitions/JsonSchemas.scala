@@ -7,5 +7,6 @@ import sttp.tapir.Schema
 trait JsonSchemas {
   implicit val jsonSchema: Schema[Json] = Schema.any[Json]
   implicit lazy val mapStringJsonSchema: Schema[Map[String, Json]] = Schema.schemaForMap[String, Json](identity)
-  implicit val seqSeqJsonSchema: Schema[Seq[Seq[Json]]] = jsonSchema.asIterable[Seq].asIterable[Seq]
+  implicit val seqJsonSchema: Schema[Seq[Json]] = jsonSchema.asIterable[Seq]
+  implicit val seqSeqJsonSchema: Schema[Seq[Seq[Json]]] = seqJsonSchema.asIterable[Seq]
 }
