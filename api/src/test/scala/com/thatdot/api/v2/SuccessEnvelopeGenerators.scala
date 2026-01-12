@@ -8,7 +8,7 @@ object SuccessEnvelopeGenerators {
   import ScalaPrimitiveGenerators.Gens._
 
   object Gens {
-    val warnings: Gen[List[String]] = smallNum.flatMap(Gen.listOfN(_, nonEmptyAlphaStr))
+    val warnings: Gen[List[String]] = smallNonNegNum.flatMap(Gen.listOfN(_, nonEmptyAlphaStr))
 
     def ok[A](contentGen: Gen[A]): Gen[SuccessEnvelope.Ok[A]] =
       for {

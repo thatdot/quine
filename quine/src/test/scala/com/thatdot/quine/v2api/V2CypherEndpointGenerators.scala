@@ -13,7 +13,7 @@ import com.thatdot.quine.graph.QuineIdLongProvider
 import com.thatdot.quine.{JsonGenerators, ScalaPrimitiveGenerators}
 
 object V2CypherEndpointGenerators {
-  import ScalaPrimitiveGenerators.Gens.{bool, nonEmptyAlphaNumStr, nonEmptyAlphaStr, smallNum, smallPosNum}
+  import ScalaPrimitiveGenerators.Gens.{bool, nonEmptyAlphaNumStr, nonEmptyAlphaStr, smallNonNegNum, smallPosNum}
   import JsonGenerators.Gens.{dictionary, primitive}
 
   private val longProvider: QuineIdLongProvider = QuineIdLongProvider()
@@ -29,13 +29,13 @@ object V2CypherEndpointGenerators {
     val tCypherQueryResult: Gen[TCypherQueryResult] = for {
       numCols <- smallPosNum
       columns <- Gen.listOfN(numCols, nonEmptyAlphaStr)
-      numRows <- smallNum
+      numRows <- smallNonNegNum
       results <- Gen.listOfN(numRows, Gen.listOfN(numCols, primitive))
     } yield TCypherQueryResult(columns, results)
 
     val tUiNode: Gen[TUiNode] = for {
       id <- quineIdFromLong
-      hostIndex <- smallNum
+      hostIndex <- smallNonNegNum
       label <- nonEmptyAlphaStr
       properties <- dictionary
     } yield TUiNode(id, hostIndex, label, properties)

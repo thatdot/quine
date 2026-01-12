@@ -51,7 +51,7 @@ object V2IngestEntitiesGenerators {
       maxDescribeStreamSummaryRetries <- Gen.option(smallPosNum)
       maxDescribeStreamConsumerRetries <- Gen.option(smallPosNum)
       registerStreamConsumerRetries <- Gen.option(smallPosNum)
-      retryBackoffMillis <- Gen.option(smallPosLong)
+      retryBackoffMillis <- Gen.option(mediumPosLong)
     } yield RetrievalSpecificConfig.FanOutConfig(
       consumerArn,
       consumerName,
@@ -65,7 +65,7 @@ object V2IngestEntitiesGenerators {
       maxRecords <- Gen.option(smallPosNum)
       retryGetRecordsInSeconds <- Gen.option(smallPosNum)
       maxGetRecordsThreadPool <- Gen.option(smallPosNum)
-      idleTimeBetweenReadsInMillis <- Gen.option(smallPosLong)
+      idleTimeBetweenReadsInMillis <- Gen.option(mediumPosLong)
     } yield RetrievalSpecificConfig.PollingConfig(
       maxRecords,
       retryGetRecordsInSeconds,
@@ -78,12 +78,12 @@ object V2IngestEntitiesGenerators {
     val kinesisCheckpointSettings: Gen[KinesisCheckpointSettings] = for {
       disableCheckpointing <- bool
       maxBatchSize <- Gen.option(smallPosNum)
-      maxBatchWaitMillis <- Gen.option(smallPosLong)
+      maxBatchWaitMillis <- Gen.option(mediumPosLong)
     } yield KinesisCheckpointSettings(disableCheckpointing, maxBatchSize, maxBatchWaitMillis)
 
     val kinesisSchedulerSourceSettings: Gen[KinesisSchedulerSourceSettings] = for {
       bufferSize <- Gen.option(smallPosNum)
-      backpressureTimeoutMillis <- Gen.option(smallPosLong)
+      backpressureTimeoutMillis <- Gen.option(mediumPosLong)
     } yield KinesisSchedulerSourceSettings(bufferSize, backpressureTimeoutMillis)
 
     val configsBuilder: Gen[ConfigsBuilder] = for {
@@ -92,12 +92,12 @@ object V2IngestEntitiesGenerators {
     } yield ConfigsBuilder(tableName, workerIdentifier)
 
     val lifecycleConfig: Gen[LifecycleConfig] = for {
-      taskBackoffTimeMillis <- Gen.option(smallPosLong)
-      logWarningForTaskAfterMillis <- Gen.option(smallPosLong)
+      taskBackoffTimeMillis <- Gen.option(mediumPosLong)
+      logWarningForTaskAfterMillis <- Gen.option(mediumPosLong)
     } yield LifecycleConfig(taskBackoffTimeMillis, logWarningForTaskAfterMillis)
 
     val retrievalConfig: Gen[RetrievalConfig] = for {
-      listShardsBackoffTimeInMillis <- Gen.option(smallPosLong)
+      listShardsBackoffTimeInMillis <- Gen.option(mediumPosLong)
       maxListShardsRetryAttempts <- Gen.option(smallPosNum)
     } yield RetrievalConfig(listShardsBackoffTimeInMillis, maxListShardsRetryAttempts)
 
@@ -106,8 +106,8 @@ object V2IngestEntitiesGenerators {
     } yield ProcessorConfig(callProcessRecordsEvenForEmptyRecordList)
 
     val leaseManagementConfig: Gen[LeaseManagementConfig] = for {
-      failoverTimeMillis <- Gen.option(smallPosLong)
-      shardSyncIntervalMillis <- Gen.option(smallPosLong)
+      failoverTimeMillis <- Gen.option(mediumPosLong)
+      shardSyncIntervalMillis <- Gen.option(mediumPosLong)
       cleanupLeasesUponShardCompletion <- Gen.option(bool)
       ignoreUnexpectedChildShards <- Gen.option(bool)
       maxLeasesForWorker <- Gen.option(smallPosNum)
@@ -119,9 +119,9 @@ object V2IngestEntitiesGenerators {
       dampeningPercentage <- Gen.option(smallPosNum)
       allowThroughputOvershoot <- Gen.option(bool)
       disableWorkerMetrics <- Gen.option(bool)
-      maxThroughputPerHostKBps <- Gen.option(mediumDouble)
+      maxThroughputPerHostKBps <- Gen.option(mediumNonNegDouble)
       isGracefulLeaseHandoffEnabled <- Gen.option(bool)
-      gracefulLeaseHandoffTimeoutMillis <- Gen.option(smallPosLong)
+      gracefulLeaseHandoffTimeoutMillis <- Gen.option(mediumPosLong)
     } yield LeaseManagementConfig(
       failoverTimeMillis,
       shardSyncIntervalMillis,
@@ -142,14 +142,14 @@ object V2IngestEntitiesGenerators {
     )
 
     val coordinatorConfig: Gen[CoordinatorConfig] = for {
-      parentShardPollIntervalMillis <- Gen.option(smallPosLong)
+      parentShardPollIntervalMillis <- Gen.option(mediumPosLong)
       skipShardSyncAtWorkerInitializationIfLeasesExist <- Gen.option(bool)
       sp <- Gen.option(shardPrioritization)
       cvc <- Gen.option(clientVersionConfig)
     } yield CoordinatorConfig(parentShardPollIntervalMillis, skipShardSyncAtWorkerInitializationIfLeasesExist, sp, cvc)
 
     val metricsConfig: Gen[MetricsConfig] = for {
-      metricsBufferTimeMillis <- Gen.option(smallPosLong)
+      metricsBufferTimeMillis <- Gen.option(mediumPosLong)
       metricsMaxQueueSize <- Gen.option(smallPosNum)
       ml <- Gen.option(metricsLevel)
       dimensions <- Gen.option(Gen.containerOf[Set, MetricsDimension](metricsDimension))
@@ -175,7 +175,7 @@ object V2IngestEntitiesGenerators {
       Gen.const(V1.KinesisIngest.IteratorType.Latest),
       nonEmptyAlphaNumStr.map(V1.KinesisIngest.IteratorType.AtSequenceNumber(_)),
       nonEmptyAlphaNumStr.map(V1.KinesisIngest.IteratorType.AfterSequenceNumber(_)),
-      smallPosLong.map(V1.KinesisIngest.IteratorType.AtTimestamp(_)),
+      mediumPosLong.map(V1.KinesisIngest.IteratorType.AtTimestamp(_)),
     )
 
     val transformationJavaScript: Gen[Transformation.JavaScript] =
@@ -252,7 +252,7 @@ object V2IngestEntitiesGenerators {
 
     val kafkaOffsetCommitting: Gen[V1.KafkaOffsetCommitting] = for {
       maxBatch <- smallPosNum
-      maxInterval <- smallPosLong
+      maxInterval <- mediumPosLong
       parallelism <- smallPosNum
       waitForCommitConfirmation <- bool
     } yield V1.KafkaOffsetCommitting.ExplicitCommit(
@@ -275,8 +275,8 @@ object V2IngestEntitiesGenerators {
       path <- nonEmptyAlphaNumStr
       fileIngestMode <- Gen.option(fileIngestMode)
       maximumLineSize <- Gen.option(smallPosNum)
-      startOffset <- smallPosLong
-      limit <- Gen.option(smallPosLong)
+      startOffset <- mediumPosLong
+      limit <- Gen.option(mediumPosLong)
       characterEncoding <- charset
       recordDecoders <- recordDecodingSeq
     } yield FileIngest(
@@ -296,8 +296,8 @@ object V2IngestEntitiesGenerators {
       key <- nonEmptyAlphaNumStr
       credentials <- Gen.option(awsCredentials)
       maximumLineSize <- Gen.option(smallPosNum)
-      startOffset <- smallPosLong
-      limit <- Gen.option(smallPosLong)
+      startOffset <- mediumPosLong
+      limit <- Gen.option(mediumPosLong)
       characterEncoding <- charset
       recordDecoders <- recordDecodingSeq
     } yield S3Ingest(
@@ -328,8 +328,8 @@ object V2IngestEntitiesGenerators {
 
     val numberIteratorIngest: Gen[NumberIteratorIngest] = for {
       format <- streamingFormat
-      startOffset <- smallPosLong
-      limit <- Gen.option(smallPosLong)
+      startOffset <- mediumPosLong
+      limit <- Gen.option(mediumPosLong)
     } yield NumberIteratorIngest(format, startOffset, limit)
 
     val websocketIngest: Gen[WebsocketIngest] = for {
@@ -430,7 +430,7 @@ object V2IngestEntitiesGenerators {
       offsetCommitting <- Gen.option(kafkaOffsetCommitting)
       autoOffsetReset <- kafkaAutoOffsetReset
       kafkaProperties <- kafkaProperties
-      endingOffset <- Gen.option(smallPosLong)
+      endingOffset <- Gen.option(mediumPosLong)
       recordDecoders <- recordDecodingSeq
     } yield KafkaIngest(
       format,

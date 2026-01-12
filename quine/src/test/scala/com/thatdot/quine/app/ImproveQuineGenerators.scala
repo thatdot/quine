@@ -6,7 +6,7 @@ import com.thatdot.quine.ScalaPrimitiveGenerators
 import com.thatdot.quine.app.ImproveQuine.{RecipeInfo, TelemetryData}
 
 object ImproveQuineGenerators {
-  import ScalaPrimitiveGenerators.Gens.{nonEmptyAlphaNumStr, optNonEmptyAlphaStr, smallPosLong}
+  import ScalaPrimitiveGenerators.Gens.{nonEmptyAlphaNumStr, optNonEmptyAlphaStr, mediumPosLong}
 
   object Gens {
     val recipeInfo: Gen[RecipeInfo] = for {
@@ -26,7 +26,7 @@ object ImproveQuineGenerators {
       hostHash <- nonEmptyAlphaNumStr
       time <- nonEmptyAlphaNumStr
       sessionId <- nonEmptyAlphaNumStr
-      uptime <- smallPosLong
+      uptime <- mediumPosLong
       persistor <- nonEmptyAlphaNumStr
       sources <- optStringList
       sinks <- optStringList

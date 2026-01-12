@@ -7,7 +7,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirec
 import com.thatdot.quine.{JsonGenerators, ScalaPrimitiveGenerators}
 
 object V2DebugEndpointGenerators {
-  import ScalaPrimitiveGenerators.Gens.{nonEmptyAlphaStr, smallNum}
+  import ScalaPrimitiveGenerators.Gens.{nonEmptyAlphaStr, smallNonNegNum}
   import JsonGenerators.Gens.primitive
 
   object Gens {
@@ -25,9 +25,9 @@ object V2DebugEndpointGenerators {
     } yield TRestHalfEdge(edgeType, direction, other)
 
     def tLiteralNode[ID: Arbitrary]: Gen[TLiteralNode[ID]] = for {
-      propertiesSize <- smallNum
+      propertiesSize <- smallNonNegNum
       properties <- Gen.mapOfN(propertiesSize, Gen.zip(nonEmptyAlphaStr, jsonValue))
-      edgesSize <- smallNum
+      edgesSize <- smallNonNegNum
       edges <- Gen.listOfN(edgesSize, tRestHalfEdge[ID])
     } yield TLiteralNode(properties, edges)
   }

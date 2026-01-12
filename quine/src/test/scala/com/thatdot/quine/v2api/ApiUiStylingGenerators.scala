@@ -6,7 +6,7 @@ import com.thatdot.quine.app.v2api.definitions.ApiUiStyling._
 import com.thatdot.quine.{JsonGenerators, ScalaPrimitiveGenerators}
 
 object ApiUiStylingGenerators {
-  import ScalaPrimitiveGenerators.Gens.{nonEmptyAlphaNumStr, nonEmptyAlphaStr, optNonEmptyAlphaNumStr, smallNum}
+  import ScalaPrimitiveGenerators.Gens.{nonEmptyAlphaNumStr, nonEmptyAlphaStr, optNonEmptyAlphaNumStr, smallNonNegNum}
   import JsonGenerators.Gens.dictionary
 
   object Gens {
@@ -25,7 +25,7 @@ object ApiUiStylingGenerators {
     } yield SampleQuery(name, query)
 
     val uiNodePredicate: Gen[UiNodePredicate] = for {
-      propertyKeysSize <- smallNum
+      propertyKeysSize <- smallNonNegNum
       propertyKeys <- Gen.containerOfN[Vector, String](propertyKeysSize, nonEmptyAlphaStr)
       knownValues <- dictionary
       dbLabel <- optNonEmptyAlphaNumStr
