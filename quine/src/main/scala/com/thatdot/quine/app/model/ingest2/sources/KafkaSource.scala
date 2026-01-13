@@ -133,7 +133,8 @@ object KafkaSource {
     def fold[B](value: WithOffset, folder: DataFolderTo[B]): B = {
       val recordBuilder = folder.mapBuilder()
       recordBuilder.add("value", folder.bytes(value.record.value()))
-      recordBuilder.add("key", folder.bytes(value.record.key()))
+      // Key can be null if not specified per Kafka API
+      Option(value.record.key()).foreach(k => recordBuilder.add("key", folder.bytes(k)))
       recordBuilder.add("topic", folder.string(value.record.topic()))
       recordBuilder.add("partition", folder.integer(value.record.partition().toLong))
       recordBuilder.add("offset", folder.integer(value.record.offset()))
@@ -185,7 +186,8 @@ object KafkaSource {
     def fold[B](value: NoOffset, folder: DataFolderTo[B]): B = {
       val builder = folder.mapBuilder()
       builder.add("value", folder.bytes(value.value()))
-      builder.add("key", folder.bytes(value.key()))
+      // Key can be null if not specified per Kafka API
+      Option(value.key()).foreach(k => builder.add("key", folder.bytes(k)))
       builder.add("topic", folder.string(value.topic()))
       builder.add("partition", folder.integer(value.partition().toLong))
       builder.add("offset", folder.integer(value.offset()))
