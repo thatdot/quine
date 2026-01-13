@@ -190,8 +190,8 @@ object ApiIngest {
     @default(Seq(Latest, Earliest, None))
     val values: Seq[KafkaAutoOffsetReset] = Seq(Latest, Earliest, None)
 
-    implicit val encoder: Encoder[KafkaAutoOffsetReset] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[KafkaAutoOffsetReset] = deriveEnumerationDecoder
+    implicit val encoder: Encoder[KafkaAutoOffsetReset] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[KafkaAutoOffsetReset] = deriveConfiguredDecoder
   }
 
   @title("Kafka offset tracking mechanism")
@@ -285,8 +285,8 @@ object ApiIngest {
     @default(Seq(Zlib, Gzip, Base64))
     val values: Seq[RecordDecodingType] = Seq(Zlib, Gzip, Base64)
 
-    implicit val encoder: Encoder[RecordDecodingType] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[RecordDecodingType] = deriveEnumerationDecoder
+    implicit val encoder: Encoder[RecordDecodingType] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[RecordDecodingType] = deriveConfiguredDecoder
   }
 
   sealed abstract class FileIngestMode
@@ -301,8 +301,8 @@ object ApiIngest {
     @default(Seq(Regular, NamedPipe))
     val values: Seq[FileIngestMode] = Seq(Regular, NamedPipe)
 
-    implicit val encoder: Encoder[FileIngestMode] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[FileIngestMode] = deriveEnumerationDecoder
+    implicit val encoder: Encoder[FileIngestMode] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[FileIngestMode] = deriveConfiguredDecoder
   }
 
   sealed trait Transformation
@@ -755,8 +755,8 @@ object ApiIngest {
       val value = "UNKNOWN_TO_SDK_VERSION"
     }
 
-    implicit val encoder: Encoder[BillingMode] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[BillingMode] = deriveEnumerationDecoder
+    implicit val encoder: Encoder[BillingMode] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[BillingMode] = deriveConfiguredDecoder
   }
 
   sealed trait InitialPosition
@@ -954,8 +954,8 @@ object ApiIngest {
 
     case object CLIENT_VERSION_CONFIG_3X extends ClientVersionConfig
 
-    implicit val encoder: Encoder[ClientVersionConfig] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[ClientVersionConfig] = deriveEnumerationDecoder
+    implicit val encoder: Encoder[ClientVersionConfig] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[ClientVersionConfig] = deriveConfiguredDecoder
   }
 
   case class CoordinatorConfig(
@@ -1019,8 +1019,8 @@ object ApiIngest {
     /** DETAILED metrics level can be used to emit all metrics. */
     case object DETAILED extends MetricsLevel
 
-    implicit val encoder: Encoder[MetricsLevel] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[MetricsLevel] = deriveEnumerationDecoder
+    implicit val encoder: Encoder[MetricsLevel] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[MetricsLevel] = deriveConfiguredDecoder
   }
 
   @title("Dimensions that may be attached to CloudWatch metrics.")
@@ -1046,8 +1046,8 @@ object ApiIngest {
       val value = "WorkerIdentifier"
     }
 
-    implicit val encoder: Encoder[MetricsDimension] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[MetricsDimension] = deriveEnumerationDecoder
+    implicit val encoder: Encoder[MetricsDimension] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[MetricsDimension] = deriveConfiguredDecoder
   }
 
   case class MetricsConfig(

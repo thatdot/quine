@@ -209,16 +209,16 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
   implicit lazy val billingModeEncoder: Encoder[BillingMode] = deriveConfiguredEncoder[BillingMode]
   implicit lazy val billingModeDecoder: Decoder[BillingMode] = deriveConfiguredDecoder[BillingMode]
 
-  implicit lazy val metricsLevelEncoder: Encoder[MetricsLevel] = deriveEnumerationEncoder[MetricsLevel]
-  implicit lazy val metricsLevelDecoder: Decoder[MetricsLevel] = deriveEnumerationDecoder[MetricsLevel]
+  implicit lazy val metricsLevelEncoder: Encoder[MetricsLevel] = deriveConfiguredEncoder[MetricsLevel]
+  implicit lazy val metricsLevelDecoder: Decoder[MetricsLevel] = deriveConfiguredDecoder[MetricsLevel]
 
   implicit lazy val metricsDimensionEncoder: Encoder[MetricsDimension] = deriveConfiguredEncoder[MetricsDimension]
   implicit lazy val metricsDimensionDecoder: Decoder[MetricsDimension] = deriveConfiguredDecoder[MetricsDimension]
 
   implicit lazy val clientVersionConfigEncoder: Encoder[ClientVersionConfig] =
-    deriveEnumerationEncoder[ClientVersionConfig]
+    deriveConfiguredEncoder[ClientVersionConfig]
   implicit lazy val clientVersionConfigDecoder: Decoder[ClientVersionConfig] =
-    deriveEnumerationDecoder[ClientVersionConfig]
+    deriveConfiguredDecoder[ClientVersionConfig]
 
   implicit lazy val shardPrioritizationEncoder: Encoder[ShardPrioritization] =
     deriveConfiguredEncoder[ShardPrioritization]

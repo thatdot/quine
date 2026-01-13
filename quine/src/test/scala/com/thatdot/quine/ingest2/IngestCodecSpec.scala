@@ -14,6 +14,8 @@ import com.thatdot.quine.CirceCodecTestSupport
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.RecordDecodingType._
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
+  BillingMode,
+  ClientVersionConfig,
   FileIngestMode,
   IngestFormat,
   IngestSource,
@@ -23,8 +25,11 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
   KafkaSecurityProtocol,
   KinesisCheckpointSettings,
   KinesisSchedulerSourceSettings,
+  MetricsDimension,
+  MetricsLevel,
   OnRecordErrorHandler,
   Oss,
+  RecordDecodingType,
   RecordRetrySettings,
   WebSocketClient,
 }
@@ -330,6 +335,55 @@ class IngestCodecSpec
         minimalJson.as[OutputFormat.JSON].getOrElse(fail(s"Failed to decode `minimalJson` of ${minimalJson.noSpaces}"))
       decoded shouldEqual expectedMinimalDecoded
     }
+  }
+
+  test("RecordDecodingType encodes with type discriminator") {
+    (RecordDecodingType.Zlib: RecordDecodingType).asJson shouldEqual Json.obj("type" -> Json.fromString("Zlib"))
+    (RecordDecodingType.Gzip: RecordDecodingType).asJson shouldEqual Json.obj("type" -> Json.fromString("Gzip"))
+    (RecordDecodingType.Base64: RecordDecodingType).asJson shouldEqual Json.obj("type" -> Json.fromString("Base64"))
+  }
+
+  test("FileIngestMode encodes with type discriminator") {
+    (FileIngestMode.Regular: FileIngestMode).asJson shouldEqual Json.obj("type" -> Json.fromString("Regular"))
+    (FileIngestMode.NamedPipe: FileIngestMode).asJson shouldEqual Json.obj("type" -> Json.fromString("NamedPipe"))
+  }
+
+  test("KafkaAutoOffsetReset encodes with type discriminator") {
+    (KafkaAutoOffsetReset.Latest: KafkaAutoOffsetReset).asJson shouldEqual Json.obj("type" -> Json.fromString("Latest"))
+    (KafkaAutoOffsetReset.Earliest: KafkaAutoOffsetReset).asJson shouldEqual
+    Json.obj("type" -> Json.fromString("Earliest"))
+    (KafkaAutoOffsetReset.None: KafkaAutoOffsetReset).asJson shouldEqual Json.obj("type" -> Json.fromString("None"))
+  }
+
+  test("BillingMode encodes with type discriminator") {
+    (BillingMode.PROVISIONED: BillingMode).asJson shouldEqual Json.obj("type" -> Json.fromString("PROVISIONED"))
+    (BillingMode.PAY_PER_REQUEST: BillingMode).asJson shouldEqual Json.obj("type" -> Json.fromString("PAY_PER_REQUEST"))
+    (BillingMode.UNKNOWN_TO_SDK_VERSION: BillingMode).asJson shouldEqual
+    Json.obj("type" -> Json.fromString("UNKNOWN_TO_SDK_VERSION"))
+  }
+
+  test("MetricsLevel encodes with type discriminator") {
+    (MetricsLevel.NONE: MetricsLevel).asJson shouldEqual Json.obj("type" -> Json.fromString("NONE"))
+    (MetricsLevel.SUMMARY: MetricsLevel).asJson shouldEqual Json.obj("type" -> Json.fromString("SUMMARY"))
+    (MetricsLevel.DETAILED: MetricsLevel).asJson shouldEqual Json.obj("type" -> Json.fromString("DETAILED"))
+  }
+
+  test("MetricsDimension encodes with type discriminator") {
+    (MetricsDimension.OPERATION_DIMENSION_NAME: MetricsDimension).asJson shouldEqual
+    Json.obj("type" -> Json.fromString("OPERATION_DIMENSION_NAME"))
+    (MetricsDimension.SHARD_ID_DIMENSION_NAME: MetricsDimension).asJson shouldEqual
+    Json.obj("type" -> Json.fromString("SHARD_ID_DIMENSION_NAME"))
+    (MetricsDimension.STREAM_IDENTIFIER: MetricsDimension).asJson shouldEqual
+    Json.obj("type" -> Json.fromString("STREAM_IDENTIFIER"))
+    (MetricsDimension.WORKER_IDENTIFIER: MetricsDimension).asJson shouldEqual
+    Json.obj("type" -> Json.fromString("WORKER_IDENTIFIER"))
+  }
+
+  test("ClientVersionConfig encodes with type discriminator") {
+    (ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X: ClientVersionConfig).asJson shouldEqual
+    Json.obj("type" -> Json.fromString("CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X"))
+    (ClientVersionConfig.CLIENT_VERSION_CONFIG_3X: ClientVersionConfig).asJson shouldEqual
+    Json.obj("type" -> Json.fromString("CLIENT_VERSION_CONFIG_3X"))
   }
 
 }
