@@ -12,9 +12,9 @@ import sttp.tapir.{DecodeResult, headers, statusCode, stringBody}
 
 import com.thatdot.api.v2.ErrorResponse
 import com.thatdot.api.v2.ErrorType.{ApiError, DecodeError}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
+import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
 
-trait TapirDecodeErrorHandler extends V2IngestApiSchemas {
+trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
 
   /** Wrap 500 codes in [[ErrorResponse.ServerError]] use default behavior for other codes. */
   protected val customExceptionHandler: DefaultExceptionHandler[Future] =

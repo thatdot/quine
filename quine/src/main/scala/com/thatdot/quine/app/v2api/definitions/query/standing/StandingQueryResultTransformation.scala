@@ -3,6 +3,7 @@ package com.thatdot.quine.app.v2api.definitions.query.standing
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
 
 import com.thatdot.api.v2.schema.V2ApiConfiguration._
@@ -22,4 +23,5 @@ object StandingQueryResultTransformation {
 
   implicit val encoder: Encoder[StandingQueryResultTransformation] = deriveConfiguredEncoder
   implicit val decoder: Decoder[StandingQueryResultTransformation] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[StandingQueryResultTransformation] = Schema.derived
 }

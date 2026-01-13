@@ -11,8 +11,10 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationEncoder,
 }
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
+import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk._
 import com.thatdot.api.v2.schema.V2ApiConfiguration._
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.{routes => V1}
@@ -21,9 +23,6 @@ object ApiIngest {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
   implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
-
-  implicit val charsetEncoder: Encoder[Charset] = Encoder.encodeString.contramap(_.name)
-  implicit val charsetDecoder: Decoder[Charset] = Decoder.decodeString.map(s => Charset.forName(s))
 
   implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
   implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.map(Instant.parse)
@@ -61,6 +60,7 @@ object ApiIngest {
   object IngestStreamStats {
     implicit val encoder: Encoder[IngestStreamStats] = deriveConfiguredEncoder
     implicit val decoder: Decoder[IngestStreamStats] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[IngestStreamStats] = Schema.derived
   }
 
   @title("Ingest Stream Info")
@@ -81,6 +81,12 @@ object ApiIngest {
     )
   }
 
+  object IngestStreamInfo {
+    implicit val encoder: Encoder[IngestStreamInfo] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[IngestStreamInfo] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[IngestStreamInfo] = Schema.derived
+  }
+
   @title("Named Ingest Stream")
   @description("An active stream of data being ingested paired with a name for the stream.")
   final case class IngestStreamInfoWithName(
@@ -94,6 +100,7 @@ object ApiIngest {
   object IngestStreamInfoWithName {
     implicit val encoder: Encoder[IngestStreamInfoWithName] = deriveConfiguredEncoder
     implicit val decoder: Decoder[IngestStreamInfoWithName] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[IngestStreamInfoWithName] = Schema.derived
   }
 
   sealed abstract class IngestStreamStatus(val isTerminal: Boolean, val position: ValvePosition)
@@ -149,6 +156,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[IngestStreamStatus] = deriveConfiguredEncoder
     implicit val decoder: Decoder[IngestStreamStatus] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[IngestStreamStatus] = Schema.derived
   }
 
   sealed trait CsvCharacter
@@ -172,6 +180,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[CsvCharacter] = deriveEnumerationEncoder
     implicit val decoder: Decoder[CsvCharacter] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[CsvCharacter] = Schema.derived
   }
 
   @title("Kafka Auto Offset Reset")
@@ -192,6 +201,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[KafkaAutoOffsetReset] = deriveConfiguredEncoder
     implicit val decoder: Decoder[KafkaAutoOffsetReset] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[KafkaAutoOffsetReset] = Schema.derived
   }
 
   @title("Kafka offset tracking mechanism")
@@ -224,6 +234,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[KafkaOffsetCommitting] = deriveConfiguredEncoder
     implicit val decoder: Decoder[KafkaOffsetCommitting] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[KafkaOffsetCommitting] = Schema.derived
   }
 
   sealed abstract class KafkaSecurityProtocol(val name: String)
@@ -245,6 +256,7 @@ object ApiIngest {
       case s if s == Sasl_Plaintext.name => Right(Sasl_Plaintext)
       case s => Left(s"$s is not a valid KafkaSecurityProtocol")
     }
+    implicit lazy val schema: Schema[KafkaSecurityProtocol] = Schema.derived
   }
 
   object WebSocketClient {
@@ -254,6 +266,7 @@ object ApiIngest {
     object KeepaliveProtocol {
       implicit val encoder: Encoder[KeepaliveProtocol] = deriveConfiguredEncoder
       implicit val decoder: Decoder[KeepaliveProtocol] = deriveConfiguredDecoder
+      implicit lazy val schema: Schema[KeepaliveProtocol] = Schema.derived
     }
 
     @title("Ping/Pong on interval")
@@ -287,6 +300,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[RecordDecodingType] = deriveConfiguredEncoder
     implicit val decoder: Decoder[RecordDecodingType] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[RecordDecodingType] = Schema.derived
   }
 
   sealed abstract class FileIngestMode
@@ -303,6 +317,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[FileIngestMode] = deriveConfiguredEncoder
     implicit val decoder: Decoder[FileIngestMode] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[FileIngestMode] = Schema.derived
   }
 
   sealed trait Transformation
@@ -315,6 +330,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[Transformation] = deriveConfiguredEncoder
     implicit val decoder: Decoder[Transformation] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[Transformation] = Schema.derived
   }
 
   object Oss {
@@ -345,6 +361,7 @@ object ApiIngest {
     object QuineIngestConfiguration {
       implicit val encoder: Encoder[QuineIngestConfiguration] = deriveConfiguredEncoder
       implicit val decoder: Decoder[QuineIngestConfiguration] = deriveConfiguredDecoder
+      implicit lazy val schema: Schema[QuineIngestConfiguration] = Schema.derived
     }
   }
 
@@ -612,6 +629,7 @@ object ApiIngest {
 
         implicit val encoder: Encoder[IteratorType] = deriveConfiguredEncoder
         implicit val decoder: Decoder[IteratorType] = deriveConfiguredDecoder
+        implicit lazy val schema: Schema[IteratorType] = Schema.derived
       }
     }
 
@@ -660,6 +678,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[IngestSource] = deriveConfiguredEncoder
     implicit val decoder: Decoder[IngestSource] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[IngestSource] = Schema.derived
   }
 
   @title("Scheduler Checkpoint Settings")
@@ -678,6 +697,7 @@ object ApiIngest {
   object KinesisCheckpointSettings {
     implicit val encoder: Encoder[KinesisCheckpointSettings] = deriveConfiguredEncoder
     implicit val decoder: Decoder[KinesisCheckpointSettings] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[KinesisCheckpointSettings] = Schema.derived
   }
 
   case class KinesisSchedulerSourceSettings(
@@ -693,6 +713,7 @@ object ApiIngest {
   object KinesisSchedulerSourceSettings {
     implicit val encoder: Encoder[KinesisSchedulerSourceSettings] = deriveConfiguredEncoder
     implicit val decoder: Decoder[KinesisSchedulerSourceSettings] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[KinesisSchedulerSourceSettings] = Schema.derived
   }
 
   @title("KCLConfiguration")
@@ -713,6 +734,7 @@ object ApiIngest {
   object KCLConfiguration {
     implicit val encoder: Encoder[KCLConfiguration] = deriveConfiguredEncoder
     implicit val decoder: Decoder[KCLConfiguration] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[KCLConfiguration] = Schema.derived
   }
 
   @title("ConfigsBuilder")
@@ -730,6 +752,7 @@ object ApiIngest {
   object ConfigsBuilder {
     implicit val encoder: Encoder[ConfigsBuilder] = deriveConfiguredEncoder
     implicit val decoder: Decoder[ConfigsBuilder] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[ConfigsBuilder] = Schema.derived
   }
 
   sealed trait BillingMode {
@@ -757,6 +780,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[BillingMode] = deriveConfiguredEncoder
     implicit val decoder: Decoder[BillingMode] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[BillingMode] = Schema.derived
   }
 
   sealed trait InitialPosition
@@ -778,6 +802,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[InitialPosition] = deriveConfiguredEncoder
     implicit val decoder: Decoder[InitialPosition] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[InitialPosition] = Schema.derived
   }
 
   case class LeaseManagementConfig(
@@ -876,6 +901,7 @@ object ApiIngest {
   object LeaseManagementConfig {
     implicit val encoder: Encoder[LeaseManagementConfig] = deriveConfiguredEncoder
     implicit val decoder: Decoder[LeaseManagementConfig] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[LeaseManagementConfig] = Schema.derived
   }
 
   sealed trait RetrievalSpecificConfig
@@ -923,6 +949,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[RetrievalSpecificConfig] = deriveConfiguredEncoder
     implicit val decoder: Decoder[RetrievalSpecificConfig] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[RetrievalSpecificConfig] = Schema.derived
   }
 
   case class ProcessorConfig(
@@ -933,6 +960,7 @@ object ApiIngest {
   object ProcessorConfig {
     implicit val encoder: Encoder[ProcessorConfig] = deriveConfiguredEncoder
     implicit val decoder: Decoder[ProcessorConfig] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[ProcessorConfig] = Schema.derived
   }
 
   sealed trait ShardPrioritization
@@ -945,6 +973,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[ShardPrioritization] = deriveConfiguredEncoder
     implicit val decoder: Decoder[ShardPrioritization] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[ShardPrioritization] = Schema.derived
   }
 
   sealed trait ClientVersionConfig
@@ -956,6 +985,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[ClientVersionConfig] = deriveConfiguredEncoder
     implicit val decoder: Decoder[ClientVersionConfig] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[ClientVersionConfig] = Schema.derived
   }
 
   case class CoordinatorConfig(
@@ -980,6 +1010,7 @@ object ApiIngest {
   object CoordinatorConfig {
     implicit val encoder: Encoder[CoordinatorConfig] = deriveConfiguredEncoder
     implicit val decoder: Decoder[CoordinatorConfig] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[CoordinatorConfig] = Schema.derived
   }
 
   case class LifecycleConfig(
@@ -992,6 +1023,7 @@ object ApiIngest {
   object LifecycleConfig {
     implicit val encoder: Encoder[LifecycleConfig] = deriveConfiguredEncoder
     implicit val decoder: Decoder[LifecycleConfig] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[LifecycleConfig] = Schema.derived
   }
 
   case class RetrievalConfig(
@@ -1006,6 +1038,7 @@ object ApiIngest {
   object RetrievalConfig {
     implicit val encoder: Encoder[RetrievalConfig] = deriveConfiguredEncoder
     implicit val decoder: Decoder[RetrievalConfig] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[RetrievalConfig] = Schema.derived
   }
 
   sealed trait MetricsLevel
@@ -1021,6 +1054,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[MetricsLevel] = deriveConfiguredEncoder
     implicit val decoder: Decoder[MetricsLevel] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[MetricsLevel] = Schema.derived
   }
 
   @title("Dimensions that may be attached to CloudWatch metrics.")
@@ -1048,6 +1082,7 @@ object ApiIngest {
 
     implicit val encoder: Encoder[MetricsDimension] = deriveConfiguredEncoder
     implicit val decoder: Decoder[MetricsDimension] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[MetricsDimension] = Schema.derived
   }
 
   case class MetricsConfig(
@@ -1066,6 +1101,7 @@ object ApiIngest {
   object MetricsConfig {
     implicit val encoder: Encoder[MetricsConfig] = deriveConfiguredEncoder
     implicit val decoder: Decoder[MetricsConfig] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[MetricsConfig] = Schema.derived
   }
 
   @title("WebSocket File Upload")
@@ -1146,6 +1182,7 @@ object ApiIngest {
 
       implicit val encoder: Encoder[FileFormat] = deriveConfiguredEncoder
       implicit val decoder: Decoder[FileFormat] = deriveConfiguredDecoder
+      implicit lazy val schema: Schema[FileFormat] = Schema.derived
     }
 
     @title("Streamed Record Format")
@@ -1186,7 +1223,10 @@ object ApiIngest {
 
       implicit val encoder: Encoder[StreamingFormat] = deriveConfiguredEncoder
       implicit val decoder: Decoder[StreamingFormat] = deriveConfiguredDecoder
+      implicit lazy val schema: Schema[StreamingFormat] = Schema.derived
     }
+
+    implicit lazy val schema: Schema[IngestFormat] = Schema.derived
   }
   sealed trait OnStreamErrorHandler
 
@@ -1201,11 +1241,8 @@ object ApiIngest {
   object OnStreamErrorHandler {
     implicit val encoder: Encoder[OnStreamErrorHandler] = deriveConfiguredEncoder
     implicit val decoder: Decoder[OnStreamErrorHandler] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[OnStreamErrorHandler] = Schema.derived
   }
-
-  // --------------------
-  // Stream Error Handler
-  // --------------------
 
   case class RecordRetrySettings(
     @default(200)
@@ -1225,6 +1262,7 @@ object ApiIngest {
   object RecordRetrySettings {
     implicit val encoder: Encoder[RecordRetrySettings] = deriveConfiguredEncoder
     implicit val decoder: Decoder[RecordRetrySettings] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[RecordRetrySettings] = Schema.derived
   }
 
   /** Error handler defined for errors that affect only a single record. This is intended to handle errors in
@@ -1250,5 +1288,6 @@ object ApiIngest {
   object OnRecordErrorHandler {
     implicit val encoder: Encoder[OnRecordErrorHandler] = deriveConfiguredEncoder
     implicit val decoder: Decoder[OnRecordErrorHandler] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[OnRecordErrorHandler] = Schema.derived
   }
 }

@@ -3,6 +3,7 @@ package com.thatdot.api.v2
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
 
 import com.thatdot.api.v2.schema.V2ApiConfiguration._
@@ -22,4 +23,5 @@ object AwsCredentials {
   implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[AwsCredentials] = deriveConfiguredEncoder
   implicit val decoder: Decoder[AwsCredentials] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[AwsCredentials] = Schema.derived
 }

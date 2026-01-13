@@ -4,11 +4,15 @@ import cats.data.NonEmptyList
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
+import com.thatdot.api.v2.schema.ThirdPartySchemas.cats._
 import com.thatdot.api.v2.schema.V2ApiConfiguration._
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.CypherQuery
+import com.thatdot.quine.app.v2api.definitions.query.standing.Predicate.OnlyPositiveMatch
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultTransformation.InlineData
 
 @title(StandingQueryResultWorkflow.apiTitle)
 @description(StandingQueryResultWorkflow.apiDescription)
@@ -31,6 +35,16 @@ object StandingQueryResultWorkflow {
   implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[StandingQueryResultWorkflow] = deriveConfiguredEncoder
   implicit val decoder: Decoder[StandingQueryResultWorkflow] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[StandingQueryResultWorkflow] = Schema.derived
+
+  val exampleToStandardOut: StandingQueryResultWorkflow = StandingQueryResultWorkflow(
+    name = "stdout-example",
+    filter = Some(OnlyPositiveMatch),
+    preEnrichmentTransformation = Some(InlineData),
+    resultEnrichment = Some(CypherQuery(CypherQuery.exampleQuery)),
+    destinations = NonEmptyList.one(QuineDestinationSteps.StandardOut),
+  )
+  val examples: Seq[StandingQueryResultWorkflow] = Seq(exampleToStandardOut)
 
   val apiTitle: String = "Standing Query Result Workflow"
   val apiDescription: String =

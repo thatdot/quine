@@ -17,11 +17,12 @@ import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.pekkohttp.{PekkoHttpServerInterpreter, PekkoHttpServerOptions}
 
-import com.thatdot.quine.app.v2api.endpoints.{V2IngestApiSchemas, Visibility}
+import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
+import com.thatdot.quine.app.v2api.endpoints.Visibility
 
 /** Definitions wrapping Tapir endpoints into akka-http routes.
   */
-abstract class TapirRoutes extends FailFastCirceSupport with V2IngestApiSchemas with TapirDecodeErrorHandler {
+abstract class TapirRoutes extends FailFastCirceSupport with TypeDiscriminatorConfig with TapirDecodeErrorHandler {
   import TapirRoutes.Requirements
   protected val apiEndpoints: List[ServerEndpoint[Requirements, Future]]
   protected val ingestEndpoints: List[ServerEndpoint[Requirements, Future]]

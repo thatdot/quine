@@ -4,14 +4,14 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.V2EndpointDefinitions
-import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
+import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.QuineIdProvider
 
 /** Component definitions for Tapir quine endpoints. */
 trait V2QuineEndpointDefinitions
     extends V2EndpointDefinitions
-    with V2IngestApiSchemas
+    with TypeDiscriminatorConfig
     with CommonParameters
     with ParallelismParameter
     with QuineIdCodec {

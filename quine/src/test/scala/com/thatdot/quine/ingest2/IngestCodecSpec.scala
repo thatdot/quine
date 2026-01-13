@@ -9,6 +9,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.CirceCodecTestSupport
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
@@ -34,13 +35,12 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
   WebSocketClient,
 }
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest, DeadLetterQueueSettings, OutputFormat}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 class IngestCodecSpec
     extends AnyFunSuite
     with Matchers
     with ScalaCheckDrivenPropertyChecks
-    with V2IngestApiSchemas
+    with TypeDiscriminatorConfig
     with ArbitraryIngests
     with CirceCodecTestSupport {
 

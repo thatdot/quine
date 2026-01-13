@@ -8,6 +8,7 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationEncoder,
 }
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
 
 import com.thatdot.api.v2.schema.V2ApiConfiguration._
@@ -21,6 +22,7 @@ object StandingQueryPattern {
   implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[StandingQueryPattern] = deriveConfiguredEncoder
   implicit val decoder: Decoder[StandingQueryPattern] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[StandingQueryPattern] = Schema.derived
 
   @title("Cypher")
   final case class Cypher(
@@ -47,5 +49,6 @@ object StandingQueryPattern {
 
     implicit val encoder: Encoder[StandingQueryMode] = deriveEnumerationEncoder
     implicit val decoder: Decoder[StandingQueryMode] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[StandingQueryMode] = Schema.derivedEnumeration.defaultStringBased
   }
 }

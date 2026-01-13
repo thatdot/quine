@@ -1,9 +1,8 @@
 package com.thatdot.quine.app.model.ingest2
 
-import java.nio.charset.Charset
 import java.time.Instant
 
-import scala.util.{Failure, Success, Try}
+import scala.util.Try
 
 import cats.implicits.catsSyntaxEitherId
 import io.circe.Encoder.encodeString
@@ -15,9 +14,9 @@ import io.circe.generic.extras.semiauto.{
 }
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
-import sttp.tapir.CodecFormat.TextPlain
-import sttp.tapir.{Codec, DecodeResult, Schema}
+import sttp.tapir.Schema
 
+import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk._
 import com.thatdot.api.v2.schema.V2ApiConfiguration
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.CsvFormat
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.StreamingFormat.ProtobufFormat
@@ -60,15 +59,6 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
       .encodedExample(
         (CsvFormat(Right(List("header1", "header2")), Comma, DoubleQuote, Backslash): IngestFormat).asJson,
       )
-
-  implicit val charsetCodec: Codec[String, Charset, TextPlain] = Codec.string.mapDecode(s =>
-    scala.util.Try(Charset.forName(s)) match {
-      case Success(charset) => DecodeResult.Value(charset)
-      case Failure(e) => DecodeResult.Error(s"Invalid charset: $s", e)
-    },
-  )(_.toString)
-
-  implicit val charsetSchema: Schema[Charset] = charsetCodec.schema
 
   implicit val fileIngestModeSchema: Schema[V1.FileIngestMode] =
     Schema.derived
@@ -114,9 +104,6 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
 
   implicit lazy val ingestSourceTypeSchema: Schema[IngestSource] = Schema.derived
   //implicit lazy val ingestSchema: Schema[QuineIngestConfiguration] = Schema.derived[QuineIngestConfiguration]
-
-  implicit val charsetEncoder: Encoder[Charset] = Encoder.encodeString.contramap(_.name)
-  implicit val charsetDecoder: Decoder[Charset] = Decoder.decodeString.map(s => Charset.forName(s))
 
   implicit lazy val FileIngestModeEncoder: Encoder[V1.FileIngestMode] = deriveEnumerationEncoder[V1.FileIngestMode]
   implicit lazy val FileIngestModeDecoder: Decoder[V1.FileIngestMode] = deriveEnumerationDecoder[V1.FileIngestMode]

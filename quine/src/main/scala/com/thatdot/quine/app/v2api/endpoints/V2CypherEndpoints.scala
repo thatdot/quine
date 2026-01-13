@@ -16,6 +16,7 @@ import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, oneOfBody, statusCode}
 
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
+import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
 import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
@@ -84,7 +85,7 @@ object V2CypherEndpointEntities {
 
 trait V2CypherEndpoints
     extends V2EndpointDefinitions
-    with V2IngestApiSchemas
+    with TypeDiscriminatorConfig
     with QuineIdCodec
     with CommonParameters
     with StringOps {

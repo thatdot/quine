@@ -3,6 +3,7 @@ package com.thatdot.quine.app.v2api.definitions.outputs
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
@@ -164,6 +165,7 @@ object QuineDestinationSteps {
 
     implicit val encoder: Encoder[CypherQuery] = deriveConfiguredEncoder
     implicit val decoder: Decoder[CypherQuery] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[CypherQuery] = Schema.derived
   }
 
   @title("Publish to Slack Webhook")
@@ -182,4 +184,5 @@ object QuineDestinationSteps {
 
   implicit val encoder: Encoder[QuineDestinationSteps] = deriveConfiguredEncoder
   implicit val decoder: Decoder[QuineDestinationSteps] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[QuineDestinationSteps] = Schema.derived
 }

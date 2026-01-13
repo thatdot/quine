@@ -3,6 +3,7 @@ package com.thatdot.quine.app.v2api.definitions.ingest2
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
 
 import com.thatdot.api.v2.outputs.{DestinationSteps, DestinationSteps => Outputs, OutputFormat => OutputFormats}
@@ -157,6 +158,7 @@ object DeadLetterQueueOutput {
 
   implicit val encoder: Encoder[DeadLetterQueueOutput] = deriveConfiguredEncoder
   implicit val decoder: Decoder[DeadLetterQueueOutput] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[DeadLetterQueueOutput] = Schema.derived
 }
 
 @title("Error Output Format")
@@ -177,6 +179,7 @@ object OutputFormat {
   object JSON {
     implicit val encoder: Encoder[JSON] = deriveConfiguredEncoder
     implicit val decoder: Decoder[JSON] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[JSON] = Schema.derived
   }
 
   @title("Protobuf")
@@ -194,6 +197,7 @@ object OutputFormat {
 
   implicit val encoder: Encoder[OutputFormat] = deriveConfiguredEncoder
   implicit val decoder: Decoder[OutputFormat] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[OutputFormat] = Schema.derived
 }
 
 case class DeadLetterQueueSettings(
@@ -205,4 +209,5 @@ object DeadLetterQueueSettings {
   implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[DeadLetterQueueSettings] = deriveConfiguredEncoder
   implicit val decoder: Decoder[DeadLetterQueueSettings] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[DeadLetterQueueSettings] = Schema.derived
 }

@@ -17,7 +17,7 @@ import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPatte
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultWorkflow
 
-trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiSchemas with StringOps {
+trait V2StandingEndpoints extends V2QuineEndpointDefinitions with StringOps {
 
   /** SQ Name path element */
   val sqName: EndpointInput.PathCapture[String] =
@@ -138,7 +138,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
     .in(sqName)
     .in("outputs")
     .in(namespaceParameter)
-    .in(jsonOrYamlBody[StandingQueryResultWorkflow](Some(exampleStandingQueryResultWorkflowToStandardOut)))
+    .in(jsonOrYamlBody[StandingQueryResultWorkflow](Some(StandingQueryResultWorkflow.exampleToStandardOut)))
     .errorOut(badRequestError("Output is invalid.", "There is another output with that name already."))
     .errorOutEither(notFoundError("No Standing Queries exist with the provided name."))
     .errorOutEither(serverError())
@@ -178,7 +178,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiS
   private val createSqExample: StandingQueryDefinition = StandingQueryDefinition(
     name = "example-standing-query",
     pattern = Cypher(exPattern, MultipleValues),
-    outputs = exampleStandingQueryResultWorkflows,
+    outputs = StandingQueryResultWorkflow.examples,
   )
 
   protected[endpoints] val createSQ: Endpoint[

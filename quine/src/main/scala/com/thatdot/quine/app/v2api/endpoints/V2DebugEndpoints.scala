@@ -14,6 +14,7 @@ import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, path, q
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
+import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
 import com.thatdot.api.v2.{SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
@@ -93,7 +94,7 @@ object V2DebugEndpointEntities {
 
 trait V2DebugEndpoints
     extends V2EndpointDefinitions
-    with V2IngestApiSchemas
+    with TypeDiscriminatorConfig
     with CommonParameters
     with QuineIdSchemas
     with QuineIdCodec

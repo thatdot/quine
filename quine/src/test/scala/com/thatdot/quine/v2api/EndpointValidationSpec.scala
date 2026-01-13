@@ -15,11 +15,11 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
 import com.thatdot.quine.app.config.{FileAccessPolicy, QuineConfig, ResolutionMode}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{Oss, RecordDecodingType}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 import com.thatdot.quine.app.v2api.{OssApiMethods, V2OssRoutes}
 import com.thatdot.quine.app.{IngestTestGraph, QuineApp}
 import com.thatdot.quine.ingest2.ArbitraryIngests
@@ -50,7 +50,7 @@ class EndpointValidationSpec
     with Matchers
     with ScalatestRouteTest
     with ArbitraryIngests
-    with V2IngestApiSchemas {
+    with TypeDiscriminatorConfig {
   import EndpointValidationSupport._
   val baseUrl = "/api/v2"
 

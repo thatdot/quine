@@ -5,6 +5,7 @@ import java.time.Instant
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.api.v2.RatesSummary
@@ -32,4 +33,5 @@ object StandingQueryStats {
   implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.map(Instant.parse)
   implicit val encoder: Encoder[StandingQueryStats] = deriveConfiguredEncoder
   implicit val decoder: Decoder[StandingQueryStats] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[StandingQueryStats] = Schema.derived
 }

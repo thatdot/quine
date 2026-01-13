@@ -5,31 +5,15 @@ import scala.concurrent.{ExecutionContext, Future}
 import sttp.model.StatusCode
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{Endpoint, Schema, emptyOutputAs, statusCode}
+import sttp.tapir.{Endpoint, emptyOutputAs, statusCode}
 
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
 import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope}
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{
-  QuerySort,
-  QuickQuery,
-  SampleQuery,
-  UiNodeAppearance,
-  UiNodeLabel,
-  UiNodePredicate,
-  UiNodeQuickQuery,
-}
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.V2QuineEndpointDefinitions
 
 trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
-
-  implicit val uiNodeLabelSchema: Schema[UiNodeLabel] = Schema.derived[UiNodeLabel]
-  implicit val uiNodePredicateSchema: Schema[UiNodePredicate] = Schema.derived[UiNodePredicate]
-  implicit val querySortSchema: Schema[QuerySort] = Schema.derived[QuerySort]
-  implicit val quickQuerySchema: Schema[QuickQuery] = Schema.derived[QuickQuery]
-  implicit val sampleQuerySchema: Schema[SampleQuery] = Schema.derived[SampleQuery]
-  implicit val uiNodeAppearanceSchema: Schema[UiNodeAppearance] = Schema.derived[UiNodeAppearance]
-  implicit val uiNodeQuickQuerySchema: Schema[UiNodeQuickQuery] = Schema.derived[UiNodeQuickQuery]
 
   private val uiStylingBase: EndpointBase = rawEndpoint("query-ui")
     .tag("UI Styling")
