@@ -34,7 +34,7 @@ object Dependencies {
   // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
   val kafkaClientsV = "3.9.1"
   val kindProjectorV = "0.13.4"
-  val logbackV = "1.5.20"
+  val logbackV = "1.5.23"
   val logstashLogbackV = "8.0"
   val laminarV = "17.2.1"
   val waypointV = "10.0.0-M1"
