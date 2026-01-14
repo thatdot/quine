@@ -47,7 +47,7 @@ object Dependencies {
   val openCypherV = "9.2.3"
   val parboiledV = "1.4.1"
   val pegdownV = "1.6.0"
-  val pekkoV = "1.2.1"
+  val pekkoV = "1.4.0"
   val pekkoHttpV = "1.2.0"
   val pekkoHttpCirceV = "3.0.1"
   val pekkoManagementV = "1.2.0"

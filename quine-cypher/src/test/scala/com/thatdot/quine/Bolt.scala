@@ -41,7 +41,7 @@ class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
 
   test("Handshake version negotiation should succeed when client offers v1") {
     val (pub, sub) =
-      TestSource.probe[ByteString].via(flow).toMat(TestSink.probe[ByteString])(Keep.both).run()
+      TestSource[ByteString]().via(flow).toMat(TestSink[ByteString]())(Keep.both).run()
 
     pub.sendNext(toHex("00 00 00 00" * 3))
     pub.sendNext(toHex("00 00 00 01"))
@@ -54,7 +54,7 @@ class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
   }
   test("Handshake version negotiation should fail when client does not offer v1") {
     val (pub, sub) =
-      TestSource.probe[ByteString].via(flow).toMat(TestSink.probe[ByteString])(Keep.both).run()
+      TestSource[ByteString]().via(flow).toMat(TestSink[ByteString]())(Keep.both).run()
 
     pub.sendNext(toHex("00 00 01 07" * 4))
     val negotiatedVersion = sub.requestNext()

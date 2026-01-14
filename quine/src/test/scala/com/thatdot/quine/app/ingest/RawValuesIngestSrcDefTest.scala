@@ -86,7 +86,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   )(implicit val system: ActorSystem, implicit val graph: CypherOpsGraph) {
     val src: Source[T, Mat] = buildFrom(ingest)
     implicit val materializer: Materializer = graph.materializer
-    val (mat, probe: TestSubscriber.Probe[T]) = src.toMat(TestSink.probe)(Keep.both).run()
+    val (mat, probe: TestSubscriber.Probe[T]) = src.toMat(TestSink[T]())(Keep.both).run()
 
     //val probe: TestSubscriber.Probe[T] = src.toMat(TestSink.probe)(Keep.both).run()
 

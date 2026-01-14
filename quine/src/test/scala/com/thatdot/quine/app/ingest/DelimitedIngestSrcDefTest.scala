@@ -66,7 +66,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
       )
 
     val probe: TestSubscriber.Probe[MasterStream.IngestSrcExecToken] =
-      ingestSrcDef.stream(namespace, _ => ()).toMat(TestSink.probe)(Keep.right).run()
+      ingestSrcDef.stream(namespace, _ => ()).toMat(TestSink[MasterStream.IngestSrcExecToken]())(Keep.right).run()
 
     val fc: Future[QuineAppIngestControl] = ingestSrcDef.getControl
 
