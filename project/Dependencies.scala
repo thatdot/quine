@@ -10,7 +10,7 @@ object Dependencies {
   val coreuiV = "5.4.3"
   val coreuiIconsV = "3.0.1"
   val caffeineV = "3.2.3"
-  val cassandraClientV = "4.19.1"
+  val cassandraClientV = "4.19.2"
   val catsV = "2.13.0"
   val catsEffectV = "3.6.3"
   val circeYamlV = "0.16.0"
