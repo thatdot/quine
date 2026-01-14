@@ -22,5 +22,5 @@ object RatesSummary {
   implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[RatesSummary] = deriveConfiguredEncoder
   implicit val decoder: Decoder[RatesSummary] = deriveConfiguredDecoder
-  implicit val schema: Schema[RatesSummary] = Schema.derived[RatesSummary]
+  implicit lazy val schema: Schema[RatesSummary] = Schema.derived[RatesSummary]
 }

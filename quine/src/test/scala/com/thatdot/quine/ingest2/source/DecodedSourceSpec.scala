@@ -13,7 +13,7 @@ import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.JsonLinesFormat
+import com.thatdot.quine.app.model.ingest2.FileFormat.JsonLinesFormat
 import com.thatdot.quine.app.model.ingest2.source.{IngestBounds, QuineValueIngestQuery}
 import com.thatdot.quine.app.model.ingest2.sources.{DEFAULT_MAXIMUM_LINE_SIZE, NumberIteratorSource}
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}

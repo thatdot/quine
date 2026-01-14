@@ -18,12 +18,8 @@ import org.apache.commons.csv.CSVFormat
 
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.data.QuineDataFoldablesFrom
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
-  FileFormat,
-  IngestFormat => V2IngestFormat,
-  StreamingFormat,
-}
 import com.thatdot.quine.app.model.ingest2.sources.DEFAULT_CHARSET
+import com.thatdot.quine.app.model.ingest2.{FileFormat, IngestFormat => V2IngestFormat, StreamingFormat}
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes._

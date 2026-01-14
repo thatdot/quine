@@ -109,7 +109,7 @@ object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
     }
   }
   object LocalFile {
-    implicit val schema: Schema[LocalFile] = Schema.derived
+    implicit lazy val schema: Schema[LocalFile] = Schema.derived
     implicit val encoder: Encoder[LocalFile] = deriveConfiguredEncoder
     implicit val decoder: Decoder[LocalFile] = deriveConfiguredDecoder
   }
@@ -125,13 +125,13 @@ object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
 
   }
   object S3Bucket {
-    implicit val schema: Schema[S3Bucket] = Schema.derived
+    implicit lazy val schema: Schema[S3Bucket] = Schema.derived
     implicit val encoder: Encoder[S3Bucket] = deriveConfiguredEncoder
     implicit val decoder: Decoder[S3Bucket] = deriveConfiguredDecoder
   }
 
   object TSaveLocation {
-    implicit val schema: Schema[TSaveLocation] = Schema.derived
+    implicit lazy val schema: Schema[TSaveLocation] = Schema.derived
     implicit val encoder: Encoder[TSaveLocation] = deriveConfiguredEncoder
     implicit val decoder: Decoder[TSaveLocation] = deriveConfiguredDecoder
   }

@@ -28,7 +28,7 @@ object ErrorType {
   /** General Api error that we don't have any extra information about */
   case class ApiError(message: String) extends ErrorType
   object ApiError {
-    implicit val schema: Schema[ApiError] = Schema.derived[ApiError]
+    implicit lazy val schema: Schema[ApiError] = Schema.derived[ApiError]
     implicit val encoder: Encoder[ApiError] = deriveConfiguredEncoder
     implicit val decoder: Decoder[ApiError] = deriveConfiguredDecoder
   }
@@ -39,7 +39,7 @@ object ErrorType {
     */
   case class DecodeError(message: String, help: Option[String] = None) extends ErrorType
   object DecodeError {
-    implicit val schema: Schema[DecodeError] = Schema.derived[DecodeError]
+    implicit lazy val schema: Schema[DecodeError] = Schema.derived[DecodeError]
     implicit val encoder: Encoder[DecodeError] = deriveConfiguredEncoder
     implicit val decoder: Decoder[DecodeError] = deriveConfiguredDecoder
   }
@@ -50,12 +50,12 @@ object ErrorType {
     */
   case class CypherError(message: String) extends ErrorType
   object CypherError {
-    implicit val schema: Schema[CypherError] = Schema.derived[CypherError]
+    implicit lazy val schema: Schema[CypherError] = Schema.derived[CypherError]
     implicit val encoder: Encoder[CypherError] = deriveConfiguredEncoder
     implicit val decoder: Decoder[CypherError] = deriveConfiguredDecoder
   }
 
-  implicit val schema: Schema[ErrorType] = Schema.derived[ErrorType]
+  implicit lazy val schema: Schema[ErrorType] = Schema.derived[ErrorType]
   implicit val encoder: Encoder[ErrorType] = deriveConfiguredEncoder
   implicit val decoder: Decoder[ErrorType] = deriveConfiguredDecoder
 }
@@ -90,7 +90,7 @@ object ErrorResponse {
     def ofErrors(errors: List[BaseError]): ServerError = ServerError(
       errors.map(err => ErrorType.ApiError(err.getMessage)),
     )
-    implicit val schema: Schema[ServerError] = Schema.derived[ServerError]
+    implicit lazy val schema: Schema[ServerError] = Schema.derived[ServerError]
     implicit val encoder: Encoder[ServerError] = deriveConfiguredEncoder
     implicit val decoder: Decoder[ServerError] = deriveConfiguredDecoder
   }
@@ -104,7 +104,7 @@ object ErrorResponse {
     def ofErrors(errors: List[BaseError]): BadRequest = BadRequest(
       errors.map(err => ErrorType.ApiError(err.getMessage)),
     )
-    implicit val schema: Schema[BadRequest] = Schema.derived[BadRequest]
+    implicit lazy val schema: Schema[BadRequest] = Schema.derived[BadRequest]
     implicit val encoder: Encoder[BadRequest] = deriveConfiguredEncoder
     implicit val decoder: Decoder[BadRequest] = deriveConfiguredDecoder
   }
@@ -114,7 +114,7 @@ object ErrorResponse {
     def apply(error: ErrorType): NotFound = NotFound(List(error))
     def apply(error: BaseError): NotFound = NotFound(List(ErrorType.ApiError(error.getMessage)))
     def ofErrors(errors: List[BaseError]): NotFound = NotFound(errors.map(err => ErrorType.ApiError(err.getMessage)))
-    implicit val schema: Schema[NotFound] = Schema.derived[NotFound]
+    implicit lazy val schema: Schema[NotFound] = Schema.derived[NotFound]
     implicit val encoder: Encoder[NotFound] = deriveConfiguredEncoder
     implicit val decoder: Decoder[NotFound] = deriveConfiguredDecoder
   }
@@ -122,7 +122,7 @@ object ErrorResponse {
   object Unauthorized {
     def apply(reason: String): Unauthorized = Unauthorized(List(ErrorType.ApiError(reason)))
     def apply(reason: ErrorType) = new Unauthorized(List(reason))
-    implicit val schema: Schema[Unauthorized] = Schema.derived[Unauthorized]
+    implicit lazy val schema: Schema[Unauthorized] = Schema.derived[Unauthorized]
     implicit val encoder: Encoder[Unauthorized] = deriveConfiguredEncoder
     implicit val decoder: Decoder[Unauthorized] = deriveConfiguredDecoder
   }
@@ -134,7 +134,7 @@ object ErrorResponse {
     def ofErrors(errors: List[BaseError]): ServiceUnavailable = ServiceUnavailable(
       errors.map(err => ErrorType.ApiError(err.getMessage)),
     )
-    implicit val schema: Schema[ServiceUnavailable] = Schema.derived[ServiceUnavailable]
+    implicit lazy val schema: Schema[ServiceUnavailable] = Schema.derived[ServiceUnavailable]
     implicit val encoder: Encoder[ServiceUnavailable] = deriveConfiguredEncoder
     implicit val decoder: Decoder[ServiceUnavailable] = deriveConfiguredDecoder
   }

@@ -44,11 +44,11 @@ import com.thatdot.quine.app.data.QuineDataFoldersTo
 import com.thatdot.quine.app.model.ingest.QuineIngestSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
+import com.thatdot.quine.app.model.ingest2._
 import com.thatdot.quine.app.model.ingest2.codec.FrameDecoder
 import com.thatdot.quine.app.model.ingest2.sources.S3Source.s3Source
 import com.thatdot.quine.app.model.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.model.ingest2.sources._
-import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities}
 import com.thatdot.quine.app.model.transformation.polyglot.{
   PolyglotValueDataFoldableFrom,
   PolyglotValueDataFolderTo,

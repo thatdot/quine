@@ -1,6 +1,7 @@
 package com.thatdot.api.v2.schema
 
 import java.nio.charset.Charset
+import java.time.Instant
 
 import scala.util.{Failure, Success, Try}
 
@@ -37,5 +38,16 @@ object ThirdPartySchemas {
     implicit val charsetSchema: Schema[Charset] = charsetCodec.schema
     implicit val charsetEncoder: Encoder[Charset] = Encoder.encodeString.contramap(_.name)
     implicit val charsetDecoder: Decoder[Charset] = Decoder.decodeString.map(s => Charset.forName(s))
+
+    implicit val instantCodec: Codec[String, Instant, TextPlain] = Codec.string.mapDecode(s =>
+      Try(Instant.parse(s)) match {
+        case Success(instant) => DecodeResult.Value(instant)
+        case Failure(e) => DecodeResult.Error(s"Invalid instant: $s", e)
+      },
+    )(_.toString)
+
+    implicit val instantSchema: Schema[Instant] = instantCodec.schema
+    implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
+    implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.emapTry(s => Try(Instant.parse(s)))
   }
 }

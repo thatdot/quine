@@ -19,7 +19,7 @@ import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
 }
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, QuineValueIngestQuery}
 import com.thatdot.quine.app.model.ingest2.sources.WebSocketFileUploadSource
-import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities}
+import com.thatdot.quine.app.model.ingest2.{IngestSource, V1ToV2, V2IngestEntities}
 import com.thatdot.quine.app.model.transformation.polyglot
 import com.thatdot.quine.app.model.transformation.polyglot.langauges.JavaScriptTransformation
 import com.thatdot.quine.app.util.QuineLoggables._
@@ -331,14 +331,14 @@ trait IngestStreamState {
               // when the valve is closed but the stream is not terminated. However, this assignment is not threadsafe,
               // and this directly violates the semantics of `initialStatus`. This should be fixed in a future refactor.
               ingest.initialStatus = IngestStreamStatus.Paused
-              streamToInternalModel(ingest.copy(settings = V2IngestEntities.IngestSource(ingest.settings)))
+              streamToInternalModel(ingest.copy(settings = IngestSource(ingest.settings)))
             }(defaultExecutionContext)
             ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)
         }
     }
 
   protected def streamToInternalModel(
-    stream: IngestStreamWithControl[V2IngestEntities.IngestSource],
+    stream: IngestStreamWithControl[IngestSource],
   ): Future[V2IngestEntities.IngestStreamInfo] =
     stream.status
       .map { status =>
@@ -372,7 +372,7 @@ trait IngestStreamState {
           optWs,
           optWsV2,
         ) =>
-      val ingestV2 = IngestStreamWithControl[V2IngestEntities.IngestSource](
+      val ingestV2 = IngestStreamWithControl[IngestSource](
         v2Config.source,
         metrics,
         valve,

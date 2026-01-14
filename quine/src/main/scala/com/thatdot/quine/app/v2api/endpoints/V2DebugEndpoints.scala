@@ -47,7 +47,7 @@ object V2DebugEndpointEntities {
       case other => Left(s"Unknown edge direction: $other")
     }
 
-    implicit val schema: Schema[TEdgeDirection] = Schema.derivedEnumeration[TEdgeDirection].defaultStringBased
+    implicit lazy val schema: Schema[TEdgeDirection] = Schema.derivedEnumeration[TEdgeDirection].defaultStringBased
   }
 
   @title("Half Edge")

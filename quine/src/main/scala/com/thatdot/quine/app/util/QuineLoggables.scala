@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.util
 
 import com.thatdot.common.logging.Log.{AlwaysSafeLoggable, Loggable, toStringLoggable}
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities
+import com.thatdot.quine.app.model.ingest2.{IngestSource, V2IngestEntities}
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
 import com.thatdot.quine.app.v2api.definitions.ApiCommand
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
@@ -19,7 +19,7 @@ object QuineLoggables {
     _.toString
   implicit val logQuineIngestConfiguration: AlwaysSafeLoggable[V2IngestEntities.QuineIngestConfiguration] =
     _.toString
-  implicit val logQuineIngestSource: AlwaysSafeLoggable[V2IngestEntities.IngestSource] =
+  implicit val logQuineIngestSource: AlwaysSafeLoggable[IngestSource] =
     _.toString
 
   implicit val logUnifiedIngestStreamConfiguration: AlwaysSafeLoggable[UnifiedIngestConfiguration] =

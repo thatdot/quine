@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.v2api.converters
 
+import com.thatdot.quine.app.model.ingest2._
 import com.thatdot.quine.app.model.ingest2.{V2IngestEntities => Ingest}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
 import com.thatdot.quine.{routes => V1}
@@ -39,20 +40,20 @@ object ApiToIngest {
     case Api.CsvCharacter.DoubleQuote => V1.CsvCharacter.DoubleQuote
   }
 
-  def apply(format: Api.IngestFormat.FileFormat): Ingest.FileFormat = format match {
-    case Api.IngestFormat.FileFormat.Line => Ingest.FileFormat.LineFormat
-    case Api.IngestFormat.FileFormat.JsonL => Ingest.FileFormat.JsonLinesFormat
-    case Api.IngestFormat.FileFormat.Json => Ingest.FileFormat.JsonFormat
+  def apply(format: Api.IngestFormat.FileFormat): FileFormat = format match {
+    case Api.IngestFormat.FileFormat.Line => FileFormat.LineFormat
+    case Api.IngestFormat.FileFormat.JsonL => FileFormat.JsonLinesFormat
+    case Api.IngestFormat.FileFormat.Json => FileFormat.JsonFormat
     case Api.IngestFormat.FileFormat.CSV(headers, delimiter, quoteChar, escapeChar) =>
-      Ingest.FileFormat.CsvFormat(headers, apply(delimiter), apply(quoteChar), apply(escapeChar))
+      FileFormat.CsvFormat(headers, apply(delimiter), apply(quoteChar), apply(escapeChar))
   }
-  def apply(format: Api.IngestFormat.StreamingFormat): Ingest.StreamingFormat = format match {
-    case Api.IngestFormat.StreamingFormat.Json => Ingest.StreamingFormat.JsonFormat
-    case Api.IngestFormat.StreamingFormat.Raw => Ingest.StreamingFormat.RawFormat
+  def apply(format: Api.IngestFormat.StreamingFormat): StreamingFormat = format match {
+    case Api.IngestFormat.StreamingFormat.Json => StreamingFormat.JsonFormat
+    case Api.IngestFormat.StreamingFormat.Raw => StreamingFormat.RawFormat
     case Api.IngestFormat.StreamingFormat.Protobuf(schemaUrl, typeName) =>
-      Ingest.StreamingFormat.ProtobufFormat(schemaUrl, typeName)
-    case Api.IngestFormat.StreamingFormat.Avro(schemaUrl) => Ingest.StreamingFormat.AvroFormat(schemaUrl)
-    case Api.IngestFormat.StreamingFormat.Drop => Ingest.StreamingFormat.DropFormat
+      StreamingFormat.ProtobufFormat(schemaUrl, typeName)
+    case Api.IngestFormat.StreamingFormat.Avro(schemaUrl) => StreamingFormat.AvroFormat(schemaUrl)
+    case Api.IngestFormat.StreamingFormat.Drop => StreamingFormat.DropFormat
   }
   def apply(mode: Api.FileIngestMode): V1.FileIngestMode = mode match {
     case Api.FileIngestMode.Regular => V1.FileIngestMode.Regular
@@ -104,52 +105,52 @@ object ApiToIngest {
       )
   }
 
-  def apply(bm: Api.BillingMode): Ingest.BillingMode = bm match {
-    case Api.BillingMode.PROVISIONED => Ingest.BillingMode.PROVISIONED
-    case Api.BillingMode.PAY_PER_REQUEST => Ingest.BillingMode.PAY_PER_REQUEST
-    case Api.BillingMode.UNKNOWN_TO_SDK_VERSION => Ingest.BillingMode.UNKNOWN_TO_SDK_VERSION
+  def apply(bm: Api.BillingMode): BillingMode = bm match {
+    case Api.BillingMode.PROVISIONED => BillingMode.PROVISIONED
+    case Api.BillingMode.PAY_PER_REQUEST => BillingMode.PAY_PER_REQUEST
+    case Api.BillingMode.UNKNOWN_TO_SDK_VERSION => BillingMode.UNKNOWN_TO_SDK_VERSION
   }
 
-  def apply(ip: Api.InitialPosition): Ingest.InitialPosition = ip match {
-    case Api.InitialPosition.Latest => Ingest.InitialPosition.Latest
-    case Api.InitialPosition.TrimHorizon => Ingest.InitialPosition.TrimHorizon
+  def apply(ip: Api.InitialPosition): InitialPosition = ip match {
+    case Api.InitialPosition.Latest => InitialPosition.Latest
+    case Api.InitialPosition.TrimHorizon => InitialPosition.TrimHorizon
     case Api.InitialPosition.AtTimestamp(y, m, d, h, mm, s) =>
-      Ingest.InitialPosition.AtTimestamp(y, m, d, h, mm, s)
+      InitialPosition.AtTimestamp(y, m, d, h, mm, s)
   }
 
-  def apply(sp: Api.ShardPrioritization): Ingest.ShardPrioritization = sp match {
-    case Api.ShardPrioritization.NoOpShardPrioritization => Ingest.ShardPrioritization.NoOpShardPrioritization
+  def apply(sp: Api.ShardPrioritization): ShardPrioritization = sp match {
+    case Api.ShardPrioritization.NoOpShardPrioritization => ShardPrioritization.NoOpShardPrioritization
     case Api.ShardPrioritization.ParentsFirstShardPrioritization(d) =>
-      Ingest.ShardPrioritization.ParentsFirstShardPrioritization(d)
+      ShardPrioritization.ParentsFirstShardPrioritization(d)
   }
 
-  def apply(cvc: Api.ClientVersionConfig): Ingest.ClientVersionConfig = cvc match {
+  def apply(cvc: Api.ClientVersionConfig): ClientVersionConfig = cvc match {
     case Api.ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X =>
-      Ingest.ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X
-    case Api.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X => Ingest.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X
+      ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X
+    case Api.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X => ClientVersionConfig.CLIENT_VERSION_CONFIG_3X
   }
 
-  def apply(ml: Api.MetricsLevel): Ingest.MetricsLevel = ml match {
-    case Api.MetricsLevel.NONE => Ingest.MetricsLevel.NONE
-    case Api.MetricsLevel.SUMMARY => Ingest.MetricsLevel.SUMMARY
-    case Api.MetricsLevel.DETAILED => Ingest.MetricsLevel.DETAILED
+  def apply(ml: Api.MetricsLevel): MetricsLevel = ml match {
+    case Api.MetricsLevel.NONE => MetricsLevel.NONE
+    case Api.MetricsLevel.SUMMARY => MetricsLevel.SUMMARY
+    case Api.MetricsLevel.DETAILED => MetricsLevel.DETAILED
   }
 
-  def apply(md: Api.MetricsDimension): Ingest.MetricsDimension = md match {
-    case Api.MetricsDimension.OPERATION_DIMENSION_NAME => Ingest.MetricsDimension.OPERATION_DIMENSION_NAME
-    case Api.MetricsDimension.SHARD_ID_DIMENSION_NAME => Ingest.MetricsDimension.SHARD_ID_DIMENSION_NAME
-    case Api.MetricsDimension.STREAM_IDENTIFIER => Ingest.MetricsDimension.STREAM_IDENTIFIER
-    case Api.MetricsDimension.WORKER_IDENTIFIER => Ingest.MetricsDimension.STREAM_IDENTIFIER // best fallback
+  def apply(md: Api.MetricsDimension): MetricsDimension = md match {
+    case Api.MetricsDimension.OPERATION_DIMENSION_NAME => MetricsDimension.OPERATION_DIMENSION_NAME
+    case Api.MetricsDimension.SHARD_ID_DIMENSION_NAME => MetricsDimension.SHARD_ID_DIMENSION_NAME
+    case Api.MetricsDimension.STREAM_IDENTIFIER => MetricsDimension.STREAM_IDENTIFIER
+    case Api.MetricsDimension.WORKER_IDENTIFIER => MetricsDimension.STREAM_IDENTIFIER // best fallback
   }
 
-  def apply(kcs: Api.KinesisCheckpointSettings): Ingest.KinesisCheckpointSettings =
-    Ingest.KinesisCheckpointSettings(kcs.disableCheckpointing, kcs.maxBatchSize, kcs.maxBatchWaitMillis)
+  def apply(kcs: Api.KinesisCheckpointSettings): KinesisCheckpointSettings =
+    KinesisCheckpointSettings(kcs.disableCheckpointing, kcs.maxBatchSize, kcs.maxBatchWaitMillis)
 
-  def apply(ksss: Api.KinesisSchedulerSourceSettings): Ingest.KinesisSchedulerSourceSettings =
-    Ingest.KinesisSchedulerSourceSettings(ksss.bufferSize, ksss.backpressureTimeoutMillis)
+  def apply(ksss: Api.KinesisSchedulerSourceSettings): KinesisSchedulerSourceSettings =
+    KinesisSchedulerSourceSettings(ksss.bufferSize, ksss.backpressureTimeoutMillis)
 
-  def apply(lmc: Api.LeaseManagementConfig): Ingest.LeaseManagementConfig =
-    Ingest.LeaseManagementConfig(
+  def apply(lmc: Api.LeaseManagementConfig): LeaseManagementConfig =
+    LeaseManagementConfig(
       lmc.failoverTimeMillis,
       lmc.shardSyncIntervalMillis,
       lmc.cleanupLeasesUponShardCompletion,
@@ -168,13 +169,13 @@ object ApiToIngest {
       lmc.gracefulLeaseHandoffTimeoutMillis,
     )
 
-  def apply(rsc: Api.RetrievalSpecificConfig): Ingest.RetrievalSpecificConfig = rsc match {
+  def apply(rsc: Api.RetrievalSpecificConfig): RetrievalSpecificConfig = rsc match {
     case foc: Api.RetrievalSpecificConfig.FanOutConfig => apply(foc)
     case pc: Api.RetrievalSpecificConfig.PollingConfig => apply(pc)
   }
 
-  def apply(foc: Api.RetrievalSpecificConfig.FanOutConfig): Ingest.RetrievalSpecificConfig.FanOutConfig =
-    Ingest.RetrievalSpecificConfig.FanOutConfig(
+  def apply(foc: Api.RetrievalSpecificConfig.FanOutConfig): RetrievalSpecificConfig.FanOutConfig =
+    RetrievalSpecificConfig.FanOutConfig(
       consumerArn = foc.consumerArn,
       consumerName = foc.consumerName,
       maxDescribeStreamSummaryRetries = foc.maxDescribeStreamSummaryRetries,
@@ -183,57 +184,57 @@ object ApiToIngest {
       retryBackoffMillis = foc.retryBackoffMillis,
     )
 
-  def apply(pc: Api.RetrievalSpecificConfig.PollingConfig): Ingest.RetrievalSpecificConfig.PollingConfig =
-    Ingest.RetrievalSpecificConfig.PollingConfig(
+  def apply(pc: Api.RetrievalSpecificConfig.PollingConfig): RetrievalSpecificConfig.PollingConfig =
+    RetrievalSpecificConfig.PollingConfig(
       pc.maxRecords,
       pc.retryGetRecordsInSeconds,
       pc.maxGetRecordsThreadPool,
       pc.idleTimeBetweenReadsInMillis,
     )
 
-  def apply(prc: Api.ProcessorConfig): Ingest.ProcessorConfig =
-    Ingest.ProcessorConfig(prc.callProcessRecordsEvenForEmptyRecordList)
+  def apply(prc: Api.ProcessorConfig): ProcessorConfig =
+    ProcessorConfig(prc.callProcessRecordsEvenForEmptyRecordList)
 
-  def apply(cc: Api.CoordinatorConfig): Ingest.CoordinatorConfig =
-    Ingest.CoordinatorConfig(
+  def apply(cc: Api.CoordinatorConfig): CoordinatorConfig =
+    CoordinatorConfig(
       cc.parentShardPollIntervalMillis,
       cc.skipShardSyncAtWorkerInitializationIfLeasesExist,
       cc.shardPrioritization.map(apply),
       cc.clientVersionConfig.map(apply),
     )
 
-  def apply(lc: Api.LifecycleConfig): Ingest.LifecycleConfig =
-    Ingest.LifecycleConfig(lc.taskBackoffTimeMillis, lc.logWarningForTaskAfterMillis)
+  def apply(lc: Api.LifecycleConfig): LifecycleConfig =
+    LifecycleConfig(lc.taskBackoffTimeMillis, lc.logWarningForTaskAfterMillis)
 
-  def apply(rc: Api.RetrievalConfig): Ingest.RetrievalConfig =
-    Ingest.RetrievalConfig(rc.listShardsBackoffTimeInMillis, rc.maxListShardsRetryAttempts)
+  def apply(rc: Api.RetrievalConfig): RetrievalConfig =
+    RetrievalConfig(rc.listShardsBackoffTimeInMillis, rc.maxListShardsRetryAttempts)
 
-  def apply(mc: Api.MetricsConfig): Ingest.MetricsConfig =
-    Ingest.MetricsConfig(
+  def apply(mc: Api.MetricsConfig): MetricsConfig =
+    MetricsConfig(
       mc.metricsBufferTimeMillis,
       mc.metricsMaxQueueSize,
       mc.metricsLevel.map(apply),
       mc.metricsEnabledDimensions.map(_.map(apply)),
     )
 
-  def apply(kcl: Api.KCLConfiguration): Ingest.KCLConfiguration =
-    Ingest.KCLConfiguration(
-      kcl.configsBuilder.map(apply).getOrElse(Ingest.ConfigsBuilder()),
-      kcl.leaseManagementConfig.map(apply).getOrElse(Ingest.LeaseManagementConfig()),
+  def apply(kcl: Api.KCLConfiguration): KCLConfiguration =
+    KCLConfiguration(
+      kcl.configsBuilder.map(apply).getOrElse(ConfigsBuilder()),
+      kcl.leaseManagementConfig.map(apply).getOrElse(LeaseManagementConfig()),
       kcl.retrievalSpecificConfig.map(apply),
-      kcl.processorConfig.map(apply).getOrElse(Ingest.ProcessorConfig()),
-      kcl.coordinatorConfig.map(apply).getOrElse(Ingest.CoordinatorConfig()),
-      kcl.lifecycleConfig.map(apply).getOrElse(Ingest.LifecycleConfig()),
-      kcl.retrievalConfig.map(apply).getOrElse(Ingest.RetrievalConfig()),
-      kcl.metricsConfig.map(apply).getOrElse(Ingest.MetricsConfig()),
+      kcl.processorConfig.map(apply).getOrElse(ProcessorConfig()),
+      kcl.coordinatorConfig.map(apply).getOrElse(CoordinatorConfig()),
+      kcl.lifecycleConfig.map(apply).getOrElse(LifecycleConfig()),
+      kcl.retrievalConfig.map(apply).getOrElse(RetrievalConfig()),
+      kcl.metricsConfig.map(apply).getOrElse(MetricsConfig()),
     )
 
-  def apply(cb: Api.ConfigsBuilder): Ingest.ConfigsBuilder =
-    Ingest.ConfigsBuilder(cb.tableName, cb.workerIdentifier)
+  def apply(cb: Api.ConfigsBuilder): ConfigsBuilder =
+    ConfigsBuilder(cb.tableName, cb.workerIdentifier)
 
-  def apply(src: Api.IngestSource): Ingest.IngestSource = src match {
+  def apply(src: Api.IngestSource): IngestSource = src match {
     case src: Api.IngestSource.File =>
-      Ingest.FileIngest(
+      FileIngest(
         apply(src.format),
         src.path,
         src.fileIngestMode.map(apply),
@@ -244,19 +245,19 @@ object ApiToIngest {
         src.recordDecoders.map(apply),
       )
     case src: Api.IngestSource.StdInput =>
-      Ingest.StdInputIngest(
+      StdInputIngest(
         apply(src.format),
         src.maximumLineSize,
         src.characterEncoding,
       )
     case src: Api.IngestSource.NumberIterator =>
-      Ingest.NumberIteratorIngest(
-        Ingest.StreamingFormat.RawFormat,
+      NumberIteratorIngest(
+        StreamingFormat.RawFormat,
         src.startOffset,
         src.limit,
       )
     case src: Api.IngestSource.WebsocketClient =>
-      Ingest.WebsocketIngest(
+      WebsocketIngest(
         apply(src.format),
         src.url,
         src.initMessages,
@@ -264,7 +265,7 @@ object ApiToIngest {
         src.characterEncoding,
       )
     case src: Api.IngestSource.Kinesis =>
-      Ingest.KinesisIngest(
+      KinesisIngest(
         apply(src.format),
         src.streamName,
         src.shardIds,
@@ -287,7 +288,7 @@ object ApiToIngest {
           checkpointSettings,
           advancedSettings,
         ) =>
-      Ingest.KinesisKclIngest(
+      KinesisKclIngest(
         kinesisStreamName = kinesisStreamName,
         applicationName = applicationName,
         format = apply(format),
@@ -298,18 +299,18 @@ object ApiToIngest {
         recordDecoders = recordDecoders.map(apply),
         schedulerSourceSettings = schedulerSourceSettings
           .map(apply)
-          .getOrElse(Ingest.KinesisSchedulerSourceSettings()),
-        checkpointSettings = checkpointSettings.map(apply).getOrElse(Ingest.KinesisCheckpointSettings()),
-        advancedSettings = advancedSettings.map(apply).getOrElse(Ingest.KCLConfiguration()),
+          .getOrElse(KinesisSchedulerSourceSettings()),
+        checkpointSettings = checkpointSettings.map(apply).getOrElse(KinesisCheckpointSettings()),
+        advancedSettings = advancedSettings.map(apply).getOrElse(KCLConfiguration()),
       )
     case src: Api.IngestSource.ServerSentEvent =>
-      Ingest.ServerSentEventIngest(
+      ServerSentEventIngest(
         apply(src.format),
         src.url,
         src.recordDecoders.map(apply),
       )
     case src: Api.IngestSource.SQS =>
-      Ingest.SQSIngest(
+      SQSIngest(
         apply(src.format),
         src.queueUrl,
         src.readParallelism,
@@ -319,7 +320,7 @@ object ApiToIngest {
         src.recordDecoders.map(apply),
       )
     case src: Api.IngestSource.Kafka =>
-      Ingest.KafkaIngest(
+      KafkaIngest(
         apply(src.format),
         src.topics,
         src.bootstrapServers,
@@ -332,7 +333,7 @@ object ApiToIngest {
         src.recordDecoders.map(apply),
       )
     case src: Api.IngestSource.S3 =>
-      Ingest.S3Ingest(
+      S3Ingest(
         apply(src.format),
         src.bucket,
         src.key,
@@ -344,9 +345,9 @@ object ApiToIngest {
         src.recordDecoders.map(apply),
       )
     case Api.IngestSource.ReactiveStream(url, port, format) =>
-      Ingest.ReactiveStreamIngest(apply(url), port, format)
+      ReactiveStreamIngest(apply(url), port, format)
     case Api.WebSocketFileUpload(format) =>
-      Ingest.WebSocketFileUpload(apply(format))
+      WebSocketFileUpload(apply(format))
   }
 
   def apply(handler: Api.OnStreamErrorHandler): Ingest.OnStreamErrorHandler = handler match {

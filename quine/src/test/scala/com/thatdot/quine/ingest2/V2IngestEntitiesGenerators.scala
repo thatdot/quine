@@ -8,6 +8,7 @@ import scala.jdk.CollectionConverters._
 import org.scalacheck.{Arbitrary, Gen}
 
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
+import com.thatdot.quine.app.model.ingest2._
 import com.thatdot.quine.{ScalaPrimitiveGenerators, TimeGenerators, routes => V1}
 
 object V2IngestEntitiesGenerators {

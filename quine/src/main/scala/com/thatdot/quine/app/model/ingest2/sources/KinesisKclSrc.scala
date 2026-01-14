@@ -13,7 +13,7 @@ import org.apache.pekko.stream.connectors.kinesis.scaladsl.KinesisSchedulerSourc
 import org.apache.pekko.stream.connectors.kinesis.{
   CommittableRecord,
   KinesisSchedulerCheckpointSettings,
-  KinesisSchedulerSourceSettings,
+  KinesisSchedulerSourceSettings => PekkoKinesisSchedulerSourceSettings,
 }
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.{Done, NotUsed}
@@ -28,14 +28,14 @@ import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.retries.StandardRetryStrategy
 import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
-import software.amazon.awssdk.services.dynamodb.model.BillingMode
+import software.amazon.awssdk.services.dynamodb.model.{BillingMode => AwsBillingMode}
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
 import software.amazon.awssdk.services.kinesis.model.EncryptionType
 import software.amazon.kinesis.common.{ConfigsBuilder, InitialPositionInStream, InitialPositionInStreamExtended}
-import software.amazon.kinesis.coordinator.CoordinatorConfig.ClientVersionConfig
+import software.amazon.kinesis.coordinator.CoordinatorConfig.{ClientVersionConfig => AwsClientVersionConfig}
 import software.amazon.kinesis.coordinator.Scheduler
 import software.amazon.kinesis.leases.{NoOpShardPrioritization, ParentsFirstShardPrioritization}
-import software.amazon.kinesis.metrics.MetricsLevel
+import software.amazon.kinesis.metrics.{MetricsLevel => AwsMetricsLevel}
 import software.amazon.kinesis.processor.{ShardRecordProcessorFactory, SingleStreamTracker}
 import software.amazon.kinesis.retrieval.fanout.FanOutConfig
 import software.amazon.kinesis.retrieval.polling.PollingConfig
@@ -44,7 +44,7 @@ import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest.util.AwsOps
 import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities
+import com.thatdot.quine.app.model.ingest2._
 import com.thatdot.quine.app.model.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.util.BaseError
@@ -71,12 +71,12 @@ final case class KinesisKclSrc(
   meter: IngestMeter,
   credentialsOpt: Option[V1.AwsCredentials],
   regionOpt: Option[V1.AwsRegion],
-  initialPosition: V2IngestEntities.InitialPosition,
+  initialPosition: InitialPosition,
   numRetries: Int,
   decoders: Seq[ContentDecoder],
-  schedulerSettings: V2IngestEntities.KinesisSchedulerSourceSettings,
-  checkpointSettings: V2IngestEntities.KinesisCheckpointSettings,
-  advancedSettings: V2IngestEntities.KCLConfiguration,
+  schedulerSettings: KinesisSchedulerSourceSettings,
+  checkpointSettings: KinesisCheckpointSettings,
+  advancedSettings: KCLConfiguration,
 )(implicit val ec: ExecutionContext)
     extends FramedSourceProvider
     with LazyLogging {
@@ -104,8 +104,8 @@ final case class KinesisKclSrc(
       .region(regionOpt)
       .build
 
-    val schedulerSourceSettings: KinesisSchedulerSourceSettings = {
-      val base = KinesisSchedulerSourceSettings.defaults
+    val schedulerSourceSettings: PekkoKinesisSchedulerSourceSettings = {
+      val base = PekkoKinesisSchedulerSourceSettings.defaults
       val withSize = schedulerSettings.bufferSize.fold(base)(base.withBufferSize)
       val withSizeAndTimeout = schedulerSettings.backpressureTimeoutMillis.fold(withSize) { t =>
         withSize.withBackpressureTimeout(java.time.Duration.ofMillis(t))
@@ -116,11 +116,11 @@ final case class KinesisKclSrc(
     val builder: ShardRecordProcessorFactory => Scheduler = { recordProcessorFactory =>
 
       val initialPositionInStream: InitialPositionInStreamExtended = initialPosition match {
-        case V2IngestEntities.InitialPosition.Latest =>
+        case InitialPosition.Latest =>
           InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.LATEST)
-        case V2IngestEntities.InitialPosition.TrimHorizon =>
+        case InitialPosition.TrimHorizon =>
           InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.TRIM_HORIZON)
-        case V2IngestEntities.InitialPosition.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
+        case InitialPosition.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
           val time = Calendar.getInstance()
           // Minus one because Calendar Month is 0 indexed
           time.set(year, month - 1, date, hourOfDay, minute, second)
@@ -167,12 +167,12 @@ final case class KinesisKclSrc(
         leaseManagementConfig.maxLeaseRenewalThreads(value),
       )
       advancedSettings.leaseManagementConfig.billingMode.foreach {
-        case V2IngestEntities.BillingMode.PROVISIONED =>
-          leaseManagementConfig.billingMode(BillingMode.PROVISIONED)
-        case V2IngestEntities.BillingMode.PAY_PER_REQUEST =>
-          leaseManagementConfig.billingMode(BillingMode.PAY_PER_REQUEST)
-        case V2IngestEntities.BillingMode.UNKNOWN_TO_SDK_VERSION =>
-          leaseManagementConfig.billingMode(BillingMode.UNKNOWN_TO_SDK_VERSION)
+        case BillingMode.PROVISIONED =>
+          leaseManagementConfig.billingMode(AwsBillingMode.PROVISIONED)
+        case BillingMode.PAY_PER_REQUEST =>
+          leaseManagementConfig.billingMode(AwsBillingMode.PAY_PER_REQUEST)
+        case BillingMode.UNKNOWN_TO_SDK_VERSION =>
+          leaseManagementConfig.billingMode(AwsBillingMode.UNKNOWN_TO_SDK_VERSION)
       }
       advancedSettings.leaseManagementConfig.initialLeaseTableReadCapacity.foreach(
         leaseManagementConfig.initialLeaseTableReadCapacity,
@@ -211,7 +211,7 @@ final case class KinesisKclSrc(
 
       advancedSettings.retrievalSpecificConfig
         .map {
-          case V2IngestEntities.RetrievalSpecificConfig.FanOutConfig(
+          case RetrievalSpecificConfig.FanOutConfig(
                 consumerArn,
                 consumerName,
                 maxDescribeStreamSummaryRetries,
@@ -229,7 +229,7 @@ final case class KinesisKclSrc(
             retryBackoffMillis.foreach(fanOutConfig.retryBackoffMillis)
             fanOutConfig
 
-          case V2IngestEntities.RetrievalSpecificConfig.PollingConfig(
+          case RetrievalSpecificConfig.PollingConfig(
                 maxRecords,
                 retryGetRecordsInSeconds,
                 maxGetRecordsThreadPool,
@@ -257,16 +257,16 @@ final case class KinesisKclSrc(
         coordinatorConfig.skipShardSyncAtWorkerInitializationIfLeasesExist,
       )
       advancedSettings.coordinatorConfig.shardPrioritization.foreach {
-        case V2IngestEntities.ShardPrioritization.ParentsFirstShardPrioritization(maxDepth) =>
+        case ShardPrioritization.ParentsFirstShardPrioritization(maxDepth) =>
           coordinatorConfig.shardPrioritization(new ParentsFirstShardPrioritization(maxDepth))
-        case V2IngestEntities.ShardPrioritization.NoOpShardPrioritization =>
+        case ShardPrioritization.NoOpShardPrioritization =>
           coordinatorConfig.shardPrioritization(new NoOpShardPrioritization())
       }
       advancedSettings.coordinatorConfig.clientVersionConfig.foreach {
-        case V2IngestEntities.ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X =>
-          coordinatorConfig.clientVersionConfig(ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X)
-        case V2IngestEntities.ClientVersionConfig.CLIENT_VERSION_CONFIG_3X =>
-          coordinatorConfig.clientVersionConfig(ClientVersionConfig.CLIENT_VERSION_CONFIG_3X)
+        case ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X =>
+          coordinatorConfig.clientVersionConfig(AwsClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X)
+        case ClientVersionConfig.CLIENT_VERSION_CONFIG_3X =>
+          coordinatorConfig.clientVersionConfig(AwsClientVersionConfig.CLIENT_VERSION_CONFIG_3X)
       }
 
       advancedSettings.lifecycleConfig.taskBackoffTimeMillis.foreach(lifecycleConfig.taskBackoffTimeMillis)
@@ -285,9 +285,9 @@ final case class KinesisKclSrc(
       advancedSettings.metricsConfig.metricsBufferTimeMillis.foreach(metricsConfig.metricsBufferTimeMillis)
       advancedSettings.metricsConfig.metricsMaxQueueSize.foreach(metricsConfig.metricsMaxQueueSize)
       advancedSettings.metricsConfig.metricsLevel.foreach {
-        case V2IngestEntities.MetricsLevel.NONE => metricsConfig.metricsLevel(MetricsLevel.NONE)
-        case V2IngestEntities.MetricsLevel.SUMMARY => metricsConfig.metricsLevel(MetricsLevel.SUMMARY)
-        case V2IngestEntities.MetricsLevel.DETAILED => metricsConfig.metricsLevel(MetricsLevel.DETAILED)
+        case MetricsLevel.NONE => metricsConfig.metricsLevel(AwsMetricsLevel.NONE)
+        case MetricsLevel.SUMMARY => metricsConfig.metricsLevel(AwsMetricsLevel.SUMMARY)
+        case MetricsLevel.DETAILED => metricsConfig.metricsLevel(AwsMetricsLevel.DETAILED)
       }
       advancedSettings.metricsConfig.metricsEnabledDimensions.foreach(values =>
         metricsConfig.metricsEnabledDimensions(new java.util.HashSet(values.map(_.value).asJava)),

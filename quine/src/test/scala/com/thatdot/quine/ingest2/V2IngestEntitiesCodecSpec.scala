@@ -5,8 +5,9 @@ import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.quine.app.model.ingest2.V1IngestCodecs._
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
-import com.thatdot.quine.app.model.ingest2.V2IngestEntityEncoderDecoders._
+import com.thatdot.quine.app.model.ingest2._
 import com.thatdot.quine.{routes => V1}
 
 class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheckDrivenPropertyChecks {

@@ -20,7 +20,7 @@ import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.NamedPipeSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat
+import com.thatdot.quine.app.model.ingest2.FileFormat
 import com.thatdot.quine.app.model.ingest2.codec.{CypherStringDecoder, FrameDecoder, JsonDecoder}
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, FramedSource, IngestBounds}
 import com.thatdot.quine.app.routes.IngestMeter

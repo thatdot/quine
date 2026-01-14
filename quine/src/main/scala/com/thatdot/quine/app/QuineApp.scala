@@ -25,7 +25,7 @@ import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.model.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
-import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities, V2IngestEntityEncoderDecoders}
+import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters.ApiToStanding
@@ -86,7 +86,6 @@ final class QuineApp(
     with LazySafeLogging {
 
   import QuineApp._
-  import com.thatdot.quine.app.model.ingest2.V2IngestEntityEncoderDecoders.implicits._
   import com.thatdot.quine.app.StandingQueryResultOutput.OutputTarget
 
   implicit private[this] val idProvider: QuineIdProvider = graph.idProvider
@@ -1247,7 +1246,7 @@ final class QuineApp(
       )
       .map(_.toMap)
     val v2IngestStreamFut = loadV2IngestsFromPersistor(thisMemberIdx)(
-      V2IngestEntityEncoderDecoders.implicits.quineIngestStreamWithStatusSchema,
+      QuineIngestStreamWithStatus.encoderDecoder,
       implicitly,
     )
     for {

@@ -17,13 +17,8 @@ import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat.{
-  CsvFormat,
-  JsonFormat,
-  JsonLinesFormat,
-  LineFormat,
-}
+import com.thatdot.quine.app.model.ingest2.FileFormat
+import com.thatdot.quine.app.model.ingest2.FileFormat.{CsvFormat, JsonFormat, JsonLinesFormat, LineFormat}
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.model.ingest2.sources.DEFAULT_MAXIMUM_LINE_SIZE
 import com.thatdot.quine.app.model.ingest2.sources.FileSource.decodedSourceFromFileStream

@@ -36,13 +36,13 @@ object SuccessEnvelope {
     monitorUrl: Option[String] = None,
   ) extends SuccessEnvelope[Nothing]
   object Accepted {
-    implicit val schema: Schema[Accepted] = Schema.derived[Accepted]
+    implicit lazy val schema: Schema[Accepted] = Schema.derived[Accepted]
     implicit val encoder: Encoder[Accepted] = deriveConfiguredEncoder
     implicit val decoder: Decoder[Accepted] = deriveConfiguredDecoder
   }
 
   case object NoContent extends SuccessEnvelope[Nothing] with CreatedOrNoContent[Nothing] {
-    implicit val schema: Schema[NoContent.type] = Schema.derived[NoContent.type]
+    implicit lazy val schema: Schema[NoContent.type] = Schema.derived[NoContent.type]
     implicit val encoder: Encoder[NoContent.type] = Encoder.encodeUnit.contramap(_ => ())
     implicit val decoder: Decoder[NoContent.type] = Decoder.decodeUnit.map(_ => NoContent)
   }

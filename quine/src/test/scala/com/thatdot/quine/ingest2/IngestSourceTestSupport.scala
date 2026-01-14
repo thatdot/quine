@@ -13,7 +13,7 @@ import org.apache.pekko.util.ByteString
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.data.QuineDataFoldersTo
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.FileFormat
+import com.thatdot.quine.app.model.ingest2.FileFormat
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.model.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.model.ingest2.sources.{DEFAULT_CHARSET, DEFAULT_MAXIMUM_LINE_SIZE}

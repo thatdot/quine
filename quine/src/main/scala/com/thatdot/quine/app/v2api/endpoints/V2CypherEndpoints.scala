@@ -41,7 +41,7 @@ object V2CypherEndpointEntities {
   object TCypherQuery extends JsonSchemas {
     implicit val encoder: Encoder[TCypherQuery] = deriveConfiguredEncoder
     implicit val decoder: Decoder[TCypherQuery] = deriveConfiguredDecoder
-    implicit val schema: Schema[TCypherQuery] = Schema
+    implicit lazy val schema: Schema[TCypherQuery] = Schema
       .derived[TCypherQuery]
       .encodedExample(
         TCypherQuery(
@@ -65,21 +65,21 @@ object V2CypherEndpointEntities {
   object TCypherQueryResult extends JsonSchemas {
     implicit val encoder: Encoder[TCypherQueryResult] = deriveConfiguredEncoder
     implicit val decoder: Decoder[TCypherQueryResult] = deriveConfiguredDecoder
-    implicit val schema: Schema[TCypherQueryResult] = Schema.derived[TCypherQueryResult]
+    implicit lazy val schema: Schema[TCypherQueryResult] = Schema.derived[TCypherQueryResult]
   }
 
   case class TUiNode(id: QuineId, hostIndex: Int, label: String, properties: Map[String, Json])
   object TUiNode extends QuineIdSchemas with JsonSchemas {
     implicit def encoder(implicit quineIdEncoder: Encoder[QuineId]): Encoder[TUiNode] = deriveConfiguredEncoder
     implicit def decoder(implicit quineIdDecoder: Decoder[QuineId]): Decoder[TUiNode] = deriveConfiguredDecoder
-    implicit val schema: Schema[TUiNode] = Schema.derived[TUiNode]
+    implicit lazy val schema: Schema[TUiNode] = Schema.derived[TUiNode]
   }
 
   case class TUiEdge(from: QuineId, edgeType: String, to: QuineId, isDirected: Boolean = true)
   object TUiEdge extends QuineIdSchemas {
     implicit def encoder(implicit quineIdEncoder: Encoder[QuineId]): Encoder[TUiEdge] = deriveConfiguredEncoder
     implicit def decoder(implicit quineIdDecoder: Decoder[QuineId]): Decoder[TUiEdge] = deriveConfiguredDecoder
-    implicit val schema: Schema[TUiEdge] = Schema.derived[TUiEdge]
+    implicit lazy val schema: Schema[TUiEdge] = Schema.derived[TUiEdge]
   }
 }
 
