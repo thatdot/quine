@@ -167,9 +167,13 @@ object V2IngestEntitiesGenerators {
       mc <- metricsConfig
     } yield KCLConfiguration(cb, lmc, rsc, pc, cc, lc, rc, mc)
 
-    val awsCredentials: Gen[V1.AwsCredentials] = V1.AwsGenerators.Gens.awsCredentials
+    val awsCredentials: Gen[V1.AwsCredentials] = for {
+      accessKeyId <- nonEmptyAlphaNumStr
+      secretAccessKey <- nonEmptyAlphaNumStr
+    } yield V1.AwsCredentials(accessKeyId, secretAccessKey)
 
-    val awsRegion: Gen[V1.AwsRegion] = V1.AwsGenerators.Gens.awsRegion
+    val awsRegion: Gen[V1.AwsRegion] =
+      Gen.oneOf("us-east-1", "us-west-2", "eu-west-1", "ap-northeast-1").map(V1.AwsRegion.apply)
 
     val kinesisIteratorType: Gen[V1.KinesisIngest.IteratorType] = Gen.oneOf(
       Gen.const(V1.KinesisIngest.IteratorType.TrimHorizon),

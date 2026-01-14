@@ -8,7 +8,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.graph.{ArbitraryInstances, Generators}
+import com.thatdot.quine.graph.{ArbitraryInstances, TestDataFactory}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.PropertyComparisonFunctions.{
   Identicality,
@@ -22,7 +22,7 @@ class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstan
   val seed: Seed = Seed(0)
   it must "generate stable identifiers for arbitrary values" in {
     val hasher = murmur3_128.newHasher
-    val input = Generators.generateN[DomainGraphNode](100000, 200, seed)
+    val input = TestDataFactory.generateN[DomainGraphNode](100000, 200, seed)
     for { dgn <- input } hasher.putLong(DomainGraphNode.id(dgn))
     hasher.hash.asLong shouldBe -3231038059776559063L
   }
@@ -30,7 +30,7 @@ class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstan
     val nodes = mutable.Set.empty[DomainGraphNode]
     val ids = mutable.Set.empty[DomainGraphNodeId]
     val len = 10000
-    val input = Generators.generateN[DomainGraphNode](len, 200, seed)
+    val input = TestDataFactory.generateN[DomainGraphNode](len, 200, seed)
     for {
       dgn <- input
       if !nodes.contains(dgn)

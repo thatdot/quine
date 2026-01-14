@@ -3,6 +3,8 @@ package com.thatdot.quine.outputs
 import cats.data.NonEmptyList
 import org.scalacheck.{Arbitrary, Gen}
 
+import com.thatdot.api.v2.AwsGenerators
+import com.thatdot.quine.ScalaPrimitiveGenerators
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.{
   Predicate,
@@ -10,7 +12,6 @@ import com.thatdot.quine.app.v2api.definitions.query.standing.{
   StandingQueryResultWorkflow,
 }
 import com.thatdot.quine.v2api.V2ApiCommonGenerators
-import com.thatdot.quine.{AwsGenerators, ScalaPrimitiveGenerators}
 
 object StandingQueryOutputGenerators {
 

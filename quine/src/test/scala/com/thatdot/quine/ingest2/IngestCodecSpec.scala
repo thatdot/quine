@@ -41,8 +41,9 @@ class IngestCodecSpec
     with Matchers
     with ScalaCheckDrivenPropertyChecks
     with TypeDiscriminatorConfig
-    with ArbitraryIngests
     with CirceCodecTestSupport {
+
+  import IngestGenerators.Arbs._
 
   // Note: These tests use the parent sealed trait type (IngestSource) because
   // explicit Circe codecs exist at the sealed trait level, not for individual subtypes.

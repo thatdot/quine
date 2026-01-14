@@ -2,7 +2,7 @@ package com.thatdot.quine
 
 import org.scalacheck.{Arbitrary, Gen}
 
-/** Popular primitive-based generators (no Arbs; would conflict with ScalaCheck's). */
+/** Popular primitive-based generators (no `Arbs`; would conflict with ScalaCheck's). */
 object ScalaPrimitiveGenerators {
   object Gens {
     val bool: Gen[Boolean] = Arbitrary.arbitrary[Boolean]

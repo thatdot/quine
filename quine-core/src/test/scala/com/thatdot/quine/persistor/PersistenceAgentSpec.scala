@@ -16,8 +16,8 @@ import org.scalatest.{Assertion, BeforeAndAfterAll, Inspectors, OptionValues}
 
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.DomainIndexEvent.CancelDomainNodeSubscription
-import com.thatdot.quine.graph.Generators.generateN
 import com.thatdot.quine.graph.PropertyEvent.PropertySet
+import com.thatdot.quine.graph.TestDataFactory.generateN
 import com.thatdot.quine.graph.{
   ArbitraryInstances,
   DomainIndexEvent,

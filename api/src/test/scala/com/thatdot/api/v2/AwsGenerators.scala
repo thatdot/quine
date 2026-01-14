@@ -1,14 +1,15 @@
-package com.thatdot.quine
+package com.thatdot.api.v2
 
 import org.scalacheck.{Arbitrary, Gen}
 
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
+import com.thatdot.quine.ScalaPrimitiveGenerators
 
 object AwsGenerators {
 
   import ScalaPrimitiveGenerators.Gens.nonEmptyAlphaNumStr
 
   object Gens {
+
     val awsCredentials: Gen[AwsCredentials] = for {
       accessKey <- nonEmptyAlphaNumStr
       secretKey <- nonEmptyAlphaNumStr
@@ -23,9 +24,9 @@ object AwsGenerators {
   }
 
   object Arbs {
-    implicit val awsCredentials: Arbitrary[AwsCredentials] = Arbitrary(Gens.awsCredentials)
-    implicit val optAwsCredentials: Arbitrary[Option[AwsCredentials]] = Arbitrary(Gens.optAwsCredentials)
-    implicit val awsRegion: Arbitrary[AwsRegion] = Arbitrary(Gens.awsRegion)
-    implicit val optAwsRegion: Arbitrary[Option[AwsRegion]] = Arbitrary(Gens.optAwsRegion)
+    implicit val arbAwsCredentials: Arbitrary[AwsCredentials] = Arbitrary(Gens.awsCredentials)
+    implicit val arbOptAwsCredentials: Arbitrary[Option[AwsCredentials]] = Arbitrary(Gens.optAwsCredentials)
+    implicit val arbAwsRegion: Arbitrary[AwsRegion] = Arbitrary(Gens.awsRegion)
+    implicit val arbOptAwsRegion: Arbitrary[Option[AwsRegion]] = Arbitrary(Gens.optAwsRegion)
   }
 }

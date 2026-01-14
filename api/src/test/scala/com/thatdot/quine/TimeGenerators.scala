@@ -29,4 +29,7 @@ object TimeGenerators {
       }
   }
 
+  object Arbs {
+    implicit val arbInstant: Arbitrary[Instant] = Arbitrary(Gens.instant)
+  }
 }

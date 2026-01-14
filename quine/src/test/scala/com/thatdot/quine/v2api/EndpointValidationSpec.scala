@@ -22,7 +22,7 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{Oss, RecordDec
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
 import com.thatdot.quine.app.v2api.{OssApiMethods, V2OssRoutes}
 import com.thatdot.quine.app.{IngestTestGraph, QuineApp}
-import com.thatdot.quine.ingest2.ArbitraryIngests
+import com.thatdot.quine.ingest2.IngestGenerators
 import com.thatdot.quine.util.TestLogging._
 
 object EndpointValidationSupport {
@@ -49,13 +49,16 @@ class EndpointValidationSpec
     with ScalaCheckDrivenPropertyChecks
     with Matchers
     with ScalatestRouteTest
-    with ArbitraryIngests
     with TypeDiscriminatorConfig {
+
   import EndpointValidationSupport._
+  import IngestGenerators.Arbs._
+  import IngestGenerators.Gens.{kafka => kafkaGen, kinesis => kinesisGen}
+
   val baseUrl = "/api/v2"
 
   "A kinesis ingest with illegal iterator type" should "fail with 400" in {
-    forAll(kinesisGen, arbIngest.arbitrary) { (kinesis, ingest) =>
+    forAll(kinesisGen, arbQuineIngestConfiguration.arbitrary) { (kinesis, ingest) =>
       val url = s"$baseUrl/ingests"
       val kinesisIngest = kinesis.copy(
         iteratorType = IteratorType.AfterSequenceNumber("ignore"),
@@ -80,7 +83,7 @@ class EndpointValidationSpec
   }
 
   "A kafka ingest with unrecognized properties" should "fail with 400" in {
-    forAll(kafkaGen, arbIngest.arbitrary) { (kafka, ingest) =>
+    forAll(kafkaGen, arbQuineIngestConfiguration.arbitrary) { (kafka, ingest) =>
       val url = s"$baseUrl/ingests"
       val kafkaIngest: Api.IngestSource.Kafka = kafka.copy(kafkaProperties =
         Map(

@@ -5,7 +5,7 @@ import scala.reflect.ClassTag
 import org.scalacheck.rng.Seed
 import org.scalacheck.{Arbitrary, Gen}
 
-object Generators {
+object TestDataFactory {
 
   /** Generate an array of the specified size generating values of a certain size using the
     * generator
