@@ -329,6 +329,13 @@ lazy val `quine-browser`: Project = project
       "@coreui/icons" -> coreuiIconsV,
       "@popperjs/core" -> "2.11.8",
     ),
+    // Force patched react-router version via yarn resolutions (CVE-2025-68470)
+    Compile / additionalNpmConfig := Map(
+      "resolutions" -> obj(
+        "react-router" -> str(reactRouterV),
+        "react-router-dom" -> str(reactRouterV),
+      ),
+    ),
     webpackNodeArgs := nodeLegacySslIfAvailable,
     // Scalajs-bundler 0.21.1 updates to webpack 5 but doesn't inform webpack that the scalajs-based file it emits is
     // an entrypoint -- therefore webpack emits an error saying effectively, "no entrypoint" that we must ignore.
@@ -340,7 +347,7 @@ lazy val `quine-browser`: Project = project
     Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js"),
     test := {},
     useYarn := true,
-    // yarnExtraArgs := Seq("--frozen-lockfile"),
+    yarnExtraArgs := Seq("--frozen-lockfile"),
   )
 
 // Streaming graph application built on top of the Quine library
