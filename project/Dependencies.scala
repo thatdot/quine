@@ -50,7 +50,7 @@ object Dependencies {
   val pekkoV = "1.2.1"
   val pekkoHttpV = "1.2.0"
   val pekkoHttpCirceV = "3.0.1"
-  val pekkoManagementV = "1.1.1"
+  val pekkoManagementV = "1.2.0"
   val pekkoKafkaV = "1.1.0"
   val pekkoConnectorsV = "1.1.0"
   val plotlyV = "2.25.2"
