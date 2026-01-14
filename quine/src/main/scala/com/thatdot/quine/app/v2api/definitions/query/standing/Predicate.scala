@@ -12,7 +12,7 @@ import com.thatdot.api.v2.schema.V2ApiConfiguration._
 sealed trait Predicate
 
 object Predicate {
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   @description(
     "Returns `true` when a Standing Query Result's metadata includes a `true` value for the `isPositiveMatch` field.",

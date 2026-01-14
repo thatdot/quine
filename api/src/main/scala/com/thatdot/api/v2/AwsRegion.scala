@@ -18,7 +18,7 @@ final case class AwsRegion(
 )
 
 object AwsRegion {
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[AwsRegion] = deriveConfiguredEncoder
   implicit val decoder: Decoder[AwsRegion] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[AwsRegion] = Schema.derived

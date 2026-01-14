@@ -19,7 +19,7 @@ sealed abstract class StandingQueryPattern
 object StandingQueryPattern {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[StandingQueryPattern] = deriveConfiguredEncoder
   implicit val decoder: Decoder[StandingQueryPattern] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[StandingQueryPattern] = Schema.derived

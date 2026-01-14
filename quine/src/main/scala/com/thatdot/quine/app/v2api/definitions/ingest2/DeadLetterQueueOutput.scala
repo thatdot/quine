@@ -16,7 +16,7 @@ sealed trait DeadLetterQueueOutput
 object DeadLetterQueueOutput {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   @title("POST to HTTP[S] Webhook")
   @description("Makes an HTTP[S] POST for each message.")
@@ -165,7 +165,7 @@ object DeadLetterQueueOutput {
 sealed trait OutputFormat
 
 object OutputFormat {
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   case object Bytes extends OutputFormat
 
@@ -206,7 +206,7 @@ case class DeadLetterQueueSettings(
 )
 
 object DeadLetterQueueSettings {
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[DeadLetterQueueSettings] = deriveConfiguredEncoder
   implicit val decoder: Decoder[DeadLetterQueueSettings] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[DeadLetterQueueSettings] = Schema.derived

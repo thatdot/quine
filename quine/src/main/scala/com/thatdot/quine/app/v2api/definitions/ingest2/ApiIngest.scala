@@ -22,7 +22,7 @@ import com.thatdot.quine.{routes => V1}
 object ApiIngest {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
   implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.map(Instant.parse)

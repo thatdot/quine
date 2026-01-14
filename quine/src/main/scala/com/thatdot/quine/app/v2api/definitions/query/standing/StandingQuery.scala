@@ -12,7 +12,7 @@ import com.thatdot.api.v2.schema.V2ApiConfiguration._
 
 object StandingQuery {
 
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   @title("Standing Query")
   @description("Standing Query.")

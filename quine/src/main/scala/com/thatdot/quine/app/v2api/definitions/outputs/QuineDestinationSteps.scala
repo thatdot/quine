@@ -30,7 +30,7 @@ sealed trait MirrorOfCore
 object QuineDestinationSteps {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   @title(DestinationSteps.Drop.title)
   @description(DestinationSteps.Drop.description)

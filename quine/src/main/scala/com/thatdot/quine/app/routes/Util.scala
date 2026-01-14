@@ -148,7 +148,7 @@ object Util {
       def withXssHardening: server.Route = xssHarden(route)
       def withFrameEmbedHardening: server.Route = frameEmbedHarden(route)
       def withHstsHardening: server.Route = hstsHarden(route)
-      def withSecurityHardening: server.Route = route.withXssHardening.withFrameEmbedHardening.withHstsHardening
+      def withSecurityHardening: server.Route = hstsHarden(frameEmbedHarden(xssHarden(route)))
     }
   }
 

@@ -12,7 +12,7 @@ import com.thatdot.api.v2.schema.V2ApiConfiguration._
 sealed trait OutputFormat
 
 object OutputFormat {
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val protobufSchema: Schema[Protobuf] = Schema.derived
   implicit lazy val schema: Schema[OutputFormat] = Schema.derived
 

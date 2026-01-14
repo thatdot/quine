@@ -90,7 +90,7 @@ final class Valve[A](mode: SwitchMode) extends GraphStageWithMaterializedValue[F
 
     private val switch = new ValveSwitch {
 
-      val flipCallback = getAsyncCallback[(SwitchMode, Promise[Boolean])] { case (flipToMode, promise) =>
+      private val flipCallback = getAsyncCallback[(SwitchMode, Promise[Boolean])] { case (flipToMode, promise) =>
         val succeed = mode match {
           case _ if flipToMode == mode => false
 
@@ -112,7 +112,7 @@ final class Valve[A](mode: SwitchMode) extends GraphStageWithMaterializedValue[F
         promise.success(succeed)
       }
 
-      val getModeCallback = getAsyncCallback[Promise[SwitchMode]](_.success(mode))
+      private val getModeCallback = getAsyncCallback[Promise[SwitchMode]](_.success(mode))
 
       override def flip(flipToMode: SwitchMode): Future[Boolean] = {
         val promise = Promise[Boolean]()

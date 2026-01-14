@@ -45,8 +45,8 @@ trait V2ApiConfiguration extends TapirJsonCirce {
     val default: Configuration = Configuration(None, Map.empty)
   }
 
-  implicit def circeConfig(implicit config: Configuration): CirceConfig = config.asCirce
-  implicit def tapirConfig(implicit config: Configuration): TapirConfig = config.asTapir
+  implicit def toCirceConfig(implicit config: Configuration): CirceConfig = config.asCirce
+  implicit def toTapirConfig(implicit config: Configuration): TapirConfig = config.asTapir
 
   val typeDiscriminatorConfig: Configuration =
     Configuration.default

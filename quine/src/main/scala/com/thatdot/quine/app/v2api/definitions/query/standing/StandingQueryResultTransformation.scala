@@ -13,7 +13,7 @@ sealed trait StandingQueryResultTransformation
 object StandingQueryResultTransformation {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   @description(
     """Extracts, or "lifts", the `data` field of a Standing Query Result such that the data is no longer wrapped,

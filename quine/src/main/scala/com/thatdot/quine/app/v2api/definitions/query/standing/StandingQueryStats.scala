@@ -28,7 +28,7 @@ final case class StandingQueryStats(
 object StandingQueryStats {
   val title: String = "Statistics About a Running Standing Query"
 
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
   implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.map(Instant.parse)
   implicit val encoder: Encoder[StandingQueryStats] = deriveConfiguredEncoder

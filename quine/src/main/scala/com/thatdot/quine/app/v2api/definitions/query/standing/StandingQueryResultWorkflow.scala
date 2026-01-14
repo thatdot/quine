@@ -32,7 +32,7 @@ case class StandingQueryResultWorkflow(
 object StandingQueryResultWorkflow {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[StandingQueryResultWorkflow] = deriveConfiguredEncoder
   implicit val decoder: Decoder[StandingQueryResultWorkflow] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[StandingQueryResultWorkflow] = Schema.derived

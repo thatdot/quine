@@ -20,7 +20,7 @@ final case class AwsCredentials(
 )
 
 object AwsCredentials {
-  implicit val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[AwsCredentials] = deriveConfiguredEncoder
   implicit val decoder: Decoder[AwsCredentials] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[AwsCredentials] = Schema.derived
