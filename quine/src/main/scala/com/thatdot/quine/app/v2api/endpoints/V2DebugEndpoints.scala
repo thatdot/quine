@@ -2,7 +2,6 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
@@ -14,7 +13,7 @@ import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, path, q
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances._
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.{SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
@@ -24,8 +23,6 @@ import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirec
 object V2DebugEndpointEntities {
   import com.thatdot.quine.app.util.StringOps.syntax._
   import com.thatdot.api.v2.schema.ThirdPartySchemas.circe._
-
-  implicit private val circeConfig: Configuration = Configuration.default
 
   sealed abstract class TEdgeDirection
   object TEdgeDirection {

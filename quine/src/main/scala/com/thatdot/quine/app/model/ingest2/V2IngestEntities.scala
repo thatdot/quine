@@ -492,12 +492,7 @@ object V2IngestEntities {
     final case class Error(message: String, index: Option[Long], record: Option[String]) extends FeedbackMessage
 
     object FeedbackMessage {
-
-      import io.circe.Encoder
-      import io.circe.generic.extras.Configuration
       import io.circe.generic.extras.semiauto
-
-      implicit private val circeConfig: Configuration = Configuration.default.withDiscriminator("type")
 
       implicit val feedbackMessageEncoder: Encoder[FeedbackMessage] = semiauto.deriveConfiguredEncoder
     }

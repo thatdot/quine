@@ -1,17 +1,15 @@
 package com.thatdot.quine.app.v2api.definitions
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder, Json}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+
 object ApiUiStyling {
   import com.thatdot.quine.app.util.StringOps.syntax._
   import com.thatdot.api.v2.schema.ThirdPartySchemas.circe._
-
-  implicit private val circeConfig: Configuration =
-    Configuration.default.withDiscriminator("type").withDefaults
 
   /** Enumeration for the kinds of queries we can issue */
   sealed abstract class QuerySort

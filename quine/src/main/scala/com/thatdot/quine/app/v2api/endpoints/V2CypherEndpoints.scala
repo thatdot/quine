@@ -4,7 +4,6 @@ import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
 import endpoints4s.generic.title
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
@@ -16,7 +15,7 @@ import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, oneOfBody, statusCode}
 
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances._
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.schema.ThirdPartySchemas.circe.{mapStringJsonSchema, seqSeqJsonSchema}
 import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
@@ -32,7 +31,6 @@ import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 
 object V2CypherEndpointEntities {
   import StringOps.syntax._
-  implicit private val circeConfig: Configuration = Configuration.default.withDefaults
 
   @title("Cypher Query")
   final case class TCypherQuery(
