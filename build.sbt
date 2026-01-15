@@ -391,7 +391,7 @@ lazy val `quine`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "com.softwaremill.sttp.client3" %% "circe" % "3.10.3" % Test,
       //"commons-io" % "commons-io" % commonsIoV  % Test,
-      "io.circe" %% "circe-config" % "0.10.1",
+      "io.circe" %% "circe-config" % "0.10.2",
       "io.circe" %% "circe-generic-extras" % circeGenericExtrasV,
       "io.circe" %% "circe-yaml-v12" % "0.16.0",
       "io.circe" %% "circe-core" % circeV,
