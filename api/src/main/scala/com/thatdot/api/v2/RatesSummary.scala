@@ -20,5 +20,5 @@ final case class RatesSummary(
 object RatesSummary {
   implicit val encoder: Encoder[RatesSummary] = deriveConfiguredEncoder
   implicit val decoder: Decoder[RatesSummary] = deriveConfiguredDecoder
-  implicit lazy val schema: Schema[RatesSummary] = Schema.derived[RatesSummary]
+  implicit lazy val schema: Schema[RatesSummary] = Schema.derived
 }

@@ -31,10 +31,10 @@ object ThirdPartySchemas {
 
   /** Schemas for Circe types */
   object circe {
-    implicit val jsonSchema: Schema[Json] = Schema.any[Json]
-    implicit val mapStringJsonSchema: Schema[Map[String, Json]] = Schema.schemaForMap[String, Json](identity)
-    implicit val seqJsonSchema: Schema[Seq[Json]] = jsonSchema.asIterable[Seq]
-    implicit val seqSeqJsonSchema: Schema[Seq[Seq[Json]]] = seqJsonSchema.asIterable[Seq]
+    implicit lazy val jsonSchema: Schema[Json] = Schema.any[Json]
+    implicit lazy val mapStringJsonSchema: Schema[Map[String, Json]] = Schema.schemaForMap[String, Json](identity)
+    implicit lazy val seqJsonSchema: Schema[Seq[Json]] = jsonSchema.asIterable[Seq]
+    implicit lazy val seqSeqJsonSchema: Schema[Seq[Seq[Json]]] = seqJsonSchema.asIterable[Seq]
   }
 
   /** Schemas for JDK types */
@@ -46,7 +46,7 @@ object ThirdPartySchemas {
       },
     )(_.toString)
 
-    implicit val charsetSchema: Schema[Charset] = charsetCodec.schema
+    implicit lazy val charsetSchema: Schema[Charset] = charsetCodec.schema
 
     implicit val instantCodec: Codec[String, Instant, TextPlain] = Codec.string.mapDecode(s =>
       Try(Instant.parse(s)) match {
@@ -55,6 +55,6 @@ object ThirdPartySchemas {
       },
     )(_.toString)
 
-    implicit val instantSchema: Schema[Instant] = instantCodec.schema
+    implicit lazy val instantSchema: Schema[Instant] = instantCodec.schema
   }
 }

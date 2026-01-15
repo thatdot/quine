@@ -66,7 +66,7 @@ object V2DebugEndpointEntities {
   object TRestHalfEdge {
     implicit def encoder[ID: Encoder]: Encoder[TRestHalfEdge[ID]] = deriveConfiguredEncoder
     implicit def decoder[ID: Decoder]: Decoder[TRestHalfEdge[ID]] = deriveConfiguredDecoder
-    implicit def schema[ID: Schema]: Schema[TRestHalfEdge[ID]] = Schema.derived[TRestHalfEdge[ID]]
+    implicit def schema[ID: Schema]: Schema[TRestHalfEdge[ID]] = Schema.derived
   }
 
   @title("Node Data")
@@ -83,7 +83,7 @@ object V2DebugEndpointEntities {
   object TLiteralNode {
     implicit def encoder[ID: Encoder]: Encoder[TLiteralNode[ID]] = deriveConfiguredEncoder
     implicit def decoder[ID: Decoder]: Decoder[TLiteralNode[ID]] = deriveConfiguredDecoder
-    implicit def schema[ID: Schema]: Schema[TLiteralNode[ID]] = Schema.derived[TLiteralNode[ID]]
+    implicit def schema[ID: Schema]: Schema[TLiteralNode[ID]] = Schema.derived
   }
 }
 

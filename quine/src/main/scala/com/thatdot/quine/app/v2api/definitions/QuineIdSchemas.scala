@@ -6,5 +6,5 @@ import com.thatdot.common.quineid.QuineId
 
 /** Tapir schema for QuineId, defined in the API layer since `quine-id` doesn't depend on Tapir. */
 trait QuineIdSchemas {
-  implicit val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
+  implicit lazy val quineIdSchema: Schema[QuineId] = Schema.string[QuineId]
 }

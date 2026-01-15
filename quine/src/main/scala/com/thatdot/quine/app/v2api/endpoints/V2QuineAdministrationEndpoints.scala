@@ -175,12 +175,12 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     .description("A map of shard IDs to shard in-memory node limits")
     .encodedExample(exampleShardMap.asJson)
 
-  implicit lazy val tQuineInfoSchema: Schema[TQuineInfo] = Schema.derived[TQuineInfo]
-  implicit lazy val tCounterSchema: Schema[TCounter] = Schema.derived[TCounter]
-  implicit lazy val tNumericGaugeSchema: Schema[TNumericGauge] = Schema.derived[TNumericGauge]
-  implicit lazy val tTimerSummarySchema: Schema[TTimerSummary] = Schema.derived[TTimerSummary]
-  implicit lazy val tMetricsReportSchema: Schema[TMetricsReport] = Schema.derived[TMetricsReport]
-  implicit lazy val tShardInMemoryLimitSchema: Schema[TShardInMemoryLimit] = Schema.derived[TShardInMemoryLimit]
+  implicit lazy val tQuineInfoSchema: Schema[TQuineInfo] = Schema.derived
+  implicit lazy val tCounterSchema: Schema[TCounter] = Schema.derived
+  implicit lazy val tNumericGaugeSchema: Schema[TNumericGauge] = Schema.derived
+  implicit lazy val tTimerSummarySchema: Schema[TTimerSummary] = Schema.derived
+  implicit lazy val tMetricsReportSchema: Schema[TMetricsReport] = Schema.derived
+  implicit lazy val tShardInMemoryLimitSchema: Schema[TShardInMemoryLimit] = Schema.derived
 
   def adminBase(path: String): EndpointBase = rawEndpoint("admin")
     .in(path)
