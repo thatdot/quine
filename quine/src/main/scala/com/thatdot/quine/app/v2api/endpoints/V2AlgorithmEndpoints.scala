@@ -11,7 +11,6 @@ import org.apache.pekko.stream.scaladsl.{FileIO, Sink}
 import org.apache.pekko.util.ByteString
 
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
-import io.circe.generic.extras.{Configuration => CirceConfiguration}
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
@@ -20,7 +19,7 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
-import com.thatdot.api.v2.schema.{TypeDiscriminatorConfig, V2ApiConfiguration}
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
@@ -32,9 +31,7 @@ import com.thatdot.quine.app.v2api.definitions.{
 }
 import com.thatdot.quine.graph.{AlgorithmGraph, BaseGraph, CypherOpsGraph, LiteralOpsGraph}
 
-object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
-
-  implicit private val circeConfig: CirceConfiguration = typeDiscriminatorConfig.asCirce
+object V2AlgorithmEndpointEntities extends StringOps {
 
   /* WARNING: these values duplicate `AlgorithmGraph.defaults.walkPrefix` and `walkSuffix` from the
    * `com.thatdot.quine.graph` package which is not available here.
@@ -138,11 +135,7 @@ object V2AlgorithmEndpointEntities extends V2ApiConfiguration with StringOps {
 
 }
 
-trait V2AlgorithmEndpoints
-    extends V2EndpointDefinitions
-    with TypeDiscriminatorConfig
-    with CommonParameters
-    with ParallelismParameter {
+trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters with ParallelismParameter {
   val appMethods: AlgorithmApiMethods with ApplicationApiMethods {
     val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph with AlgorithmGraph
   }

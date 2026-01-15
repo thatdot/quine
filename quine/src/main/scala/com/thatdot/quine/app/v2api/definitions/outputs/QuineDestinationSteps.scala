@@ -1,14 +1,13 @@
 package com.thatdot.quine.app.v2api.definitions.outputs
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.{DestinationSteps, Format, OutputFormat}
-import com.thatdot.api.v2.schema.V2ApiConfiguration._
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 
 /** The Quine-local ADT for result destinations. Note that it includes both "copies" of ADT values defined also in
@@ -29,8 +28,6 @@ sealed trait MirrorOfCore
 
 object QuineDestinationSteps {
   import com.thatdot.quine.app.util.StringOps.syntax._
-
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   @title(DestinationSteps.Drop.title)
   @description(DestinationSteps.Drop.description)

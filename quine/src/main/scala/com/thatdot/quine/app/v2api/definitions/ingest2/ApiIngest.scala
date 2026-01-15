@@ -3,7 +3,6 @@ package com.thatdot.quine.app.v2api.definitions.ingest2
 import java.nio.charset.{Charset, StandardCharsets}
 import java.time.Instant
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{
   deriveConfiguredDecoder,
   deriveConfiguredEncoder,
@@ -14,15 +13,16 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
-import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk._
-import com.thatdot.api.v2.schema.V2ApiConfiguration._
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.codec.DisjointEither.syntax._
+import com.thatdot.api.v2.codec.DisjointEvidence._
+import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEncoder}
+import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.{charsetSchema, instantSchema}
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.{routes => V1}
 
 object ApiIngest {
   import com.thatdot.quine.app.util.StringOps.syntax._
-
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
   implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.map(Instant.parse)

@@ -2,7 +2,6 @@ package com.thatdot.quine.app.model.ingest2
 
 import cats.implicits.catsSyntaxEitherId
 import io.circe.Encoder.encodeString
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{
   deriveConfiguredDecoder,
   deriveConfiguredEncoder,
@@ -11,7 +10,7 @@ import io.circe.generic.extras.semiauto.{
 }
 import io.circe.{Decoder, Encoder}
 
-import com.thatdot.api.v2.schema.V2ApiConfiguration.typeDiscriminatorConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.quine.{routes => V1}
 
 /** Circe encoders and decoders for V1 routes types used by V2 ingest.
@@ -27,7 +26,6 @@ import com.thatdot.quine.{routes => V1}
   * }}}
   */
 object V1IngestCodecs {
-  implicit private val config: Configuration = typeDiscriminatorConfig.asCirce
 
   implicit val csvCharacterEncoder: Encoder[V1.CsvCharacter] = deriveEnumerationEncoder[V1.CsvCharacter]
   implicit val csvCharacterDecoder: Decoder[V1.CsvCharacter] = deriveEnumerationDecoder[V1.CsvCharacter]

@@ -10,9 +10,9 @@ import sttp.tapir.server.interceptor.exception.DefaultExceptionHandler
 import sttp.tapir.server.model.ValuedEndpointOutput
 import sttp.tapir.{DecodeResult, headers, statusCode, stringBody}
 
-import com.thatdot.api.v2.ErrorResponse
 import com.thatdot.api.v2.ErrorType.{ApiError, DecodeError}
-import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
+import com.thatdot.api.v2.schema.TapirJsonConfig.jsonBody
+import com.thatdot.api.v2.{ErrorResponse, TypeDiscriminatorConfig}
 
 trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
 

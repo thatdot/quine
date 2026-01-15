@@ -2,13 +2,13 @@ package com.thatdot.api.v2
 
 import java.util.UUID
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.{EndpointOutput, Schema, statusCode}
 
-import com.thatdot.api.v2.schema.V2ApiConfiguration.{jsonBody, typeDiscriminatorConfig}
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances._
+import com.thatdot.api.v2.schema.TapirJsonConfig.jsonBody
 import com.thatdot.common.logging.Log._
 import com.thatdot.quine.util.BaseError
 
@@ -23,7 +23,6 @@ sealed trait ErrorType {
   *  See: [[BaseError]] for future extension.
   */
 object ErrorType {
-  implicit private val errorTypeCirceConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   /** General Api error that we don't have any extra information about */
   case class ApiError(message: String) extends ErrorType
@@ -71,7 +70,6 @@ trait HasErrors extends Product with Serializable {
   *  They are combined with Coproduct from shapeless where used. This should be updated to Union in scala 3.
   */
 object ErrorResponse {
-  implicit private val errorResponseCirceConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   case class ServerError(errors: List[ErrorType]) extends HasErrors
   case class BadRequest(errors: List[ErrorType]) extends HasErrors

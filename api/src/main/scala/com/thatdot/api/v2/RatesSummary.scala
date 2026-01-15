@@ -1,12 +1,11 @@
 package com.thatdot.api.v2
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
-import com.thatdot.api.v2.schema.V2ApiConfiguration._
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 
 @title("Rates Summary")
 @description("Summary statistics about a metered rate.")
@@ -19,7 +18,6 @@ final case class RatesSummary(
 )
 
 object RatesSummary {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[RatesSummary] = deriveConfiguredEncoder
   implicit val decoder: Decoder[RatesSummary] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[RatesSummary] = Schema.derived[RatesSummary]

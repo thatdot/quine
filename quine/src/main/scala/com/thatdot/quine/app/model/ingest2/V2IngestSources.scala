@@ -3,7 +3,6 @@ package com.thatdot.quine.app.model.ingest2
 import java.nio.charset.Charset
 import java.time.Instant
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{
   deriveConfiguredDecoder,
   deriveConfiguredEncoder,
@@ -14,7 +13,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
-import com.thatdot.api.v2.schema.V2ApiConfiguration.typeDiscriminatorConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
 import com.thatdot.quine.app.util.StringOps.syntax.MultilineTransforms
 import com.thatdot.quine.{routes => V1}
@@ -50,16 +49,10 @@ sealed trait StreamingIngestSource extends IngestSource {
 
 object IngestSource {
   import V1IngestCodecs._
-  import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.{charsetEncoder, charsetDecoder, charsetSchema}
-  import com.thatdot.api.v2.schema.V2ApiConfiguration.{
-    disjointEitherEncoder,
-    disjointEitherDecoder,
-    jsonListSet,
-    jsonObjMap,
-    jsonDisjointListObj,
-  }
-
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
+  import com.thatdot.api.v2.codec.DisjointEither.syntax._
+  import com.thatdot.api.v2.codec.DisjointEvidence._
+  import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEncoder}
+  import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.charsetSchema
 
   def apply(config: UnifiedIngestConfiguration): IngestSource = config.config match {
     case Left(v2) => v2.source
@@ -468,7 +461,6 @@ case class KinesisCheckpointSettings(
 )
 
 object KinesisCheckpointSettings {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[KinesisCheckpointSettings] = Schema.derived
   implicit val encoder: Encoder[KinesisCheckpointSettings] = deriveConfiguredEncoder
   implicit val decoder: Decoder[KinesisCheckpointSettings] = deriveConfiguredDecoder
@@ -486,7 +478,6 @@ case class KinesisSchedulerSourceSettings(
 )
 
 object KinesisSchedulerSourceSettings {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[KinesisSchedulerSourceSettings] = Schema.derived
   implicit val encoder: Encoder[KinesisSchedulerSourceSettings] = deriveConfiguredEncoder
   implicit val decoder: Decoder[KinesisSchedulerSourceSettings] = deriveConfiguredDecoder
@@ -515,7 +506,6 @@ case class KCLConfiguration(
 )
 
 object KCLConfiguration {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[KCLConfiguration] = Schema.derived
   implicit lazy val encoder: Encoder[KCLConfiguration] = deriveConfiguredEncoder
   implicit lazy val decoder: Decoder[KCLConfiguration] = deriveConfiguredDecoder
@@ -530,7 +520,6 @@ case class ConfigsBuilder(
 )
 
 object ConfigsBuilder {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[ConfigsBuilder] = Schema.derived
   implicit val encoder: Encoder[ConfigsBuilder] = deriveConfiguredEncoder
   implicit val decoder: Decoder[ConfigsBuilder] = deriveConfiguredDecoder
@@ -541,7 +530,6 @@ sealed trait BillingMode {
 }
 
 object BillingMode {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   /** Provisioned billing. */
   case object PROVISIONED extends BillingMode {
@@ -567,7 +555,6 @@ object BillingMode {
 sealed trait InitialPosition
 
 object InitialPosition {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   /** All records added to the shard since subscribing. */
   case object Latest extends InitialPosition
@@ -625,7 +612,6 @@ case class LeaseManagementConfig(
 )
 
 object LeaseManagementConfig {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[LeaseManagementConfig] = Schema.derived
   implicit val encoder: Encoder[LeaseManagementConfig] = deriveConfiguredEncoder
   implicit val decoder: Decoder[LeaseManagementConfig] = deriveConfiguredDecoder
@@ -634,8 +620,6 @@ object LeaseManagementConfig {
 sealed trait RetrievalSpecificConfig
 
 object RetrievalSpecificConfig {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
-
   case class FanOutConfig(
     /** The ARN of an already created consumer, if this is set no automatic consumer creation will be attempted. */
     consumerArn: Option[String],
@@ -681,7 +665,6 @@ case class ProcessorConfig(
 )
 
 object ProcessorConfig {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[ProcessorConfig] = Schema.derived
   implicit val encoder: Encoder[ProcessorConfig] = deriveConfiguredEncoder
   implicit val decoder: Decoder[ProcessorConfig] = deriveConfiguredDecoder
@@ -691,7 +674,6 @@ object ProcessorConfig {
 sealed trait ShardPrioritization
 
 object ShardPrioritization {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   /** No‑op prioritisation. */
   case object NoOpShardPrioritization extends ShardPrioritization
@@ -708,8 +690,6 @@ object ShardPrioritization {
 sealed trait ClientVersionConfig
 
 object ClientVersionConfig {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
-
   case object CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X extends ClientVersionConfig
 
   case object CLIENT_VERSION_CONFIG_3X extends ClientVersionConfig
@@ -732,7 +712,6 @@ case class CoordinatorConfig(
 )
 
 object CoordinatorConfig {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[CoordinatorConfig] = Schema.derived
   implicit val encoder: Encoder[CoordinatorConfig] = deriveConfiguredEncoder
   implicit val decoder: Decoder[CoordinatorConfig] = deriveConfiguredDecoder
@@ -747,7 +726,6 @@ case class LifecycleConfig(
 )
 
 object LifecycleConfig {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[LifecycleConfig] = Schema.derived
   implicit val encoder: Encoder[LifecycleConfig] = deriveConfiguredEncoder
   implicit val decoder: Decoder[LifecycleConfig] = deriveConfiguredDecoder
@@ -762,7 +740,6 @@ case class RetrievalConfig(
 )
 
 object RetrievalConfig {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[RetrievalConfig] = Schema.derived
   implicit val encoder: Encoder[RetrievalConfig] = deriveConfiguredEncoder
   implicit val decoder: Decoder[RetrievalConfig] = deriveConfiguredDecoder
@@ -772,7 +749,6 @@ object RetrievalConfig {
 sealed trait MetricsLevel
 
 object MetricsLevel {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   /** Metrics disabled. */
   case object NONE extends MetricsLevel
@@ -794,8 +770,6 @@ sealed trait MetricsDimension {
 }
 
 object MetricsDimension {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
-
   case object OPERATION_DIMENSION_NAME extends MetricsDimension {
     val value = "Operation"
   }
@@ -830,7 +804,6 @@ case class MetricsConfig(
 )
 
 object MetricsConfig {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val schema: Schema[MetricsConfig] = Schema.derived
   implicit val encoder: Encoder[MetricsConfig] = deriveConfiguredEncoder
   implicit val decoder: Decoder[MetricsConfig] = deriveConfiguredDecoder

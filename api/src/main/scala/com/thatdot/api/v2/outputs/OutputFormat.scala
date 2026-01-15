@@ -1,18 +1,16 @@
 package com.thatdot.api.v2.outputs
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
 
-import com.thatdot.api.v2.schema.V2ApiConfiguration._
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 
 @title("Result Output Format")
 sealed trait OutputFormat
 
 object OutputFormat {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit lazy val protobufSchema: Schema[Protobuf] = Schema.derived
   implicit lazy val schema: Schema[OutputFormat] = Schema.derived
 

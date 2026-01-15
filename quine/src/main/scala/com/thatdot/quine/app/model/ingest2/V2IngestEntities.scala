@@ -4,14 +4,13 @@ import java.time.Instant
 
 import scala.util.{Failure, Success, Try}
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
-import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk._
-import com.thatdot.api.v2.schema.V2ApiConfiguration.typeDiscriminatorConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
 import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.OnRecordErrorHandler
 import com.thatdot.quine.serialization.EncoderDecoder
@@ -49,8 +48,6 @@ object IngestFormat {
 sealed trait StreamingFormat extends IngestFormat
 
 object StreamingFormat {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
-
   case object JsonFormat extends StreamingFormat
 
   case object RawFormat extends StreamingFormat
@@ -92,8 +89,6 @@ sealed trait FileFormat extends IngestFormat
 
 object FileFormat {
   import V1IngestSchemas.csvCharacterSchema
-
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   /** Read each line in as a single string element. */
   case object LineFormat extends FileFormat
@@ -147,8 +142,6 @@ object FileFormat {
 }
 
 object V2IngestEntities {
-
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   /** Ingest definition and status representation used for persistence */
   final case class QuineIngestStreamWithStatus(

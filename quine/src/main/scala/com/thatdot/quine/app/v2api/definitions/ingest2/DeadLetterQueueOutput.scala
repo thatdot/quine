@@ -1,13 +1,12 @@
 package com.thatdot.quine.app.v2api.definitions.ingest2
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
 
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.outputs.{DestinationSteps, DestinationSteps => Outputs, OutputFormat => OutputFormats}
-import com.thatdot.api.v2.schema.V2ApiConfiguration._
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.app.v2api.definitions.ingest2.OutputFormat.JSON
 
@@ -15,8 +14,6 @@ sealed trait DeadLetterQueueOutput
 
 object DeadLetterQueueOutput {
   import com.thatdot.quine.app.util.StringOps.syntax._
-
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   @title("POST to HTTP[S] Webhook")
   @description("Makes an HTTP[S] POST for each message.")
@@ -165,7 +162,6 @@ object DeadLetterQueueOutput {
 sealed trait OutputFormat
 
 object OutputFormat {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
 
   case object Bytes extends OutputFormat
 
@@ -206,7 +202,6 @@ case class DeadLetterQueueSettings(
 )
 
 object DeadLetterQueueSettings {
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[DeadLetterQueueSettings] = deriveConfiguredEncoder
   implicit val decoder: Decoder[DeadLetterQueueSettings] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[DeadLetterQueueSettings] = Schema.derived

@@ -1,6 +1,5 @@
 package com.thatdot.quine.app.v2api.definitions.query.standing
 
-import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{
   deriveConfiguredDecoder,
   deriveConfiguredEncoder,
@@ -11,7 +10,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
 
-import com.thatdot.api.v2.schema.V2ApiConfiguration._
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 
 @title("Standing Query Pattern")
 @description("A declarative structural graph pattern.")
@@ -19,7 +18,6 @@ sealed abstract class StandingQueryPattern
 object StandingQueryPattern {
   import com.thatdot.quine.app.util.StringOps.syntax._
 
-  implicit private val circeConfig: Configuration = typeDiscriminatorConfig.asCirce
   implicit val encoder: Encoder[StandingQueryPattern] = deriveConfiguredEncoder
   implicit val decoder: Decoder[StandingQueryPattern] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[StandingQueryPattern] = Schema.derived

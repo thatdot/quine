@@ -3,8 +3,7 @@ package com.thatdot.quine.app.v2api.definitions
 import scala.concurrent.{ExecutionContext, Future}
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
-import com.thatdot.api.v2.V2EndpointDefinitions
-import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
+import com.thatdot.api.v2.{TypeDiscriminatorConfig, V2EndpointDefinitions}
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.QuineIdProvider
 

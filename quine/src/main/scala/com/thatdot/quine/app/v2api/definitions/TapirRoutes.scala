@@ -17,7 +17,7 @@ import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.pekkohttp.{PekkoHttpServerInterpreter, PekkoHttpServerOptions}
 
-import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig
 import com.thatdot.quine.app.v2api.endpoints.Visibility
 
 /** Definitions wrapping Tapir endpoints into akka-http routes.

@@ -9,8 +9,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, TypeDiscriminatorConfig}
 import com.thatdot.quine.CirceCodecTestSupport
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.RecordDecodingType._

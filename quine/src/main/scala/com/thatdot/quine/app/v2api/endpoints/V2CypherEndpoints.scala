@@ -16,11 +16,11 @@ import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, oneOfBody, statusCode}
 
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
-import com.thatdot.api.v2.schema.TypeDiscriminatorConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances._
 import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.{JsonSchemas, QuineIdCodec, QuineIdSchemas, _}
+import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TCypherQuery,
   TCypherQueryResult,
@@ -83,12 +83,7 @@ object V2CypherEndpointEntities {
   }
 }
 
-trait V2CypherEndpoints
-    extends V2EndpointDefinitions
-    with TypeDiscriminatorConfig
-    with QuineIdCodec
-    with CommonParameters
-    with StringOps {
+trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with CommonParameters with StringOps {
   val appMethods: ApplicationApiMethods with CypherApiMethods
   val idProvider: QuineIdProvider
 

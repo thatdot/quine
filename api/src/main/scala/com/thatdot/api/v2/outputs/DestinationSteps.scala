@@ -52,9 +52,26 @@ object DestinationSteps {
   case class KafkaPropertyValue(s: String) extends AnyVal
 
   object KafkaPropertyValue {
+    import io.circe.syntax.EncoderOps
+    import sttp.tapir.Schema
+
     implicit val encoder: Encoder[KafkaPropertyValue] = Encoder.encodeString.contramap(_.s)
     implicit val decoder: Decoder[KafkaPropertyValue] = Decoder.decodeString.map(KafkaPropertyValue.apply)
-    implicit val schema: sttp.tapir.Schema[KafkaPropertyValue] = sttp.tapir.Schema.string[KafkaPropertyValue]
+    implicit val schema: Schema[KafkaPropertyValue] = Schema.string[KafkaPropertyValue]
+
+    private val exampleKafkaProperties: Map[String, KafkaPropertyValue] = Map(
+      "security.protocol" -> KafkaPropertyValue("SSL"),
+      "ssl.keystore.type" -> KafkaPropertyValue("PEM"),
+      "ssl.keystore.certificate.chain" -> KafkaPropertyValue("/path/to/file/containing/certificate/chain"),
+      "ssl.key.password" -> KafkaPropertyValue("private_key_password"),
+      "ssl.truststore.type" -> KafkaPropertyValue("PEM"),
+      "ssl.truststore.certificates" -> KafkaPropertyValue("/path/to/truststore/certificate"),
+    )
+
+    implicit lazy val mapSchema: Schema[Map[String, KafkaPropertyValue]] =
+      Schema
+        .schemaForMap[KafkaPropertyValue](schema)
+        .encodedExample(exampleKafkaProperties.asJson)
   }
 
   final case class Kafka(
