@@ -17,6 +17,7 @@ import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, oneOfBo
 
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances._
+import com.thatdot.api.v2.schema.ThirdPartySchemas.circe.{mapStringJsonSchema, seqSeqJsonSchema}
 import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
@@ -38,7 +39,7 @@ object V2CypherEndpointEntities {
     @description("Text of the query to execute.") text: String,
     @description("Parameters the query expects, if any.") parameters: Map[String, Json] = Map.empty,
   )
-  object TCypherQuery extends JsonSchemas {
+  object TCypherQuery {
     implicit val encoder: Encoder[TCypherQuery] = deriveConfiguredEncoder
     implicit val decoder: Decoder[TCypherQuery] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[TCypherQuery] = Schema
@@ -62,14 +63,14 @@ object V2CypherEndpointEntities {
     @description("Return values of the Cypher query.") columns: Seq[String],
     @description("Rows of results.") results: Seq[Seq[Json]],
   )
-  object TCypherQueryResult extends JsonSchemas {
+  object TCypherQueryResult {
     implicit val encoder: Encoder[TCypherQueryResult] = deriveConfiguredEncoder
     implicit val decoder: Decoder[TCypherQueryResult] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[TCypherQueryResult] = Schema.derived[TCypherQueryResult]
   }
 
   case class TUiNode(id: QuineId, hostIndex: Int, label: String, properties: Map[String, Json])
-  object TUiNode extends QuineIdSchemas with JsonSchemas {
+  object TUiNode extends QuineIdSchemas {
     implicit def encoder(implicit quineIdEncoder: Encoder[QuineId]): Encoder[TUiNode] = deriveConfiguredEncoder
     implicit def decoder(implicit quineIdDecoder: Decoder[QuineId]): Decoder[TUiNode] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[TUiNode] = Schema.derived[TUiNode]

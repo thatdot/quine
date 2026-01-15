@@ -23,11 +23,9 @@ import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirec
 
 object V2DebugEndpointEntities {
   import com.thatdot.quine.app.util.StringOps.syntax._
+  import com.thatdot.api.v2.schema.ThirdPartySchemas.circe._
 
   implicit private val circeConfig: Configuration = Configuration.default
-
-  private val jsonSchema: Schema[Json] = Schema.any[Json]
-  private val mapStringJsonSchema: Schema[Map[String, Json]] = Schema.schemaForMap[Json](jsonSchema)
 
   sealed abstract class TEdgeDirection
   object TEdgeDirection {
@@ -85,10 +83,7 @@ object V2DebugEndpointEntities {
   object TLiteralNode {
     implicit def encoder[ID: Encoder]: Encoder[TLiteralNode[ID]] = deriveConfiguredEncoder
     implicit def decoder[ID: Decoder]: Decoder[TLiteralNode[ID]] = deriveConfiguredDecoder
-    implicit def schema[ID: Schema]: Schema[TLiteralNode[ID]] = {
-      implicit val mapSchema: Schema[Map[String, Json]] = mapStringJsonSchema
-      Schema.derived[TLiteralNode[ID]]
-    }
+    implicit def schema[ID: Schema]: Schema[TLiteralNode[ID]] = Schema.derived[TLiteralNode[ID]]
   }
 }
 
@@ -103,6 +98,7 @@ trait V2DebugEndpoints
   implicit lazy val tEdgeDirectionSchema: Schema[TEdgeDirection] = TEdgeDirection.schema
   implicit def tRestHalfEdgeSchema[ID: Schema]: Schema[TRestHalfEdge[ID]] = TRestHalfEdge.schema[ID]
   implicit def tLiteralNodeSchema[ID: Schema]: Schema[TLiteralNode[ID]] = TLiteralNode.schema[ID]
+  implicit lazy val jsonSchemaFromCirce: Schema[Json] = com.thatdot.api.v2.schema.ThirdPartySchemas.circe.jsonSchema
 
   implicit val tEdgeDirectionCodec: Codec[String, TEdgeDirection, TextPlain] = {
 

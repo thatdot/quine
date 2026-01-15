@@ -9,6 +9,7 @@ import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.api.v2.RatesSummary
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
 
 @title(StandingQueryStats.title)
 final case class StandingQueryStats(
@@ -27,8 +28,6 @@ final case class StandingQueryStats(
 object StandingQueryStats {
   val title: String = "Statistics About a Running Standing Query"
 
-  implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
-  implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.map(Instant.parse)
   implicit val encoder: Encoder[StandingQueryStats] = deriveConfiguredEncoder
   implicit val decoder: Decoder[StandingQueryStats] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[StandingQueryStats] = Schema.derived

@@ -16,16 +16,13 @@ import sttp.tapir.Schema.annotations.{default, description, encodedExample, titl
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.codec.DisjointEither.syntax._
 import com.thatdot.api.v2.codec.DisjointEvidence._
-import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEncoder}
+import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEncoder, instantDecoder, instantEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.{charsetSchema, instantSchema}
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.{routes => V1}
 
 object ApiIngest {
   import com.thatdot.quine.app.util.StringOps.syntax._
-
-  implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
-  implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.map(Instant.parse)
 
   sealed abstract class ValvePosition(position: String)
 

@@ -8,13 +8,10 @@ import sttp.tapir.Schema.annotations.{description, title}
 
 object ApiUiStyling {
   import com.thatdot.quine.app.util.StringOps.syntax._
+  import com.thatdot.api.v2.schema.ThirdPartySchemas.circe._
 
   implicit private val circeConfig: Configuration =
     Configuration.default.withDiscriminator("type").withDefaults
-
-  implicit private val jsonSchema: Schema[Json] = Schema.any[Json]
-  implicit private val mapStringJsonSchema: Schema[Map[String, Json]] =
-    Schema.schemaForMap[String, Json](identity)
 
   /** Enumeration for the kinds of queries we can issue */
   sealed abstract class QuerySort

@@ -6,6 +6,7 @@ import java.time.Instant
 import scala.util.{Failure, Success, Try}
 
 import cats.data.NonEmptyList
+import io.circe.Json
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
@@ -14,6 +15,7 @@ import sttp.tapir.{Codec, DecodeResult, Schema}
   * Usage:
   * {{{
   * import com.thatdot.api.v2.schema.ThirdPartySchemas.cats._
+  * import com.thatdot.api.v2.schema.ThirdPartySchemas.circe._
   * import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk._
   * }}}
   *
@@ -25,6 +27,14 @@ object ThirdPartySchemas {
   object cats {
     implicit def nonEmptyListSchema[A](implicit inner: Schema[A]): Schema[NonEmptyList[A]] =
       Schema.schemaForIterable[A, List].map(list => NonEmptyList.fromList(list))(_.toList)
+  }
+
+  /** Schemas for Circe types */
+  object circe {
+    implicit val jsonSchema: Schema[Json] = Schema.any[Json]
+    implicit val mapStringJsonSchema: Schema[Map[String, Json]] = Schema.schemaForMap[String, Json](identity)
+    implicit val seqJsonSchema: Schema[Seq[Json]] = jsonSchema.asIterable[Seq]
+    implicit val seqSeqJsonSchema: Schema[Seq[Seq[Json]]] = seqJsonSchema.asIterable[Seq]
   }
 
   /** Schemas for JDK types */
