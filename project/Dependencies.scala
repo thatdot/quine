@@ -13,7 +13,7 @@ object Dependencies {
   val cassandraClientV = "4.19.2"
   val catsV = "2.13.0"
   val catsEffectV = "3.6.3"
-  val circeYamlV = "0.16.0"
+  val circeYamlV = "0.16.1"
   val commonsCodecV = "1.20.0"
   val commonsTextV = "1.13.1"
   val commonsIoV = "2.21.0"

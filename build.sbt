@@ -393,7 +393,7 @@ lazy val `quine`: Project = project
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.2",
       "io.circe" %% "circe-generic-extras" % circeGenericExtrasV,
-      "io.circe" %% "circe-yaml-v12" % "0.16.0",
+      "io.circe" %% "circe-yaml-v12" % "0.16.1",
       "io.circe" %% "circe-core" % circeV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
