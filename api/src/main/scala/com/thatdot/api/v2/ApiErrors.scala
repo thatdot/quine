@@ -151,6 +151,10 @@ object ErrorResponseHelpers extends LazySafeLogging {
     )
   }
 
+  /** Convert IllegalArgumentException to BadRequest with the exception's message */
+  def toBadRequest(e: IllegalArgumentException): ErrorResponse.BadRequest =
+    ErrorResponse.BadRequest(e.getMessage)
+
   def serverError(possibleReasons: String*)(implicit
     enc: Encoder[ErrorResponse.ServerError],
     dec: Decoder[ErrorResponse.ServerError],

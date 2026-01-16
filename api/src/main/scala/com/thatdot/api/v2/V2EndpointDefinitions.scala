@@ -8,14 +8,14 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 import io.circe.{Decoder, Encoder}
-import shapeless.ops.coproduct.{Basis, CoproductToEither}
+import shapeless.ops.coproduct.{Basis, CoproductToEither, Inject}
 import shapeless.{:+:, CNil, Coproduct}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.DecodeResult.Value
 import sttp.tapir._
 
-import com.thatdot.api.v2.ErrorResponse.ServerError
-import com.thatdot.api.v2.ErrorResponseHelpers.toServerError
+import com.thatdot.api.v2.ErrorResponse.{BadRequest, ServerError}
+import com.thatdot.api.v2.ErrorResponseHelpers.{toBadRequest, toServerError}
 import com.thatdot.api.v2.schema.TapirJsonConfig
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
@@ -173,5 +173,36 @@ trait V2EndpointDefinitions extends TapirJsonConfig with LazySafeLogging {
       case Left(err) => Left(c2e(Coproduct[ServerError :+: Err :+: CNil](err)))
       case Right(value) => Right(outToResponse(value))
     }.recover(t => Left(c2e(Coproduct[ServerError :+: Err :+: CNil](toServerError(t)))))
+  }
+
+  /** Like recoverServerErrorEither but routes IllegalArgumentException to BadRequest.
+    * Use for endpoints where BadRequest is in the error coproduct and user input errors
+    * (like require() failures) should return 400 instead of 500.
+    *
+    * - Wraps server logic in tapir endpoints for catching any exception.
+    * - IllegalArgumentException is lifted to BadRequest (400 code).
+    * - Other exceptions are lifted to ServerError (500 code).
+    * - Used when the input error type, `Err`, is itself a Coproduct that contains BadRequest (BadRequest :+: NotFound :+: CNil).
+    * - The Left of the output Either will itself be a nested either with all coproduct elements accounted for.
+    *    This is used for tapir endpoint definition as the errorOut type.
+    */
+  def recoverServerErrorEitherWithUserError[In, Out, Err <: Coproduct](
+    fa: Future[Either[Err, In]],
+  )(outToResponse: In => Out)(implicit
+    basisErr: Basis[ServerError :+: Err, Err],
+    injectBadRequest: Inject[Err, BadRequest],
+    c2e: CoproductToEither[ServerError :+: Err],
+  ): Future[Either[c2e.Out, Out]] = {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    fa.map {
+      case Left(err) => Left(c2e(err.embed[ServerError :+: Err]))
+      case Right(value) => Right(outToResponse(value))
+    }.recover {
+      case iae: IllegalArgumentException =>
+        val badReq = injectBadRequest(toBadRequest(iae))
+        Left(c2e(badReq.embed[ServerError :+: Err]))
+      case t =>
+        Left(c2e(Coproduct[ServerError :+: Err](toServerError(t))))
+    }
   }
 }

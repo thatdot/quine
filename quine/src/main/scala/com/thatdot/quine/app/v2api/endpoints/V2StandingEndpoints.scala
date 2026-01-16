@@ -5,7 +5,7 @@ import scala.concurrent.Future
 import sttp.model.StatusCode
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{Endpoint, EndpointInput, emptyOutputAs, path, query, statusCode}
+import sttp.tapir.{Endpoint, EndpointInput, Validator, emptyOutputAs, path, query, statusCode}
 
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
@@ -102,7 +102,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with StringOps {
           .description("Propagate to all sleeping nodes. Setting to true can be costly if there is lot of data."),
       )
       .in(namespaceParameter)
-      .in(query[Int]("wake-up-parallelism").default(4))
+      .in(query[Int]("wake-up-parallelism").default(4).validate(Validator.positive))
       .out(statusCode(StatusCode.Accepted))
       .out(jsonBody[SuccessEnvelope.Accepted])
       .put
