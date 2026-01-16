@@ -389,7 +389,6 @@ lazy val `quine`: Project = project
       "ch.qos.logback" % "logback-classic" % logbackV,
       "com.softwaremill.sttp.tapir" %% "tapir-sttp-stub-server" % tapirV % Test,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
-      "com.softwaremill.sttp.client3" %% "circe" % "3.10.3" % Test,
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.2",
       "io.circe" %% "circe-generic-extras" % circeGenericExtrasV,
