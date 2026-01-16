@@ -44,7 +44,6 @@ import com.thatdot.quine.persistor.codecs.{
 }
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
 import com.thatdot.quine.util.Log.implicits._
-import com.thatdot.quine.util.PekkoStreams.distinctConsecutive
 
 /** Embedded persistence implementation based on MapDB
   *
@@ -300,14 +299,14 @@ final class MapDbPersistor(
     Source
       .fromIterator(() => nodeChangeEvents.keySet().iterator().asScala)
       .map(x => QuineId(x.head.asInstanceOf[Array[Byte]]))
-      .via(distinctConsecutive)
+      .dropRepeated()
       .named("mapdb-all-node-scan-via-journals")
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
     Source
       .fromIterator(() => snapshots.keySet().iterator().asScala)
       .map(x => QuineId(x.head.asInstanceOf[Array[Byte]]))
-      .via(distinctConsecutive)
+      .dropRepeated()
       .named("mapdb-all-node-scan-via-snapshots")
 
   def persistSnapshot(id: QuineId, atTime: EventTime, snapshotBytes: Array[Byte]): Future[Unit] =

@@ -30,16 +30,6 @@ object PekkoStreams extends LazySafeLogging {
     // Filter out all the `None`s from above, and unwrap the `Some`s
     .collect { case Some(s) => s }
 
-  /** Remove consecutive duplicates
-    */
-  // See https://github.com/akka/akka/pull/19408 for upstream discussion (i.e. why doesn't this exist upstream?)
-  def distinctConsecutive[A >: Null]: Flow[A, A, NotUsed] =
-    // Don't have a previous element at the start of the stream, so just using null, which shouldn't be equal to anything
-    statefulFilter(null: A)((previous, element) =>
-      // "Emit"s when the element is not equal to the previous element
-      element -> (element != previous),
-    )
-
   /** Run a side-effect only on the first element in the stream.
     * @param runOnFirst A function to run on the first element of the stream
     * @tparam A The input type
