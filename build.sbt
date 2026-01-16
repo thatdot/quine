@@ -97,14 +97,13 @@ lazy val `quine-mapdb-persistor`: Project = project
   .settings(commonSettings)
   .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
-    /* `net.jpountz.lz4:lz4` was moved to `org.lz4:lz4-java`, but MapDB hasn't
-     * adapted to this change quickly. However, since other parts of the Java
-     * ecosystem _have_ (example: `pekko-connectors-kafka`), we need to exclude the
-     * bad JAR and explicitly pull in the good one.
+    /* `net.jpountz.lz4:lz4` was moved to `org.lz4:lz4-java`, then to
+     * `at.yawk.lz4:lz4-java` (the maintained fork). MapDB still depends on the
+     * old coordinates, so we exclude the old JAR and pull in the current one.
      */
     libraryDependencies ++= Seq(
       ("org.mapdb" % "mapdb" % mapDbV).exclude("net.jpountz.lz4", "lz4"),
-      "org.lz4" % "lz4-java" % lz4JavaV,
+      "at.yawk.lz4" % "lz4-java" % lz4JavaV,
     ),
   )
 
