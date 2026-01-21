@@ -50,7 +50,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with StringOps {
         """Compared to traditional queries, Standing Queries are less imperative
           |and more declarative — it doesn't matter in what order the parts of the pattern match,
           |only that the composite structure exists.""".asOneLine + "\n\n" +
-        """Learn more about writing [Standing Queries](https://docs.quine.io/components/writing-standing-queries.html)
+        """Learn more about writing [Standing Queries](https://quine.io/learn/standing-queries/standing-queries/)
           |in the docs.""".asOneLine,
       )
       .in(namespaceParameter)
@@ -196,7 +196,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with StringOps {
       """Compared to traditional queries, Standing Queries are less imperative
         |and more declarative - it doesn't matter what order parts of the pattern match,
         |only that the composite structure exists.""".asOneLine + "\n\n" +
-      """Learn more about writing [Standing Queries](https://docs.quine.io/components/writing-standing-queries.html)
+      """Learn more about writing [Standing Queries](https://quine.io/learn/standing-queries/standing-queries/)
         |in the docs.""".asOneLine,
     )
     .in(namespaceParameter)

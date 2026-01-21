@@ -55,7 +55,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .name("create-ingest")
     .summary("Create Ingest Stream")
     .description(
-      """Create an [Ingest Stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
+      """Create an [Ingest Stream](https://quine.io/learn/ingest-sources/)
         |that connects a streaming event source to Quine and loads data into the graph.""".asOneLine + "\n\n" +
       """An Ingest Stream is defined by selecting a source `type`, then an appropriate data `format`,
         |and must be created with a unique name. Many Ingest Stream types allow a Cypher query to operate
@@ -295,7 +295,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
       .name("list-ingests")
       .summary("List Ingest Streams")
       .description(
-        """Return a JSON object containing the configured [Ingest Streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
+        """Return a JSON object containing the configured [Ingest Streams](https://quine.io/learn/ingest-sources/)
         |and their associated stream metrics keyed by the stream name.""".asOneLine,
       )
       .in(namespaceParameter)

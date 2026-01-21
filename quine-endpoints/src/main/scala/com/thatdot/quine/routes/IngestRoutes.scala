@@ -397,7 +397,7 @@ object KinesisIngest {
     "See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_GetShardIterator.html#Streams-GetShardIterator-request-ShardIteratorType>.",
   )
   @description(
-    "See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_Shttps://docs.aws.amazon.com/kinesis/latest/APIReference/API_StartingPosition.html>.",
+    "See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_StartingPosition.html>.",
   )
   sealed abstract class IteratorType
 
@@ -1568,7 +1568,7 @@ trait IngestRoutes
         .withSummary(Some("Create Ingest Stream"))
         .withDescription(
           Some(
-            """Create an [ingest stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
+            """Create an [ingest stream](https://quine.io/learn/ingest-sources/)
               |that connects a streaming event source to Quine and loads data into the graph.
               |
               |An ingest stream is defined by selecting a source `type`, then an appropriate data `format`,
@@ -1662,7 +1662,7 @@ trait IngestRoutes
         .withDescription(
           Some(
             """Return a JSON object containing the configured
-              |[ingest streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
+              |[ingest streams](https://quine.io/learn/ingest-sources/)
               |and their associated stream metrics keyed by the stream name. """.stripMargin,
           ),
         )

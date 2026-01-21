@@ -240,7 +240,7 @@ class ConfigErrorFormatterSpec
       val expectedKebab = List("max-retries", "connection-timeout", "enable-ssl")
       val testRootKey = "test-root"
       val testProductName = "Test Product"
-      val testDocsUrl = "https://docs.quine.io/"
+      val testDocsUrl = "https://quine.io/docs/"
 
       forAll(startupContextGen) { context =>
         camelCaseFields.zip(expectedKebab).foreach { case (camelField, kebabField) =>

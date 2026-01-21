@@ -211,7 +211,7 @@ trait AdministrationRoutes
         .withDescription(
           Some(
             """Returns a JSON object containing metrics data used in the Quine 
-              |[Monitoring](https://docs.quine.io/core-concepts/operational-considerations.html#monitoring) 
+              |[Monitoring](https://quine.io/core-concepts/operational-considerations/#monitoring) 
               |dashboard. The selection of metrics is based on current configuration and execution environment, and is
               |subject to change. A few metrics of note include:""".stripMargin.replace('\n', ' ') +
             """

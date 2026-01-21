@@ -594,7 +594,7 @@ trait StandingQueryRoutes
                |only that the composite structure exists.
                |
                |Learn more about writing
-               |[standing queries](https://docs.quine.io/components/writing-standing-queries.html)
+               |[standing queries](https://quine.io/learn/standing-queries/standing-queries/)
                |in the docs.""".stripMargin,
           ),
         )
@@ -676,7 +676,7 @@ trait StandingQueryRoutes
         .withDescription(
           Some(
             """|Return a JSON array containing the configured
-               |[standing queries](https://docs.quine.io/components/writing-standing-queries.html)
+               |[standing queries](https://quine.io/learn/standing-queries/standing-queries/)
                |and their associated metrics keyed by standing query name. """.stripMargin,
           ),
         )

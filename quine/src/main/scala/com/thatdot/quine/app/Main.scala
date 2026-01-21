@@ -51,7 +51,7 @@ object Main extends App with LazySafeLogging {
     expectedRootKey = "quine",
     productName = "Quine",
     requiredFields = Set.empty,
-    docsUrl = "https://docs.quine.io/",
+    docsUrl = "https://quine.io/docs/",
   )
 
   // Warn if character encoding is unexpected
