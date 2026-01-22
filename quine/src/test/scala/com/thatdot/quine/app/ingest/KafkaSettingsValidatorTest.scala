@@ -1,5 +1,8 @@
 package com.thatdot.quine.app.ingest
 
+import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext}
+
 import org.scalatest.Inspectors.forAll
 import org.scalatest.funsuite.AnyFunSuite
 
@@ -118,6 +121,110 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
       )
       assert(KafkaSettingsValidator.validateProperties(Map(setting)).nonEmpty)
     }
+  }
+
+  test("parseBootstrapServers parses single server") {
+    val result = KafkaSettingsValidator.parseBootstrapServers("localhost:9092")
+    assert(result.map(_.toList) == Right(List(("localhost", 9092))))
+  }
+
+  test("parseBootstrapServers parses multiple servers") {
+    val result = KafkaSettingsValidator.parseBootstrapServers("server1:9092,server2:9093")
+    assert(result.map(_.toList) == Right(List(("server1", 9092), ("server2", 9093))))
+  }
+
+  test("parseBootstrapServers handles whitespace") {
+    val result = KafkaSettingsValidator.parseBootstrapServers("server1:9092 , server2:9093")
+    assert(result.map(_.toList) == Right(List(("server1", 9092), ("server2", 9093))))
+  }
+
+  test("parseBootstrapServers rejects missing port") {
+    val result = KafkaSettingsValidator.parseBootstrapServers("localhost")
+    assert(result.isLeft)
+  }
+
+  test("parseBootstrapServers rejects invalid port") {
+    val result = KafkaSettingsValidator.parseBootstrapServers("localhost:notaport")
+    assert(result.isLeft)
+  }
+
+  test("parseBootstrapServers rejects port out of range") {
+    val result = KafkaSettingsValidator.parseBootstrapServers("localhost:99999")
+    assert(result.isLeft)
+  }
+
+  test("parseBootstrapServers rejects empty string") {
+    val result = KafkaSettingsValidator.parseBootstrapServers("")
+    assert(result.isLeft)
+  }
+
+  test("checkBootstrapConnectivity returns error for unreachable server") {
+    implicit val ec: ExecutionContext = ExecutionContext.global
+    // Port 19999 should not be listening on localhost
+    val result = Await.result(
+      KafkaSettingsValidator.checkBootstrapConnectivity("localhost:19999", timeout = 1.second),
+      5.seconds,
+    )
+    assert(result.isDefined, "Expected error for unreachable server")
+    assert(result.get.head.contains("localhost:19999"), "Error message should mention the server")
+  }
+
+  test("checkBootstrapConnectivity respects timeout and does not hang") {
+    implicit val ec: ExecutionContext = ExecutionContext.global
+    // Use a non-routable IP address to ensure connection attempt times out
+    val startTime = System.currentTimeMillis()
+    val result = Await.result(
+      KafkaSettingsValidator.checkBootstrapConnectivity("10.255.255.1:9092", timeout = 1.second),
+      5.seconds,
+    )
+    val elapsed = System.currentTimeMillis() - startTime
+    assert(result.isDefined, "Expected error for unreachable server")
+    // Should complete within roughly the timeout period, not hang indefinitely
+    assert(elapsed < 3000L, s"Expected completion within ~1-2 seconds, but took ${elapsed}ms")
+  }
+
+  test("checkBootstrapConnectivity returns errors only when all servers fail") {
+    implicit val ec: ExecutionContext = ExecutionContext.global
+    // Both ports are unreachable, so we expect errors for both
+    val result = Await.result(
+      KafkaSettingsValidator.checkBootstrapConnectivity("localhost:19999,localhost:19998", timeout = 1.second),
+      5.seconds,
+    )
+    assert(result.isDefined, "Expected error when all servers are unreachable")
+  }
+
+  test("parseBootstrapServers combines multiple errors") {
+    val result = KafkaSettingsValidator.parseBootstrapServers("invalid,also-invalid")
+    assert(result.isLeft)
+    // Should contain errors for both servers
+    val errors = result.left.getOrElse(cats.data.NonEmptyList.one("")).toList
+    assert(errors.exists(_.contains("invalid")), "Should mention first invalid server")
+    assert(errors.exists(_.contains("also-invalid")), "Should mention second invalid server")
+  }
+
+  test("checkBootstrapConnectivity returns parse error for malformed input") {
+    implicit val ec: ExecutionContext = ExecutionContext.global
+    val result = Await.result(
+      KafkaSettingsValidator.checkBootstrapConnectivity("not-a-valid-server", timeout = 1.second),
+      5.seconds,
+    )
+    assert(result.isDefined, "Expected error for malformed bootstrap server")
+    assert(result.get.head.contains("host:port"), "Error should mention expected format")
+  }
+
+  test("validatePropertiesWithConnectivity returns property validation errors without checking connectivity") {
+    implicit val ec: ExecutionContext = ExecutionContext.global
+    // bootstrap.servers in properties is disallowed - should fail property validation
+    val result = Await.result(
+      KafkaSettingsValidator.validatePropertiesWithConnectivity(
+        Map("bootstrap.servers" -> "localhost:9092"),
+        "localhost:9092",
+        timeout = 1.second,
+      ),
+      5.seconds,
+    )
+    assert(result.isDefined, "Expected property validation error")
+    assert(result.get.head.contains("bootstrap.servers"), "Error should mention the disallowed property")
   }
 
 }

@@ -1,11 +1,15 @@
 package com.thatdot.quine.app.model.ingest.util
 
 import java.lang.reflect.Field
+import java.net.{InetSocketAddress, Socket}
 
+import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.{ExecutionContext, Future, blocking}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 
 import cats.data.NonEmptyList
+import com.google.common.net.HostAndPort
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -144,6 +148,82 @@ object KafkaSettingsValidator extends LazySafeLogging {
 
     v.withUnrecognizedErrors(errors)
   }
+
+  /** Parse a single bootstrap server string "host:port" into (host, port).
+    * Uses Guava's HostAndPort which handles IPv6 addresses correctly.
+    */
+  private def parseOneServer(server: String): Either[String, (String, Int)] =
+    Try(HostAndPort.fromString(server)).toOption
+      .filter(_.hasPort)
+      .map(hp => (hp.getHost, hp.getPort))
+      .toRight(s"Invalid bootstrap server format (expected host:port): $server")
+
+  /** Parse a Kafka bootstrap servers string into a non-empty list of (host, port) tuples.
+    * Bootstrap servers are comma-separated, each in the format "host:port".
+    */
+  def parseBootstrapServers(bootstrapServers: String): Either[NonEmptyList[String], NonEmptyList[(String, Int)]] = {
+    val servers = bootstrapServers.split(",").map(_.trim).filter(_.nonEmpty).toList
+    if (servers.isEmpty) Left(NonEmptyList.one("No bootstrap servers specified"))
+    else {
+      val (errors, parsed) = servers.map(parseOneServer).partitionMap(identity)
+      NonEmptyList.fromList(errors).toLeft(NonEmptyList.fromListUnsafe(parsed))
+    }
+  }
+
+  /** Try to connect to a single server. Returns None on success, Some(error) on failure. */
+  private def tryConnect(host: String, port: Int, timeoutMs: Int): Option[String] = {
+    val socket = new Socket()
+    try {
+      socket.connect(new InetSocketAddress(host, port), timeoutMs)
+      None
+    } catch {
+      case e: Exception => Some(s"Cannot connect to $host:$port: ${e.getMessage}")
+    } finally try socket.close()
+    catch { case _: Exception => }
+  }
+
+  /** Check TCP connectivity to at least one bootstrap server.
+    * Attempts connections in parallel, returning success as soon as any one server is reachable.
+    * Logs warnings for any connection failures (useful for users even if some servers succeeded).
+    * Returns None if at least one server is reachable, Some(errors) if all fail.
+    */
+  def checkBootstrapConnectivity(
+    bootstrapServers: String,
+    timeout: FiniteDuration,
+  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[String]]] =
+    parseBootstrapServers(bootstrapServers) match {
+      case Left(parseErrors) =>
+        Future.successful(Some(parseErrors))
+      case Right(servers) =>
+        val attempts = servers.toList.map { case (host, port) =>
+          Future(blocking(tryConnect(host, port, timeout.toMillis.toInt))).map {
+            case None => Right(()) // Success
+            case Some(err) =>
+              logger.warn(safe"Kafka bootstrap server connectivity warning: ${Safe(err)}")
+              Left(err) // Failure
+          }
+        }
+
+        Future.find(attempts)(_.isRight).flatMap {
+          case Some(_) => Future.successful(None) // At least one succeeded
+          case None =>
+            // All failed - Future.find only returns None after all futures complete
+            Future.sequence(attempts).map(results => NonEmptyList.fromList(results.collect { case Left(e) => e }))
+        }
+    }
+
+  /** Validates Kafka output properties AND checks bootstrap server connectivity.
+    * First performs synchronous property validation, then checks connectivity.
+    */
+  def validatePropertiesWithConnectivity(
+    properties: KafkaProperties,
+    bootstrapServers: String,
+    timeout: FiniteDuration,
+  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[String]]] =
+    validateProperties(properties) match {
+      case Some(syntaxErrors) => Future.successful(Some(syntaxErrors))
+      case None => checkBootstrapConnectivity(bootstrapServers, timeout)
+    }
 }
 
 class KafkaSettingsValidator(

@@ -2,6 +2,7 @@ package com.thatdot.quine.app.v2api.definitions
 
 import java.util.Properties
 
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 import scala.util.Either
@@ -9,8 +10,8 @@ import scala.util.Either
 import org.apache.pekko.stream.{Materializer, StreamDetachedException}
 import org.apache.pekko.util.Timeout
 
-import cats.data.NonEmptyList
-import cats.implicits.toFunctorOps
+import cats.data.{EitherT, NonEmptyList}
+import cats.implicits._
 import shapeless.{:+:, CNil, Coproduct}
 
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
@@ -20,12 +21,13 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorString
+import com.thatdot.quine.app.model.ingest2.KafkaIngest
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.app.model.ingest2.source.QuineValueIngestQuery
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.v2api.converters._
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
-import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
+import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest, DeadLetterQueueOutput}
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
@@ -215,19 +217,64 @@ trait QuineApiMethods
           .map(_ => ())(ExecutionContext.parasitic)
       }
 
+  /** Default timeout for Kafka bootstrap server connectivity checks */
+  private val KafkaConnectivityTimeout: FiniteDuration = 5.seconds
+
   private def validateDestinationSteps(
     destinationSteps: QuineDestinationSteps,
-  ): Option[NonEmptyList[ErrorString]] =
+  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] =
     destinationSteps match {
       case k: QuineDestinationSteps.Kafka =>
-        KafkaSettingsValidator.validateProperties(k.kafkaProperties.view.mapValues(_.toString).toMap)
-      case _ => None
+        KafkaSettingsValidator.validatePropertiesWithConnectivity(
+          properties = k.kafkaProperties.view.mapValues(_.toString).toMap,
+          bootstrapServers = k.bootstrapServers,
+          timeout = KafkaConnectivityTimeout,
+        )
+      case _ => Future.successful(None)
     }
 
-  private def validateWorkflow(workflow: ApiStanding.StandingQueryResultWorkflow): Option[NonEmptyList[ErrorString]] = {
-    import cats.implicits.catsSyntaxSemigroup
-    workflow.destinations.map(validateDestinationSteps).reduce[Option[NonEmptyList[ErrorString]]](_.combine(_))
+  private def validateWorkflow(
+    workflow: ApiStanding.StandingQueryResultWorkflow,
+  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] =
+    Future
+      .sequence(workflow.destinations.toList.map(validateDestinationSteps))
+      .map(_.foldLeft(Option.empty[NonEmptyList[ErrorString]])(_ |+| _))
+
+  /** Validate DLQ Kafka destinations for an ingest configuration.
+    * Checks connectivity to bootstrap servers for any Kafka DLQ destinations.
+    */
+  private def validateDlqDestinations(
+    ingestConfig: V2IngestConfiguration,
+  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] = {
+    val kafkaDestinations = ingestConfig.onRecordError.deadLetterQueueSettings.destinations.collect {
+      case k: DeadLetterQueueOutput.Kafka => k
+    }
+    if (kafkaDestinations.isEmpty) {
+      Future.successful(None)
+    } else {
+      Future
+        .sequence(kafkaDestinations.map { k =>
+          KafkaSettingsValidator
+            .checkBootstrapConnectivity(k.bootstrapServers, KafkaConnectivityTimeout)
+            .map(_.map(errors => errors.map(e => s"DLQ Kafka destination: $e")))
+        })
+        .map(_.foldLeft(Option.empty[NonEmptyList[ErrorString]])(_ |+| _))
+    }
   }
+
+  /** Validate Kafka ingest source connectivity.
+    * Checks connectivity to bootstrap servers for Kafka ingest sources.
+    */
+  private def validateIngestSource(
+    ingestConfig: V2IngestConfiguration,
+  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] =
+    ingestConfig.source match {
+      case k: KafkaIngest =>
+        KafkaSettingsValidator
+          .checkBootstrapConnectivity(k.bootstrapServers, KafkaConnectivityTimeout)
+          .map(_.map(errors => errors.map(e => s"Kafka ingest source: $e")))
+      case _ => Future.successful(None)
+    }
 
   private type ErrSq = BadRequest :+: NotFound :+: CNil
   private def asBadRequest(msg: String): ErrSq = Coproduct[ErrSq](BadRequest(msg))
@@ -241,11 +288,12 @@ trait QuineApiMethods
     workflow: ApiStanding.StandingQueryResultWorkflow,
   ): Future[Either[ErrSq, Unit]] =
     graph.requiredGraphIsReadyFuture {
-      validateWorkflow(workflow) match {
+      implicit val ec: ExecutionContext = graph.shardDispatcherEC
+      validateWorkflow(workflow).flatMap {
         case Some(errors) =>
           Future.successful(Left(asBadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(", ")}")))
 
-        case _ =>
+        case None =>
           app
             .addStandingQueryOutputV2(name, outputName, namespaceId, workflow)
             .map {
@@ -255,8 +303,7 @@ trait QuineApiMethods
                 Left(asBadRequest(s"There is already a Standing Query output named '$name'"))
               case StandingQueryInterfaceV2.Result.NotFound(queryName) =>
                 Left(asBadRequest(s"No Standing Query named '$queryName' can be found."))
-            }(graph.shardDispatcherEC)
-
+            }
       }
     }
 
@@ -348,37 +395,41 @@ trait QuineApiMethods
     ec: ExecutionContext,
     configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf],
   ): Future[Either[ErrC, (ApiIngest.IngestStreamInfoWithName, Warnings)]] = {
+    val ingestConfig = configOf(ingestStreamConfig)
 
-    def asServerError(msg: String): ErrC = Coproduct[ErrC](ServerError(msg))
+    def asBadRequest(errors: Seq[String]): ErrC =
+      Coproduct[ErrC](BadRequest.ofErrorStrings(errors.toList))
+    def asServerError(msg: String): ErrC =
+      Coproduct[ErrC](ServerError(msg))
 
-    app
-      .addV2IngestStream(
-        ingestStreamName,
-        configOf(ingestStreamConfig),
-        ns,
-        timeout,
-        memberIdx.getOrElse(thisMemberIdx),
+    val result = for {
+      _ <- EitherT(validateIngestSource(ingestConfig).map {
+        case Some(errors) => Left(asBadRequest(errors.toList))
+        case None => Right(())
+      })
+      _ <- EitherT(validateDlqDestinations(ingestConfig).map {
+        case Some(errors) => Left(asBadRequest(errors.toList))
+        case None => Right(())
+      })
+      warnings <- EitherT(
+        app
+          .addV2IngestStream(
+            name = ingestStreamName,
+            settings = ingestConfig,
+            intoNamespace = ns,
+            timeout = timeout,
+            memberIdx = memberIdx.getOrElse(thisMemberIdx),
+          )
+          .map(_.leftMap(asBadRequest))
+          .map(_.map(_ => QuineValueIngestQuery.getQueryWarnings(ingestConfig.query, ingestConfig.parameter))),
       )
-      .map(eitherErrOrCreated =>
-        eitherErrOrCreated.fold(
-          errs => Left(BadRequest.ofErrorStrings(errs.toList)),
-          _ =>
-            Right(
-              QuineValueIngestQuery
-                .getQueryWarnings(configOf(ingestStreamConfig).query, configOf(ingestStreamConfig).parameter),
-            ),
-        ),
+      stream <- EitherT.fromOptionF(
+        ingestStreamStatus(ingestStreamName, ns, memberIdx),
+        asServerError("Ingest was not found after creation"),
       )
-      .flatMap {
-        case Left(err) => Future.successful(Left(Coproduct[ErrC](err)))
-        case Right(warnings) =>
-          ingestStreamStatus(ingestStreamName, ns, memberIdx).map {
-            case Some(stream) =>
-              Right((stream, warnings))
-            case None =>
-              Left(asServerError("Ingest was not found after creation"))
-          }(ExecutionContext.parasitic)
-      }(ExecutionContext.parasitic)
+    } yield (stream, warnings)
+
+    result.value
   }
 
   def deleteIngestStream(
