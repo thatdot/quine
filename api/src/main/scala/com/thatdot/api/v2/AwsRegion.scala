@@ -1,11 +1,8 @@
 package com.thatdot.api.v2
 
-import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
-
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 
 @title("AWS Region")
 @description(
@@ -17,7 +14,7 @@ final case class AwsRegion(
 )
 
 object AwsRegion {
-  implicit val encoder: Encoder[AwsRegion] = deriveConfiguredEncoder
-  implicit val decoder: Decoder[AwsRegion] = deriveConfiguredDecoder
-  implicit lazy val schema: Schema[AwsRegion] = Schema.derived
+  implicit val encoder: Encoder[AwsRegion] = Encoder.encodeString.contramap(_.region)
+  implicit val decoder: Decoder[AwsRegion] = Decoder.decodeString.map(AwsRegion(_))
+  implicit lazy val schema: Schema[AwsRegion] = Schema.string[AwsRegion]
 }

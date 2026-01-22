@@ -366,7 +366,7 @@ object IngestToApi {
         applicationName = applicationName,
         format = apply(format),
         credentials = credentialsOpt.map(ConvertCore.Model1ToApi2.apply),
-        regionOpt = regionOpt.map(ConvertCore.Model1ToApi2.apply),
+        region = regionOpt.map(ConvertCore.Model1ToApi2.apply),
         initialPosition = apply(initialPosition),
         numRetries = numRetries,
         recordDecoders = recordDecoders.map(apply),

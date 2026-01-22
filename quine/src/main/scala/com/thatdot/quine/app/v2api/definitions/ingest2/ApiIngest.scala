@@ -646,7 +646,7 @@ object ApiIngest {
       )
       credentials: Option[AwsCredentials],
       @description("AWS region for this Kinesis stream. If none is provided uses aws default.")
-      regionOpt: Option[AwsRegion],
+      region: Option[AwsRegion],
       @description("Where to start in the kinesis stream")
       @default(InitialPosition.Latest)
       initialPosition: InitialPosition = InitialPosition.Latest,
