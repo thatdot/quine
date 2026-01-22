@@ -66,7 +66,7 @@ object Api2ToOutputs2 {
             destination = outputs2.destination.Kafka(
               topic = topic,
               bootstrapServers = bootstrapServers,
-              kafkaProperties = kafkaProperties.view.mapValues(_.toString).toMap,
+              kafkaProperties = kafkaProperties.view.mapValues(_.s).toMap,
             ),
           ),
         )
