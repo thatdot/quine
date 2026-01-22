@@ -328,9 +328,12 @@ lazy val `quine-browser`: Project = project
       "@coreui/icons" -> coreuiIconsV,
       "@popperjs/core" -> "2.11.8",
     ),
-    // Force patched react-router version via yarn resolutions (CVE-2025-68470 & CVE-2026-22029)
+    // Force patched dependency versions via yarn resolutions
+    // - lodash: CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
+    // - react-router: CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
     Compile / additionalNpmConfig := Map(
       "resolutions" -> obj(
+        "lodash" -> str(lodashV),
         "react-router" -> str(reactRouterV),
         "react-router-dom" -> str(reactRouterV),
         "@remix-run/router" -> str(remixRunRouterV),

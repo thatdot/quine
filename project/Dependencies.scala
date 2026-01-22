@@ -62,6 +62,7 @@ object Dependencies {
   val quineCommonV = "0.0.3"
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"
+  val lodashV = "4.17.23" // Patched for CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
   val reactRouterV = "6.30.3" // Patched for CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
   val remixRunRouterV = "1.23.2" // Patched for CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
   val rocksdbV = "9.7.4"
