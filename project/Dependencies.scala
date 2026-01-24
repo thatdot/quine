@@ -25,7 +25,7 @@ object Dependencies {
   val endpoints4sOpenapiV = "5.0.1"
   val endpoints4sXhrClientV = "5.3.0"
   val flatbuffersV = "25.2.10"
-  val graalV = "24.2.2"
+  val graalV = "25.0.2"
   val ioniconsV = "2.0.1"
   val jnrPosixV = "3.1.21"
   val jqueryV = "3.6.3"
