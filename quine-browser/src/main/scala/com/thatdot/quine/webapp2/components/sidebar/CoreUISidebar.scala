@@ -33,14 +33,19 @@ object CoreUISidebar {
       ul(
         cls := "sidebar-nav",
         NavTitle("Navigation"),
-        navItems
-          .filter(!_.hidden)
-          .map(navItem =>
-            navItem match {
-              case NavItemData(name: String, icon: String, page, _) =>
-                NavItem(iconClass = icon, label = name, page = page, router = router)
-            },
-          ),
+        children <-- router.currentPageSignal.map { currentPage =>
+          navItems
+            .filter(!_.hidden)
+            .map { navItem =>
+              NavItem(
+                iconClass = navItem.icon,
+                label = navItem.name,
+                page = navItem.page,
+                router = router,
+                isActive = navItem.page == currentPage,
+              )
+            }
+        },
       ),
     )
 }

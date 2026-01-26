@@ -313,3 +313,22 @@ div.vis-tooltip {
   100% { background-color: #e0fae0; }
 }
 
+/* CoreUI sidebar color overrides - thatDot brand colors */
+.sidebar.sidebar-dark {
+  /* Light sidebar with brand colors */
+  --cui-body-bg: #F0F1F3;                             /* Light gray background */
+  --cui-body-color: #173759;                          /* Dark navy text */
+  --cui-emphasis-color: #173759;                      /* Dark navy emphasis */
+  --cui-tertiary-color: #798089;                      /* Secondary gray for nav titles */
+  --cui-tertiary-bg: rgba(23, 55, 89, 0.08);          /* Subtle hover bg */
+  --cui-secondary-color: #798089;
+  --cui-secondary-bg: rgba(23, 55, 89, 0.04);
+}
+
+/* Active nav link highlight with brand primary */
+.sidebar.sidebar-dark .sidebar-nav .nav-link.active {
+  background: #1F4C7C;                                /* Brand primary color */
+  color: #FFFFFF;                                     /* White text */
+}
+
+
