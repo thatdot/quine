@@ -1,6 +1,7 @@
 import sbtassembly.{Assembly, AssemblyPlugin, CustomMergeStrategy, MergeStrategy, PathList}
 import sbtassembly.AssemblyKeys.{assembly, assemblyMergeStrategy}
 import sbt._
+import sbt.Keys.packageOptions
 
 /* Plugin for building a fat JAR */
 object Packaging extends AutoPlugin {
@@ -59,5 +60,9 @@ object Packaging extends AutoPlugin {
   override lazy val projectSettings =
     Seq(
       assembly / assemblyMergeStrategy := customMergeStrategy,
+      // GraalVM 25+ uses Multi-Release JARs (MRJAR). This manifest attribute must be preserved
+      // in the assembled JAR for Truffle/GraalJS to initialize correctly.
+      // See: https://www.graalvm.org/latest/reference-manual/embed-languages/#uber-jar-file-creation
+      assembly / packageOptions += Package.ManifestAttributes("Multi-Release" -> "true"),
     )
 }
