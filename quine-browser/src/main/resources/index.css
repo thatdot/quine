@@ -92,7 +92,7 @@ pre.wrap {
 .nav-bar {
   display: flex;
   flex-wrap: wrap;
-  overflow: hidden;
+  overflow: visible;
   background-color: #0a295b;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.28);
   position: relative;
@@ -311,6 +311,40 @@ div.vis-tooltip {
   7% { background-color: lightgreen; }
   30% { background-color: #a1eda1; }
   100% { background-color: #e0fae0; }
+}
+
+/* Download dropdown menu */
+.download-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  background-color: #ddd;
+  border: 1px solid #424242;
+  border-radius: .2em;
+  min-width: 150px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.download-dropdown-menu.open {
+  display: block;
+}
+.download-dropdown-menu li {
+  padding: 0.5em 0.75em;
+  cursor: pointer;
+  color: #333;
+}
+.download-dropdown-menu li:hover {
+  background-color: #ccc;
+}
+.download-dropdown-menu li:first-child {
+  border-radius: .2em .2em 0 0;
+}
+.download-dropdown-menu li:last-child {
+  border-radius: 0 0 .2em .2em;
 }
 
 /* CoreUI sidebar color overrides - thatDot brand colors */

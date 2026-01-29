@@ -5,8 +5,7 @@ import scala.scalajs.js.Dynamic.{literal => jsObj}
 import scala.util.Try
 import scala.util.matching.Regex
 
-import org.scalajs.dom
-import org.scalajs.dom.{console, html, window}
+import org.scalajs.dom.{Event, HTMLElement, MouseEvent, Node, console, document, html, window}
 import slinky.core._
 import slinky.core.annotations.react
 import slinky.core.facade.{React, ReactElement, ReactRef}
@@ -42,9 +41,10 @@ class HistoryNavigationButtons extends Component {
     redo: Option[() => Unit],
     redoMany: Option[() => Unit],
     makeCheckpoint: () => Unit,
-    checkpointContextMenu: SyntheticMouseEvent[dom.HTMLElement] => Unit,
+    checkpointContextMenu: SyntheticMouseEvent[HTMLElement] => Unit,
     downloadHistory: Boolean => Unit,
-    uploadHistory: SyntheticEvent[html.Input, dom.Event] => Unit,
+    downloadGraphJsonLd: () => Unit,
+    uploadHistory: SyntheticEvent[html.Input, Event] => Unit,
     atTime: Option[Long],
     setTime: Option[Option[Long] => Unit],
     toggleLayout: () => Unit,
@@ -55,10 +55,47 @@ class HistoryNavigationButtons extends Component {
   case class State(
     madeCheckpointConfirmation: Boolean,
     downloadConfirmation: Boolean,
+    downloadMenuOpen: Boolean,
   )
 
   def initialState: com.thatdot.quine.webapp.queryui.HistoryNavigationButtons.State =
-    State(madeCheckpointConfirmation = false, downloadConfirmation = false)
+    State(
+      madeCheckpointConfirmation = false,
+      downloadConfirmation = false,
+      downloadMenuOpen = false,
+    )
+
+  val downloadWrapperRef: ReactRef[html.Element] = React.createRef[html.Element]
+
+  private val handleDocumentClick: (MouseEvent) => Unit = { (event: MouseEvent) =>
+    if (state.downloadMenuOpen) {
+      val target = event.target.asInstanceOf[Node]
+      val clickedInside = downloadWrapperRef.current != null && downloadWrapperRef.current.contains(target)
+      if (!clickedInside) {
+        setState(_.copy(downloadMenuOpen = false))
+      }
+    }
+  }
+
+  override def componentDidMount(): Unit =
+    document.addEventListener("click", handleDocumentClick)
+
+  override def componentWillUnmount(): Unit =
+    document.removeEventListener("click", handleDocumentClick)
+
+  private def downloadMenuItem(label: String, action: () => Unit) = {
+    def handler(): Unit = {
+      setState(
+        _.copy(downloadConfirmation = true, downloadMenuOpen = false),
+        () => {
+          window.setTimeout(() => setState(_.copy(downloadConfirmation = false)), 2000)
+          ()
+        },
+      )
+      action()
+    }
+    li(onClick := (_ => handler()))(label)
+  }
 
   // Human readable time
   def currentTime: String = props.atTime match {
@@ -141,19 +178,21 @@ class HistoryNavigationButtons extends Component {
         },
         onContextMenu = Some(props.checkpointContextMenu),
       ),
-      HistoryNavButton(
-        if (state.downloadConfirmation) "ion-checkmark-round" else "ion-ios-cloud-download-outline",
-        "Download history log. Shift click to download only the current state.",
-        onClick = Some { e =>
-          setState(
-            _.copy(downloadConfirmation = true),
-            () => {
-              window.setTimeout(() => setState(_.copy(downloadConfirmation = false)), 2000)
-              ()
-            },
-          )
-          props.downloadHistory(e.shiftKey)
-        },
+      div(style := jsObj(position = "relative", display = "flex", alignItems = "center"), ref := downloadWrapperRef)(
+        HistoryNavButton(
+          if (state.downloadConfirmation) "ion-checkmark-round" else "ion-ios-cloud-download-outline",
+          "Download options",
+          onClick = Some { _ =>
+            setState(s => s.copy(downloadMenuOpen = !s.downloadMenuOpen))
+          },
+        ),
+        ul(
+          className := s"download-dropdown-menu${if (state.downloadMenuOpen) " open" else ""}",
+        )(
+          downloadMenuItem("History Log", () => props.downloadHistory(false)),
+          downloadMenuItem("History Snapshot", () => props.downloadHistory(true)),
+          downloadMenuItem("Current Graph", () => props.downloadGraphJsonLd()),
+        ),
       ),
       HistoryNavButton(
         "ion-ios-cloud-upload-outline",
@@ -231,8 +270,8 @@ object HistoryNavButton {
   case class Props(
     ionClass: String,
     tooltipTitle: String,
-    onClick: Option[SyntheticMouseEvent[dom.HTMLElement] => Unit] = None,
-    onContextMenu: Option[SyntheticMouseEvent[dom.HTMLElement] => Unit] = None,
+    onClick: Option[SyntheticMouseEvent[HTMLElement] => Unit] = None,
+    onContextMenu: Option[SyntheticMouseEvent[HTMLElement] => Unit] = None,
   )
 
   val component: FunctionalComponent[HistoryNavButton.Props] = FunctionalComponent[Props] {

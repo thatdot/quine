@@ -431,18 +431,8 @@ import com.thatdot.{visnetwork => vis}
     )
 
   /** Download a history file */
-  def downloadHistory(history: History[QueryUiEvent], fileName: String): Unit = {
-    val blob = new dom.Blob(
-      js.Array(HistoryJsonSchema.encode(history)),
-      new dom.BlobPropertyBag { `type` = "application/json" },
-    )
-
-    val a = document.createElement("a").asInstanceOf[dom.HTMLAnchorElement]
-    a.setAttribute("download", fileName)
-    a.setAttribute("href", dom.URL.createObjectURL(blob))
-    a.setAttribute("target", "_blank")
-    a.click()
-  }
+  def downloadHistory(history: History[QueryUiEvent], fileName: String): Unit =
+    DownloadUtils.downloadFile(HistoryJsonSchema.encode(history), fileName, "application/json")
 
   /** Upload a history file and modify the history */
   def uploadHistory(files: dom.FileList): Unit = {
@@ -545,6 +535,11 @@ import com.thatdot.{visnetwork => vis}
       future = List(),
     )
   }
+
+  def downloadGraphJsonLd(): Unit =
+    networkLayout { () =>
+      DownloadUtils.downloadGraphJsonLd(props.graphData.nodeSet, props.graphData.edgeSet)
+    }
 
   private val cypherQueryRegex = js.RegExp(
     raw"^\s*(optional|match|return|unwind|create|foreach|merge|call|load|with|explain|show|profile)[^a-z]",
@@ -1512,6 +1507,7 @@ import com.thatdot.{visnetwork => vis}
               downloadHistory(history, if (snapshotOnly) "snapshot.json" else "history.json")
             }
           },
+          downloadGraphJsonLd = () => downloadGraphJsonLd(),
           uploadHistory = e => uploadHistory(e.target.files),
           atTime = state.atTime,
           setTime = if (state.runningQueryCount != 0) None else Some(setAtTime(_)),
@@ -1608,25 +1604,4 @@ object QueryMethod {
       QueryMethod.Restful
     }
   }
-}
-
-/** This is what we actually store in the `vis` mutable node set. We have
-  * to cast nodes coming out of the network into this before being able to use
-  * these fields
-  *
-  * @param uiNode original node data
-  */
-trait QueryUiVisNodeExt extends vis.Node {
-  val uiNode: UiNode[String]
-}
-
-/** This is what we actually store in the `vis` mutable edge set. We have
-  * to cast edges coming out of the network into this before being able to use
-  * these fields
-  *
-  * @param uiEdge original edge data
-  */
-trait QueryUiVisEdgeExt extends vis.Edge {
-  val uiEdge: UiEdge[String]
-  val isSyntheticEdge: Boolean
 }

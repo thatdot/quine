@@ -78,6 +78,7 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles}
         props.navButtons.makeCheckpoint,
         props.navButtons.checkpointContextMenu,
         props.navButtons.downloadHistory,
+        props.navButtons.downloadGraphJsonLd,
         props.navButtons.uploadHistory,
         props.navButtons.atTime,
         props.navButtons.setTime,

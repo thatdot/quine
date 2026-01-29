@@ -96,3 +96,100 @@ object HistoryJsonSchema extends endpoints4s.generic.JsonSchemas with exts.Circe
   def decode(jsonStr: String): ValidatedNel[Error, History[QueryUiEvent]] =
     decodeAccumulating(jsonStr)(historySchema.decoder)
 }
+
+/** This is what we actually store in the `vis` mutable node set. We have
+  * to cast nodes coming out of the network into this before being able to use
+  * these fields
+  *
+  * @param uiNode original node data
+  */
+trait QueryUiVisNodeExt extends com.thatdot.visnetwork.Node {
+  val uiNode: UiNode[String]
+}
+
+/** This is what we actually store in the `vis` mutable edge set. We have
+  * to cast edges coming out of the network into this before being able to use
+  * these fields
+  *
+  * @param uiEdge original edge data
+  */
+trait QueryUiVisEdgeExt extends com.thatdot.visnetwork.Edge {
+  val uiEdge: UiEdge[String]
+  val isSyntheticEdge: Boolean
+}
+
+object GraphJsonLdSchema {
+  import io.circe.syntax._
+
+  def encodeAsJsonLd(nodes: Seq[UiNode[String]], edges: Seq[UiEdge[String]]): String = {
+    val nodesJson = nodes.map { node =>
+      Json.obj(
+        "id" -> node.id.asJson,
+        "label" -> node.label.asJson,
+        "properties" -> node.properties.asJson,
+      )
+    }
+
+    val edgesJson = edges.map { edge =>
+      Json.obj(
+        "from" -> edge.from.asJson,
+        "to" -> edge.to.asJson,
+        "edgeType" -> edge.edgeType.asJson,
+        "isDirected" -> edge.isDirected.asJson,
+      )
+    }
+
+    Json
+      .obj(
+        "nodes" -> nodesJson.asJson,
+        "edges" -> edgesJson.asJson,
+      )
+      .spaces2
+  }
+}
+
+object DownloadUtils {
+  import scala.scalajs.js
+  import org.scalajs.dom
+  import org.scalajs.dom.document
+  import com.thatdot.{visnetwork => vis}
+
+  def downloadFile(content: String, fileName: String, mimeType: String): Unit = {
+    val blob = new dom.Blob(
+      js.Array(content),
+      new dom.BlobPropertyBag { `type` = mimeType },
+    )
+
+    val a = document.createElement("a").asInstanceOf[dom.HTMLAnchorElement]
+    a.setAttribute("download", fileName)
+    a.setAttribute("href", dom.URL.createObjectURL(blob))
+    a.setAttribute("target", "_blank")
+    a.click()
+  }
+
+  /** Download graph data as JSON-LD from vis DataSets
+    *
+    * @param nodeSet the vis DataSet containing nodes (must contain QueryUiVisNodeExt instances)
+    * @param edgeSet the vis DataSet containing edges (must contain QueryUiVisEdgeExt instances)
+    */
+  def downloadGraphJsonLd(
+    nodeSet: vis.DataSet[vis.Node],
+    edgeSet: vis.DataSet[vis.Edge],
+  ): Unit = {
+    val nodes: Seq[UiNode[String]] = nodeSet
+      .get()
+      .toSeq
+      .map(_.asInstanceOf[QueryUiVisNodeExt].uiNode)
+
+    val edges: Seq[UiEdge[String]] = edgeSet
+      .get()
+      .toSeq
+      .map(_.asInstanceOf[QueryUiVisEdgeExt].uiEdge)
+
+    downloadFile(
+      GraphJsonLdSchema.encodeAsJsonLd(nodes, edges),
+      "graph.jsonld",
+      "application/ld+json",
+    )
+  }
+}
