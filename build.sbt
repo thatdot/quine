@@ -42,6 +42,7 @@ lazy val `quine-core`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
+      "org.apache.pekko" %% "pekko-testkit" % pekkoTestkitV % Test,
       "ch.qos.logback" % "logback-classic" % logbackV % Test,
       "commons-io" % "commons-io" % commonsIoV % Test,
     ),

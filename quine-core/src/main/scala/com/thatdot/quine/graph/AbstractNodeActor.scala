@@ -37,7 +37,7 @@ import com.thatdot.quine.graph.behavior.{
   QuinePatternQueryBehavior,
 }
 import com.thatdot.quine.graph.cypher.MultipleValuesResultsReporter
-import com.thatdot.quine.graph.cypher.quinepattern.WatchState
+import com.thatdot.quine.graph.cypher.quinepattern.GraphEvent
 import com.thatdot.quine.graph.edges.{EdgeProcessor, MemoryFirstEdgeProcessor, PersistorFirstEdgeProcessor}
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
@@ -416,16 +416,44 @@ abstract private[graph] class AbstractNodeActor(
         // Should be impossible. If it's not, we'd like to know and fix it.
         logger.warn(safe"Setting a null property on key: ${Safe(key.name)}. This should have been a property removal.")
       }
+      val oldValue = properties.get(key)
       metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
       properties = properties + (key -> value)
-      states.values().forEach {
-        case ws: WatchState => ws.propertyAdded(key, value)
-        case _ => ()
+      // State notification for property change
+      handleGraphEvent(cypher.quinepattern.GraphEvent.PropertyChanged(key, oldValue, Some(value)))
+      // State notification for label change (labels are stored in a special property)
+      if (key == graph.labelsProperty) {
+        val oldLabels = extractLabelsFromProperty(oldValue)
+        val newLabels = extractLabelsFromProperty(Some(value))
+        handleGraphEvent(cypher.quinepattern.GraphEvent.LabelsChanged(oldLabels, newLabels))
       }
     case PropertyRemoved(key, _) =>
+      val oldPropValue = properties.get(key)
       metrics.nodePropertyCounter(namespace).decrement(previousCount = properties.size)
       properties = properties - key
+      // State notification for property change
+      handleGraphEvent(cypher.quinepattern.GraphEvent.PropertyChanged(key, oldPropValue, None))
+      // State notification for label change (labels are stored in a special property)
+      if (key == graph.labelsProperty) {
+        val oldLabels = extractLabelsFromProperty(oldPropValue)
+        handleGraphEvent(cypher.quinepattern.GraphEvent.LabelsChanged(oldLabels, Set.empty))
+      }
   }
+
+  /** Extract labels from a property value (used for V2 label change notifications) */
+  private def extractLabelsFromProperty(propValue: Option[PropertyValue]): Set[Symbol] =
+    propValue match {
+      case Some(pv) =>
+        pv.deserialized match {
+          case Success(QuineValue.List(values)) =>
+            values.flatMap {
+              case QuineValue.Str(s) => Some(Symbol(s))
+              case _ => None
+            }.toSet
+          case _ => Set.empty
+        }
+      case None => Set.empty
+    }
 
   /** Apply a [[DomainIndexEvent]] to the node state, updating its DGB bookkeeping and potentially (only if
     * shouldCauseSideEffects) messaging other nodes with any relevant updates.
@@ -504,6 +532,15 @@ abstract private[graph] class AbstractNodeActor(
     }
     eventsForMvsqs.foreach { case (sq, events) =>
       updateMultipleValuesSqs(events, sq)(logConfig)
+    }
+
+    // State notification for edge events
+    events.foreach {
+      case EdgeEvent.EdgeAdded(edge) =>
+        handleGraphEvent(GraphEvent.EdgeAdded(edge))
+      case EdgeEvent.EdgeRemoved(edge) =>
+        handleGraphEvent(GraphEvent.EdgeRemoved(edge))
+      case _ => () // Property events are handled in applyPropertyEffect
     }
   }
 

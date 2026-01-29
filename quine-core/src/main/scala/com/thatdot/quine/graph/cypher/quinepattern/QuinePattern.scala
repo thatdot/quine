@@ -6,57 +6,63 @@ import scala.collection.immutable.SortedMap
 import cats.implicits._
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.cypher.{ast => Cypher}
 import com.thatdot.language.ast._
 import com.thatdot.quine.graph.cypher
-import com.thatdot.quine.graph.cypher.Expr
-import com.thatdot.quine.model.{EdgeDirection, PropertyValue, QuineIdProvider, QuineValue}
+import com.thatdot.quine.graph.cypher.CypherException.Runtime
+import com.thatdot.quine.graph.cypher.{CypherException, Expr}
+import com.thatdot.quine.model.{PropertyValue, QuineIdProvider, QuineValue}
 
 class QuinePatternUnimplementedException(msg: String) extends RuntimeException(msg)
 
 object CypherAndQuineHelpers {
 
-  def cypherValueToPatternValue(idProvider: QuineIdProvider)(value: cypher.Value): Value = value match {
-    case value: Expr.PropertyValue =>
-      value match {
-        case Expr.Str(string) => Value.Text(string)
-        case Expr.Integer(long) => Value.Integer(long)
-        case Expr.Floating(double) => Value.Real(double)
-        case Expr.True => Value.True
-        case Expr.False => Value.False
-        case bytes: Expr.Bytes =>
-          if (bytes.representsId) Value.NodeId(QuineId(bytes.b))
-          else throw new QuinePatternUnimplementedException(s"Don't know how to convert bytes to a pattern value")
-        case Expr.List(list) => Value.List(list.toList.map(cypherValueToPatternValue(idProvider)))
-        case Expr.Map(map) => Value.Map(map.map(p => Symbol(p._1) -> cypherValueToPatternValue(idProvider)(p._2)))
-        case ldt: Expr.LocalDateTime => Value.DateTimeLocal(ldt.localDateTime)
-        case _: Expr.Date =>
-          throw new QuinePatternUnimplementedException(s"Don't know how to convert date to a pattern value")
-        case _: Expr.Time =>
-          throw new QuinePatternUnimplementedException(s"Don't know how to convert time to a pattern value")
-        case _: Expr.LocalTime =>
-          throw new QuinePatternUnimplementedException(s"Don't know how to convert local time to a pattern value")
-        case Expr.DateTime(zonedDateTime) => Value.DateTime(zonedDateTime)
-        case Expr.Duration(duration) => Value.Duration(duration)
-      }
-    case n: Expr.Number =>
-      n match {
-        case Expr.Integer(long) => Value.Integer(long)
-        case Expr.Floating(double) => Value.Real(double)
-        case Expr.Null => Value.Null
-      }
-    case Expr.Bool(value) => if (value) Value.True else Value.False
-    case Expr.Node(id, labels, properties) =>
-      Value.Node(
-        id,
-        labels,
-        Value.Map(SortedMap.from(properties.map(p => p._1 -> cypherValueToPatternValue(idProvider)(p._2)))),
-      )
-    case _: Expr.Relationship =>
-      throw new QuinePatternUnimplementedException(s"Don't know how to convert relationship to a pattern value")
-    case _: Expr.Path =>
-      throw new QuinePatternUnimplementedException(s"Don't know how to convert path to a pattern value")
-  }
+  def cypherValueToPatternValue(idProvider: QuineIdProvider)(value: cypher.Value): Either[Runtime, Value] =
+    value match {
+      case value: Expr.PropertyValue =>
+        value match {
+          case Expr.Str(string) => Right(Value.Text(string))
+          case Expr.Integer(long) => Right(Value.Integer(long))
+          case Expr.Floating(double) => Right(Value.Real(double))
+          case Expr.True => Right(Value.True)
+          case Expr.False => Right(Value.False)
+          case cyhperBytes: Expr.Bytes =>
+            Right(
+              if (cyhperBytes.representsId) Value.NodeId(QuineId(cyhperBytes.b))
+              else Value.Bytes(cyhperBytes.b),
+            )
+          case Expr.List(list) => list.toList.traverse(cypherValueToPatternValue(idProvider)).map(Value.List(_))
+          case Expr.Map(map) =>
+            map.toList
+              .traverse(p => cypherValueToPatternValue(idProvider)(p._2).map(v => Symbol(p._1) -> v))
+              .map(xs => Value.Map(SortedMap.from(xs)))
+          case ldt: Expr.LocalDateTime => Right(Value.DateTimeLocal(ldt.localDateTime))
+          case cypherDate: Expr.Date => Right(Value.Date(cypherDate.date))
+          case _: Expr.Time =>
+            throw new QuinePatternUnimplementedException(s"Don't know how to convert time to a pattern value")
+          case _: Expr.LocalTime =>
+            throw new QuinePatternUnimplementedException(s"Don't know how to convert local time to a pattern value")
+          case Expr.DateTime(zonedDateTime) => Right(Value.DateTime(zonedDateTime))
+          case Expr.Duration(duration) => Right(Value.Duration(duration))
+        }
+      case n: Expr.Number =>
+        Right(n match {
+          case Expr.Integer(long) => Value.Integer(long)
+          case Expr.Floating(double) => Value.Real(double)
+          case Expr.Null => Value.Null
+        })
+      case Expr.Bool(value) => Right(if (value) Value.True else Value.False)
+      case Expr.Node(id, labels, properties) =>
+        properties.toList
+          .traverse(p => cypherValueToPatternValue(idProvider)(p._2).map(v => p._1 -> v))
+          .map(xs => Value.Map(SortedMap.from(xs)))
+          .map { pmap =>
+            Value.Node(id, labels, pmap)
+          }
+      case _: Expr.Relationship =>
+        throw new QuinePatternUnimplementedException(s"Don't know how to convert relationship to a pattern value")
+      case _: Expr.Path =>
+        throw new QuinePatternUnimplementedException(s"Don't know how to convert path to a pattern value")
+    }
 
   /** Convert a pattern value to a property value.
     *
@@ -74,6 +80,8 @@ object CypherAndQuineHelpers {
       case Value.False => Some(PropertyValue.apply(false))
       case Value.Integer(n) => Some(PropertyValue.apply(n))
       case Value.Real(d) => Some(PropertyValue.apply(d))
+      case Value.Bytes(bytes) => Some(PropertyValue.apply(QuineValue.Bytes(bytes)))
+      case Value.Date(date) => Some(PropertyValue.apply(QuineValue.Date(date)))
       case Value.Text(str) => Some(PropertyValue.apply(str))
       case Value.DateTime(zdt) => Some(PropertyValue(QuineValue.DateTime(zdt.toOffsetDateTime)))
       case Value.DateTimeLocal(ldt) => Some(PropertyValue(QuineValue.LocalDateTime(ldt)))
@@ -116,6 +124,32 @@ object CypherAndQuineHelpers {
       throw new QuinePatternUnimplementedException(s"Property value $value did not correctly convert to a quine value")
   }
 
+  /** Convert a pattern value to a QuineValue.
+    *
+    * This is the inverse of quineValueToPatternValue.
+    */
+  def patternValueToQuineValue(value: Value): QuineValue = value match {
+    case Value.Text(string) => QuineValue.Str(string)
+    case Value.Integer(long) => QuineValue.Integer(long)
+    case Value.Real(double) => QuineValue.Floating(double)
+    case Value.True => QuineValue.True
+    case Value.False => QuineValue.False
+    case Value.Null => QuineValue.Null
+    case Value.Bytes(bytes) => QuineValue.Bytes(bytes)
+    case Value.Date(date) => QuineValue.Date(date)
+    case Value.DateTime(zdt) => QuineValue.DateTime(zdt.toOffsetDateTime)
+    case Value.DateTimeLocal(ldt) => QuineValue.LocalDateTime(ldt)
+    case Value.Duration(d) => QuineValue.Duration(d)
+    case Value.List(values) => QuineValue.List(values.map(patternValueToQuineValue).toVector)
+    case Value.Map(values) => QuineValue.Map(values.map { case (k, v) => k.name -> patternValueToQuineValue(v) })
+    case Value.NodeId(id) => QuineValue.Id(id)
+    case Value.Node(id, _, props) =>
+      // Convert node to a map representation with id and properties
+      // props is a Value.Map which contains .values: SortedMap[Symbol, Value]
+      val propMap = props.values.map { case (k, v) => k.name -> patternValueToQuineValue(v) }
+      QuineValue.Map(propMap + ("_id" -> QuineValue.Id(id)))
+  }
+
   @tailrec
   def maybeGetByIndex[A](xs: List[A], index: Int): Option[A] = index match {
     case n if n < 0 => None
@@ -123,29 +157,9 @@ object CypherAndQuineHelpers {
     case _ => if (xs.isEmpty) None else maybeGetByIndex(xs.tail, index - 1)
   }
 
-  def getNode(value: Value): Value.Node = value match {
-    case node: Value.Node => node
-    case _ => throw new RuntimeException(s"Expected a node, got $value")
+  def getNode(value: Value): Either[Runtime, Value.Node] = value match {
+    case node: Value.Node => Right(node)
+    case _ => Left(CypherException.Runtime(s"Expected a node shaped value, got $value"))
   }
 
-}
-
-sealed trait QueryPlan
-
-object QueryPlan {
-  case class AllNodeScan(nodeInstructions: QueryPlan) extends QueryPlan
-  case class AdjustContext(keepOnly: Set[Symbol]) extends QueryPlan
-  case class SpecificId(idExp: Expression, nodeInstructions: QueryPlan) extends QueryPlan
-  case class TraverseEdge(label: Symbol, direction: EdgeDirection, nodeInstructions: QueryPlan) extends QueryPlan
-  case class Product(left: QueryPlan, right: QueryPlan) extends QueryPlan
-  case class Unwind(listExp: Expression, alias: Identifier, over: QueryPlan) extends QueryPlan
-  case class LoadNode(binding: Identifier) extends QueryPlan
-  case class Filter(filterExpression: Expression) extends QueryPlan
-  case class Effect(effect: Cypher.Effect) extends QueryPlan
-  case class Project(projection: Expression, as: Symbol) extends QueryPlan
-  case class CreateHalfEdge(from: Expression, to: Expression, direction: EdgeDirection, label: Symbol) extends QueryPlan
-  case class ProcedureCall(name: Symbol, args: List[Expression], yields: List[Symbol]) extends QueryPlan
-  case object UnitPlan extends QueryPlan
-
-  def unit: QueryPlan = UnitPlan
 }

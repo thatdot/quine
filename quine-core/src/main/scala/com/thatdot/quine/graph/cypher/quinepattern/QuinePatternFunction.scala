@@ -8,6 +8,7 @@ import java.util.Locale
 import org.apache.commons.codec.net.PercentCodec
 
 import com.thatdot.language.ast.Value
+import com.thatdot.quine.graph.cypher.CypherException.Runtime
 
 /** QuinePatternFunction defines built-in pattern functions available in the Quine query language engine.
   *
@@ -40,6 +41,8 @@ object QuinePatternFunction {
     ToLowerFunction,
     ToStringFunction,
   )
+
+  def error(message: String): Either[Runtime, Value] = Left(Runtime(message))
 
   def findBuiltIn(name: String): Option[QuinePatternFunction] = builtIns.find(_.name == name)
 }
@@ -78,32 +81,30 @@ sealed trait QuinePatternFunction {
   def arity: FunctionArity;
   def cypherFunction: PartialFunction[List[Value], Value]
 
-  // TODO This should have an error channel. Right now errors are thrown
-  // TODO as runtime exceptions so that we get visibility into implementation
-  // TODO errors in the QuinePattern alpha
-  def apply(args: List[Value]): Value = {
-    arity match {
-      case FunctionArity.FixedArity(n) =>
-        if (args.size != n)
-          throw new RuntimeException(
-            s"Function $name has arity of $n, but received ${args.size} arguments!",
-          )
-      case _ =>
-        //No need to do anything in this case
-        ()
-    }
-    if (handleNullsBySpec && args.contains(Value.Null)) {
-      Value.Null
-    } else {
-      cypherFunction.applyOrElse(
-        args,
-        (_: List[Value]) =>
-          throw new QuinePatternUnimplementedException(
-            s"Function $name doesn't support arguments of type ${args.map(_.getClass.getSimpleName).mkString(", ")}",
-          ),
-      )
-    }
-  }
+  def apply(args: List[Value]): Either[Runtime, Value] =
+    for {
+      _ <- arity match {
+        case FunctionArity.FixedArity(n) =>
+          if (args.size != n)
+            QuinePatternFunction.error(s"Function $name requires $n arguments, but ${args.size} were provided")
+          else Right(())
+        case _ =>
+          //No need to do anything in this case
+          Right(())
+      }
+      result <-
+        if (handleNullsBySpec && args.contains(Value.Null)) {
+          Right(Value.Null)
+        } else {
+          cypherFunction.lift(args) match {
+            case Some(value) => Right(value)
+            case None =>
+              QuinePatternFunction.error(
+                s"Function $name doesn't support arguments of type ${args.map(_.getClass.getSimpleName).mkString(", ")}",
+              )
+          }
+        }
+    } yield result
 }
 
 /** Represents the `floor` function within the Quine query language engine.
@@ -533,6 +534,48 @@ object DivideFunction extends QuinePatternFunction {
   }
 }
 
+/** SubtractFunction is a Quine pattern function that performs subtraction on two numeric values.
+  *
+  * This function supports subtraction of:
+  * - Two integers (producing an integer result).
+  * - Two real numbers (producing a real result).
+  * - Mixed integer and real numbers (producing a real result).
+  *
+  * - The function name is defined as "subtract".
+  * - The function arity is fixed at two arguments.
+  */
+object SubtractFunction extends QuinePatternFunction {
+  val name: String = "subtract"
+  val arity: FunctionArity = FunctionArity.FixedArity(2)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Integer(n1), Value.Integer(n2)) => Value.Integer(n1 - n2)
+    case List(Value.Real(n1), Value.Real(n2)) => Value.Real(n1 - n2)
+    case List(Value.Real(n1), Value.Integer(n2)) => Value.Real(n1 - n2)
+    case List(Value.Integer(n1), Value.Real(n2)) => Value.Real(n1 - n2)
+  }
+}
+
+/** ModuloFunction is a Quine pattern function that computes the remainder of division of two numeric values.
+  *
+  * This function supports modulo of:
+  * - Two integers (producing an integer result).
+  * - Two real numbers (producing a real result).
+  * - Mixed integer and real numbers (producing a real result).
+  *
+  * - The function name is defined as "modulo".
+  * - The function arity is fixed at two arguments.
+  */
+object ModuloFunction extends QuinePatternFunction {
+  val name: String = "modulo"
+  val arity: FunctionArity = FunctionArity.FixedArity(2)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Integer(n1), Value.Integer(n2)) => Value.Integer(n1 % n2)
+    case List(Value.Real(n1), Value.Real(n2)) => Value.Real(n1 % n2)
+    case List(Value.Real(n1), Value.Integer(n2)) => Value.Real(n1 % n2)
+    case List(Value.Integer(n1), Value.Real(n2)) => Value.Real(n1 % n2)
+  }
+}
+
 /** Represents the equality comparison function within the Quine query language engine.
   *
   * The `CompareEqualityFunction` is a concrete implementation of `QuinePatternFunction` that
@@ -619,6 +662,26 @@ object CompareLessThanFunction extends QuinePatternFunction {
     case List(Value.Integer(a), Value.Integer(b)) => if (a < b) Value.True else Value.False
     case List(Value.Real(a), Value.Real(b)) => if (a < b) Value.True else Value.False
     case List(Value.Text(a), Value.Text(b)) => if (a < b) Value.True else Value.False
+  }
+}
+
+/** Implements a comparison function that checks if the first argument is less than or equal to the second argument.
+  *
+  * `CompareLessThanEqualToFunction` facilitates less-than-or-equal-to comparison operations for supported
+  * argument types: integers, real numbers, and text values.
+  *
+  * This function:
+  * - Operates on two arguments, as enforced by its fixed arity of 2.
+  * - Returns `Value.True` if the first argument is less than or equal to the second argument.
+  * - Returns `Value.False` otherwise.
+  */
+object CompareLessThanEqualToFunction extends QuinePatternFunction {
+  val name: String = "lessThanEqualTo"
+  val arity: FunctionArity = FunctionArity.FixedArity(2)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Integer(a), Value.Integer(b)) => if (a <= b) Value.True else Value.False
+    case List(Value.Real(a), Value.Real(b)) => if (a <= b) Value.True else Value.False
+    case List(Value.Text(a), Value.Text(b)) => if (a <= b) Value.True else Value.False
   }
 }
 

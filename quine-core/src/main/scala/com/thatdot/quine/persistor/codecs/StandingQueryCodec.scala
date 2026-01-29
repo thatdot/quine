@@ -512,7 +512,8 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
         TypeAndOffset(persistence.StandingQueryPattern.SqV4Query, offset)
 
       case _: StandingQueryPattern.QuinePatternQueryPattern =>
-        //val offset: Offset = writeQuinePattern(builder, qp)
+        // Persistence is not yet implemented - write empty placeholder
+        // TODO: Add proper persistence support for query plans
         persistence.QuinePatternQueryPattern.startQuinePatternQueryPattern(builder)
         val offset = persistence.QuinePatternQueryPattern.endQuinePatternQueryPattern(builder)
         TypeAndOffset(persistence.StandingQueryPattern.QuinePatternQueryPattern, offset)

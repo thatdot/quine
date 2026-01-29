@@ -1,24 +1,29 @@
 package com.thatdot.quine.app.model.outputs
 
 import scala.collection.immutable.SortedMap
+import scala.concurrent.Promise
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.stream.scaladsl.Flow
+import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
-import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig}
 import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
+import com.thatdot.language.{ast => Pattern}
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.cypher.quinepattern.CypherAndQuineHelpers.quineValueToPatternValue
-import com.thatdot.quine.graph.cypher.quinepattern.QuinePatternHelpers.patternValueToCypherValue
-import com.thatdot.quine.graph.cypher.quinepattern.{EagerQuinePatternQueryPlanner, QueryTarget, QuinePatternInterpreter}
+import com.thatdot.quine.graph.cypher.quinepattern.{
+  OutputTarget,
+  QueryContext => QPQueryContext,
+  QueryPlanner,
+  RuntimeMode,
+}
 import com.thatdot.quine.graph.cypher.{Expr, QueryContext}
-import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
-import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
+import com.thatdot.quine.graph.quinepattern.{LoadQuery, QuinePatternOpsGraph}
+import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryId, StandingQueryResult}
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.QuinePatternQuery
 import com.thatdot.quine.serialization.ProtobufSchemaCache
-import com.thatdot.quine.util.Log.implicits._
 
 class QuinePatternOutput(
   config: QuinePatternQuery,
@@ -56,8 +61,9 @@ class QuinePatternOutput(
     import com.thatdot.language.phases.UpgradeModule._
 
     val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
-    val (_, result) = parser.process(config.query).value.run(LexerState(Nil)).value
-    val queryPlan = EagerQuinePatternQueryPlanner.generatePlan(result.get)
+    val (symbolState, result) = parser.process(config.query).value.run(LexerState(Nil)).value
+
+    val planned = QueryPlanner.planWithMetadata(result.get, symbolState.symbolTable)
 
     val andThenFlow: Flow[(StandingQueryResult.Meta, QueryContext), SqResultsExecToken, NotUsed] =
       (config.andThen match {
@@ -66,10 +72,10 @@ class QuinePatternOutput(
             .map { case (meta: StandingQueryResult.Meta, qc: QueryContext) =>
               val newData = qc.environment.map { case (keySym, cypherVal) =>
                 keySym.name -> Expr.toQuineValue(cypherVal).getOrElse {
-                  logger.warn(
-                    log"""Cypher Value: ${cypherVal} could not be represented as a Quine value in Standing
-                         |Query output: ${Safe(name)}. Using `null` instead.""".cleanLines,
-                  )
+//                  logger.warn(
+//                    log"""Cypher Value: ${cypherVal} could not be represented as a Quine value in Standing
+//                         |Query output: ${Safe(name)}. Using `null` instead.""".cleanLines,
+//                  )
                   QuineValue.Null
                 }
               }
@@ -83,24 +89,50 @@ class QuinePatternOutput(
       .flatMapMerge(
         breadth = config.parallelism,
         result => {
-          val parameters = Expr.Map(
-            SortedMap(
-              "meta" -> Expr.Map(SortedMap("isPositiveMatch" -> Expr.Bool(result.meta.isPositiveMatch))),
-              "data" -> Expr.Map(
-                SortedMap.from(result.data.map(p => p._1 -> patternValueToCypherValue(quineValueToPatternValue(p._2)))),
+          val params = Map(
+            Symbol("that") -> Pattern.Value.Map(
+              SortedMap(
+                Symbol("meta") -> Pattern.Value.Map(
+                  SortedMap(
+                    Symbol("isPositiveMatch") -> (if (result.meta.isPositiveMatch) Pattern.Value.True
+                                                  else Pattern.Value.False),
+                  ),
+                ),
+                Symbol("data") -> Pattern.Value.Map(
+                  SortedMap.from(result.data.map(p => Symbol(p._1) -> quineValueToPatternValue(p._2))),
+                ),
               ),
             ),
           )
-          QuinePatternInterpreter
-            .interpret(
-              queryPlan,
-              QueryTarget.None,
-              inNamespace,
-              Map(Symbol(config.parameter) -> parameters),
-              QueryContext.empty,
-              true,
-            )(graph.asInstanceOf[QuinePatternOpsGraph])
-            .map(qc => (result.meta, qc))
+
+          val hack = graph.asInstanceOf[QuinePatternOpsGraph]
+          implicit val ec = hack.system.dispatcher
+
+          // Use promise-based EagerCollector
+          val promise = Promise[Seq[QPQueryContext]]()
+          hack.getLoader ! LoadQuery(
+            StandingQueryId.fresh(),
+            planned.plan,
+            RuntimeMode.Eager,
+            params,
+            inNamespace,
+            OutputTarget.EagerCollector(promise),
+            planned.returnColumns,
+            planned.outputNameMapping,
+            queryName = Some(name),
+          )
+
+          Source
+            .futureSource(promise.future.map(results => Source(results)))
+            .mapMaterializedValue(_ => NotUsed)
+            .via(Flow[QPQueryContext].map { qpCtx =>
+              // Convert QPQueryContext (pattern values) to QueryContext (cypher values)
+              import com.thatdot.quine.graph.cypher.quinepattern.QuinePatternHelpers.patternValueToCypherValue
+              val cypherEnv: Map[Symbol, com.thatdot.quine.graph.cypher.Value] =
+                qpCtx.bindings.map { case (k, v) => k -> patternValueToCypherValue(v) }
+              val qc = QueryContext(cypherEnv)
+              StandingQueryResult.Meta(isPositiveMatch = true) -> qc
+            })
         },
       )
       .via(andThenFlow)

@@ -1,13 +1,41 @@
 package com.thatdot.quine.graph.quinepattern
 
-import org.apache.pekko.actor.Actor
+import org.apache.pekko.actor.{Actor, Props}
 
-/** This is a placeholder for future QuinePattern functionality
+import com.thatdot.language.{ast => Pattern}
+import com.thatdot.quine.graph.behavior.QuinePatternCommand
+import com.thatdot.quine.graph.cypher.quinepattern.{OutputTarget, QueryPlan, RuntimeMode}
+import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, StandingQueryOpsGraph}
+
+case class LoadQuery(
+  standingQueryId: StandingQueryId,
+  queryPlan: QueryPlan,
+  mode: RuntimeMode,
+  params: Map[Symbol, Pattern.Value],
+  namespace: NamespaceId,
+  output: OutputTarget,
+  returnColumns: Option[Set[Symbol]] = None, // Columns to include in output (from RETURN clause)
+  outputNameMapping: Map[Symbol, Symbol] = Map.empty, // Maps internal binding IDs to human-readable output names
+  queryName: Option[String] = None, // For metrics filtering (e.g., "INGEST-1")
+)
+
+/** QuinePattern query loader - handles loading query plans.
   *
-  * @param graph
+  * Creates NonNodeActor to host root state, then dispatches via anchors.
   */
-class QuinePatternLoader(graph: QuinePatternOpsGraph) extends Actor {
-  override def receive: Receive = { case _ =>
-    ()
+class QuinePatternLoader(graph: QuinePatternOpsGraph with StandingQueryOpsGraph) extends Actor {
+  override def receive: Receive = {
+    case LoadQuery(sqid, queryPlan, runtimeMode, params, namespace, output, returnColumns, outputNameMapping, _) =>
+      val ephemeralActor = graph.system.actorOf(Props(classOf[NonNodeActor], graph, namespace))
+      ephemeralActor ! QuinePatternCommand.LoadQueryPlan(
+        sqid,
+        queryPlan,
+        runtimeMode,
+        params,
+        namespace,
+        output,
+        returnColumns = returnColumns,
+        outputNameMapping = outputNameMapping,
+      )
   }
 }

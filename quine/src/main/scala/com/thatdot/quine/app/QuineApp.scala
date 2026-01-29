@@ -39,8 +39,9 @@ import com.thatdot.quine.graph.StandingQueryPattern.{
   MultipleValuesQueryPattern,
   QuinePatternQueryPattern,
 }
-import com.thatdot.quine.graph.cypher.quinepattern.LazyQuinePatternQueryPlanner
+import com.thatdot.quine.graph.cypher.quinepattern.{OutputTarget => V2OutputTarget, QueryPlanner, RuntimeMode}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.graph.quinepattern.LoadQuery
 import com.thatdot.quine.graph.{
   GraphService,
   MemberIdx,
@@ -250,9 +251,15 @@ final class QuineApp(
 
                             val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
                             val (state, result) = parser.process(cypherQuery).value.run(LexerState(Nil)).value
-                            val queryPlan = LazyQuinePatternQueryPlanner.planQuery(result.get, state.symbolTable)
 
-                            val qpPattern = QuinePatternQueryPattern(queryPlan)
+                            val planned = QueryPlanner.planWithMetadata(result.get, state.symbolTable)
+                            val qpPattern =
+                              QuinePatternQueryPattern(
+                                planned.plan,
+                                RuntimeMode.Lazy,
+                                planned.returnColumns,
+                                planned.outputNameMapping,
+                              )
                             (qpPattern, None)
                           case _ =>
                             sys.error("Quine pattern must be enabled using -Dqp.enabled=true to use this feature.")
@@ -347,9 +354,15 @@ final class QuineApp(
 
                       val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
                       val (state, result) = parser.process(cypherQuery).value.run(LexerState(Nil)).value
-                      val queryPlan = LazyQuinePatternQueryPlanner.planQuery(result.get, state.symbolTable)
 
-                      val qpPattern = QuinePatternQueryPattern(queryPlan)
+                      val planned = QueryPlanner.planWithMetadata(result.get, state.symbolTable)
+                      val qpPattern =
+                        QuinePatternQueryPattern(
+                          planned.plan,
+                          RuntimeMode.Lazy,
+                          planned.returnColumns,
+                          planned.outputNameMapping,
+                        )
                       (qpPattern, None)
                     case _ => sys.error("Quine pattern must be enabled using -Dqp.enabled=true to use this feature.")
                   }
@@ -370,6 +383,22 @@ final class QuineApp(
                   shouldCalculateResultHashCode = query.shouldCalculateResultHashCode,
                   sqId = sqId,
                 )
+
+                sq.query.queryPattern match {
+                  case QuinePatternQueryPattern(queryPlanV2, mode, returnColumns, outputNameMapping) =>
+                    graph.getLoader ! LoadQuery(
+                      sq.query.id,
+                      queryPlanV2,
+                      mode,
+                      Map.empty,
+                      inNamespace,
+                      V2OutputTarget.StandingQuerySink(sq.query.id, inNamespace),
+                      returnColumns,
+                      outputNameMapping,
+                    )
+                  case _ => // Non-QuinePattern queries don't need additional loading
+                }
+
                 val outputsWithKillSwitches = query.outputs.map { case (name, out) =>
                   name -> OutputTarget.V1(out, killSwitches(name))
                 }

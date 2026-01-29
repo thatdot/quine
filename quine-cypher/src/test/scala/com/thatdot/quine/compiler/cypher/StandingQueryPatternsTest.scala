@@ -754,4 +754,108 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       )
     }
   }
+
+  describe("APT Detection MVSQ plan analysis") {
+    import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
+
+    def prettyPrintMvsq(sq: MultipleValuesStandingQuery, indent: Int = 0): String = {
+      val prefix = "  " * indent
+      sq match {
+        case MultipleValuesStandingQuery.UnitSq() =>
+          s"${prefix}UnitSq"
+
+        case MultipleValuesStandingQuery.Cross(queries, emitLazily, _) =>
+          val header = s"${prefix}Cross(emitLazily=$emitLazily)"
+          val children = queries.map(q => prettyPrintMvsq(q, indent + 1)).mkString("\n")
+          s"$header\n$children"
+
+        case MultipleValuesStandingQuery.LocalProperty(propKey, constraint, alias, _) =>
+          val aliasStr = alias.map(_.name).getOrElse("_")
+          s"${prefix}LocalProperty(${propKey.name}, $constraint, AS $aliasStr)"
+
+        case MultipleValuesStandingQuery.LocalId(aliasedAs, formatAsString, _) =>
+          s"${prefix}LocalId(${aliasedAs.name}, formatAsString=$formatAsString)"
+
+        case MultipleValuesStandingQuery.SubscribeAcrossEdge(edgeName, edgeDir, andThen, _) =>
+          val edgeStr = edgeName.map(_.name).getOrElse("*")
+          val dirStr = edgeDir.map(_.toString).getOrElse("*")
+          val header = s"${prefix}SubscribeAcrossEdge([$edgeStr], $dirStr)"
+          val child = prettyPrintMvsq(andThen, indent + 1)
+          s"$header\n$child"
+
+        case MultipleValuesStandingQuery.FilterMap(condition, toFilter, dropExisting, toAdd, _) =>
+          val condStr =
+            condition.map(c => c.toString.take(80) + (if (c.toString.length > 80) "..." else "")).getOrElse("None")
+          val header = s"${prefix}FilterMap(cond=$condStr, drop=$dropExisting, add=${toAdd.size})"
+          val child = prettyPrintMvsq(toFilter, indent + 1)
+          s"$header\n$child"
+
+        case MultipleValuesStandingQuery.AllProperties(aliasedAs, _) =>
+          s"${prefix}AllProperties(${aliasedAs.name})"
+
+        case MultipleValuesStandingQuery.Labels(aliasedAs, constraint, _) =>
+          val aliasStr = aliasedAs.map(_.name).getOrElse("_")
+          s"${prefix}Labels($aliasStr, $constraint)"
+
+        case MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(halfEdge, andThenId, _) =>
+          s"${prefix}EdgeSubscriptionReciprocal($halfEdge, andThenId=$andThenId)"
+
+        case other =>
+          s"${prefix}${other.getClass.getSimpleName}"
+      }
+    }
+
+    it("should show the MVSQ plan for APT detection standing query") {
+      val query = """
+        MATCH (e1)-[:EVENT]->(f)<-[:EVENT]-(e2),
+              (f)<-[:EVENT]-(e3)<-[:EVENT]-(p2)-[:EVENT]->(e4)
+        WHERE e1.type = "WRITE"
+          AND e2.type = "READ"
+          AND e3.type = "DELETE"
+          AND e4.type = "SEND"
+        RETURN DISTINCT id(f) as fileId
+      """
+
+      val pattern = compileStandingQueryGraphPattern(query)
+      val labelsProperty = Symbol("__labels")
+      val mvsqPlan = pattern.compiledMultipleValuesStandingQuery(labelsProperty, idProvider)
+
+      println("\n" + "=" * 80)
+      println("APT DETECTION - MVSQ PLAN (compiled from actual Cypher)")
+      println("=" * 80)
+      println(s"\nStarting point: ${pattern.startingPoint}")
+      println(s"Nodes: ${pattern.nodes.map(_.id).toList}")
+      println(s"filterCond: ${pattern.filterCond}")
+      println("\n=== MVSQ Plan ===")
+      println(prettyPrintMvsq(mvsqPlan))
+
+      // Count structures
+      def countSubscribeAcrossEdge(sq: MultipleValuesStandingQuery): Int = sq match {
+        case MultipleValuesStandingQuery.Cross(queries, _, _) => queries.map(countSubscribeAcrossEdge).sum
+        case MultipleValuesStandingQuery.SubscribeAcrossEdge(_, _, andThen, _) => 1 + countSubscribeAcrossEdge(andThen)
+        case MultipleValuesStandingQuery.FilterMap(_, toFilter, _, _, _) => countSubscribeAcrossEdge(toFilter)
+        case _ => 0
+      }
+
+      def countLocalProperty(sq: MultipleValuesStandingQuery): Int = sq match {
+        case MultipleValuesStandingQuery.Cross(queries, _, _) => queries.map(countLocalProperty).sum
+        case MultipleValuesStandingQuery.LocalProperty(_, _, _, _) => 1
+        case MultipleValuesStandingQuery.SubscribeAcrossEdge(_, _, andThen, _) => countLocalProperty(andThen)
+        case MultipleValuesStandingQuery.FilterMap(_, toFilter, _, _, _) => countLocalProperty(toFilter)
+        case _ => 0
+      }
+
+      def hasTopLevelFilter(sq: MultipleValuesStandingQuery): Boolean = sq match {
+        case MultipleValuesStandingQuery.FilterMap(Some(_), _, _, _, _) => true
+        case _ => false
+      }
+
+      println(s"\n=== Analysis ===")
+      println(s"SubscribeAcrossEdge count: ${countSubscribeAcrossEdge(mvsqPlan)}")
+      println(s"LocalProperty count: ${countLocalProperty(mvsqPlan)}")
+      println(s"Has top-level FilterMap: ${hasTopLevelFilter(mvsqPlan)}")
+
+      succeed
+    }
+  }
 }

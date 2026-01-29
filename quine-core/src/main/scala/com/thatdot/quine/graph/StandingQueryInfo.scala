@@ -12,7 +12,7 @@ import com.codahale.metrics.{Counter, Meter, Timer}
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
-import com.thatdot.quine.graph.cypher.quinepattern.LazyQuinePatternQueryPlanner.LazyQueryPlan
+import com.thatdot.quine.graph.cypher.quinepattern.{QueryPlan, RuntimeMode}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.util.Log.implicits._
@@ -123,10 +123,18 @@ object StandingQueryPattern {
     origin: PatternOrigin.SqV4Origin,
   ) extends StandingQueryPattern
 
+  /** A QuinePattern standing query
+    *
+    * @param compiledQuery compiled query plan
+    * @param mode runtime mode (Eager or Lazy)
+    */
   final case class QuinePatternQueryPattern(
-    compiledQuery: LazyQueryPlan,
+    compiledQuery: QueryPlan,
+    mode: RuntimeMode,
+    returnColumns: Option[Set[Symbol]] = None, // Columns from RETURN clause for output filtering
+    outputNameMapping: Map[Symbol, Symbol] = Map.empty, // Maps internal binding IDs to human-readable names
   ) extends StandingQueryPattern {
-    val includeCancellation: Boolean = false
+    val includeCancellation: Boolean = mode == RuntimeMode.Lazy // Lazy mode supports retractions
     val origin: PatternOrigin = PatternOrigin.DirectSqV4
   }
 }

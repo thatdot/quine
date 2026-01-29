@@ -1,42 +1,26 @@
 package com.thatdot.quine.graph.behavior
 
-import java.util.concurrent.ConcurrentHashMap
-
-import scala.collection.immutable.SortedMap
-import scala.concurrent.ExecutionContext
-
-import org.apache.pekko.actor.Status.Success
-import org.apache.pekko.actor.{Actor, ActorRef}
-import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.actor.Actor
 
 import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.language.ast.{Expression, Identifier, Value}
+import com.thatdot.language.{ast => Pattern}
 import com.thatdot.quine.graph.EdgeEvent.EdgeAdded
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
-import com.thatdot.quine.graph.cypher.QueryContext
-import com.thatdot.quine.graph.cypher.quinepattern.CypherAndQuineHelpers.quineValueToPatternValue
-import com.thatdot.quine.graph.cypher.quinepattern.LazyQuinePatternQueryPlanner.LazyQueryPlan
 import com.thatdot.quine.graph.cypher.quinepattern.{
   CypherAndQuineHelpers,
-  EdgeState,
-  FilterState,
-  ProductState,
-  PublishToOutput,
-  QueryPlan,
-  QueryTarget,
+  DefaultStateInstantiator,
+  NodeContext,
+  QPMetrics,
+  QueryStateBuilder,
+  QueryStateHost,
   QuinePatternExpressionInterpreter,
-  QuinePatternHelpers,
-  QuinePatternInterpreter,
-  QuinePatternQueryState,
   QuinePatternUnimplementedException,
-  SendAcrossEdgeState,
-  WatchState,
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineMessage, QuineRefOps}
 import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
-import com.thatdot.quine.graph.{BaseNodeActor, StandingQueryId, StandingQueryOpsGraph}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineValue}
+import com.thatdot.quine.graph.{BaseNodeActor, NamespaceId, StandingQueryId, StandingQueryOpsGraph}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 /** `QuinePatternCommand` represents commands or instructions used within the Quine graph processing system.
   * This sealed trait defines a hierarchy of messages that are utilized for managing and interacting
@@ -59,39 +43,47 @@ object QuinePatternCommand {
 
   case object QuinePatternStop extends QuinePatternCommand
 
-  case class LoadLazyPlan(sqid: StandingQueryId, plan: LazyQueryPlan, output: ActorRef) extends QuinePatternCommand
-
-  case class LazyQueryUpdate(toNotify: StandingQueryId, from: StandingQueryId, ctx: QueryContext)
-      extends QuinePatternCommand
-
-  //Local execution instructions
-  case class LoadNode(binding: Identifier, ctx: QueryContext, output: ActorRef) extends QuinePatternCommand
+  // Local execution instructions
   case class SetProperty(
-    of: Identifier,
-    propertyName: Symbol,
-    to: Expression,
-    ctx: QueryContext,
-    parameters: Map[Symbol, com.thatdot.quine.graph.cypher.Value],
-    output: ActorRef,
+    property: Symbol,
+    valueExpr: Pattern.Expression,
+    context: com.thatdot.quine.graph.cypher.quinepattern.QueryContext, // Uses Pattern.Value directly
+    params: Map[Symbol, Pattern.Value],
   ) extends QuinePatternCommand
-  case class SetProperties(props: Map[Symbol, Value], ctx: QueryContext, output: ActorRef) extends QuinePatternCommand
-  case class SetLabels(labels: Set[Symbol], ctx: QueryContext, output: ActorRef) extends QuinePatternCommand
+  case class SetProperties(props: Map[Symbol, Pattern.Value]) extends QuinePatternCommand
+  case class SetLabels(labels: Set[Symbol]) extends QuinePatternCommand
   case class CreateEdge(
     to: QuineId,
     direction: EdgeDirection,
     label: Symbol,
-    ctx: QueryContext,
-    output: ActorRef,
   ) extends QuinePatternCommand
-  case class AtomicIncrement(propertyExpr: String, by: Int, binding: Symbol, ctx: QueryContext, output: ActorRef)
-      extends QuinePatternCommand
-  case class ExecutePlanOnEdges(
-    edgeType: Symbol,
-    edgeDirection: EdgeDirection,
-    targetNodePlan: QueryPlan,
-    parameters: Map[Symbol, com.thatdot.quine.graph.cypher.Value],
-    ctx: QueryContext,
-    output: ActorRef,
+
+  case class LoadQueryPlan(
+    sqid: StandingQueryId,
+    plan: com.thatdot.quine.graph.cypher.quinepattern.QueryPlan,
+    mode: com.thatdot.quine.graph.cypher.quinepattern.RuntimeMode,
+    params: Map[Symbol, Pattern.Value],
+    namespace: NamespaceId,
+    output: com.thatdot.quine.graph.cypher.quinepattern.OutputTarget,
+    injectedContext: Map[Symbol, Pattern.Value] = Map.empty, // Query context bindings to seed into state graph
+    returnColumns: Option[Set[Symbol]] = None, // Columns to include in output (from RETURN clause)
+    outputNameMapping: Map[Symbol, Symbol] = Map.empty, // Maps internal binding IDs to human-readable output names
+  ) extends QuinePatternCommand
+
+  case class QueryUpdate(
+    stateToUpdate: StandingQueryId,
+    from: StandingQueryId,
+    delta: Map[com.thatdot.quine.graph.cypher.quinepattern.QueryContext, Int],
+  ) extends QuinePatternCommand
+
+  case class UnregisterState(queryId: StandingQueryId) extends QuinePatternCommand
+
+  // Sent when a node wakes up - triggers Anchor dispatch (used for thread-safe node wake handling)
+  case class NodeWake(
+    anchorStateId: StandingQueryId,
+    nodeId: com.thatdot.common.quineid.QuineId,
+    namespace: NamespaceId,
+    context: Map[Symbol, Pattern.Value] = Map.empty,
   ) extends QuinePatternCommand
 }
 
@@ -115,151 +107,63 @@ trait QuinePatternQueryBehavior
     with QuineIdOps
     with QuineRefOps
     with StandingQueryBehavior
+    with QueryStateHost
     with LazySafeLogging {
 
   protected def graph: QuinePatternOpsGraph with StandingQueryOpsGraph
 
-  val states: ConcurrentHashMap[StandingQueryId, QuinePatternQueryState] =
-    new ConcurrentHashMap[StandingQueryId, QuinePatternQueryState]()
-
-  /** Creates and sets up the states associated with a given query plan within the specified context.
-    *
-    * @param queryPlan the query plan to create states for, defining the structure and flow of operations
-    * @param sqid      the unique identifier of the standing query within the current context
-    * @return the unique identifier for the parent standing query ID in the context of this plan
-    * @throws QuinePatternUnimplementedException if the query plan contains unimplemented cases
-    */
-  def createQuinePatternQueryStatesFor(queryPlan: LazyQueryPlan, sqid: StandingQueryId): StandingQueryId =
-    queryPlan match {
-      case LazyQueryPlan.Product(plans) =>
-        val newSqid = StandingQueryId.fresh()
-        states.put(newSqid, ProductState(this, sqid, newSqid))
-        plans.foreach(p => createQuinePatternQueryStatesFor(p, newSqid))
-        sqid
-      case LazyQueryPlan.FilterMap(filter, projections, isDistinct, plan) =>
-        val newSqid = StandingQueryId.fresh()
-        states.put(newSqid, FilterState(this, sqid, newSqid, filter, projections, isDistinct))
-        createQuinePatternQueryStatesFor(plan, newSqid)
-      case LazyQueryPlan.Watch(exp) =>
-        val newSqid = StandingQueryId.fresh()
-        states.put(newSqid, WatchState(this, this.properties, sqid, newSqid, exp))
-        newSqid
-      case LazyQueryPlan.WatchEdge(label, direction, plan) =>
-        val newSqid = StandingQueryId.fresh()
-        states.put(
-          newSqid,
-          EdgeState(
-            this,
-            this.edges.toSet,
-            this.graph,
-            sqid,
-            newSqid,
-            label,
-            QuinePatternHelpers.directionToEdgeDirection(direction),
-            plan,
-          ),
-        )
-        newSqid
-      case _: LazyQueryPlan.DoEffect =>
-        throw new QuinePatternUnimplementedException(s"Not yet implemented: $queryPlan")
-      case _: LazyQueryPlan.ReAnchor =>
-        throw new QuinePatternUnimplementedException(s"Not yet implemented: $queryPlan")
-      case _: LazyQueryPlan.Unwind => throw new QuinePatternUnimplementedException(s"Not yet implemented: $queryPlan")
-    }
-
-  def loadLazyQuery(sqid: StandingQueryId, plan: LazyQueryPlan, output: ActorRef): Unit = {
-    val newSqid = StandingQueryId.fresh()
-    states.put(newSqid, SendAcrossEdgeState(this, sqid, newSqid, output))
-    createQuinePatternQueryStatesFor(plan, newSqid)
-    ()
-  }
-
-  def loadQuinePatternLazyQueries(): Unit =
-    graph.quinePatternLazyQueries.foreach { case (sqid, lazyQuery) =>
-      graph.standingQueries(namespace).foreach { sqog =>
-        sqog.runningStandingQuery(sqid).foreach { runningSq =>
-          states.put(sqid, PublishToOutput(this, this.graph, runningSq))
-
-          createQuinePatternQueryStatesFor(lazyQuery.plan, sqid)
-        }
-      }
-    }
-
   def quinePatternQueryBehavior(command: QuinePatternCommand): Unit = command match {
-    case QuinePatternCommand.QuinePatternStop => states.clear()
+    case QuinePatternCommand.LoadQueryPlan(
+          sqid,
+          plan,
+          mode,
+          params,
+          namespace,
+          output,
+          injectedContext,
+          returnColumns,
+          outputNameMapping,
+        ) =>
+      loadQueryPlan(sqid, plan, mode, params, namespace, output, injectedContext, returnColumns, outputNameMapping)
+    case QuinePatternCommand.QueryUpdate(stateToUpdate, from, delta) =>
+      routeNotification(stateToUpdate, from, delta)
+    case QuinePatternCommand.UnregisterState(queryId) =>
+      // SOFT UNREGISTER: We intentionally only remove the state locally without calling
+      // state.cleanup() to propagate UnregisterState to child states on remote nodes.
+      //
+      // Why soft unregister:
+      // - Calling cleanup() would send UnregisterState to all target nodes
+      // - This could wake large subgraphs just to clean up orphaned states
+      // - Orphaned states are harmless: their updates are dropped by routeNotification
+      //   when the parent state no longer exists (see "State not found" case)
+      //
+      // Known issues with this approach:
+      // 1. MEMORY LEAK: AnchorState.cleanup() would unregister NodeWakeHooks, but since
+      //    we don't call it, hooks accumulate in QuinePatternOpsGraph.nodeHooks
+      // 2. ORPHANED STATES: Child states on remote nodes continue to exist until their
+      //    host node sleeps (states are not persisted, so sleep clears them)
+      // 3. WASTED WORK: Orphaned states may continue processing events and sending
+      //    updates that get dropped
+      //
+      // Future work (see QueryStateHost trait docs for full vision):
+      // - Persist states so they survive node sleep/wake
+      // - Implement lazy cleanup: nodes validate state relevance on wake
+      // - Use epoch/generation tracking so stale states self-terminate
+      // - Implement proper partial and total standing query unregistration
+      hostedStates.remove(queryId).foreach { state =>
+        QPMetrics.stateUninstalled(state.mode)
+      }
+    case QuinePatternCommand.QuinePatternStop =>
+      hostedStates.clear()
     case QuinePatternCommand.QuinePatternAck => ()
-    case QuinePatternCommand.LoadLazyPlan(sqid, plan, output) => loadLazyQuery(sqid, plan, output)
-    case QuinePatternCommand.ExecutePlanOnEdges(edgeType, edgeDirection, targetNodePlan, parameters, ctx, output) =>
-      val edgeList = edges.toSet.toList
-      val nodeStreams = edgeList.filter(he => he.edgeType == edgeType && he.direction == edgeDirection).map { he =>
-        QuinePatternInterpreter.interpret(targetNodePlan, QueryTarget.Node(he.other), namespace, parameters, ctx)(graph)
-      }
-      val finalStream = if (nodeStreams.isEmpty) {
-        Source.empty[QueryContext]
-      } else {
-        nodeStreams.reduce((s1, s2) => s1.merge(s2))
-      }
-      output ! finalStream
-      output ! Success("Done")
-    case QuinePatternCommand.AtomicIncrement(propName, by, binding, ctx, output) =>
-      val prop = properties.get(Symbol(propName))
-      val event = prop match {
-        case None => PropertySet(Symbol(propName), PropertyValue(by))
-        case Some(pval) =>
-          pval.deserialized.get match {
-            case QuineValue.Integer(long) => PropertySet(Symbol(propName), PropertyValue(long + by))
-            case other =>
-              throw new QuinePatternUnimplementedException(
-                s"Not yet implemented: increment counter for values like $other",
-              )
-          }
-      }
-      processPropertyEvents(List(event)).onComplete { _ =>
-        val newCtx = ctx + (binding -> QuinePatternHelpers.patternValueToCypherValue(
-          quineValueToPatternValue(properties(Symbol(propName)).deserialized.get),
-        ))
-        output ! newCtx
-        output ! Success("Done")
-      }(ExecutionContext.parasitic)
-    case QuinePatternCommand.LazyQueryUpdate(toNotify, from, ctx) =>
-      val state = states.get(toNotify)
-      state.publish(ctx, from)
-    case QuinePatternCommand.LoadNode(binding, ctx, output) =>
-      val nodeVal = Value.Node(
-        this.qid,
-        this.getLabels().getOrElse(Set.empty),
-        Value.Map(
-          SortedMap.from(this.properties.map(p => p._1 -> CypherAndQuineHelpers.propertyValueToPatternValue(p._2))),
-        ),
-      )
-      val newCtx = ctx + (binding.name -> QuinePatternHelpers.patternValueToCypherValue(nodeVal))
-      output ! newCtx
-      output ! Success("Done")
-    case QuinePatternCommand.SetLabels(labels, ctx, output) =>
-      setLabels(labels).onComplete { _ =>
-        output ! ctx
-        output ! Success("Done")
-      }(ExecutionContext.parasitic)
-    case QuinePatternCommand.SetProperty(_, propertyName, to, ctx, parameters, output) =>
-      val event = QuinePatternExpressionInterpreter.eval(to, graph.idProvider, ctx, parameters) match {
-        case Value.Null =>
-          // remove the property
-          properties.get(propertyName) match {
-            case Some(oldValue) => Some(PropertyRemoved(propertyName, oldValue))
-            case None =>
-              // there already was no property at query.key -- no-op
-              None
-          }
-        case value => Some(PropertySet(propertyName, CypherAndQuineHelpers.patternValueToPropertyValue(value).get))
-      }
-      processPropertyEvents(event.toList).onComplete { _ =>
-        output ! ctx
-        output ! Success("Done")
-      }(ExecutionContext.parasitic)
-    case QuinePatternCommand.SetProperties(props, ctx, output) =>
+    case QuinePatternCommand.SetLabels(labels) =>
+      // Labels are stored in a special property; state notifications happen inside applyPropertyEffect
+      setLabels(labels)
+      ()
+    case QuinePatternCommand.SetProperties(props) =>
       val events = props.flatMap { case (k, v) =>
         v match {
-          case Value.Null =>
+          case Pattern.Value.Null =>
             properties.get(k) match {
               case Some(oldValue) => List(PropertyRemoved(k, oldValue))
               case None => Nil
@@ -267,21 +171,93 @@ trait QuinePatternQueryBehavior
           case value => List(PropertySet(k, CypherAndQuineHelpers.patternValueToPropertyValue(value).get))
         }
       }.toList
-      processPropertyEvents(events).onComplete { _ =>
-        output ! ctx
-        output ! Success("Done")
-      }(ExecutionContext.parasitic)
-    case QuinePatternCommand.CreateEdge(to, direction, label, ctx, output) =>
+      // State notifications happen inside applyPropertyEffect (called by processPropertyEvents)
+      processPropertyEvents(events)
+      ()
+    case QuinePatternCommand.CreateEdge(to, direction, label) =>
       val halfEdge = HalfEdge(label, direction, to)
       val event = EdgeAdded(halfEdge)
-      processEdgeEvent(event).onComplete { _ =>
-        states.values.forEach {
-          case es: EdgeState => if (es.edgeType == label && es.edgeDirection == direction) es.eventState(to) else ()
-          case _ => ()
-        }
-        output ! ctx
-        output ! Success("Done")
-      }(ExecutionContext.parasitic)
+      processEdgeEvent(event)
+      ()
+    case QuinePatternCommand.SetProperty(property, valueExpr, context, params) =>
+      // Evaluate the expression and set the property - context uses Pattern.Value directly
+      val env = QuinePatternExpressionInterpreter.EvalEnvironment(context, params)
+      QuinePatternExpressionInterpreter.eval(valueExpr)(graph.idProvider).run(env) match {
+        case Right(value) =>
+          val events = value match {
+            case Pattern.Value.Null =>
+              properties.get(property) match {
+                case Some(oldValue) => List(PropertyRemoved(property, oldValue))
+                case None => Nil
+              }
+            case v => List(PropertySet(property, CypherAndQuineHelpers.patternValueToPropertyValue(v).get))
+          }
+          processPropertyEvents(events)
+        case Left(err) =>
+          System.err.println(s"[QuinePattern WARNING] Failed to evaluate SetProperty expression: ${err.getMessage}")
+      }
+      ()
     case _ => throw new QuinePatternUnimplementedException(s"Not yet implemented: $command")
   }
+
+  /** Load a query plan on this node.
+    *
+    * This builds the state graph from the plan and installs it,
+    * then kickstarts all leaf states with the current node context.
+    */
+  private def loadQueryPlan(
+    sqid: StandingQueryId,
+    plan: com.thatdot.quine.graph.cypher.quinepattern.QueryPlan,
+    mode: com.thatdot.quine.graph.cypher.quinepattern.RuntimeMode,
+    params: Map[Symbol, Pattern.Value],
+    namespace: NamespaceId,
+    output: com.thatdot.quine.graph.cypher.quinepattern.OutputTarget,
+    injectedContext: Map[Symbol, Pattern.Value],
+    returnColumns: Option[Set[Symbol]],
+    outputNameMapping: Map[Symbol, Symbol],
+  ): Unit =
+    try {
+      // Build the state graph from the plan
+      val stateGraph =
+        QueryStateBuilder.build(
+          plan,
+          mode,
+          params,
+          namespace,
+          output,
+          injectedContext,
+          returnColumns,
+          outputNameMapping,
+        )
+
+      // Create node context with current node state
+      val nodeContext = NodeContext(
+        quineId = Some(qid),
+        properties = properties.toMap,
+        edges = edges.toSet,
+        labels = getLabels().getOrElse(Set.empty),
+        graph = Some(graph),
+        namespace = Some(namespace),
+      )
+
+      // Install the state graph
+      val _ = installStateGraph(stateGraph, DefaultStateInstantiator, nodeContext)
+    } catch {
+      case e: Exception =>
+        System.err.println(s"[QP ERROR] Target node ${qid} failed to load query plan: ${e.getMessage}")
+        e.printStackTrace()
+        // Send empty delta back to origin to avoid deadlock
+        import com.thatdot.quine.graph.cypher.quinepattern.{Delta, OutputTarget}
+        import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
+        output match {
+          case OutputTarget.RemoteState(originNode, stateId, ns, dispatchId) =>
+            val stqid = SpaceTimeQuineId(originNode, ns, None)
+            graph.relayTell(stqid, QuinePatternCommand.QueryUpdate(stateId, dispatchId, Delta.empty))
+          case OutputTarget.HostedState(hostActorRef, stateId, dispatchId) =>
+            hostActorRef ! QuinePatternCommand.QueryUpdate(stateId, dispatchId, Delta.empty)
+          case OutputTarget.EagerCollector(promise) =>
+            val _ = promise.tryFailure(e)
+          case _ => ()
+        }
+    }
 }

@@ -19,9 +19,13 @@ import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 
 import com.thatdot.common.logging.Log.{Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.StandingQueryOpsGraph.StandingQueryPartNotFoundException
-import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
+import com.thatdot.quine.graph.StandingQueryPattern.{
+  DomainGraphNodeStandingQueryPattern,
+  MultipleValuesQueryPattern,
+  QuinePatternQueryPattern,
+}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
-import com.thatdot.quine.graph.cypher.quinepattern.LazyQuinePatternQueryPlanner.LazyQueryPlan
+import com.thatdot.quine.graph.cypher.quinepattern.{QueryPlan, RuntimeMode}
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.model.DomainGraphNodePackage
@@ -39,11 +43,12 @@ trait StandingQueryOpsGraph extends BaseGraph {
     namespaceStandingQueries.get(namespace)
 
   case class RunningQuinePattern(
-    plan: LazyQueryPlan,
+    plan: QueryPlan,
+    mode: RuntimeMode,
     outputs: Map[String, Sink[StandingQueryResult, UniqueKillSwitch]],
   )
 
-  val quinePatternLazyQueries: collection.concurrent.Map[StandingQueryId, RunningQuinePattern] =
+  val quinePatternQueries: collection.concurrent.Map[StandingQueryId, RunningQuinePattern] =
     new ConcurrentHashMap[StandingQueryId, RunningQuinePattern]().asScala
 
   private val namespaceStandingQueries: collection.concurrent.Map[NamespaceId, NamespaceStandingQueries] =
@@ -219,8 +224,8 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
       // if this is a cypher SQ (at runtime), also register its components in the index as appropriate
       pattern match {
-        case StandingQueryPattern.QuinePatternQueryPattern(plan) =>
-          quinePatternLazyQueries.put(sqId, RunningQuinePattern(plan, outputs))
+        case QuinePatternQueryPattern(plan, mode, _, _) =>
+          quinePatternQueries.put(sqId, RunningQuinePattern(plan, mode, outputs))
         case runsAsCypher: StandingQueryPattern.MultipleValuesQueryPattern =>
           val partsToAdd = MultipleValuesStandingQuery
             .indexableSubqueries(runsAsCypher.compiledQuery)

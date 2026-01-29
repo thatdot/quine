@@ -2,137 +2,231 @@ package com.thatdot.quine.graph.cypher.quinepattern
 
 import scala.collection.immutable.SortedMap
 
-import com.thatdot.language.ast.{Expression, Operator, Value}
-import com.thatdot.quine.graph.cypher
-import com.thatdot.quine.graph.cypher.QueryContext
+import cats.data.ReaderT
+import cats.implicits._
+
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.language.ast.{CypherIdentifier, Expression, Operator, QuineIdentifier, Value}
+import com.thatdot.quine.graph.cypher.CypherException
+import com.thatdot.quine.graph.cypher.CypherException.Runtime
 import com.thatdot.quine.model.QuineIdProvider
 
 object QuinePatternExpressionInterpreter {
 
-  def eval(
-    exp: Expression,
+  /** Convert an identifier to the Symbol key used in QueryContext.
+    * After symbol analysis, identifiers should be Right(QuineIdentifier).
+    * The key format matches what QueryPlanner.bindingSymbol produces.
+    * We use the raw integer from symbol analysis directly - no prefix needed.
+    */
+  private def identKey(ident: Either[CypherIdentifier, QuineIdentifier]): Symbol =
+    ident match {
+      case Right(quineId) => Symbol(quineId.name.toString)
+      case Left(cypherIdent) => cypherIdent.name // Fallback for synthetic identifiers
+    }
+
+  /** Evaluation environment using QuinePattern's native QueryContext with Pattern.Value bindings.
+    * This avoids unnecessary conversion between Pattern.Value and Expr.Value.
+    */
+  case class EvalEnvironment(queryContext: QueryContext, parameters: Map[Symbol, Value])
+
+  type ContextualEvaluationResult[A] = ReaderT[Either[CypherException, *], EvalEnvironment, A]
+
+  def fromEnvironment[A](view: EvalEnvironment => A): ContextualEvaluationResult[A] =
+    ReaderT.apply(env => Right(view(env)))
+  def liftF[A](either: Either[Runtime, A]): ContextualEvaluationResult[A] = ReaderT.liftF(either)
+  def error[A](message: String): ContextualEvaluationResult[A] = liftF(Left(Runtime(message)))
+  def pure[A](a: A): ContextualEvaluationResult[A] = ReaderT.pure(a)
+
+  def evalCase(
+    caseBlock: Expression.CaseBlock,
+  )(implicit idProvider: QuineIdProvider): ContextualEvaluationResult[Value] =
+    caseBlock.cases.findM(aCase => eval(aCase.condition).map(_ == Value.True)) >>= {
+      case Some(sc) => eval(sc.value)
+      case None => eval(caseBlock.alternative)
+    }
+
+  def evalIsNull(isNull: Expression.IsNull)(implicit idProvider: QuineIdProvider): ContextualEvaluationResult[Value] =
+    eval(isNull.of) map {
+      case Value.Null => Value.True
+      case _ => Value.False
+    }
+
+  def evalIdLookup(
+    idLookup: Expression.IdLookup,
+  )(implicit @scala.annotation.unused idProvider: QuineIdProvider): ContextualEvaluationResult[Value] =
+    fromEnvironment(env => env.queryContext).map(_.get(identKey(idLookup.nodeIdentifier))) >>= {
+      case Some(value) =>
+        // Value is already Pattern.Value - extract node ID directly
+        value match {
+          case Value.NodeId(qid) => pure(Value.NodeId(qid))
+          case Value.Bytes(bytes) => pure(Value.NodeId(QuineId(bytes)))
+          case Value.Node(id, _, _) => pure(Value.NodeId(id))
+          case other =>
+            liftF(CypherAndQuineHelpers.getNode(other).map(n => Value.NodeId(n.id)))
+        }
+      case None => pure(Value.Null)
+    }
+
+  def evalSynthesizeId(
+    synthesizeId: Expression.SynthesizeId,
+  )(implicit idProvider: QuineIdProvider): ContextualEvaluationResult[Value] =
+    synthesizeId.from.traverse(eval) map { evaledArgs =>
+      val cypherIdValues = evaledArgs.map(QuinePatternHelpers.patternValueToCypherValue)
+      val id = com.thatdot.quine.graph.idFrom(cypherIdValues: _*)(idProvider)
+      Value.NodeId(id)
+    }
+
+  def evalIdentifier(
+    identExp: Expression.Ident,
+  )(implicit @scala.annotation.unused idProvider: QuineIdProvider): ContextualEvaluationResult[Value] =
+    fromEnvironment(_.queryContext) map (_.get(identKey(identExp.identifier))) >>= {
+      case Some(value) => pure(value) // Already Pattern.Value - no conversion needed
+      case None => pure(Value.Null)
+    }
+
+  /** Evaluates a given parameter expression in the current evaluation context.
+    *
+    * NOTE The parser is not currently correctly handling parameters, so this
+    *      will trim off the leading `$` to enable the variable to be found
+    *
+    * @param parameter  the parameter to be evaluated
+    * @param idProvider an implicit provider for handling Quine-specific IDs
+    * @return the evaluation result of the parameter as a contextual value
+    */
+  def evalParameter(parameter: Expression.Parameter): ContextualEvaluationResult[Value] = {
+    val trimName = Symbol(parameter.name.name.substring(1))
+    fromEnvironment(_.parameters) >>= { parameters =>
+      val containsName = parameters.contains(trimName)
+      if (containsName) {
+        pure(parameters(trimName))
+      } else {
+        error[Value](s"Parameter $trimName not found in $parameters")
+      }
+    }
+  }
+
+  def evalFunctionApplication(
+    applyExp: Expression.Apply,
+  )(implicit idProvider: QuineIdProvider): ContextualEvaluationResult[Value] =
+    applyExp.args.traverse(arg => eval(arg)) >>= { evaledArgs =>
+      applyExp.name.name match {
+        // Currently unsure how I want to handle functions with external dependencies
+        // so I'm handling `idFrom` as a special case here
+        case "idFrom" =>
+          val cypherIdValues = evaledArgs.map(QuinePatternHelpers.patternValueToCypherValue)
+          val id = com.thatdot.quine.graph.idFrom(cypherIdValues: _*)(idProvider)
+          pure(Value.NodeId(id))
+        // Handling `strId` as a special case due to its reliance on the idProvider
+        case "strId" =>
+          evaledArgs match {
+            case List(Value.NodeId(id)) => pure(Value.Text(idProvider.qidToPrettyString(id)))
+            case List(Value.Node(id, _, _)) => pure(Value.Text(idProvider.qidToPrettyString(id)))
+            case _ => error[Value]("Unable to interpret the arguments to `strId`")
+          }
+        case otherFunctionName =>
+          QuinePatternFunction.findBuiltIn(otherFunctionName) match {
+            case Some(func) => liftF(func(evaledArgs))
+            case None => error[Value](s"No function named $otherFunctionName found in the QuinePattern library")
+          }
+      }
+    }
+
+  def evalUnaryExp(unaryExp: Expression.UnaryOp)(implicit
     idProvider: QuineIdProvider,
-    qc: QueryContext,
-    parameters: Map[Symbol, cypher.Value],
-  ): Value =
+  ): ContextualEvaluationResult[Value] =
+    //TODO Probably would be nice to convert these to functions
+    unaryExp.op match {
+      case Operator.Minus =>
+        eval(unaryExp.exp) >>= {
+          case Value.Integer(n) => pure(Value.Integer(-n))
+          case Value.Real(d) => pure(Value.Real(-d))
+          case other => error(s"Unexpected expression: $other")
+        }
+      case Operator.Not =>
+        eval(unaryExp.exp) >>= {
+          case Value.True => pure(Value.False)
+          case Value.False => pure(Value.True)
+          case Value.Null => pure(Value.Null)
+          case _ => error(s"Unexpected expression: ${unaryExp.exp}")
+        }
+      case otherOperator => error(s"Unexpected operator: $otherOperator")
+    }
+
+  def eval(exp: Expression)(implicit idProvider: QuineIdProvider): ContextualEvaluationResult[Value] =
     exp match {
-      case Expression.CaseBlock(_, cases, alternative, _) =>
-        cases.find(c => eval(c.condition, idProvider, qc, parameters) == Value.True) match {
-          case Some(sc) => eval(sc.value, idProvider, qc, parameters)
-          case None => eval(alternative, idProvider, qc, parameters)
-        }
-      case Expression.IsNull(_, exp, _) =>
-        eval(exp, idProvider, qc, parameters) match {
-          case Value.Null => Value.True
-          case _ => Value.False
-        }
-      case Expression.IdLookup(_, nodeIdentifier, _) =>
-        qc.get(nodeIdentifier.name) match {
-          case Some(value) =>
-            Value.NodeId(
-              CypherAndQuineHelpers.getNode(CypherAndQuineHelpers.cypherValueToPatternValue(idProvider)(value)).id,
-            )
-          case None => Value.Null
-        }
-      case Expression.SynthesizeId(_, args, _) =>
-        val evaledArgs = args.map(arg => eval(arg, idProvider, qc, parameters))
-        val cypherIdValues = evaledArgs.map(QuinePatternHelpers.patternValueToCypherValue)
-        val id = com.thatdot.quine.graph.idFrom(cypherIdValues: _*)(idProvider)
-        Value.NodeId(id)
-      case Expression.AtomicLiteral(_, value, _) => value
-      case Expression.ListLiteral(_, value, _) =>
-        Value.List(value.map(eval(_, idProvider, qc, parameters)))
-      case Expression.MapLiteral(_, value, _) =>
-        Value.Map(SortedMap(value.map(p => p._1.name -> eval(p._2, idProvider, qc, parameters)).toList: _*))
-      case Expression.Ident(_, identifier, _) =>
-        qc.get(identifier.name) match {
-          case Some(value) => CypherAndQuineHelpers.cypherValueToPatternValue(idProvider)(value)
-          case None => Value.Null
-        }
-      case Expression.Parameter(_, name, _) =>
-        val trimName = Symbol(name.name.substring(1))
-        if (!parameters.contains(trimName))
-          throw new QuinePatternUnimplementedException(s"Parameter $trimName not found in $parameters")
-        CypherAndQuineHelpers.cypherValueToPatternValue(idProvider)(parameters(trimName))
-      case Expression.Apply(_, name, args, _) =>
-        val evaledArgs = args.map(arg => eval(arg, idProvider, qc, parameters))
-        name.name match {
-          // Currently unsure how I want to handle functions with external dependencies
-          // so I'm handling `idFrom` as a special case here
-          case "idFrom" =>
-            val cypherIdValues = evaledArgs.map(QuinePatternHelpers.patternValueToCypherValue)
-            val id = com.thatdot.quine.graph.idFrom(cypherIdValues: _*)(idProvider)
-            Value.NodeId(id)
-          // Handling `strId` as a special case due to it's reliance on the idProvider
-          case "strId" =>
-            evaledArgs match {
-              case List(Value.NodeId(id)) => Value.Text(idProvider.qidToPrettyString(id))
-              case List(Value.Node(id, _, _)) => Value.Text(idProvider.qidToPrettyString(id))
-              case _ => throw new QuinePatternUnimplementedException(s"Unexpected arguments to strId: $evaledArgs")
-            }
-          case otherFunctionName =>
-            QuinePatternFunction.findBuiltIn(otherFunctionName) match {
-              case Some(func) => func(evaledArgs)
-              case None => throw new QuinePatternUnimplementedException(s"Unexpected function call $name")
-            }
-        }
-      case Expression.UnaryOp(_, op, exp, _) =>
-        //TODO Probably would be nice to convert these to functions
-        op match {
-          case Operator.Minus =>
-            eval(exp, idProvider, qc, parameters) match {
-              case Value.Integer(n) => Value.Integer(-n)
-              case Value.Real(d) => Value.Real(-d)
-              case other => throw new QuinePatternUnimplementedException(s"Unexpected expression: $other")
-            }
-          case Operator.Not =>
-            eval(exp, idProvider, qc, parameters) match {
-              case Value.True => Value.False
-              case Value.False => Value.True
-              case Value.Null => Value.Null
-              case _ => throw new QuinePatternUnimplementedException(s"Unexpected expression: $exp")
-            }
-          case otherOperator => throw new QuinePatternUnimplementedException(s"Unexpected operator: $otherOperator")
-        }
-      case Expression.BinOp(_, op, lhs, rhs, _) =>
-        val evaledArgs = List(lhs, rhs).map(arg => eval(arg, idProvider, qc, parameters))
-        op match {
-          case Operator.Plus => AddFunction(evaledArgs)
-          case Operator.Asterisk => MultiplyFunction(evaledArgs)
-          case Operator.Slash => DivideFunction(evaledArgs)
-          case Operator.Equals => CompareEqualityFunction(evaledArgs)
-          case Operator.LessThan => CompareLessThanFunction(evaledArgs)
-          case Operator.GreaterThanEqual => CompareGreaterThanEqualToFunction(evaledArgs)
-          case Operator.And => LogicalAndFunction(evaledArgs)
-          case Operator.Or => LogicalOrFunction(evaledArgs)
-          case Operator.NotEquals => NotEquals(evaledArgs)
-          case Operator.GreaterThan => CompareGreaterThanFunction(evaledArgs)
-          case otherOperator => throw new QuinePatternUnimplementedException(s"Unexpected operator: $otherOperator")
-        }
+      case caseBlock: Expression.CaseBlock => evalCase(caseBlock)
+      case isNull: Expression.IsNull => evalIsNull(isNull)
+      case idLookup: Expression.IdLookup => evalIdLookup(idLookup)
+      case synthesizeId: Expression.SynthesizeId => evalSynthesizeId(synthesizeId)
+      case Expression.AtomicLiteral(_, value, _) => pure(value)
+      case listLiteral: Expression.ListLiteral => listLiteral.value.traverse(eval) map Value.List
+      case mapLiteral: Expression.MapLiteral =>
+        mapLiteral.value.toList
+          .traverse(p => eval(p._2).map(v => p._1 -> v))
+          .map(xs => Value.Map(SortedMap.from(xs)))
+      case identifier: Expression.Ident => evalIdentifier(identifier)
+      case parameterExp: Expression.Parameter => evalParameter(parameterExp)
+      case applyExp: Expression.Apply => evalFunctionApplication(applyExp)
+      case unaryExp: Expression.UnaryOp => evalUnaryExp(unaryExp)
+      case binaryExp: Expression.BinOp =>
+        for {
+          leftArg <- eval(binaryExp.lhs)
+          rightArg <- eval(binaryExp.rhs)
+          args = List(leftArg, rightArg)
+          result <- liftF(binaryExp.op match {
+            case Operator.Plus => AddFunction(args)
+            case Operator.Minus => SubtractFunction(args)
+            case Operator.Asterisk => MultiplyFunction(args)
+            case Operator.Slash => DivideFunction(args)
+            case Operator.Percent => ModuloFunction(args)
+            case Operator.Equals => CompareEqualityFunction(args)
+            case Operator.LessThan => CompareLessThanFunction(args)
+            case Operator.LessThanEqual => CompareLessThanEqualToFunction(args)
+            case Operator.GreaterThanEqual => CompareGreaterThanEqualToFunction(args)
+            case Operator.GreaterThan => CompareGreaterThanFunction(args)
+            case Operator.And => LogicalAndFunction(args)
+            case Operator.Or => LogicalOrFunction(args)
+            case Operator.NotEquals => NotEquals(args)
+            case otherOperator => Left(Runtime(s"Unexpected operator: $otherOperator"))
+          })
+        } yield result
       case Expression.FieldAccess(_, of, fieldName, _) =>
-        val thing = eval(of, idProvider, qc, parameters)
-        thing match {
+        eval(of) >>= {
           case Value.Map(values) =>
-            values.get(fieldName.name) match {
+            pure(values.get(fieldName) match {
               case Some(value) => value
               case None => Value.Null
-            }
+            })
           case Value.Node(_, _, props) =>
-            props.values.get(fieldName.name) match {
-              case Some(value) => value
-              case None => Value.Null
+            // First try the node's properties
+            props.values.get(fieldName) match {
+              case Some(value) => pure(value)
+              case None =>
+                // If not found, check for a captured property binding (e.g., "1.time" for node 1's time property)
+                // This handles the case where LocalProperty captured the value separately
+                of match {
+                  case Expression.Ident(_, ident, _) =>
+                    val capturedKey = Symbol(s"${identKey(ident).name}.${fieldName.name}")
+                    fromEnvironment(_.queryContext.get(capturedKey)) >>= {
+                      case Some(capturedValue) => pure(capturedValue)
+                      case None => pure(Value.Null)
+                    }
+                  case _ => pure(Value.Null)
+                }
             }
-          case Value.Null => Value.Null
-          case _ => throw new QuinePatternUnimplementedException(s"Don't know how to do field access on $thing")
+          case Value.Null => pure(Value.Null)
+          case thing => error(s"Don't know how to do field access on $thing")
         }
       case Expression.IndexIntoArray(_, of, indexExp, _) =>
-        eval(of, idProvider, qc, parameters) match {
+        eval(of) >>= {
           case Value.List(values) =>
-            val index = eval(indexExp, idProvider, qc, parameters).asInstanceOf[Value.Integer]
-            val intIndex = index.n.toInt
-            CypherAndQuineHelpers.maybeGetByIndex(values, intIndex).getOrElse(Value.Null)
-          case Value.Null => Value.Null
-          case other => throw new QuinePatternUnimplementedException(s"Don't know how to index into $other")
+            eval(indexExp) >>= {
+              case Value.Integer(indexValue) =>
+                pure(CypherAndQuineHelpers.maybeGetByIndex(values, indexValue.toInt).getOrElse(Value.Null))
+              case other => error(s"$other is not a valid index expression")
+            }
+          case Value.Null => pure(Value.Null)
+          case other => error(s"Don't know how to index into $other")
         }
     }
 }

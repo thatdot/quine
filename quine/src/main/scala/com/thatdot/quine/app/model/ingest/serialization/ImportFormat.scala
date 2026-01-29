@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.model.ingest.serialization
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.Done
@@ -15,14 +15,15 @@ import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAna
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.cypher.quinepattern.{
-  EagerQuinePatternQueryPlanner,
-  QueryPlan,
-  QueryTarget,
-  QuinePatternInterpreter,
+  CypherAndQuineHelpers,
+  OutputTarget,
+  QueryContext => QPQueryContext,
+  QueryPlanner,
+  RuntimeMode,
 }
-import com.thatdot.quine.graph.cypher.{CompiledQuery, Location, QueryContext}
-import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
-import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
+import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
+import com.thatdot.quine.graph.quinepattern.{LoadQuery, QuinePatternOpsGraph}
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, StandingQueryId, cypher}
 
 /** Describes formats that Quine can import
   * Deserialized type refers to the (nullable) type to be produced by invocations of this [[ImportFormat]]
@@ -140,6 +141,7 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
   *                  deserialized data and writes it to the target namespace in the Quine graph.
   */
 abstract class QuinePatternImportFormat(query: String, parameter: String) extends ImportFormat with LazySafeLogging {
+
   val maybeIsQPEnabled: Option[Boolean] = for {
     pv <- Option(System.getProperty("qp.enabled"))
     b <- pv.toBooleanOption
@@ -155,10 +157,10 @@ abstract class QuinePatternImportFormat(query: String, parameter: String) extend
 
   import com.thatdot.language.phases.UpgradeModule._
 
-  val compiled: QueryPlan = {
+  val planned: QueryPlanner.PlannedQuery = {
     val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
-    val (_, result) = parser.process(query).value.run(LexerState(Nil)).value
-    EagerQuinePatternQueryPlanner.generatePlan(result.get)
+    val (tableState, result) = parser.process(query).value.run(LexerState(Nil)).value
+    QueryPlanner.planWithMetadata(result.get, tableState.symbolTable)
   }
 
   def writeValueToGraph(
@@ -166,17 +168,34 @@ abstract class QuinePatternImportFormat(query: String, parameter: String) extend
     intoNamespace: NamespaceId,
     deserialized: cypher.Value,
   ): Future[Done] = {
+    implicit val ec: ExecutionContext = graph.system.dispatcher
 
     // Typecast is required here because `ImportFormat` is hard coded
     // to existing Quine structures
     val hack = graph.asInstanceOf[QuinePatternOpsGraph]
 
-    QuinePatternInterpreter
-      .interpret(compiled, QueryTarget.None, intoNamespace, Map(Symbol(parameter) -> deserialized), QueryContext.empty)(
-        hack,
-      )
-      .runWith(Sink.ignore)(graph.materializer)
+    val deserializedPatternValue =
+      CypherAndQuineHelpers.cypherValueToPatternValue(graph.idProvider)(deserialized) match {
+        case Left(error) => throw error
+        case Right(value) => value
+      }
 
+    // Create a promise that will be completed when the query finishes
+    val resultPromise = Promise[Seq[QPQueryContext]]()
+
+    hack.getLoader ! LoadQuery(
+      StandingQueryId.fresh(),
+      planned.plan,
+      RuntimeMode.Eager,
+      Map(Symbol(parameter) -> deserializedPatternValue),
+      intoNamespace,
+      OutputTarget.EagerCollector(resultPromise),
+      planned.returnColumns,
+      planned.outputNameMapping,
+    )
+
+    // Convert the promise to Done when complete
+    resultPromise.future.map(_ => Done)
   }
 }
 
@@ -228,7 +247,6 @@ class CypherRawInputFormat(query: String, parameter: String)(implicit val logCon
 
   override def importBytes(arr: Array[Byte]): Try[cypher.Value] =
     Success(cypher.Expr.Bytes(arr, representsId = false))
-
 }
 
 class ProtobufInputFormat(query: String, parameter: String, parser: ProtobufParser)(implicit val logConfig: LogConfig)

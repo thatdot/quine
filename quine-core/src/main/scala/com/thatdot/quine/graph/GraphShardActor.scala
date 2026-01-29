@@ -46,6 +46,7 @@ import com.thatdot.quine.graph.messaging.{
   QuineRefOps,
   SpaceTimeQuineId,
 }
+import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.{ExpiringLruSet, QuineDispatchers}
@@ -374,6 +375,10 @@ final private[quine] class GraphShardActor(
             .withDispatcher(QuineDispatchers.nodeDispatcherName)
           try {
             val actorRef: ActorRef = context.actorOf(props, name = id.toInternalString)
+            if (this.graph.isInstanceOf[QuinePatternOpsGraph]) {
+              val qpog = this.graph.asInstanceOf[QuinePatternOpsGraph]
+              qpog.onNodeCreated(actorRef, id)
+            }
             nodesMap.put(id, NodeState.LiveNode(costToSleep, actorRef, actorRefLock, wakefulState))
             inMemoryActorList.update(id)
             graph.metrics.shardNodesWokenUpCounter(id.namespace, shardName).inc()

@@ -159,6 +159,30 @@ object Expr {
     case LocalTime(t) => QuineValue.LocalTime(t).asRight
     case LocalDateTime(ldt) => QuineValue.LocalDateTime(ldt).asRight
 
+    case Node(id, labels, properties) =>
+      // Convert node to a map with _id, _labels, and properties
+      properties.toList
+        .traverse { case (k, v) => toQuineValue(v).map(k.name -> _) }
+        .map { propsList =>
+          val propsMap = propsList.toMap
+          val labelsValue = QuineValue.List(labels.map(l => QuineValue.Str(l.name)).toVector)
+          QuineValue.Map(propsMap + ("_id" -> QuineValue.Id(id)) + ("_labels" -> labelsValue))
+        }
+
+    case Relationship(start, name, properties, end) =>
+      // Convert relationship to a map with _start, _end, _label, and properties
+      properties.toList
+        .traverse { case (k, v) => toQuineValue(v).map(k.name -> _) }
+        .map { propsList =>
+          val propsMap = propsList.toMap
+          QuineValue.Map(
+            propsMap +
+            ("_start" -> QuineValue.Id(start)) +
+            ("_end" -> QuineValue.Id(end)) +
+            ("_label" -> QuineValue.Str(name.name)),
+          )
+        }
+
     case other => CypherException.TypeMismatch(Seq.empty, other, "converting to a quine value").asLeft
   }
 

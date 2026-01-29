@@ -211,7 +211,7 @@ private[graph] class NodeActor(
       } yield b
 
       maybeIsQPEnabled match {
-        case Some(true) => loadQuinePatternLazyQueries()
+        //case Some(true) => loadQuinePatternLazyQueries()
         case _ => ()
       }
     }

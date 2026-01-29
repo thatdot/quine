@@ -130,7 +130,7 @@ object StandingQueryMessage {
         case _: StandingQueryPattern.MultipleValuesQueryPattern =>
           throw new RuntimeException(s"Received branch result $this for MultipleValues query $sq")
         case _: StandingQueryPattern.QuinePatternQueryPattern =>
-          throw new RuntimeException(s"Received pattern result $this for Quine query $sq")
+          throw new RuntimeException(s"Received pattern result $this for QuinePattern query $sq")
       }
       StandingQueryResult(isPositive, from, formatAsString, aliasedAs)(idProvider) :: Nil
     }
