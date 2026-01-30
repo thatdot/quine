@@ -4,7 +4,6 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
-import scala.collection.concurrent
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
@@ -15,15 +14,10 @@ import org.apache.pekko.util.Timeout
 import org.apache.pekko.{Done, NotUsed}
 
 import cats.implicits._
-import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 
 import com.thatdot.common.logging.Log.{Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.StandingQueryOpsGraph.StandingQueryPartNotFoundException
-import com.thatdot.quine.graph.StandingQueryPattern.{
-  DomainGraphNodeStandingQueryPattern,
-  MultipleValuesQueryPattern,
-  QuinePatternQueryPattern,
-}
+import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, QuinePatternQueryPattern}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.cypher.quinepattern.{QueryPlan, RuntimeMode}
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
@@ -70,68 +64,22 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
   class NamespaceStandingQueries(namespace: NamespaceId) {
 
-    /** Map of all currently live standing queries */
-    private val standingQueries: concurrent.Map[StandingQueryId, RunningStandingQuery] =
-      new ConcurrentHashMap[StandingQueryId, RunningStandingQuery]().asScala
+    /** Consolidated immutable index for standing queries and the MVSQ parts inside them.
+      * Updates to this var atomically update both the queries map and the part index,
+      * ensuring they remain consistent.
+      */
+    @volatile private var index: NamespaceSqIndex = NamespaceSqIndex.empty
 
-    def runningStandingQueries: Map[StandingQueryId, RunningStandingQuery] = standingQueries.toMap
+    def runningStandingQueries: Map[StandingQueryId, RunningStandingQuery] = index.queries
 
     def runningStandingQuery(standingQueryId: StandingQueryId): Option[RunningStandingQuery] =
-      standingQueries.get(standingQueryId)
+      index.queries.get(standingQueryId)
 
     def cancelAllStandingQueries(): Unit = {
-      standingQueries.foreach { case (sqid, _) =>
+      index.queries.keys.foreach { sqid =>
         cancelStandingQuery(sqid, skipPersistor = true)
       }
-      standingQueries.clear()
-    }
-
-    // NB this initialization needs to occur before we restore standing queries,
-    // otherwise a null pointer exception occurs
-    private val standingQueryPartIndex: LoadingCache[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery] = {
-      def loadAll(
-        keys: Iterable[MultipleValuesStandingQueryPartId],
-      ): Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery] = {
-        logger.info(
-          safe"Performing a full update of the standingQueryPartIndex because of query for part IDs ${Safe(keys.toList.toString)}",
-        )
-        val runningSqs = runningStandingQueries.values
-          .map(_.query.queryPattern)
-          .collect { case MultipleValuesQueryPattern(sq, _, _) => sq }
-          .toVector
-        val runningSqParts = runningSqs.toSet
-          .foldLeft(Set.empty[MultipleValuesStandingQuery])((acc, sq) =>
-            MultipleValuesStandingQuery.indexableSubqueries(sq, acc),
-          )
-        val runningSqPartsMap = runningSqParts.groupBy(_.queryPartId).map { case (partId, sqs) =>
-          if (sqs.size > 1)
-            logger.error(
-              log"""While re-indexing MultipleValues Standing Query parts, found multiple queries with
-                   |the same part ID: $partId. This is a bug in MultipleValuesStandingQueryPartId
-                   |generation, and nodes that register multiple of the query parts may cause loss of results.
-                   |Queries are: ${sqs.toList.toString}
-                   |""".cleanLines,
-            )
-          partId -> sqs.last // There is no right choice here, so we just pick one.
-        }
-        val runningPartsKeys = runningSqPartsMap.keySet
-        keys.collectFirst {
-          case partId if !runningPartsKeys.contains(partId) =>
-            logger.warn(safe"Unable to find running Standing Query part: ${Safe(partId.toString)}")
-        }
-        runningSqPartsMap
-      }
-      Scaffeine()
-        .weakValues()
-        .build(
-          loader = (key: MultipleValuesStandingQueryPartId) =>
-            loadAll(Set(key)).getOrElse(
-              key,
-              throw new StandingQueryPartNotFoundException(key),
-            ),
-          allLoader = Some(loadAll),
-        )
-
+      index = NamespaceSqIndex.empty
     }
 
     /** Report a new result for the specified standing query to this host's results queue for that query
@@ -217,73 +165,32 @@ trait StandingQueryOpsGraph extends BaseGraph {
       queueMaxSize: Int,
       shouldCalculateResultHashCode: Boolean,
     ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
-      val sq =
+      val sqInfo =
         StandingQueryInfo(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize, shouldCalculateResultHashCode)
-      val (runningSq, killSwitches) = runStandingQuery(sq, outputs)
-      standingQueries.put(sqId, runningSq)
+      val (runningSq, killSwitches) = runStandingQuery(sqInfo, outputs)
 
-      // if this is a cypher SQ (at runtime), also register its components in the index as appropriate
+      // Atomically update index with the new query and its indexed parts
+      val (nextIndex, collisions) = index.withQuery(sqId, runningSq)
+      index = nextIndex
+
+      // Log any part ID collisions (matching previous behavior)
+      collisions.foreach { case (partId, (existing, newPart)) =>
+        logger.error(
+          safe"""While indexing MultipleValues Standing Query [part] $newPart (Part ID $partId) for standing
+               |query ${Safe(name)} (id $sqId), found that graph has already registered part ID $partId
+               |as a different query [part]: $existing. This is a bug in the
+               |MultipleValuesStandingQueryPartId generation, and nodes that register both queries may
+               |miss results. Ignoring the new query part. Results for ID $partId will continue to go to
+               |already-registered part $existing
+               |""".cleanLines,
+        )
+      }
+
+      // Handle QuinePattern queries separately (they use a different collection)
       pattern match {
         case QuinePatternQueryPattern(plan, mode, _, _) =>
           quinePatternQueries.put(sqId, RunningQuinePattern(plan, mode, outputs))
-        case runsAsCypher: StandingQueryPattern.MultipleValuesQueryPattern =>
-          val partsToAdd = MultipleValuesStandingQuery
-            .indexableSubqueries(runsAsCypher.compiledQuery)
-            .map(sq => sq.queryPartId -> sq)
-            .foldLeft(Map.empty[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery]) {
-              case (newPartsAcc, (partId, newPart)) =>
-                // The part already registered with the graph for this PartId
-                val previouslyRegisteredPart = standingQueryPartIndex.getIfPresent(partId)
-                // The part already registered within this `startStandingQuery` for this PartId
-                val alreadyInBatchPart = newPartsAcc.get(partId)
-
-                // Decide what to do with the new part -- register it if it's a new part, log an error and ignore
-                // it if it conflicts with another part, or ignore it if we've already registered the part
-                val newPartRegistration =
-                  if (previouslyRegisteredPart.exists(_ != newPart)) {
-                    // conflict with already-registered part
-                    logger.error(
-                      safe"""While indexing MultipleValues Standing Query [part] $newPart (Part ID $partId) for standing
-                           |query ${Safe(name)} (id $sqId), found that graph has already registered part ID $partId
-                           |as a different query [part]: ${previouslyRegisteredPart.get}. This is a bug in the
-                           |MultipleValuesStandingQueryPartId generation, and nodes that register both queries may
-                           |miss results. Ignoring the new query part. Results for ID $partId will continue to go to
-                           |already-registered part ${previouslyRegisteredPart.get}
-                           |""".cleanLines,
-                    )
-                    None
-                  } else if (alreadyInBatchPart.exists(_ != newPart)) {
-                    // conflict within registration batch
-                    logger.error(
-                      safe"""While indexing MultipleValues Standing Query [part] $newPart (Part ID $partId) for standing
-                           |query ${Safe(name)} (id $sqId), found that the query also defines another part with the same
-                           |ID: ${previouslyRegisteredPart.get}. This is a bug in the MultipleValuesStandingQueryPartId
-                           |generation, and nodes that register both queries may miss results. Ignoring the new query
-                           |part. Results for ID $partId will go to first-seen part ${previouslyRegisteredPart.get}
-                           |""".cleanLines,
-                    )
-                    None
-                  } else if (alreadyInBatchPart.contains(newPart) || previouslyRegisteredPart.contains(newPart)) {
-                    // already registered, no benefit to re-registering
-                    logger.debug(
-                      safe"While registering $newPart as $partId, found that it was already registered. Skipping.",
-                    )
-                    None
-                  } else {
-                    // not yet registered
-                    logger.trace(
-                      safe"Registering MVSQ part $newPart as $partId",
-                    )
-                    Some(partId -> newPart)
-                  }
-
-                newPartsAcc ++ newPartRegistration
-            }
-
-          standingQueryPartIndex.putAll(
-            partsToAdd,
-          )
-        case _: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
+        case _ =>
       }
 
       (runningSq, killSwitches)
@@ -301,8 +208,12 @@ trait StandingQueryOpsGraph extends BaseGraph {
       skipPersistor: Boolean = false,
     ): Option[Future[(StandingQueryInfo, Instant, Int)]] = {
       requireCompatibleNodeType()
-      // Removing from the `standingQueries` map is the authoritative decision. Absence == cancellation.
-      standingQueries.remove(standingQueryId).map { (sq: RunningStandingQuery) =>
+      // Get the query before removing, then atomically update the index
+      val currentIndex = index
+      currentIndex.queries.get(standingQueryId).map { (sq: RunningStandingQuery) =>
+        // Atomically remove the query and rebuild the part index
+        index = currentIndex.withoutQuery(standingQueryId)
+
         val persistence = (
           if (skipPersistor) Future.unit
           else namespacePersistor(namespace).map(_.removeStandingQuery(sq.query)).getOrElse(Future.unit)
@@ -368,21 +279,13 @@ trait StandingQueryOpsGraph extends BaseGraph {
       }
     }
 
-    // TODO switch this to a value-driven error handler
     @throws[StandingQueryPartNotFoundException]("When a MultipleValuesStandingQueryPartId is not known to this graph")
     def getStandingQueryPart(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
-      try standingQueryPartIndex.get(queryPartId)
-      catch {
-        case e: StandingQueryPartNotFoundException => throw e
-        case e: IllegalArgumentException =>
-          // thrown by scaffeine when it detects infinite loops
-          throw new StandingQueryPartNotFoundException(
-            s"Looking up standing query part for ID: $queryPartId caused an infinite loop. Short-circuiting.",
-            e,
-          )
-        case e: RuntimeException =>
-          throw new StandingQueryPartNotFoundException(queryPartId, e)
-      }
+      index
+        .getQueryPart(queryPartId)
+        .getOrElse(
+          throw new StandingQueryPartNotFoundException(queryPartId),
+        )
 
     private def runStandingQuery(
       sq: StandingQueryInfo,

@@ -76,8 +76,17 @@ trait MultipleValuesStandingQueryBehavior
     val runningStandingQueries = // Silently empty if namespace is absent.
       graph.standingQueries(namespace).fold(Map.empty[StandingQueryId, RunningStandingQuery])(_.runningStandingQueries)
 
-    // Remove SQs from this node if they are no longer running in the graph (updates in place)
-    val _ = multipleValuesStandingQueries.filterInPlace { case ((sqId, _), _) => runningStandingQueries.contains(sqId) }
+    val removeParts = multipleValuesStandingQueries.filter { case ((sqId, _), _) =>
+      !runningStandingQueries.contains(sqId)
+    }
+
+    removeParts.foreach { case (sqIdTuple, (_, sqState)) =>
+      multipleValuesStandingQueries.remove(sqIdTuple)
+      sqState.relevantEventTypes(graph.labelsProperty).foreach { (eventType: WatchableEventType) =>
+        watchableEventIndex.unregisterStandingQuery(EventSubscriber(sqIdTuple), eventType)
+      }
+    }
+
     multipleValuesResultReporters = multipleValuesResultReporters.filter { case (sqId, _) =>
       runningStandingQueries.contains(sqId)
     }
