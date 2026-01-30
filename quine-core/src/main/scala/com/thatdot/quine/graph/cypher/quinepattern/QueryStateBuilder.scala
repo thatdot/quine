@@ -50,14 +50,17 @@ object StateDescriptor {
     def plan: QueryPlan = QueryPlan.Unit // Placeholder
   }
 
-  /** State for LocalId operator */
+  /** State for LocalId operator.
+    *
+    * Binds the node's ID and labels to the given symbol. Properties are NOT included -
+    * use WatchAllProperties for all properties, or WatchProperty for individual properties.
+    */
   case class WatchId(
     id: StandingQueryId,
     parentId: StandingQueryId,
     mode: RuntimeMode,
     plan: QueryPlan.LocalId,
     binding: Symbol,
-    extractProperties: Set[Symbol], // Only these properties are included in the Node value
   ) extends StateDescriptor
 
   /** State for LocalProperty operator */
@@ -88,6 +91,19 @@ object StateDescriptor {
     plan: QueryPlan.LocalLabels,
     aliasAs: Option[Symbol],
     constraint: LabelConstraint,
+  ) extends StateDescriptor
+
+  /** State for LocalNode operator.
+    *
+    * Emits a complete Value.Node with id, labels, and properties.
+    * The labelsProperty is filtered from properties since labels are provided separately.
+    */
+  case class WatchNode(
+    id: StandingQueryId,
+    parentId: StandingQueryId,
+    mode: RuntimeMode,
+    plan: QueryPlan.LocalNode,
+    binding: Symbol,
   ) extends StateDescriptor
 
   /** State for Unit operator */
@@ -422,9 +438,9 @@ object QueryStateBuilder {
 
       // === LEAF OPERATORS ===
 
-      case p @ QueryPlan.LocalId(binding, extractProperties) =>
+      case p @ QueryPlan.LocalId(binding) =>
         val id = StandingQueryId.fresh()
-        val desc = StateDescriptor.WatchId(id, parentId, mode, p, binding, extractProperties)
+        val desc = StateDescriptor.WatchId(id, parentId, mode, p, binding)
         (ctx.addState(desc, isLeaf = true), id)
 
       case p @ QueryPlan.LocalProperty(property, aliasAs, constraint) =>
@@ -440,6 +456,11 @@ object QueryStateBuilder {
       case p @ QueryPlan.LocalLabels(aliasAs, constraint) =>
         val id = StandingQueryId.fresh()
         val desc = StateDescriptor.WatchLabels(id, parentId, mode, p, aliasAs, constraint)
+        (ctx.addState(desc, isLeaf = true), id)
+
+      case p @ QueryPlan.LocalNode(binding) =>
+        val id = StandingQueryId.fresh()
+        val desc = StateDescriptor.WatchNode(id, parentId, mode, p, binding)
         (ctx.addState(desc, isLeaf = true), id)
 
       case QueryPlan.Unit =>

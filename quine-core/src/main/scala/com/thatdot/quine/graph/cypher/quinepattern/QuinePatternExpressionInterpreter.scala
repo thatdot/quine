@@ -80,7 +80,7 @@ object QuinePatternExpressionInterpreter {
     identExp: Expression.Ident,
   )(implicit @scala.annotation.unused idProvider: QuineIdProvider): ContextualEvaluationResult[Value] =
     fromEnvironment(_.queryContext) map (_.get(identKey(identExp.identifier))) >>= {
-      case Some(value) => pure(value) // Already Pattern.Value - no conversion needed
+      case Some(value) => pure(value)
       case None => pure(Value.Null)
     }
 
@@ -213,6 +213,18 @@ object QuinePatternExpressionInterpreter {
                     }
                   case _ => pure(Value.Null)
                 }
+            }
+          case Value.NodeId(_) =>
+            // NodeId has no properties - go directly to captured binding lookup
+            // Properties for node bindings are pre-computed by LocalProperty and stored in the context
+            of match {
+              case Expression.Ident(_, ident, _) =>
+                val capturedKey = Symbol(s"${identKey(ident).name}.${fieldName.name}")
+                fromEnvironment(_.queryContext.get(capturedKey)) >>= {
+                  case Some(capturedValue) => pure(capturedValue)
+                  case None => pure(Value.Null)
+                }
+              case _ => pure(Value.Null)
             }
           case Value.Null => pure(Value.Null)
           case thing => error(s"Don't know how to do field access on $thing")

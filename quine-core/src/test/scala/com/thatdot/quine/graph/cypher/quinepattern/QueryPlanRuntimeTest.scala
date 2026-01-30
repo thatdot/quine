@@ -36,9 +36,9 @@ import com.thatdot.quine.graph.{
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
-/** Runtime tests for QP v2 interpreter.
+/** Runtime tests for QuinePattern interpreter.
   *
-  * These tests verify that the QP v2 state machine correctly executes query plans
+  * These tests verify that the QuinePattern state machine correctly executes query plans
   * on real graphs, testing both lazy (standing query) and eager (one-shot) modes.
   */
 class QueryPlanRuntimeTest
@@ -77,7 +77,7 @@ class QueryPlanRuntimeTest
   // EAGER MODE TESTS - One-shot queries that complete
   // ============================================================
 
-  "QP v2 Eager Mode" should "execute a simple LocalId query and return results" in {
+  "QuinePattern Eager Mode" should "execute a simple LocalId query and return results" in {
     val graph = makeGraph("eager-localid-test")
     while (!graph.isReady) Thread.sleep(10)
 
@@ -97,7 +97,7 @@ class QueryPlanRuntimeTest
       // Create a simple query plan: Anchor(nodeId) -> LocalId(n)
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n"), Set(Symbol("name"))),
+        LocalId(Symbol("n")),
       )
 
       // Execute in eager mode
@@ -123,8 +123,8 @@ class QueryPlanRuntimeTest
 
       // Verify we got a Node value with the expected structure
       val nodeValue = ctx.bindings(Symbol("n"))
-      nodeValue shouldBe a[Value.Node]
-      val node = nodeValue.asInstanceOf[Value.Node]
+      nodeValue shouldBe a[Value.NodeId]
+      val node = nodeValue.asInstanceOf[Value.NodeId]
       node.id shouldEqual nodeId
 
     } finally Await.result(graph.shutdown(), 5.seconds)
@@ -153,10 +153,10 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("bId")),
         Sequence(
-          LocalId(Symbol("b"), Set(Symbol("y"))),
+          LocalId(Symbol("b")),
           Anchor(
             AnchorTarget.Computed(param("aId")),
-            LocalId(Symbol("a"), Set(Symbol("x"))),
+            LocalId(Symbol("a")),
           ),
           ContextFlow.Extend,
         ),
@@ -187,8 +187,8 @@ class QueryPlanRuntimeTest
       ctx.bindings should contain key Symbol("b")
 
       // Verify both nodes are present
-      ctx.bindings(Symbol("a")) shouldBe a[Value.Node]
-      ctx.bindings(Symbol("b")) shouldBe a[Value.Node]
+      ctx.bindings(Symbol("a")) shouldBe a[Value.NodeId]
+      ctx.bindings(Symbol("b")) shouldBe a[Value.NodeId]
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -205,7 +205,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalId(Symbol("n"), Set.empty),
+          LocalId(Symbol("n")),
           Filter(
             Expression.AtomicLiteral(noSource, Value.False, None),
             Unit,
@@ -240,7 +240,7 @@ class QueryPlanRuntimeTest
   // LAZY MODE TESTS - Standing queries
   // ============================================================
 
-  "QP v2 Lazy Mode" should "set up a standing query without errors" in {
+  "QuinePattern Lazy Mode" should "set up a standing query without errors" in {
     val graph = makeGraph("lazy-setup-test")
     while (!graph.isReady) Thread.sleep(10)
 
@@ -250,7 +250,7 @@ class QueryPlanRuntimeTest
       // Query plan for lazy mode
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n"), Set(Symbol("name"))),
+        LocalId(Symbol("n")),
       )
 
       val sqId = StandingQueryId.fresh()
@@ -280,7 +280,7 @@ class QueryPlanRuntimeTest
   // INVARIANT TESTS - Verify runtime guarantees
   // ============================================================
 
-  "QP v2 Runtime Invariants" should "complete eager queries even when filter eliminates all results" in {
+  "QuinePattern Runtime Invariants" should "complete eager queries even when filter eliminates all results" in {
     val graph = makeGraph("invariant-completion-test")
     while (!graph.isReady) Thread.sleep(10)
 
@@ -297,7 +297,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalId(Symbol("n"), Set.empty),
+          LocalId(Symbol("n")),
           Filter(
             Expression.AtomicLiteral(noSource, Value.False, None),
             Unit,
@@ -350,10 +350,10 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("aId")),
         Sequence(
-          LocalId(Symbol("a"), Set(Symbol("value"))),
+          LocalId(Symbol("a")),
           Anchor(
             AnchorTarget.Computed(param("bId")),
-            LocalId(Symbol("b"), Set(Symbol("value"))),
+            LocalId(Symbol("b")),
           ),
           ContextFlow.Extend,
         ),
@@ -403,7 +403,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalId(Symbol("n"), Set(Symbol("x"))),
+          LocalId(Symbol("n")),
           Project(
             List(
               Projection(
@@ -446,7 +446,7 @@ class QueryPlanRuntimeTest
   // INCREMENTAL MATCHING TESTS - Lazy mode reactive behavior
   // ============================================================
 
-  "QP v2 Incremental Matching" should "emit result when graph mutation creates matching pattern" in {
+  "QuinePattern Incremental Matching" should "emit result when graph mutation creates matching pattern" in {
     val graph = makeGraph("incremental-match-test")
     while (!graph.isReady) Thread.sleep(10)
 
@@ -707,7 +707,7 @@ class QueryPlanRuntimeTest
   // STANDING QUERY SINK INTEGRATION TESTS
   // ============================================================
 
-  "QP v2 StandingQuerySink" should "deliver results to a registered standing query" in {
+  "QuinePattern StandingQuerySink" should "deliver results to a registered standing query" in {
     val graph = makeGraph("sq-sink-test")
     while (!graph.isReady) Thread.sleep(10)
 
@@ -722,7 +722,7 @@ class QueryPlanRuntimeTest
       // Create a simple query plan for the pattern
       val patternPlan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n"), Set(Symbol("name"))),
+        LocalId(Symbol("n")),
       )
 
       // Register a minimal standing query using the V2 pattern
@@ -768,10 +768,10 @@ class QueryPlanRuntimeTest
       // Create a simple query plan that will produce a result
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n"), Set(Symbol("name"))),
+        LocalId(Symbol("n")),
       )
 
-      // Load the QP v2 query with StandingQuerySink target
+      // Load the QuinePattern query with StandingQuerySink target
       val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
       loader ! QuinePatternCommand.LoadQueryPlan(
         sqid = sqId,
@@ -810,7 +810,7 @@ class QueryPlanRuntimeTest
       // Create query plan
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n"), Set(Symbol("name"))),
+        LocalId(Symbol("n")),
       )
 
       // Load with StandingQuerySink targeting an unregistered sqId
@@ -838,7 +838,7 @@ class QueryPlanRuntimeTest
   // RETRACTION TESTS - Verify isPositiveMatch=false flows through StandingQuerySink
   // ============================================================
 
-  "QP v2 StandingQuerySink Retractions" should "emit retraction with isPositiveMatch=false when property is removed" in {
+  "QuinePattern StandingQuerySink Retractions" should "emit retraction with isPositiveMatch=false when property is removed" in {
     val graph = makeGraph("sq-sink-retraction-property-removal")
     while (!graph.isReady) Thread.sleep(10)
 
@@ -1319,7 +1319,7 @@ class QueryPlanRuntimeTest
   // VALUE.NODE DISPATCH TESTS - Tests for Anchor handling of Node values
   // ============================================================
 
-  "QP v2 Value.Node Dispatch" should "dispatch correctly when anchor target evaluates to Value.Node" in {
+  "QuinePattern Value.Node Dispatch" should "dispatch correctly when anchor target evaluates to Value.Node" in {
     val graph = makeGraph("node-value-dispatch-test")
     while (!graph.isReady) Thread.sleep(10)
 
@@ -1343,13 +1343,13 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeIdA")),
         Sequence(
-          LocalId(Symbol("a"), Set(Symbol("name"))), // This produces Value.Node(nodeIdA, ...)
+          LocalId(Symbol("a")), // This produces Value.Node(nodeIdA, ...)
           Anchor(
             // This evaluates `a` which is a Value.Node - needs the fix to work
             AnchorTarget.Computed(
               Expression.Ident(noSource, Left(com.thatdot.language.ast.CypherIdentifier(Symbol("a"))), None),
             ),
-            LocalId(Symbol("b"), Set(Symbol("name"))),
+            LocalId(Symbol("b")),
           ),
           ContextFlow.Extend,
         ),
@@ -1379,8 +1379,8 @@ class QueryPlanRuntimeTest
       ctx.bindings should contain key Symbol("b")
 
       // Both should be the same node (dispatching to self via Node value)
-      val nodeA = ctx.bindings(Symbol("a")).asInstanceOf[Value.Node]
-      val nodeB = ctx.bindings(Symbol("b")).asInstanceOf[Value.Node]
+      val nodeA = ctx.bindings(Symbol("a")).asInstanceOf[Value.NodeId]
+      val nodeB = ctx.bindings(Symbol("b")).asInstanceOf[Value.NodeId]
       nodeA.id shouldEqual nodeIdA
       nodeB.id shouldEqual nodeIdA // Second anchor dispatched to same node
 
@@ -1410,10 +1410,10 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeIdA")),
         Sequence(
-          LocalId(Symbol("a"), Set(Symbol("value"))), // Produces Value.Node
+          LocalId(Symbol("a")), // Produces Value.Node
           Anchor(
             AnchorTarget.Computed(param("nodeIdB")),
-            LocalId(Symbol("b"), Set(Symbol("value"))),
+            LocalId(Symbol("b")),
           ),
           ContextFlow.Extend, // a should be in context for second anchor
         ),
@@ -1444,8 +1444,8 @@ class QueryPlanRuntimeTest
       ctx.bindings should contain key Symbol("b")
 
       // Verify both nodes are correctly bound
-      val nodeA = ctx.bindings(Symbol("a")).asInstanceOf[Value.Node]
-      val nodeB = ctx.bindings(Symbol("b")).asInstanceOf[Value.Node]
+      val nodeA = ctx.bindings(Symbol("a")).asInstanceOf[Value.NodeId]
+      val nodeB = ctx.bindings(Symbol("b")).asInstanceOf[Value.NodeId]
       nodeA.id shouldEqual nodeIdA
       nodeB.id shouldEqual nodeIdB
 
@@ -1474,7 +1474,7 @@ class QueryPlanRuntimeTest
       // Query plan: Parameter $nodes (list of Node values) -> dispatch to each
       val plan = Anchor(
         AnchorTarget.Computed(param("nodes")),
-        LocalId(Symbol("n"), Set(Symbol("x"))),
+        LocalId(Symbol("n")),
       )
 
       val resultPromise = Promise[Seq[QueryContext]]()
@@ -1505,7 +1505,7 @@ class QueryPlanRuntimeTest
 
       // Should get results from both nodes
       results should have size 2
-      val nodeIds = results.map(_.bindings(Symbol("n")).asInstanceOf[Value.Node].id).toSet
+      val nodeIds = results.map(_.bindings(Symbol("n")).asInstanceOf[Value.NodeId].id).toSet
       nodeIds should contain(nodeIdA)
       nodeIds should contain(nodeIdB)
 
@@ -1516,7 +1516,7 @@ class QueryPlanRuntimeTest
   // VALUE.NODE EDGE CREATION TESTS - Tests for CreateHalfEdge handling of Node values
   // ============================================================
 
-  "QP v2 CreateHalfEdge with Value.Node" should "create edge when target evaluates to Value.Node" in {
+  "QuinePattern CreateHalfEdge with Value.Node" should "create edge when target evaluates to Value.Node" in {
     val graph = makeGraph("create-edge-value-node-test")
     while (!graph.isReady) Thread.sleep(10)
 
@@ -1546,7 +1546,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("childId")),
         Sequence(
-          LocalId(Symbol("c"), Set(Symbol("name"))),
+          LocalId(Symbol("c")),
           LocalEffect(
             // Create an edge TO the parent - the target expression evaluates to Value.Node
             effects = List(
@@ -1645,11 +1645,11 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("parentId")),
         Sequence(
-          LocalId(Symbol("p"), Set(Symbol("name"))), // Puts Value.Node in context as `p`
+          LocalId(Symbol("p")), // Puts Value.Node in context as `p`
           Anchor(
             AnchorTarget.Computed(param("childId")),
             Sequence(
-              LocalId(Symbol("c"), Set(Symbol("name"))),
+              LocalId(Symbol("c")),
               LocalEffect(
                 effects = List(
                   LocalQueryEffect.CreateHalfEdge(
@@ -1721,7 +1721,7 @@ class QueryPlanRuntimeTest
   // MOVIE DATA INGEST-1 PATTERN TESTS - UNWIND with Multi-Anchor
   // ============================================================
 
-  "QP v2 Movie Data INGEST-1" should "execute UNWIND pattern with idFrom anchors and create edges" in {
+  "QuinePattern Movie Data INGEST-1" should "execute UNWIND pattern with idFrom anchors and create edges" in {
     // This test uses PARSED CYPHER with idFrom - matching the actual recipe pattern
     val graph = makeGraph("movie-genre-unwind-test")
     while (!graph.isReady) Thread.sleep(10)
@@ -1857,11 +1857,11 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("movieId")),
         Sequence(
-          LocalId(Symbol("m"), Set.empty),
+          LocalId(Symbol("m")),
           Unwind(
             list = param("items"),
             binding = Symbol("item"),
-            subquery = LocalId(Symbol("item"), Set.empty),
+            subquery = LocalId(Symbol("item")),
           ),
           ContextFlow.Extend,
         ),
@@ -1906,7 +1906,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalId(Symbol("n"), Set.empty),
+          LocalId(Symbol("n")),
           Unwind(
             list = param("items"),
             binding = Symbol("item"),
@@ -1915,7 +1915,7 @@ class QueryPlanRuntimeTest
                 Expression.Ident(noSource, Left(com.thatdot.language.ast.CypherIdentifier(Symbol("item"))), None),
               ),
               Sequence(
-                LocalId(Symbol("target"), Set.empty),
+                LocalId(Symbol("target")),
                 LocalEffect(
                   effects = List(
                     LocalQueryEffect.CreateHalfEdge(
@@ -1976,7 +1976,7 @@ class QueryPlanRuntimeTest
   // EDGE CREATION TESTS - Verify edges are actually created
   // ============================================================
 
-  "QP v2 Edge Creation" should "create a simple edge between two nodes in Eager mode" in {
+  "QuinePattern Edge Creation" should "create a simple edge between two nodes in Eager mode" in {
     import com.thatdot.quine.model.EdgeDirection
 
     val graph = makeGraph("edge-creation-simple")
@@ -2365,7 +2365,7 @@ class QueryPlanRuntimeTest
     QueryPlanner.planWithMetadata(parsedQuery, symbolTable)
   }
 
-  "QP v2 End-to-End Edge Creation" should "create edges via parsed Cypher (INGEST-3 pattern)" in {
+  "QuinePattern End-to-End Edge Creation" should "create edges via parsed Cypher (INGEST-3 pattern)" in {
     // This test replicates the actual movie data INGEST-3 pattern:
     // MATCH (p), (m), (r)
     // WHERE id(p) = idFrom("Person", $tmdbId)
@@ -4228,29 +4228,7 @@ class QueryPlanRuntimeTest
       // Query: MATCH (m:Movie)-[:ACTED_IN]->(p:Person) RETURN id(m), p.name
       // Should return 5 results total, not 15 (1+2+3+4+5)
 
-      val collector = new LazyResultCollector()
-      val sqId = StandingQueryId.fresh()
-      val outputTarget = OutputTarget.LazyCollector(collector)
-
-      // Simple expand pattern: Movie -> Person via ACTED_IN
-      val sqQuery = """
-        MATCH (m:Movie)-[:ACTED_IN]->(p:Person)
-        RETURN id(m) as movieId, p.name as personName
-      """
-      val sqPlan = parseAndPlan(sqQuery)
-
-      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
-      loader ! QuinePatternCommand.LoadQueryPlan(
-        sqid = sqId,
-        plan = sqPlan,
-        mode = RuntimeMode.Lazy,
-        params = Map.empty,
-        namespace = namespace,
-        output = outputTarget,
-      )
-
-      Thread.sleep(500)
-
+      // Create ALL data FIRST before standing query
       // Create Movie node
       {
         val createMovie = """
@@ -4293,10 +4271,32 @@ class QueryPlanRuntimeTest
           output = OutputTarget.EagerCollector(createPromise),
         )
         Await.result(createPromise.future, 10.seconds)
-        Thread.sleep(100) // Small delay between edges to ensure sequential processing
       }
 
-      Thread.sleep(2000)
+      Thread.sleep(500) // Let data settle
+
+      val collector = new LazyResultCollector()
+      val sqId = StandingQueryId.fresh()
+      val outputTarget = OutputTarget.LazyCollector(collector)
+
+      // Simple expand pattern: Movie -> Person via ACTED_IN
+      val sqQuery = """
+        MATCH (m:Movie)-[:ACTED_IN]->(p:Person)
+        RETURN id(m) as movieId, p.name as personName
+      """
+      val sqPlan = parseAndPlan(sqQuery)
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = sqId,
+        plan = sqPlan,
+        mode = RuntimeMode.Lazy,
+        params = Map.empty,
+        namespace = namespace,
+        output = outputTarget,
+      )
+
+      Thread.sleep(2000) // Give standing query time to evaluate
 
       // Should have exactly 5 matches, not 15
       collector.positiveCount shouldBe 5
@@ -4366,7 +4366,7 @@ class QueryPlanRuntimeTest
       case Expand(_, _, onNeighbor) =>
         prettyPrintPlan(onNeighbor, indent + 1)
 
-      case LocalId(_, _) =>
+      case LocalId(_) =>
 
       case LocalProperty(_, _, _) =>
 
@@ -5189,6 +5189,137 @@ class QueryPlanRuntimeTest
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
 
+  it should "return node properties when RETURN references a bare node binding" in {
+    // Simplest test case: node exists with properties, MATCH and RETURN it
+    val graph = makeGraph("return-bare-node-props")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      def computeIdFrom(parts: String*): QuineId = {
+        val cypherValues = parts.map(s => com.thatdot.quine.graph.cypher.Expr.Str(s))
+        com.thatdot.quine.graph.idFrom(cypherValues: _*)(qidProvider)
+      }
+
+      val nodeId = computeIdFrom("test", "bare-node-1")
+
+      // Create the node with properties BEFORE running the query
+      Await.result(graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Alice")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeId, "age", QuineValue.Integer(30L)), 5.seconds)
+
+      // Simplest query: just MATCH and RETURN
+      val query = """
+        MATCH (a) WHERE id(a) = idFrom("test", "bare-node-1")
+        RETURN a
+      """
+
+      val planned = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = planned.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = planned.returnColumns,
+        outputNameMapping = planned.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      results should have size 1
+      val ctx = results.head
+
+      // The binding should be named "a" from the RETURN clause
+      ctx.bindings.keys.map(_.name).toSet should contain("a")
+
+      // CRITICAL: The value for "a" should include the node's properties
+      val aValue = ctx.bindings(Symbol("a"))
+
+      aValue match {
+        case Value.Node(id, _, props) =>
+          id shouldEqual nodeId
+          props.values.get(Symbol("name")) shouldBe Some(Value.Text("Alice"))
+          props.values.get(Symbol("age")) shouldBe Some(Value.Integer(30))
+        case Value.Map(values) =>
+          values.get(Symbol("name")) shouldBe Some(Value.Text("Alice"))
+          values.get(Symbol("age")) shouldBe Some(Value.Integer(30))
+        case other =>
+          fail(s"Expected Node or Map with properties, but got: $other")
+      }
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return updated properties after SET in the same query" in {
+    // Test that MATCH (n) SET n.prop = value RETURN n returns the newly set property
+    // This tests that EffectState updates the context after applying SET
+    val graph = makeGraph("set-then-return")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      def computeIdFrom(parts: String*): QuineId = {
+        val cypherValues = parts.map(s => com.thatdot.quine.graph.cypher.Expr.Str(s))
+        com.thatdot.quine.graph.idFrom(cypherValues: _*)(qidProvider)
+      }
+
+      val nodeId = computeIdFrom("test", "set-return-1")
+
+      // Create the node with an initial property
+      Await.result(graph.literalOps(namespace).setProp(nodeId, "existingProp", QuineValue.Str("original")), 5.seconds)
+
+      // Query that SETs a NEW property and RETURNs the node
+      val query = """
+        MATCH (n) WHERE id(n) = idFrom("test", "set-return-1")
+        SET n.newProp = "newly set value"
+        RETURN n
+      """
+
+      val planned = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = planned.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = planned.returnColumns,
+        outputNameMapping = planned.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      results should have size 1
+      val ctx = results.head
+
+      // The binding should be named "n" from the RETURN clause
+      ctx.bindings.keys.map(_.name).toSet should contain("n")
+
+      // The value for "n" should include BOTH the existing property AND the newly set one
+      val nValue = ctx.bindings(Symbol("n"))
+
+      nValue match {
+        case Value.Node(id, _, props) =>
+          id shouldEqual nodeId
+          // Should have the existing property
+          props.values.get(Symbol("existingProp")) shouldBe Some(Value.Text("original"))
+          // Should also have the newly set property
+          props.values.get(Symbol("newProp")) shouldBe Some(Value.Text("newly set value"))
+        case Value.Map(values) =>
+          values.get(Symbol("existingProp")) shouldBe Some(Value.Text("original"))
+          values.get(Symbol("newProp")) shouldBe Some(Value.Text("newly set value"))
+        case other =>
+          fail(s"Expected Node or Map with properties, but got: $other")
+      }
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
   // ============================================================
   // LOADQUERY PATH VALIDATION (Recipe code path)
   // ============================================================
@@ -5377,10 +5508,14 @@ class QueryPlanRuntimeTest
       ctx.bindings.keys.map(_.name).toSet should contain("hub")
       ctx.bindings.keys.map(_.name).toSet should contain("leaf")
 
-      // Verify the leaf binding is correct
+      // Verify the leaf binding is correct - may be NodeId or Node depending on what's available
       val leafValue = ctx.bindings(Symbol("leaf"))
-      leafValue shouldBe a[Value.Node]
-      leafValue.asInstanceOf[Value.Node].id shouldEqual leafId
+      val leafNodeId = leafValue match {
+        case Value.NodeId(id) => id
+        case Value.Node(id, _, _) => id
+        case other => fail(s"Expected NodeId or Node, got $other")
+      }
+      leafNodeId shouldEqual leafId
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -5502,10 +5637,14 @@ class QueryPlanRuntimeTest
       ctx.bindings.keys.map(_.name).toSet should contain("hub")
       ctx.bindings.keys.map(_.name).toSet should contain("x")
 
-      // Verify the x binding is correct
+      // Verify the x binding is correct - may be NodeId or Node depending on what's available
       val xValue = ctx.bindings(Symbol("x"))
-      xValue shouldBe a[Value.Node]
-      xValue.asInstanceOf[Value.Node].id shouldEqual sharedId
+      val xNodeId = xValue match {
+        case Value.NodeId(id) => id
+        case Value.Node(id, _, _) => id
+        case other => fail(s"Expected NodeId or Node, got $other")
+      }
+      xNodeId shouldEqual sharedId
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -7030,6 +7169,141 @@ class QueryPlanRuntimeTest
 
       // Should find 0 matches because e1.time (300) > e2.time (200)
       results should have size 0
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  // ============================================================
+  // LOCAL NODE TESTS - RETURN n returns full Value.Node
+  // ============================================================
+
+  it should "return Value.Node with id, labels, and properties when using SET and RETURN n" in {
+    // Test the full flow: SET creates labeled nodes with properties,
+    // MATCH (n:Label) RETURN n should return Value.Node (not just properties)
+    val graph = makeGraph("set-return-value-node")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      def computeIdFrom(parts: String*): QuineId = {
+        val cypherValues = parts.map(s => com.thatdot.quine.graph.cypher.Expr.Str(s))
+        com.thatdot.quine.graph.idFrom(cypherValues: _*)(qidProvider)
+      }
+
+      // First query: SET creates 3 Person nodes with properties
+      val setQuery = """
+        MATCH (a), (b), (c)
+        WHERE id(a) = idFrom("Person", "Alice")
+        AND id(b) = idFrom("Person", "Bob")
+        AND id(c) = idFrom("Person", "Charlie")
+        SET a:Person,
+            a.name="Alice",
+            a.age=30,
+            a.city="Seattle",
+            b:Person,
+            b.name="Bob",
+            b.age=25,
+            b.city="Portland",
+            c:Person,
+            c.name="Charlie",
+            c.age=35,
+            c.city="Washington"
+      """
+
+      // Execute the SET query first
+      val setPlanned = parseAndPlanWithMetadata(setQuery)
+      val setResultPromise = Promise[Seq[QueryContext]]()
+      val setLoader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      setLoader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = setPlanned.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(setResultPromise),
+        returnColumns = setPlanned.returnColumns,
+        outputNameMapping = setPlanned.outputNameMapping,
+      )
+      Await.result(setResultPromise.future, 10.seconds)
+
+      // Give time for the SET to propagate
+      Thread.sleep(500)
+
+      // Second query: RETURN the nodes
+      val returnQuery = """
+        MATCH (n:Person) RETURN n
+      """
+
+      val returnPlanned = parseAndPlanWithMetadata(returnQuery)
+      val returnResultPromise = Promise[Seq[QueryContext]]()
+      val returnLoader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      returnLoader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = returnPlanned.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(returnResultPromise),
+        returnColumns = returnPlanned.returnColumns,
+        outputNameMapping = returnPlanned.outputNameMapping,
+      )
+
+      val results = Await.result(returnResultPromise.future, 10.seconds)
+
+      // Should find 3 Person nodes
+      results should have size 3
+
+      // Compute expected IDs
+      val aliceId = computeIdFrom("Person", "Alice")
+      val bobId = computeIdFrom("Person", "Bob")
+      val charlieId = computeIdFrom("Person", "Charlie")
+
+      // Collect the results and validate they are Value.Node with correct structure
+      val nodeResults = results.map { ctx =>
+        ctx.bindings.keys.map(_.name).toSet should contain("n")
+        ctx.bindings(Symbol("n"))
+      }
+
+      // Each result should be a Value.Node with id, labels, and properties
+      nodeResults.foreach { value =>
+        value match {
+          case Value.Node(nodeId, labels, props) =>
+            // Validate it has the Person label
+            labels should contain(Symbol("Person"))
+
+            // Properties should NOT contain the internal labels property
+            props.values.keys.map(_.name) should not contain graph.labelsProperty.name
+
+            // Identify which person this is and validate properties
+            nodeId match {
+              case id if id == aliceId =>
+                props.values.get(Symbol("name")) shouldBe Some(Value.Text("Alice"))
+                props.values.get(Symbol("age")) shouldBe Some(Value.Integer(30))
+                props.values.get(Symbol("city")) shouldBe Some(Value.Text("Seattle"))
+              case id if id == bobId =>
+                props.values.get(Symbol("name")) shouldBe Some(Value.Text("Bob"))
+                props.values.get(Symbol("age")) shouldBe Some(Value.Integer(25))
+                props.values.get(Symbol("city")) shouldBe Some(Value.Text("Portland"))
+              case id if id == charlieId =>
+                props.values.get(Symbol("name")) shouldBe Some(Value.Text("Charlie"))
+                props.values.get(Symbol("age")) shouldBe Some(Value.Integer(35))
+                props.values.get(Symbol("city")) shouldBe Some(Value.Text("Washington"))
+              case otherId =>
+                fail(s"Unexpected node ID: $otherId")
+            }
+
+          case other =>
+            fail(s"Expected Value.Node, but got: $other (${other.getClass.getName})")
+        }
+      }
+
+      // Validate we got all 3 distinct persons
+      val nodeIds = nodeResults.map {
+        case Value.Node(id, _, _) => id
+        case _ => fail("Expected Value.Node")
+      }.toSet
+      nodeIds should contain(aliceId)
+      nodeIds should contain(bobId)
+      nodeIds should contain(charlieId)
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }

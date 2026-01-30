@@ -1403,7 +1403,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
 
     // Also verify the structure contains the expected local watches
     def countLocalIds(p: QueryPlan): Int = p match {
-      case QueryPlan.LocalId(_, _) => 1
+      case QueryPlan.LocalId(_) => 1
       case QueryPlan.Expand(_, _, child) => countLocalIds(child)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countLocalIds).sum
       case QueryPlan.Filter(_, input) => countLocalIds(input)
@@ -1414,8 +1414,12 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
 
     val localIdCount = countLocalIds(onTarget.get)
 
-    // Should have LocalId for f, e1, e2, e3, p2, e4 = 6 nodes
-    localIdCount shouldBe 6
+    // LocalId is only emitted when node identity is needed:
+    // - Explicit id(n) usage (only id(f) in this query)
+    // - Diamond patterns requiring identity comparison (f is common root, not renamed)
+    // - CREATE effects (none in this query)
+    // So only f needs LocalId
+    localIdCount shouldBe 1
   }
 
   it should "compare with MVSQ plan for the same pattern" in {
@@ -1753,10 +1757,11 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     hasFilter shouldBe true
 
     // Verify the renamed binding exists (binding 10000 = first fresh binding)
+    // Diamond join requires id(renamed) == id(original), so LocalId is emitted
     val hasRenamedBinding = containsOperator(
       plan,
       {
-        case QueryPlan.LocalId(sym, _) if sym.name.contains("10000") => true
+        case QueryPlan.LocalId(sym) if sym.name.contains("10000") => true
         case _ => false
       },
     )

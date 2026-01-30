@@ -797,18 +797,21 @@ object DefaultStateInstantiator extends StateInstantiator {
         // UnitState uses injectedContext if provided - this seeds context from parent (e.g., Anchor dispatch)
         new UnitState(id, parentId, d.mode, injectedContext)
 
-      case d @ StateDescriptor.WatchId(id, parentId, _, _, binding, extractProperties) =>
+      case d @ StateDescriptor.WatchId(id, parentId, _, _, binding) =>
         // WatchId also uses injectedContext - merge it with the node binding when emitting
-        new WatchIdState(id, parentId, d.mode, binding, nodeContext.quineId, extractProperties, injectedContext)
+        new WatchIdState(id, parentId, d.mode, binding, nodeContext.quineId, injectedContext)
 
       case d @ StateDescriptor.WatchProperty(id, parentId, _, _, property, aliasAs, constraint) =>
         new WatchPropertyState(id, parentId, d.mode, property, aliasAs, constraint)
 
       case d @ StateDescriptor.WatchAllProperties(id, parentId, _, _, binding) =>
-        new WatchAllPropertiesState(id, parentId, d.mode, binding)
+        new WatchAllPropertiesState(id, parentId, d.mode, binding, injectedContext)
 
       case d @ StateDescriptor.WatchLabels(id, parentId, _, _, aliasAs, constraint) =>
         new WatchLabelsState(id, parentId, d.mode, aliasAs, constraint)
+
+      case d @ StateDescriptor.WatchNode(id, parentId, _, _, binding) =>
+        new WatchNodeState(id, parentId, d.mode, binding, injectedContext)
 
       case d @ StateDescriptor.Product(id, parentId, _, plan, childIds, childEntryPoints) =>
         new ProductState(id, parentId, d.mode, childIds, plan.emitSubscriptionsLazily, childEntryPoints)
@@ -1140,105 +1143,35 @@ class UnitState(
   }
 }
 
+/** WatchIdState emits the node's ID as a Value.NodeId.
+  *
+  * This is a pure identity operator - it only provides the node's QuineId.
+  * Properties are handled separately by LocalProperty/LocalAllProperties.
+  * Labels are handled by LocalLabels.
+  *
+  * The emitted value is stable (node IDs don't change), so this state
+  * emits once on kickstart and never retracts.
+  */
 class WatchIdState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val binding: Symbol,
   val quineId: Option[QuineId],
-  val extractProperties: Set[Symbol], // Only extract these properties (MVSQ-style efficiency)
-  val injectedContext: Map[Symbol, com.thatdot.language.ast.Value], // Context from parent (e.g., Anchor dispatch)
+  val injectedContext: Map[Symbol, com.thatdot.language.ast.Value],
 ) extends QueryState
-    with PublishingState
-    with PropertySensitiveState
-    with LabelSensitiveState {
-  import scala.collection.immutable.SortedMap
+    with PublishingState {
   import com.thatdot.language.ast.Value
-
-  // Track current emitted context for proper retraction on changes
-  private var currentContext: Option[QueryContext] = None
-  // Track current properties map for detecting actual changes
-  private var currentProps: Map[Symbol, PropertyValue] = Map.empty
-  // Track current labels for including in Node value
-  private var currentLabels: Set[Symbol] = Set.empty
 
   override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = ()
 
   override def kickstart(context: NodeContext, actor: ActorRef): Unit =
     context.quineId.foreach { qid =>
-      currentLabels = context.labels
-      currentProps = context.properties.filter { case (k, _) => extractProperties.contains(k) }
-      emitCurrentState(qid, actor)
+      // Emit just the node ID - properties and labels are handled by other operators
+      val nodeIdValue = Value.NodeId(qid)
+      val ctx = QueryContext(injectedContext + (binding -> nodeIdValue))
+      emit(Map(ctx -> 1), actor)
     }
-
-  override def onPropertyChange(
-    key: Symbol,
-    oldValue: Option[PropertyValue],
-    newValue: Option[PropertyValue],
-    actor: ActorRef,
-  ): Unit =
-    // Only react to changes in properties we're extracting
-    if (extractProperties.contains(key)) {
-      quineId.foreach { qid =>
-        // Update tracked properties
-        newValue match {
-          case Some(pv) => currentProps = currentProps + (key -> pv)
-          case None => currentProps = currentProps - key
-        }
-        emitWithRetraction(qid, actor)
-      }
-    }
-
-  override def onLabelsChanged(oldLabels: Set[Symbol], newLabels: Set[Symbol], actor: ActorRef): Unit =
-    quineId.foreach { qid =>
-      currentLabels = newLabels
-      emitWithRetraction(qid, actor)
-    }
-
-  // Implement PropertySensitiveState.watchedPropertyKeys
-  override def watchedPropertyKeys: Option[Set[Symbol]] =
-    if (extractProperties.isEmpty) None else Some(extractProperties)
-
-  private def emitWithRetraction(qid: QuineId, actor: ActorRef): Unit = {
-    val deltaBuilder = mutable.Map.empty[QueryContext, Int]
-
-    // Retract old context if any
-    currentContext.foreach { oldCtx =>
-      deltaBuilder(oldCtx) = deltaBuilder.getOrElse(oldCtx, 0) - 1
-    }
-    currentContext = None
-
-    // Build new context and emit
-    val propsMap: SortedMap[Symbol, Value] = SortedMap.from(
-      currentProps.map { case (k, pv) =>
-        k -> CypherAndQuineHelpers.propertyValueToPatternValue(pv)
-      },
-    )
-    val nodeValue = Value.Node(qid, currentLabels, Value.Map(propsMap))
-    // Merge injectedContext with our binding - injectedContext contains parent context (e.g., nextDenom, nextApprox)
-    val ctx = QueryContext(injectedContext + (binding -> nodeValue))
-    currentContext = Some(ctx)
-    deltaBuilder(ctx) = deltaBuilder.getOrElse(ctx, 0) + 1
-
-    // Emit non-zero deltas
-    val nonZero = deltaBuilder.filter(_._2 != 0).toMap
-    if (nonZero.nonEmpty) {
-      emit(nonZero, actor)
-    }
-  }
-
-  private def emitCurrentState(qid: QuineId, actor: ActorRef): Unit = {
-    val propsMap: SortedMap[Symbol, Value] = SortedMap.from(
-      currentProps.map { case (k, pv) =>
-        k -> CypherAndQuineHelpers.propertyValueToPatternValue(pv)
-      },
-    )
-    val nodeValue = Value.Node(qid, currentLabels, Value.Map(propsMap))
-    // Merge injectedContext with our binding - injectedContext contains parent context (e.g., nextDenom, nextApprox)
-    val ctx = QueryContext(injectedContext + (binding -> nodeValue))
-    currentContext = Some(ctx)
-    emit(Map(ctx -> 1), actor)
-  }
 }
 
 class WatchPropertyState(
@@ -1339,6 +1272,7 @@ class WatchAllPropertiesState(
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val binding: Symbol,
+  val injectedContext: Map[Symbol, com.thatdot.language.ast.Value],
 ) extends QueryState
     with PublishingState
     with PropertySensitiveState {
@@ -1349,15 +1283,21 @@ class WatchAllPropertiesState(
   // Track current properties for proper retraction
   private var currentProperties: Map[Symbol, Value] = Map.empty
   private var currentContext: Option[QueryContext] = None
+  // Store the labelsProperty key to filter it out (labels are internal, not user-visible properties)
+  private var labelsPropertyKey: Option[Symbol] = None
 
   override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = ()
 
   override def kickstart(context: NodeContext, actor: ActorRef): Unit = {
-    currentProperties = context.properties.map { case (k, v) =>
-      k -> CypherAndQuineHelpers.propertyValueToPatternValue(v)
-    }
+    // Store the labelsProperty key for filtering
+    labelsPropertyKey = context.graph.map(_.labelsProperty)
+    // Filter out labelsProperty from properties
+    currentProperties = context.properties
+      .filter { case (k, _) => !labelsPropertyKey.contains(k) }
+      .map { case (k, v) => k -> CypherAndQuineHelpers.propertyValueToPatternValue(v) }
     val mapValue = Value.Map(SortedMap.from(currentProperties))
-    val ctx = QueryContext(Map(binding -> mapValue))
+    // Include injectedContext so outer bindings (like parameter aliases) are available
+    val ctx = QueryContext(injectedContext + (binding -> mapValue))
     currentContext = Some(ctx)
     emit(Map(ctx -> 1), actor)
   }
@@ -1368,6 +1308,9 @@ class WatchAllPropertiesState(
     newValue: Option[PropertyValue],
     actor: ActorRef,
   ): Unit = {
+    // Skip labelsProperty changes - it's an internal property not exposed to users
+    if (labelsPropertyKey.contains(key)) return
+
     val deltaBuilder = mutable.Map.empty[QueryContext, Int]
 
     // Retract old context if any
@@ -1383,9 +1326,9 @@ class WatchAllPropertiesState(
         currentProperties = currentProperties - key
     }
 
-    // Emit new context
+    // Emit new context (include injectedContext for outer bindings)
     val mapValue = Value.Map(SortedMap.from(currentProperties))
-    val newCtx = QueryContext(Map(binding -> mapValue))
+    val newCtx = QueryContext(injectedContext + (binding -> mapValue))
     currentContext = Some(newCtx)
     deltaBuilder(newCtx) = deltaBuilder.getOrElse(newCtx, 0) + 1
 
@@ -1397,7 +1340,7 @@ class WatchAllPropertiesState(
   }
 
   // Implement PropertySensitiveState.watchedPropertyKeys
-  // WatchAllProperties watches ALL properties, so return None
+  // WatchAllProperties watches ALL properties (except labelsProperty), so return None
   override def watchedPropertyKeys: Option[Set[Symbol]] = None
 }
 
@@ -1475,6 +1418,113 @@ class WatchLabelsState(
       case None =>
         QueryContext.empty
     }
+}
+
+/** WatchNodeState emits a complete Value.Node with id, labels, and properties.
+  *
+  * This watches both properties and labels, combining them into a single node value.
+  * The labelsProperty (configurable, e.g. __LABEL) is filtered from properties since
+  * labels are provided separately.
+  */
+class WatchNodeState(
+  val id: StandingQueryId,
+  val publishTo: StandingQueryId,
+  val mode: RuntimeMode,
+  val binding: Symbol,
+  val injectedContext: Map[Symbol, com.thatdot.language.ast.Value],
+) extends QueryState
+    with PublishingState
+    with PropertySensitiveState
+    with LabelSensitiveState {
+
+  import scala.collection.immutable.SortedMap
+  import com.thatdot.language.ast.Value
+
+  // Track current state for proper retraction
+  private var currentQuineId: Option[QuineId] = None
+  private var currentLabels: Set[Symbol] = Set.empty
+  private var currentProperties: Map[Symbol, Value] = Map.empty
+  private var currentContext: Option[QueryContext] = None
+  private var labelsPropertyKey: Option[Symbol] = None
+
+  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = ()
+
+  override def kickstart(context: NodeContext, actor: ActorRef): Unit = {
+    currentQuineId = context.quineId
+    currentLabels = context.labels
+    // Store the labelsProperty key for filtering
+    labelsPropertyKey = context.graph.map(_.labelsProperty)
+    // Filter out labelsProperty from properties
+    currentProperties = context.properties
+      .filter { case (k, _) => !labelsPropertyKey.contains(k) }
+      .map { case (k, v) => k -> CypherAndQuineHelpers.propertyValueToPatternValue(v) }
+
+    emitCurrentState(actor)
+  }
+
+  override def onPropertyChange(
+    key: Symbol,
+    oldValue: Option[PropertyValue],
+    newValue: Option[PropertyValue],
+    actor: ActorRef,
+  ): Unit = {
+    // Skip labelsProperty changes - labels are handled via onLabelsChanged
+    if (labelsPropertyKey.contains(key)) return
+
+    val deltaBuilder = mutable.Map.empty[QueryContext, Int]
+
+    // Retract old context if any
+    currentContext.foreach { oldCtx =>
+      deltaBuilder(oldCtx) = deltaBuilder.getOrElse(oldCtx, 0) - 1
+    }
+
+    // Update properties map
+    newValue match {
+      case Some(pv) =>
+        currentProperties = currentProperties + (key -> CypherAndQuineHelpers.propertyValueToPatternValue(pv))
+      case None =>
+        currentProperties = currentProperties - key
+    }
+
+    // Emit new context
+    emitWithDelta(deltaBuilder, actor)
+  }
+
+  override def onLabelsChanged(oldLabels: Set[Symbol], newLabels: Set[Symbol], actor: ActorRef): Unit = {
+    val deltaBuilder = mutable.Map.empty[QueryContext, Int]
+
+    // Retract old context if any
+    currentContext.foreach { oldCtx =>
+      deltaBuilder(oldCtx) = deltaBuilder.getOrElse(oldCtx, 0) - 1
+    }
+
+    currentLabels = newLabels
+    emitWithDelta(deltaBuilder, actor)
+  }
+
+  private def emitCurrentState(actor: ActorRef): Unit =
+    currentQuineId.foreach { qid =>
+      val nodeValue = Value.Node(qid, currentLabels, Value.Map(SortedMap.from(currentProperties)))
+      val ctx = QueryContext(injectedContext + (binding -> nodeValue))
+      currentContext = Some(ctx)
+      emit(Map(ctx -> 1), actor)
+    }
+
+  private def emitWithDelta(deltaBuilder: mutable.Map[QueryContext, Int], actor: ActorRef): Unit =
+    currentQuineId.foreach { qid =>
+      val nodeValue = Value.Node(qid, currentLabels, Value.Map(SortedMap.from(currentProperties)))
+      val newCtx = QueryContext(injectedContext + (binding -> nodeValue))
+      currentContext = Some(newCtx)
+      deltaBuilder(newCtx) = deltaBuilder.getOrElse(newCtx, 0) + 1
+
+      val nonZero = deltaBuilder.filter(_._2 != 0).toMap
+      if (nonZero.nonEmpty) {
+        emit(nonZero, actor)
+      }
+    }
+
+  // WatchNode watches ALL properties (except labelsProperty), so return None
+  override def watchedPropertyKeys: Option[Set[Symbol]] = None
 }
 
 class ProductState(
@@ -2605,20 +2655,124 @@ class EffectState(
       s"Effect $id: notify from=$from deltaSize=${delta.size} effectCount=${effects.size} hasNodeContext=$hasNodeContext",
     )
 
-    // Apply effects for assertions (positive multiplicities)
-    delta.foreach { case (ctx, mult) =>
+    // Build modified delta with updated contexts after applying effects
+    val modifiedDelta = delta.map { case (ctx, mult) =>
       if (mult > 0) {
-        // Apply each effect for this context
-        effects.foreach { effect =>
-          applyEffect(effect, ctx, actor)
+        // Apply effects and collect context updates
+        val updatedCtx = effects.foldLeft(ctx) { (currentCtx, effect) =>
+          applyEffectAndUpdateContext(effect, currentCtx, actor)
         }
+        (updatedCtx, mult)
+      } else {
+        // Retractions pass through unchanged
+        // Note: We don't "un-apply" effects for retractions
+        // Effects are typically not reversible (SET property, etc.)
+        (ctx, mult)
       }
-    // Note: We don't "un-apply" effects for retractions
-    // Effects are typically not reversible (SET property, etc.)
     }
 
-    // Pass through delta to parent
-    emit(delta, actor)
+    // Pass modified delta to parent
+    emit(modifiedDelta, actor)
+  }
+
+  /** Apply an effect and return updated context.
+    * This both fires the async persistence message AND updates the context
+    * so subsequent operations (like RETURN) see the new values.
+    * Similar to how the ad-hoc interpreter handles SET.
+    */
+  private def applyEffectAndUpdateContext(
+    effect: LocalQueryEffect,
+    ctx: QueryContext,
+    actor: ActorRef,
+  ): QueryContext = {
+    import scala.collection.immutable.SortedMap
+
+    // First apply the effect (fire-and-forget to persist)
+    applyEffect(effect, ctx, actor)
+
+    // Then update the context if this is a SET effect
+    val env = EvalEnvironment(ctx, params)
+
+    /** Update a property in the context for a target binding.
+      * Handles both Value.Node (from LocalNode) and Value.Map (from LocalAllProperties).
+      */
+    def updatePropertyInContext(targetBindingOpt: Option[Symbol], property: Symbol, newValue: Value): QueryContext = {
+      // Determine which binding to update
+      val targetKey: Option[Symbol] = targetBindingOpt.orElse {
+        // Effect is inside an anchor - find a node binding in context
+        ctx.bindings
+          .collectFirst { case (k, _: Value.Node) => k }
+          .orElse(ctx.bindings.collectFirst { case (k, _: Value.Map) => k })
+      }
+
+      targetKey match {
+        case Some(key) =>
+          ctx.bindings.get(key) match {
+            case Some(Value.Node(id, labels, Value.Map(existingProps))) =>
+              // Update the properties within the Value.Node
+              val updatedNode = Value.Node(id, labels, Value.Map(existingProps + (property -> newValue)))
+              QueryContext(ctx.bindings + (key -> updatedNode))
+            case Some(Value.Map(existingProps)) =>
+              // Update the properties map directly (for LocalAllProperties case)
+              val updatedMap = Value.Map(existingProps + (property -> newValue))
+              QueryContext(ctx.bindings + (key -> updatedMap))
+            case _ =>
+              ctx
+          }
+        case None =>
+          ctx
+      }
+    }
+
+    /** Update multiple properties in the context for a target binding. */
+    def updatePropertiesInContext(
+      targetBindingOpt: Option[Symbol],
+      newProps: SortedMap[Symbol, Value],
+    ): QueryContext = {
+      val targetKey: Option[Symbol] = targetBindingOpt.orElse {
+        ctx.bindings
+          .collectFirst { case (k, _: Value.Node) => k }
+          .orElse(ctx.bindings.collectFirst { case (k, _: Value.Map) => k })
+      }
+
+      targetKey match {
+        case Some(key) =>
+          ctx.bindings.get(key) match {
+            case Some(Value.Node(id, labels, Value.Map(existingProps))) =>
+              val updatedNode = Value.Node(id, labels, Value.Map(existingProps ++ newProps))
+              QueryContext(ctx.bindings + (key -> updatedNode))
+            case Some(Value.Map(existingProps)) =>
+              val updatedMap = Value.Map(existingProps ++ newProps)
+              QueryContext(ctx.bindings + (key -> updatedMap))
+            case _ =>
+              ctx
+          }
+        case None =>
+          ctx
+      }
+    }
+
+    effect match {
+      case LocalQueryEffect.SetProperty(targetBindingOpt, property, valueExpr) =>
+        eval(valueExpr).run(env) match {
+          case Right(newValue) =>
+            updatePropertyInContext(targetBindingOpt, property, newValue)
+          case Left(_) =>
+            ctx
+        }
+
+      case LocalQueryEffect.SetProperties(targetBindingOpt, propsExpr) =>
+        eval(propsExpr).run(env) match {
+          case Right(Value.Map(newProps)) =>
+            updatePropertiesInContext(targetBindingOpt, newProps)
+          case _ =>
+            ctx
+        }
+
+      case _ =>
+        // Other effects don't modify the context
+        ctx
+    }
   }
 
   override def kickstart(context: NodeContext, actor: ActorRef): Unit = ()

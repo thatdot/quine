@@ -27,21 +27,20 @@ object QueryPlan {
   // LEAF OPERATORS (no children, run on current node)
   // ============================================================
 
-  /** Emit the current node bound to `binding` as a Value.Node.
+  /** Emit the current node's ID bound to `binding` as a Value.NodeId.
     *
-    * The node value includes:
-    * - The node's QuineId
-    * - The node's labels
-    * - Only the properties specified in `extractProperties`
+    * This is a pure identity operator - it only provides the node's QuineId.
+    * The emitted value is stable (node IDs don't change), so this operator
+    * emits once on kickstart and never retracts.
     *
-    * This enables field access like `n.prop` in expressions while
-    * limiting data transfer to only what's actually needed.
+    * Note: Properties and labels are NOT included. Use:
+    *   - LocalProperty for individual property access (with constraint pushdown)
+    *   - LocalAllProperties to bind all properties as a Map
+    *   - LocalLabels to watch/constrain node labels
     *
-    * @param binding The symbol to bind the node to
-    * @param extractProperties Properties to include in the Node value (for field access).
-    *                          Only these properties will be fetched from the node.
+    * @param binding The symbol to bind the node ID to
     */
-  case class LocalId(binding: Symbol, extractProperties: Set[Symbol] = Set.empty) extends QueryPlan {
+  case class LocalId(binding: Symbol) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq.empty
   }
 
@@ -104,6 +103,24 @@ object QueryPlan {
     aliasAs: Option[Symbol],
     constraint: LabelConstraint,
   ) extends QueryPlan {
+    def children: Seq[QueryPlan] = Seq.empty
+  }
+
+  /** Emit a complete node value (ID + labels + properties).
+    *
+    * This operator watches both properties and labels, emitting a full Value.Node.
+    * The labelsProperty (configurable, typically __LABEL) is filtered from properties
+    * since labels are provided separately.
+    *
+    * Use this for bare node references like `RETURN n` where the full node is needed.
+    * For individual components, use:
+    *   - LocalId for id(n)
+    *   - LocalAllProperties for properties(n)
+    *   - LocalLabels for labels(n)
+    *
+    * @param binding The symbol to bind the node value to
+    */
+  case class LocalNode(binding: Symbol) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq.empty
   }
 
