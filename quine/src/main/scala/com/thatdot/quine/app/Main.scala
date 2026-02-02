@@ -12,7 +12,6 @@ import scala.util.{Failure, Success}
 
 import org.apache.pekko.Done
 import org.apache.pekko.actor.{ActorSystem, Cancellable, CoordinatedShutdown}
-import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout
 
 import cats.syntax.either._
@@ -25,8 +24,8 @@ import com.thatdot.quine.app.config.errors.ErrorFormatterConfig
 import com.thatdot.quine.app.config.{
   FileAccessPolicy,
   PersistenceAgentType,
-  PersistenceBuilder,
   QuineConfig,
+  QuinePersistenceBuilder,
   ResolutionMode,
   UseMtls,
   WebServerBindConfig,
@@ -107,7 +106,7 @@ object Main extends App with LazySafeLogging {
       }
       withWebserverOverrides.copy(
         store = PersistenceAgentType.RocksDb(
-          filepath = tempDataFile,
+          filepath = Some(tempDataFile),
         ),
       )
     } else withWebserverOverrides
@@ -145,7 +144,7 @@ object Main extends App with LazySafeLogging {
         GraphService(
           persistorMaker = system => {
             val persistor =
-              PersistenceBuilder.build(config.store, config.persistence)(Materializer.matFromSystem(system), logConfig)
+              QuinePersistenceBuilder.instance.build(config.store, config.persistence)(system, logConfig)
             persistor.initializeOnce // Initialize the default namespace
             persistor
           },

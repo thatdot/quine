@@ -38,7 +38,7 @@ object PersistenceAgentType extends PureconfigInstances {
   }
 
   final case class RocksDb(
-    filepath: File = new File(sys.env.getOrElse("QUINE_DATA", "quine.db")),
+    filepath: Option[File] = sys.env.get("QUINE_DATA").map(new File(_)),
     writeAheadLog: Boolean = true,
     syncAllWrites: Boolean = false,
     createParentDir: Boolean = false,
@@ -65,7 +65,7 @@ object PersistenceAgentType extends PureconfigInstances {
       .toList
 
   final case class Cassandra(
-    keyspace: String = sys.env.getOrElse("CASSANDRA_KEYSPACE", "quine"),
+    keyspace: Option[String] = sys.env.get("CASSANDRA_KEYSPACE"),
     replicationFactor: Int = Integer.parseUnsignedInt(sys.env.getOrElse("CASSANDRA_REPLICATION_FACTOR", "1")),
     readConsistency: ConsistencyLevel = ConsistencyLevel.LOCAL_QUORUM,
     writeConsistency: ConsistencyLevel = ConsistencyLevel.LOCAL_QUORUM,
@@ -94,7 +94,7 @@ object PersistenceAgentType extends PureconfigInstances {
   )
 
   final case class Keyspaces(
-    keyspace: String = sys.env.getOrElse("CASSANDRA_KEYSPACE", "quine"),
+    keyspace: Option[String] = sys.env.get("CASSANDRA_KEYSPACE"),
     awsRegion: Option[Region] = None,
     awsRoleArn: Option[String] = None,
     readConsistency: ConsistencyLevel = ConsistencyLevel.LOCAL_QUORUM,
