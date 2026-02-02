@@ -1,0 +1,32 @@
+name: Notify Slack on CI Failure
+description: Posts a failure notification to Slack via incoming webhook
+
+inputs:
+  job-name:
+    description: Human-readable name of the failed job
+    required: true
+  webhook-url:
+    description: Slack incoming webhook URL
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Notify Slack
+      uses: slackapi/slack-github-action@v2.1.0
+      with:
+        webhook: ${{ inputs.webhook-url }}
+        webhook-type: incoming-webhook
+        payload: |
+          {
+            "text": "CI ${{ inputs.job-name }} failed on ${{ github.repository }}",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": ":red_circle: *CI ${{ inputs.job-name }} failed*\n*Repo:* ${{ github.repository }}\n*Branch:* main\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow run>"
+                }
+              }
+            ]
+          }

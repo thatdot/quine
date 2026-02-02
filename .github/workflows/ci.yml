@@ -40,6 +40,12 @@ jobs:
     - name: Set up scala
       uses: sbt/setup-sbt@159bc2bcdce6cc8f23f9faa80a0efc07632b17b9
     - run: sbt -v test quine/assembly quine-docs/generateDocs 'scalafixAll --check'
+    - name: Notify Slack on failure
+      if: failure() && github.ref == 'refs/heads/main'
+      uses: ./.github/actions/notify-slack-on-failure
+      with:
+        job-name: Test
+        webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   scalafmt:
     name: Scalafmt
@@ -57,4 +63,10 @@ jobs:
     - name: Set up scala
       uses: sbt/setup-sbt@159bc2bcdce6cc8f23f9faa80a0efc07632b17b9
     - run: sbt -v scalafmtCheckAll scalafmtSbtCheck
+    - name: Notify Slack on failure
+      if: failure() && github.ref == 'refs/heads/main'
+      uses: ./.github/actions/notify-slack-on-failure
+      with:
+        job-name: Scalafmt
+        webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
 
