@@ -2,12 +2,13 @@ import scala.concurrent.duration.*
 import scala.sys.process.*
 
 import sbt.*
-import sbt.Keys.{baseDirectory, name, streams, version}
+import sbt.Keys.{baseDirectory, name, streams, target, version}
 import sbt.io.IO
 import sbtassembly.AssemblyKeys.assembly
 import sbtassembly.AssemblyPlugin
 import sbtdocker.DockerKeys.{docker, dockerBuildArguments, dockerfile, imageNames}
-import sbtdocker.{DockerPlugin, Dockerfile, ImageName}
+import sbtdocker.staging.DefaultDockerfileProcessor
+import sbtdocker.{DockerPlugin, Dockerfile, DockerfileLike, ImageName}
 
 object Docker extends AutoPlugin {
 
@@ -20,6 +21,7 @@ object Docker extends AutoPlugin {
     val dockerVolume = SettingKey[File]("docker-volume", "Path to where the app should save its data")
     val includeNginx = docker / settingKey[Boolean]("Whether to install and use nginx in app container")
     val dockerJarTask = docker / taskKey[File]("The JAR file to include in the Docker image")
+    val dockerStage = docker / taskKey[File]("Stage docker context without building the image")
   }
   import autoImport.*
   override lazy val projectSettings = Seq(
@@ -103,6 +105,29 @@ object Docker extends AutoPlugin {
             jarPath,
           )
       }
+    },
+    dockerStage := {
+      val log = streams.value.log
+      val stageDir = target.value / "docker"
+      val df = (docker / dockerfile).value.asInstanceOf[DockerfileLike]
+
+      // Use sbt-docker's internal staging processor
+      val staged = DefaultDockerfileProcessor(df, stageDir)
+
+      // Clean and create stage directory
+      IO.delete(stageDir)
+      IO.createDirectory(stageDir)
+
+      // Write Dockerfile
+      IO.write(stageDir / "Dockerfile", staged.instructionsString)
+
+      // Copy all staged files
+      staged.stageFiles.foreach { case (source, dest) =>
+        source.stage(dest)
+      }
+
+      log.info(s"Docker context staged to: $stageDir")
+      stageDir
     },
   )
 }
