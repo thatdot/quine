@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.routes
 
+import scala.concurrent.Promise
 import scala.concurrent.duration.Duration
 import scala.util.matching.Regex
 
@@ -17,8 +18,17 @@ import com.thatdot.common.logging.Log.{
 }
 import com.thatdot.common.logging.Pretty.PrettyHelper
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
+import com.thatdot.language.{ast => Pattern}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.CypherProcedures
+import com.thatdot.quine.graph.cypher.quinepattern.{
+  OutputTarget,
+  QueryContext => QPQueryContext,
+  QueryPlanner,
+  QuinePatternHelpers,
+  RuntimeMode,
+}
 import com.thatdot.quine.graph.cypher.{
   CypherException,
   Expr => CypherExpr,
@@ -26,7 +36,8 @@ import com.thatdot.quine.graph.cypher.{
   Type => CypherType,
   Value => CypherValue,
 }
-import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId}
+import com.thatdot.quine.graph.quinepattern.{LoadQuery, QuinePatternOpsGraph}
+import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId, StandingQueryId}
 import com.thatdot.quine.model._
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log.implicits._
@@ -63,6 +74,9 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     namespace: NamespaceId,
     atTime: Option[Milliseconds],
   ): (Source[UiNode[QuineId], NotUsed], Boolean, Boolean) = {
+    // QuinePattern branch - early return to keep original code unchanged below
+    if (isQuinePatternEnabled) return quinePatternQueryNodes(query, namespace)
+
     val res: CypherRunningQuery = cypher.queryCypherValues(
       query.text,
       parameters = guessCypherParameters(query.parameters),
@@ -125,6 +139,9 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     atTime: Option[Milliseconds],
     requestTimeout: Duration = Duration.Inf,
   ): (Source[UiEdge[QuineId], NotUsed], Boolean, Boolean) = {
+    // QuinePattern branch - early return to keep original code unchanged below
+    if (isQuinePatternEnabled) return quinePatternQueryEdges(query, namespace)
+
     val res: CypherRunningQuery = cypher.queryCypherValues(
       query.text,
       parameters = guessCypherParameters(query.parameters),
@@ -171,7 +188,10 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     query: CypherQuery,
     namespace: NamespaceId,
     atTime: Option[Milliseconds],
-  ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) =
+  ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) = {
+    // QuinePattern branch - early return to keep original code unchanged below
+    if (isQuinePatternEnabled) return quinePatternQueryGeneric(query, namespace)
+
     query.text match {
       case Explain(toExplain) =>
         val compiledQuery = cypher
@@ -200,6 +220,130 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
         val bodyRows = runnableQuery.results.map(row => row.map(CypherValue.toJson))
         (columns, bodyRows, runnableQuery.compiled.isReadOnly, runnableQuery.compiled.canContainAllNodeScan)
     }
+  }
+
+  /** Shared helper that executes a QuinePattern query and returns the raw context stream plus planned metadata.
+    * Each quinePatternQuery* method calls this, then applies its own result-mapping step.
+    */
+  private def executeQuinePattern(
+    query: CypherQuery,
+    namespace: NamespaceId,
+  ): (Source[QPQueryContext, NotUsed], QueryPlanner.PlannedQuery) = {
+    import com.thatdot.language.phases.UpgradeModule._
+    requireQuinePatternEnabled()
+    val parameters = toQuinePatternParameters(query.parameters)
+    val qpGraph: QuinePatternOpsGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+    implicit val ec = qpGraph.system.dispatcher
+
+    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
+    val (symbolState, parseResult) = parser.process(query.text).value.run(LexerState(Nil)).value
+
+    val planned = parseResult match {
+      case Some(cypherAst) =>
+        QueryPlanner.planWithMetadata(cypherAst, symbolState.symbolTable)
+      case None =>
+        throw new IllegalArgumentException(
+          s"Failed to parse query. QuinePattern does not support this query syntax: ${query.text.take(100)}",
+        )
+    }
+
+    val promise = Promise[Seq[QPQueryContext]]()
+    qpGraph.getLoader ! LoadQuery(
+      StandingQueryId.fresh(),
+      planned.plan,
+      RuntimeMode.Eager,
+      parameters,
+      namespace,
+      OutputTarget.EagerCollector(promise),
+      planned.returnColumns,
+      planned.outputNameMapping,
+    )
+
+    val source = Source
+      .futureSource(promise.future.map(results => Source(results)))
+      .mapMaterializedValue(_ => NotUsed)
+
+    (source, planned)
+  }
+
+  private def quinePatternQueryNodes(
+    query: CypherQuery,
+    namespace: NamespaceId,
+  ): (Source[UiNode[QuineId], NotUsed], Boolean, Boolean) = {
+    logger.info(safe"Executing node query using QuinePattern interpreter: ${Safe(query.text.take(100))}")
+    val (source, _) = executeQuinePattern(query, namespace)
+    val results = source
+      .mapConcat { qpCtx =>
+        qpCtx.bindings.values.flatMap {
+          case Pattern.Value.Node(qid, labels, props) =>
+            val cypherProps = props.values.map { case (k, v) =>
+              k -> QuinePatternHelpers.patternValueToCypherValue(v)
+            }
+            val nodeLabel = if (labels.nonEmpty) labels.map(_.name).mkString(":") else "ID: " + qid.pretty
+            Some(
+              UiNode(qid, hostIndex(qid), nodeLabel, cypherProps.map { case (k, v) => (k.name, CypherValue.toJson(v)) }),
+            )
+          case Pattern.Value.Null => None
+          case _ => None
+        }.toList
+      }
+      .map(transformUiNode)
+
+    (results, false, true)
+  }
+
+  private def quinePatternQueryEdges(
+    query: CypherQuery,
+    namespace: NamespaceId,
+  ): (Source[UiEdge[QuineId], NotUsed], Boolean, Boolean) = {
+    logger.info(safe"Executing edge query using QuinePattern interpreter: ${Safe(query.text.take(100))}")
+    val (source, _) = executeQuinePattern(query, namespace)
+    val results = source
+      .mapConcat { qpCtx =>
+        qpCtx.bindings.values.flatMap { case v =>
+          val cypherVal = QuinePatternHelpers.patternValueToCypherValue(v)
+          cypherVal match {
+            case CypherExpr.Relationship(src, lbl, _, tgt) =>
+              Some(UiEdge(from = src, to = tgt, edgeType = lbl.name))
+            case _ => None
+          }
+        }.toList
+      }
+
+    (results, false, true)
+  }
+
+  private def quinePatternQueryGeneric(
+    query: CypherQuery,
+    namespace: NamespaceId,
+  ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) = {
+    logger.info(safe"Executing query using QuinePattern interpreter: ${Safe(query.text.take(100))}")
+    val (source, planned) = executeQuinePattern(query, namespace)
+    val columnNames: Seq[String] = planned.outputNameMapping.values.map(_.name).toSeq
+    val rowsSource = source.map { qpCtx =>
+      columnNames.map { col =>
+        val patternValue = qpCtx.bindings.getOrElse(Symbol(col), Pattern.Value.Null)
+        val cypherValue = QuinePatternHelpers.patternValueToCypherValue(patternValue)
+        CypherValue.toJson(cypherValue)
+      }
+    }
+
+    (columnNames, rowsSource, false, true)
+  }
+
+  // Helper methods for QuinePattern support
+  private def isQuinePatternEnabled: Boolean =
+    sys.props.get("qp.enabled").flatMap(_.toBooleanOption).getOrElse(false)
+
+  private def requireQuinePatternEnabled(): Unit =
+    if (!isQuinePatternEnabled) {
+      throw new IllegalStateException("QuinePattern requires -Dqp.enabled=true to be set")
+    }
+
+  private def toQuinePatternParameters(params: Map[String, Json]): Map[Symbol, com.thatdot.language.ast.Value] = {
+    import com.thatdot.quine.graph.cypher.quinepattern.CypherAndQuineHelpers.quineValueToPatternValue
+    params.map { case (k, v) => Symbol(k) -> quineValueToPatternValue(QuineValue.fromJson(v)) }
+  }
 
 }
 object QueryUiCypherApiMethods extends LazySafeLogging {
