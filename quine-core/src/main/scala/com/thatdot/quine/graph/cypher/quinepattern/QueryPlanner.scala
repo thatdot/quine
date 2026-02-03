@@ -1763,6 +1763,10 @@ object QueryPlanner {
         case unwind: Cypher.ReadingClause.FromUnwind =>
           Set(bindingSymbol(identInt(unwind.as)))
 
+        case proc: Cypher.ReadingClause.FromProcedure =>
+          // CALL procedure YIELD x, y, z -> binds x, y, z (using the boundAs name)
+          proc.yields.map(yi => bindingSymbol(identInt(yi.boundAs))).toSet
+
         case _ => Set.empty
       }
 
@@ -1786,8 +1790,19 @@ object QueryPlanner {
         case patterns: Cypher.ReadingClause.FromPatterns =>
           planMatch(patterns.patterns, patterns.maybePredicate, idLookups, nodeDeps)
 
-        case _: Cypher.ReadingClause.FromProcedure =>
-          throw new QuinePatternUnimplementedException("Procedure calls not yet supported in planner")
+        case proc: Cypher.ReadingClause.FromProcedure =>
+          // CALL procedureName(args...) YIELD bindings
+          // Create a Procedure plan with the subquery as Unit (will be wrapped by planQueryParts)
+          // Convert YieldItems to (resultField, boundAs) pairs
+          val yieldPairs = proc.yields.map { yi =>
+            (yi.resultField, bindingSymbol(identInt(yi.boundAs)))
+          }
+          QueryPlan.Procedure(
+            procedureName = proc.name,
+            arguments = proc.args,
+            yields = yieldPairs,
+            subquery = QueryPlan.Unit,
+          )
 
         case unwind: Cypher.ReadingClause.FromUnwind =>
           // UNWIND expression AS binding - use Int-based format to match expression interpreter
@@ -1832,12 +1847,25 @@ object QueryPlanner {
       val bindingsFromFirst = extractBindingsFromPart(first)
       val accumulatedBindings = existingBindings ++ bindingsFromFirst
 
-      // Special handling for UNWIND: the rest of the query becomes the Unwind's subquery
-      // UNWIND is like flatMap - for each element, evaluate the subquery
+      // Special handling for UNWIND and PROCEDURE: the rest of the query becomes the subquery
+      // These are like flatMap - for each element/result, evaluate the subquery
       first match {
         case Cypher.QueryPart.ReadingClausePart(unwind: Cypher.ReadingClause.FromUnwind) =>
           val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, accumulatedBindings)
           QueryPlan.Unwind(unwind.list, bindingSymbol(identInt(unwind.as)), restPlan)
+
+        case Cypher.QueryPart.ReadingClausePart(proc: Cypher.ReadingClause.FromProcedure) =>
+          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, accumulatedBindings)
+          // Convert YieldItems to (resultField, boundAs) pairs
+          val yieldPairs = proc.yields.map { yi =>
+            (yi.resultField, bindingSymbol(identInt(yi.boundAs)))
+          }
+          QueryPlan.Procedure(
+            procedureName = proc.name,
+            arguments = proc.args,
+            yields = yieldPairs,
+            subquery = restPlan,
+          )
 
         case _ =>
           val firstPlan = planQueryPart(first, idLookups, nodeDeps, symbolTable, existingBindings)

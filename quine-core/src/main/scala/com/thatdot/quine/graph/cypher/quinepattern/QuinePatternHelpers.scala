@@ -31,6 +31,8 @@ object QuinePatternHelpers {
       case Value.NodeId(qid) => Expr.Bytes(qid.array, representsId = true)
       case Value.Node(id, labels, props) =>
         Expr.Node(id, labels, props.values.map(p => p._1 -> patternValueToCypherValue(p._2)))
+      case Value.Relationship(start, edgeType, properties, end) =>
+        Expr.Relationship(start, edgeType, properties.map(p => p._1 -> patternValueToCypherValue(p._2)), end)
       case Value.Duration(d) => Expr.Duration(d)
       case Value.DateTimeLocal(dtl) => Expr.LocalDateTime(dtl)
     }

@@ -77,6 +77,22 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
         case _ => false
       }
 
+  /** Find all LocalNode operators in a plan */
+  private def findLocalNodes(p: QueryPlan): List[QueryPlan.LocalNode] = p match {
+    case ln: QueryPlan.LocalNode => List(ln)
+    case QueryPlan.Anchor(_, onTarget) => findLocalNodes(onTarget)
+    case QueryPlan.Project(_, _, input) => findLocalNodes(input)
+    case QueryPlan.Filter(_, input) => findLocalNodes(input)
+    case QueryPlan.Sequence(first, andThen, _) => findLocalNodes(first) ++ findLocalNodes(andThen)
+    case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalNodes)
+    case QueryPlan.LocalEffect(_, input) => findLocalNodes(input)
+    case QueryPlan.Distinct(input) => findLocalNodes(input)
+    case QueryPlan.Unwind(_, _, subquery) => findLocalNodes(subquery)
+    case QueryPlan.Aggregate(_, _, input) => findLocalNodes(input)
+    case QueryPlan.Expand(_, _, onNeighbor) => findLocalNodes(onNeighbor)
+    case _ => Nil
+  }
+
   /** Find all CreateHalfEdge effects in a plan */
   private def findCreateHalfEdges(p: QueryPlan): List[LocalQueryEffect.CreateHalfEdge] = p match {
     case QueryPlan.LocalEffect(effects, child) =>
@@ -1766,5 +1782,63 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       },
     )
     hasRenamedBinding shouldBe true
+  }
+
+  // ============================================================
+  // LOCAL NODE TESTS - RETURN n should emit LocalNode
+  // ============================================================
+
+  it should "generate LocalNode for nodes returned after SET with edge creation" in {
+    // This query:
+    // 1. Matches 3 nodes by computed ID
+    // 2. SETs labels and properties on them
+    // 3. CREATEs edges between them
+    // 4. RETURNs the nodes
+    //
+    // The RETURN a, b, c should generate LocalNode instructions for each binding
+    // because the returned value needs the full node (id + labels + properties)
+    val query = """
+      MATCH (a), (b), (c)
+      WHERE id(a) = idFrom("Person", "Alice")
+      AND id(b) = idFrom("Person", "Bob")
+      AND id(c) = idFrom("Person", "Charlie")
+      SET a:Person,
+          a.name="Alice",
+          a.age=30,
+          a.city="Seattle",
+          b:Person,
+          b.name="Bob",
+          b.age=25,
+          b.city="Portland",
+          c:Person,
+          c.name="Charlie",
+          c.age=35,
+          c.city="Washington"
+      CREATE (a)-[:KNOWS]->(b),
+             (b)-[:KNOWS]->(c),
+             (c)-[:KNOWS]->(a)
+      RETURN a, b, c
+    """
+
+    val plan = planQuery(query)
+
+    // Should have at least 3 computed anchors (one for each idFrom lookup)
+    // Note: The planner may generate additional anchors for edge creation dispatching
+    val computedAnchors = countComputedAnchors(plan)
+    computedAnchors should be >= 3
+
+    // Should contain LocalNode operators for the 3 returned bindings
+    // This is the key assertion: RETURN a, b, c should emit LocalNode (not LocalId)
+    // so that returned nodes include id + labels + properties
+    // Note: The bindings use internal numeric IDs from the parser (1, 2, 3)
+    val localNodes = findLocalNodes(plan)
+    localNodes should have size 3
+
+    // Should have 6 CreateHalfEdge effects (2 per edge, 3 edges total)
+    val createEdges = findCreateHalfEdges(plan)
+    createEdges should have size 6
+
+    // Verify the edge labels are KNOWS
+    createEdges.map(_.label.name).toSet shouldBe Set("KNOWS")
   }
 }

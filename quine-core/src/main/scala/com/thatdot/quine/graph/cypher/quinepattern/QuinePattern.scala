@@ -93,6 +93,7 @@ object CypherAndQuineHelpers {
         Some(PropertyValue.apply(values.map(p => p._1.name -> patternValueToPropertyValue(p._2).get.deserialized.get)))
       case _: Value.NodeId => throw new RuntimeException("Node IDs cannot be represented as property values")
       case _: Value.Node => throw new RuntimeException("Nodes cannot be represented as property values")
+      case _: Value.Relationship => throw new RuntimeException("Relationships cannot be represented as property values")
     }
 
   def quineValueToPatternValue(value: QuineValue): Value = value match {
@@ -148,6 +149,15 @@ object CypherAndQuineHelpers {
       // props is a Value.Map which contains .values: SortedMap[Symbol, Value]
       val propMap = props.values.map { case (k, v) => k.name -> patternValueToQuineValue(v) }
       QuineValue.Map(propMap + ("_id" -> QuineValue.Id(id)))
+    case Value.Relationship(start, edgeType, props, end) =>
+      // Convert relationship to a map representation
+      val propMap = props.map { case (k, v) => k.name -> patternValueToQuineValue(v) }
+      QuineValue.Map(
+        propMap +
+        ("_start" -> QuineValue.Id(start)) +
+        ("_end" -> QuineValue.Id(end)) +
+        ("_type" -> QuineValue.Str(edgeType.name)),
+      )
   }
 
   @tailrec

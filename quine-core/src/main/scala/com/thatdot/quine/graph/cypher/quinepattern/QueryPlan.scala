@@ -311,6 +311,38 @@ object QueryPlan {
   }
 
   // ============================================================
+  // PROCEDURE CALL
+  // ============================================================
+
+  /** Execute a procedure call.
+    *
+    * Calls a registered procedure with the given arguments. For each result
+    * row yielded by the procedure, executes the subquery with the yielded
+    * values bound to the specified symbols.
+    *
+    * Like Unwind, this is a "flatMap" operator - for each procedure result,
+    * the subquery produces zero or more results.
+    *
+    * EAGER MODE: Execute procedure once with evaluated arguments, iterate results.
+    * LAZY MODE: Re-execute on each context injection (treat as side-effecting).
+    *
+    * @param procedureName Name of the procedure to call
+    * @param arguments Expressions for procedure arguments (evaluated in context)
+    * @param yields List of (resultField, boundAs) pairs mapping procedure output names to query bindings.
+    *               resultField is the name the procedure uses, boundAs is the variable in query scope.
+    *               For `YIELD edge` both are 'edge. For `YIELD result AS r`, resultField='result, boundAs='r.
+    * @param subquery Query to run for each result row
+    */
+  case class Procedure(
+    procedureName: Symbol,
+    arguments: List[Expression],
+    yields: List[(Symbol, Symbol)],
+    subquery: QueryPlan,
+  ) extends QueryPlan {
+    def children: Seq[QueryPlan] = Seq(subquery)
+  }
+
+  // ============================================================
   // EFFECT OPERATORS
   // ============================================================
 

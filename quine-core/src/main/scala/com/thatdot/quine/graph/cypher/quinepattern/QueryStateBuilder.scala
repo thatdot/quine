@@ -205,6 +205,21 @@ object StateDescriptor {
     contextBridgeId: Option[StandingQueryId], // Bridge that feeds Unwind's bindings into subquery
   ) extends StateDescriptor
 
+  /** State for Procedure call operator.
+    *
+    * Like Unwind, executes a subquery for each result row yielded by the procedure.
+    * The procedure is executed when context is injected (for standing queries) or
+    * at kickstart (for eager queries).
+    */
+  case class Procedure(
+    id: StandingQueryId,
+    parentId: StandingQueryId,
+    mode: RuntimeMode,
+    plan: QueryPlan.Procedure,
+    subqueryId: StandingQueryId,
+    contextBridgeId: Option[StandingQueryId], // Bridge that feeds procedure result bindings into subquery
+  ) extends StateDescriptor
+
   /** State for LocalEffect operator */
   case class Effect(
     id: StandingQueryId,
@@ -595,6 +610,32 @@ object QueryStateBuilder {
         // Unwind IS a leaf - it generates initial bindings from the list expression
         (ctxWithBridge.addState(desc, isLeaf = true), id)
 
+      // === PROCEDURE CALL ===
+
+      case p @ QueryPlan.Procedure(_, _, _, subquery) =>
+        val id = StandingQueryId.fresh()
+        // Create a bridge ID for forwarding procedure result bindings to subquery
+        val bridgeId = StandingQueryId.fresh()
+        // Use buildPlanWithContextInjection to find subquery's entry point
+        val (ctxAfterSubquery, subqueryId, maybeEntryPointId) =
+          buildPlanWithContextInjection(subquery, id, mode, ctx, fallbackOutput, bridgeId)
+
+        // Create context bridge if subquery has an entry point
+        val ctxWithBridge = maybeEntryPointId match {
+          case Some(entryPointId) =>
+            // Bridge receives from Procedure and forwards to subquery's entry point
+            val bridgeDesc = StateDescriptor.ContextBridge(bridgeId, entryPointId, mode, id)
+            ctxAfterSubquery
+              .addState(bridgeDesc, isLeaf = false) // Bridge is not a leaf - it waits for Procedure
+              .markNotLeaf(entryPointId) // Entry point is no longer a leaf - it receives from bridge
+          case None =>
+            ctxAfterSubquery
+        }
+
+        val desc = StateDescriptor.Procedure(id, parentId, mode, p, subqueryId, maybeEntryPointId.map(_ => bridgeId))
+        // Procedure IS a leaf - it generates initial bindings from procedure results
+        (ctxWithBridge.addState(desc, isLeaf = true), id)
+
       // === EFFECT OPERATORS ===
 
       case p @ QueryPlan.LocalEffect(_, input) =>
@@ -804,6 +845,31 @@ object QueryStateBuilder {
         val desc =
           StateDescriptor.Unwind(id, parentId, mode, p, subqueryId, maybeSubqueryEntry.map(_ => unwindBridgeId))
         // Unwind IS the entry point - it receives context from parent and combines with unwound values
+        (ctxWithBridge.addState(desc, isLeaf = true), id, Some(id))
+
+      // For Procedure, create bridge to subquery's entry point
+      // Procedure itself becomes an entry point (it needs context from parent to evaluate arguments)
+      case p @ QueryPlan.Procedure(_, _, _, subquery) =>
+        val id = StandingQueryId.fresh()
+        // Create Procedure's own context bridge to its subquery
+        val procBridgeId = StandingQueryId.fresh()
+        // Find subquery's entry point using buildPlanWithContextInjection
+        val (ctxAfterSubquery, subqueryId, maybeSubqueryEntry) =
+          buildPlanWithContextInjection(subquery, id, mode, ctx, fallbackOutput, procBridgeId)
+
+        val ctxWithBridge = maybeSubqueryEntry match {
+          case Some(entryPointId) =>
+            val bridgeDesc = StateDescriptor.ContextBridge(procBridgeId, entryPointId, mode, id)
+            ctxAfterSubquery
+              .addState(bridgeDesc, isLeaf = false)
+              .markNotLeaf(entryPointId)
+          case None =>
+            ctxAfterSubquery
+        }
+
+        val desc =
+          StateDescriptor.Procedure(id, parentId, mode, p, subqueryId, maybeSubqueryEntry.map(_ => procBridgeId))
+        // Procedure IS the entry point - it receives context from parent and combines with procedure results
         (ctxWithBridge.addState(desc, isLeaf = true), id, Some(id))
 
       // For other leaf operators that generate their own context (LocalId, LocalProperty, etc.),

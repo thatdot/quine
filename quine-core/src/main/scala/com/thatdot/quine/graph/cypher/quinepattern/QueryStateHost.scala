@@ -892,6 +892,27 @@ object DefaultStateInstantiator extends StateInstantiator {
           stateGraph.params,
         )
 
+      case d @ StateDescriptor.Procedure(id, parentId, _, plan, subqueryId, contextBridgeId) =>
+        val graph = nodeContext.graph.getOrElse(
+          throw new IllegalStateException("Graph required for ProcedureState but not provided in NodeContext"),
+        )
+        val namespace = nodeContext.namespace.getOrElse(
+          throw new IllegalStateException("Namespace required for ProcedureState but not provided in NodeContext"),
+        )
+        new ProcedureState(
+          id,
+          parentId,
+          d.mode,
+          plan.procedureName,
+          plan.arguments,
+          plan.yields,
+          subqueryId,
+          contextBridgeId,
+          graph,
+          namespace,
+          stateGraph.params,
+        )
+
       case d @ StateDescriptor.Effect(id, parentId, _, plan, inputId) =>
         val graph = nodeContext.graph.getOrElse(
           throw new IllegalStateException("Graph required for EffectState but not provided in NodeContext"),
@@ -2623,6 +2644,180 @@ class UnwindState(
   }
 }
 
+/** State for executing procedure calls.
+  *
+  * Similar to UnwindState, this executes a subquery for each result row produced
+  * by the procedure. The procedure is executed when context is injected (for
+  * standing queries) or at kickstart (for eager queries).
+  */
+class ProcedureState(
+  val id: StandingQueryId,
+  val publishTo: StandingQueryId,
+  val mode: RuntimeMode,
+  val procedureName: Symbol,
+  val arguments: List[com.thatdot.language.ast.Expression],
+  val yields: List[(Symbol, Symbol)],
+  val subqueryId: StandingQueryId,
+  val contextBridgeId: Option[StandingQueryId],
+  val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
+  val namespace: NamespaceId,
+  val params: Map[Symbol, com.thatdot.language.ast.Value],
+) extends QueryState
+    with PublishingState {
+
+  import scala.collection.mutable
+  import scala.concurrent.duration._
+
+  import org.apache.pekko.util.Timeout
+
+  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.graph.behavior.QuinePatternCommand
+  import com.thatdot.quine.graph.cypher.quinepattern.procedures.{
+    GetFilteredEdgesProcedure,
+    ProcedureContext,
+    QuinePatternProcedureRegistry,
+  }
+  import QuinePatternExpressionInterpreter.{EvalEnvironment, eval}
+
+  implicit private val ec: scala.concurrent.ExecutionContext = graph.nodeDispatcherEC
+  implicit private val idProvider: com.thatdot.quine.model.QuineIdProvider = graph.idProvider
+  implicit private val timeout: Timeout = Timeout(30.seconds)
+
+  // Ensure getFilteredEdges is registered
+  QuinePatternProcedureRegistry.register(GetFilteredEdgesProcedure)
+
+  QPTrace.log(
+    s"PROCEDURE-CREATED id=$id procedure=$procedureName subqueryId=$subqueryId bridgeId=${contextBridgeId
+      .getOrElse("none")} publishTo=$publishTo",
+  )
+
+  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
+    QPTrace.log(s"Procedure $id: notify from=$from deltaSize=${delta.size} isSubquery=${from == subqueryId}")
+
+    if (from == subqueryId) {
+      // Results from subquery - pass through to parent
+      QPTrace.log(s"Procedure $id: passing through subquery results to parent")
+      emit(delta, actor)
+    } else {
+      // Incoming context from parent (when Procedure is an entry point)
+      // Execute procedure with this context and forward results to subquery via bridge
+      QPTrace.log(s"Procedure $id: received parent context, executing procedure")
+      processWithContext(delta, actor)
+    }
+  }
+
+  override def kickstart(context: NodeContext, actor: ActorRef): Unit = {
+    QPTrace.log(s"Procedure $id: kickstart bridgeId=${contextBridgeId.getOrElse("none")}")
+    // Execute the procedure with empty context (no parent bindings)
+    processWithContext(Map(QueryContext.empty -> 1), actor)
+  }
+
+  /** Execute procedure for each incoming context and forward results to subquery */
+  private def processWithContext(incomingDelta: Delta.T, actor: ActorRef): Unit = {
+    import scala.concurrent.Future
+
+    // Look up the procedure
+    val procedureOpt = QuinePatternProcedureRegistry.get(procedureName.name)
+    procedureOpt match {
+      case None =>
+        QPTrace.log(s"Procedure $id: unknown procedure '${procedureName.name}'")
+        // Unknown procedure - emit error or empty in eager mode
+        if (mode == RuntimeMode.Eager) {
+          contextBridgeId match {
+            case Some(bridgeId) =>
+              actor ! QuinePatternCommand.QueryUpdate(bridgeId, id, Map.empty)
+            case None =>
+              emit(Map.empty, actor)
+          }
+        }
+
+      case Some(procedure) =>
+        // Collect all futures for procedure executions
+        // Each future returns a delta map for its input context
+        val futures: Seq[Future[Map[QueryContext, Int]]] = incomingDelta.toSeq.flatMap { case (incomingCtx, mult) =>
+          if (mult > 0) {
+            // Evaluate arguments in context
+            val env = EvalEnvironment(incomingCtx, params)
+            val evaluatedArgs: Seq[Value] = arguments.map { argExpr =>
+              eval(argExpr).run(env) match {
+                case Right(value) => value
+                case Left(err) =>
+                  QPTrace.log(s"Procedure $id: argument evaluation error: $err")
+                  Value.Null
+              }
+            }
+
+            // Create procedure context
+            // Note: At runtime, the graph is a GraphService that extends both QuinePatternOpsGraph
+            // and LiteralOpsGraph, so this cast is safe
+            val literalGraph =
+              graph.asInstanceOf[com.thatdot.quine.graph.BaseGraph with com.thatdot.quine.graph.LiteralOpsGraph]
+            val procContext = ProcedureContext(
+              graph = literalGraph,
+              namespace = namespace,
+              atTime = None, // TODO: Support historical queries
+              timeout = timeout,
+            )
+
+            // Execute the procedure and map results to delta
+            val resultFuture: Future[Map[QueryContext, Int]] = procedure
+              .execute(evaluatedArgs, procContext)
+              .map { results =>
+                val outputDelta = mutable.Map.empty[QueryContext, Int]
+                results.foreach { resultRow =>
+                  // Map procedure outputs to yield symbols
+                  // yields is List[(resultField, boundAs)] - look up resultField, bind to boundAs
+                  val bindings: Map[Symbol, Value] = yields.flatMap { case (resultField, boundAs) =>
+                    resultRow.get(resultField.name).map(boundAs -> _)
+                  }.toMap
+
+                  // Combine with incoming context
+                  val ctx = incomingCtx ++ bindings
+                  outputDelta(ctx) = outputDelta.getOrElse(ctx, 0) + mult
+                }
+                QPTrace.log(s"Procedure $id: context produced ${outputDelta.size} bindings")
+                outputDelta.toMap
+              }
+              .recover { case err =>
+                QPTrace.log(s"Procedure $id: execution error: ${err.getMessage}")
+                Map.empty[QueryContext, Int]
+              }
+
+            Some(resultFuture)
+          } else {
+            None
+          }
+        }
+
+        // Wait for ALL procedure calls to complete, then emit combined results
+        Future.sequence(futures).foreach { allDeltas =>
+          // Combine all deltas into one
+          val combinedDelta = mutable.Map.empty[QueryContext, Int]
+          allDeltas.foreach { delta =>
+            delta.foreach { case (ctx, mult) =>
+              combinedDelta(ctx) = combinedDelta.getOrElse(ctx, 0) + mult
+            }
+          }
+
+          QPTrace.log(s"Procedure $id: all calls complete, combined ${combinedDelta.size} bindings")
+
+          // Forward combined results to subquery via context bridge
+          contextBridgeId match {
+            case Some(bridgeId) =>
+              if (combinedDelta.nonEmpty || mode == RuntimeMode.Eager) {
+                QPTrace.log(s"Procedure $id: forwarding combined results to bridge $bridgeId")
+                actor ! QuinePatternCommand.QueryUpdate(bridgeId, id, combinedDelta.toMap)
+              }
+            case None =>
+              if (combinedDelta.nonEmpty || mode == RuntimeMode.Eager) {
+                emit(combinedDelta.toMap, actor)
+              }
+          }
+        }
+    }
+  }
+}
+
 class EffectState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
@@ -2769,8 +2964,29 @@ class EffectState(
             ctx
         }
 
+      case LocalQueryEffect.SetLabels(targetBindingOpt, newLabels) =>
+        // Update labels in the context's Value.Node
+        val targetKey: Option[Symbol] = targetBindingOpt.orElse {
+          // Effect is inside an anchor - find a node binding in context
+          ctx.bindings.collectFirst { case (k, _: Value.Node) => k }
+        }
+
+        targetKey match {
+          case Some(key) =>
+            ctx.bindings.get(key) match {
+              case Some(Value.Node(id, existingLabels, props)) =>
+                // Merge new labels with existing (SET adds labels, doesn't replace)
+                val updatedNode = Value.Node(id, existingLabels ++ newLabels, props)
+                QueryContext(ctx.bindings + (key -> updatedNode))
+              case _ =>
+                ctx
+            }
+          case None =>
+            ctx
+        }
+
       case _ =>
-        // Other effects don't modify the context
+        // Other effects (CreateHalfEdge, CreateNode, Foreach) don't modify the context
         ctx
     }
   }

@@ -2349,7 +2349,9 @@ class QueryPlanRuntimeTest
     result match {
       case Some(q: Cypher.Query.SingleQuery) => (q, tableState.symbolTable)
       case Some(other) => fail(s"Expected SingleQuery, got: $other")
-      case None => fail(s"Parse error for query: $query")
+      case None =>
+        val diagnostics = tableState.diagnostics.mkString("\n  ")
+        fail(s"Parse error for query: $query\nDiagnostics:\n  $diagnostics")
     }
   }
 
@@ -7304,6 +7306,585 @@ class QueryPlanRuntimeTest
       nodeIds should contain(aliceId)
       nodeIds should contain(bobId)
       nodeIds should contain(charlieId)
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  // ============================================================
+  // CALL PROCEDURE TESTS - getFilteredEdges
+  // ============================================================
+
+  "QuinePattern CALL getFilteredEdges" should "return edges in eager mode" in {
+    val graph = makeGraph("call-getFilteredEdges-eager")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      def computeIdFrom(parts: String*): QuineId = {
+        val cypherValues = parts.map(s => com.thatdot.quine.graph.cypher.Expr.Str(s))
+        com.thatdot.quine.graph.idFrom(cypherValues: _*)(qidProvider)
+      }
+
+      // Create a central node and three connected nodes
+      val centralId = computeIdFrom("central", "node-1")
+      val friend1Id = computeIdFrom("friend", "node-1")
+      val friend2Id = computeIdFrom("friend", "node-2")
+      val colleagueId = computeIdFrom("colleague", "node-1")
+
+      // Set up the central node
+      Await.result(graph.literalOps(namespace).setProp(centralId, "name", QuineValue.Str("Alice")), 5.seconds)
+
+      // Create edges from central node to others
+      Await.result(graph.literalOps(namespace).addEdge(centralId, friend1Id, "KNOWS"), 5.seconds)
+      Await.result(graph.literalOps(namespace).addEdge(centralId, friend2Id, "KNOWS"), 5.seconds)
+      Await.result(graph.literalOps(namespace).addEdge(centralId, colleagueId, "WORKS_WITH"), 5.seconds)
+
+      Thread.sleep(300) // Let edges settle
+
+      // Query using getFilteredEdges to get all edges
+      val query = """
+        UNWIND $nodes AS nodeId
+        CALL getFilteredEdges(nodeId, [], [], $all) YIELD edge
+        RETURN edge
+      """
+
+      val plan = parseAndPlan(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val params = Map(
+        Symbol("nodes") -> Value.List(List(Value.NodeId(centralId))),
+        Symbol("all") -> Value.List(List(Value.NodeId(friend1Id), Value.NodeId(friend2Id), Value.NodeId(colleagueId))),
+      )
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plan,
+        mode = RuntimeMode.Eager,
+        params = params,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Should return 3 edges (KNOWS x2, WORKS_WITH x1)
+      results should have size 3
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "filter edges by type in eager mode" in {
+    val graph = makeGraph("call-getFilteredEdges-filter-type")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      def computeIdFrom(parts: String*): QuineId = {
+        val cypherValues = parts.map(s => com.thatdot.quine.graph.cypher.Expr.Str(s))
+        com.thatdot.quine.graph.idFrom(cypherValues: _*)(qidProvider)
+      }
+
+      val centralId = computeIdFrom("central", "filter-test")
+      val friend1Id = computeIdFrom("friend", "filter-1")
+      val friend2Id = computeIdFrom("friend", "filter-2")
+      val colleagueId = computeIdFrom("colleague", "filter-1")
+
+      // Create edges
+      Await.result(graph.literalOps(namespace).addEdge(centralId, friend1Id, "KNOWS"), 5.seconds)
+      Await.result(graph.literalOps(namespace).addEdge(centralId, friend2Id, "KNOWS"), 5.seconds)
+      Await.result(graph.literalOps(namespace).addEdge(centralId, colleagueId, "WORKS_WITH"), 5.seconds)
+
+      Thread.sleep(300)
+
+      // Query filtering only KNOWS edges
+      val query = """
+        UNWIND $nodes AS nodeId
+        CALL getFilteredEdges(nodeId, ["KNOWS"], [], $all) YIELD edge
+        RETURN edge
+      """
+
+      val plan = parseAndPlan(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val params = Map(
+        Symbol("nodes") -> Value.List(List(Value.NodeId(centralId))),
+        Symbol("all") -> Value.List(List(Value.NodeId(friend1Id), Value.NodeId(friend2Id), Value.NodeId(colleagueId))),
+      )
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plan,
+        mode = RuntimeMode.Eager,
+        params = params,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Should return only 2 KNOWS edges
+      results should have size 2
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return edges in lazy mode" in {
+    val graph = makeGraph("call-getFilteredEdges-lazy")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      def computeIdFrom(parts: String*): QuineId = {
+        val cypherValues = parts.map(s => com.thatdot.quine.graph.cypher.Expr.Str(s))
+        com.thatdot.quine.graph.idFrom(cypherValues: _*)(qidProvider)
+      }
+
+      val centralId = computeIdFrom("central", "lazy-test")
+      val friendId = computeIdFrom("friend", "lazy-1")
+
+      // Create the edge
+      Await.result(graph.literalOps(namespace).addEdge(centralId, friendId, "KNOWS"), 5.seconds)
+
+      Thread.sleep(300)
+
+      val query = """
+        UNWIND $nodes AS nodeId
+        CALL getFilteredEdges(nodeId, [], [], $all) YIELD edge
+        RETURN edge
+      """
+
+      val plan = parseAndPlan(query)
+
+      val collector = new LazyResultCollector()
+      val sqId = StandingQueryId.fresh()
+      val params = Map(
+        Symbol("nodes") -> Value.List(List(Value.NodeId(centralId))),
+        Symbol("all") -> Value.List(List(Value.NodeId(friendId))),
+      )
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = sqId,
+        plan = plan,
+        mode = RuntimeMode.Lazy,
+        params = params,
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+      )
+
+      // Wait for the lazy evaluation
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+
+      // Should have at least 1 positive result
+      collector.positiveCount should be >= 1
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return empty results when no edges match filter" in {
+    val graph = makeGraph("call-getFilteredEdges-no-match")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      def computeIdFrom(parts: String*): QuineId = {
+        val cypherValues = parts.map(s => com.thatdot.quine.graph.cypher.Expr.Str(s))
+        com.thatdot.quine.graph.idFrom(cypherValues: _*)(qidProvider)
+      }
+
+      val centralId = computeIdFrom("central", "no-match-test")
+      val friendId = computeIdFrom("friend", "no-match-1")
+
+      // Create a KNOWS edge
+      Await.result(graph.literalOps(namespace).addEdge(centralId, friendId, "KNOWS"), 5.seconds)
+
+      Thread.sleep(300)
+
+      // Query filtering for WORKS_WITH (which doesn't exist)
+      val query = """
+        UNWIND $nodes AS nodeId
+        CALL getFilteredEdges(nodeId, ["WORKS_WITH"], [], $all) YIELD edge
+        RETURN edge
+      """
+
+      val plan = parseAndPlan(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val params = Map(
+        Symbol("nodes") -> Value.List(List(Value.NodeId(centralId))),
+        Symbol("all") -> Value.List(List(Value.NodeId(friendId))),
+      )
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plan,
+        mode = RuntimeMode.Eager,
+        params = params,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Should return 0 edges (no WORKS_WITH edges exist)
+      results should have size 0
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  // ============================================================
+  // CALL PROCEDURE TESTS - help.builtins (multiple yields)
+  // ============================================================
+
+  "QuinePattern CALL help.builtins" should "yield multiple values without aliases" in {
+    val graph = makeGraph("call-help-builtins-multi-yield")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Query yielding all three values (no LIMIT - not implemented in QuinePattern yet)
+      val query = """
+        CALL help.builtins() YIELD name, signature, description
+        RETURN name, signature, description
+      """
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Should return all builtin functions (53 as of this writing)
+      results.size should be > 0
+
+      val result = results.head
+      // Verify all yielded values are present
+      result.bindings should contain key Symbol("name")
+      result.bindings should contain key Symbol("signature")
+      result.bindings should contain key Symbol("description")
+
+      // Verify they are all Text values
+      result.bindings(Symbol("name")) shouldBe a[Value.Text]
+      result.bindings(Symbol("signature")) shouldBe a[Value.Text]
+      result.bindings(Symbol("description")) shouldBe a[Value.Text]
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "yield three values with aliases" in {
+    val graph = makeGraph("call-help-builtins-yield-alias")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Query with 3 yields and aliases
+      // Note: Can't use "desc" as alias - it's a reserved word (ORDER BY ... DESC)
+      val query =
+        """CALL help.builtins() YIELD name AS funcName, signature AS sig, description AS descr RETURN funcName, sig, descr"""
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Should return all builtin functions
+      results.size should be > 0
+
+      val result = results.head
+      // Verify aliased names are used in bindings
+      result.bindings should contain key Symbol("funcName")
+      result.bindings should contain key Symbol("sig")
+      result.bindings should contain key Symbol("descr")
+
+      // Verify original names are NOT present (they were aliased)
+      result.bindings should not contain key(Symbol("name"))
+      result.bindings should not contain key(Symbol("signature"))
+      result.bindings should not contain key(Symbol("description"))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "yield partial values (subset of outputs)" in {
+    val graph = makeGraph("call-help-builtins-partial-yield")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Query yielding only name (subset of available outputs)
+      val query = """
+        CALL help.builtins() YIELD name
+        RETURN name
+      """
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Should return all builtin functions
+      results.size should be > 0
+
+      val result = results.head
+      // Verify only name is present
+      result.bindings should contain key Symbol("name")
+      result.bindings(Symbol("name")) shouldBe a[Value.Text]
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  // ============================================================
+  // COMPREHENSIVE SET + CREATE + RETURN + getFilteredEdges TEST
+  // ============================================================
+
+  "QuinePattern SET, CREATE, RETURN, and getFilteredEdges integration" should "return nodes with updated properties and find all edges" in {
+    // This test validates the complete flow:
+    // 1. Run a query that SETs labels/properties, CREATEs edges, and RETURNs nodes
+    // 2. Assert returned nodes have correct IDs, labels, and properties
+    // 3. Convert node IDs to their string representation
+    // 4. Run getFilteredEdges with string IDs
+    // 5. Assert all 3 edges are returned
+
+    val graph = makeGraph("set-create-return-getFilteredEdges-integration")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      def computeIdFrom(parts: String*): QuineId = {
+        val cypherValues = parts.map(s => com.thatdot.quine.graph.cypher.Expr.Str(s))
+        com.thatdot.quine.graph.idFrom(cypherValues: _*)(qidProvider)
+      }
+
+      // Expected node IDs
+      val aliceId = computeIdFrom("Person", "Alice")
+      val bobId = computeIdFrom("Person", "Bob")
+      val charlieId = computeIdFrom("Person", "Charlie")
+
+      // ========================================
+      // STEP 1: Run the combined SET + CREATE + RETURN query
+      // ========================================
+      val mainQuery = """
+        MATCH (a), (b), (c)
+        WHERE id(a) = idFrom("Person", "Alice")
+        AND id(b) = idFrom("Person", "Bob")
+        AND id(c) = idFrom("Person", "Charlie")
+        SET a:Person,
+            a.name="Alice",
+            a.age=30,
+            a.city="Seattle",
+            b:Person,
+            b.name="Bob",
+            b.age=25,
+            b.city="Portland",
+            c:Person,
+            c.name="Charlie",
+            c.age=35,
+            c.city="Washington"
+        CREATE (a)-[:KNOWS]->(b),
+               (b)-[:KNOWS]->(c),
+               (c)-[:KNOWS]->(a)
+        RETURN a, b, c
+      """
+
+      val mainPlanned = parseAndPlanWithMetadata(mainQuery)
+      val mainResultPromise = Promise[Seq[QueryContext]]()
+      val mainLoader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      mainLoader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = mainPlanned.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(mainResultPromise),
+        returnColumns = mainPlanned.returnColumns,
+        outputNameMapping = mainPlanned.outputNameMapping,
+      )
+
+      val mainResults = Await.result(mainResultPromise.future, 10.seconds)
+
+      // ========================================
+      // STEP 2: Assert the returned nodes are correct
+      // ========================================
+      mainResults should have size 1
+      val ctx = mainResults.head
+
+      // Should have bindings for a, b, c
+      ctx.bindings should contain key Symbol("a")
+      ctx.bindings should contain key Symbol("b")
+      ctx.bindings should contain key Symbol("c")
+
+      // Helper to validate a node binding
+      def validateNode(
+        binding: Symbol,
+        expectedId: QuineId,
+        expectedName: String,
+        expectedAge: Long,
+        expectedCity: String,
+      ): Unit = {
+        val value = ctx.bindings(binding)
+        value match {
+          case Value.Node(nodeId, labels, props) =>
+            // Validate ID
+            nodeId shouldBe expectedId
+
+            // Validate labels
+            labels should contain(Symbol("Person"))
+
+            // Validate properties
+            props.values.get(Symbol("name")) shouldBe Some(Value.Text(expectedName))
+            props.values.get(Symbol("age")) shouldBe Some(Value.Integer(expectedAge))
+            props.values.get(Symbol("city")) shouldBe Some(Value.Text(expectedCity))
+            ()
+
+          case other =>
+            fail(s"Expected Value.Node for $binding, but got: $other (${other.getClass.getName})")
+        }
+      }
+
+      validateNode(Symbol("a"), aliceId, "Alice", 30, "Seattle")
+      validateNode(Symbol("b"), bobId, "Bob", 25, "Portland")
+      validateNode(Symbol("c"), charlieId, "Charlie", 35, "Washington")
+
+      // ========================================
+      // STEP 3: Verify edges are in the graph
+      // ========================================
+      import com.thatdot.quine.model.EdgeDirection
+
+      // Wait for edges to propagate
+      Thread.sleep(500)
+
+      // Check Alice -> Bob edge
+      val aliceEdges = Await.result(
+        graph.literalOps(namespace).getHalfEdges(aliceId, None, None, None, None),
+        5.seconds,
+      )
+      aliceEdges.exists(e => e.other == bobId && e.direction == EdgeDirection.Outgoing) shouldBe true
+      aliceEdges.exists(e => e.other == charlieId && e.direction == EdgeDirection.Incoming) shouldBe true
+
+      // Check Bob -> Charlie edge
+      val bobEdges = Await.result(
+        graph.literalOps(namespace).getHalfEdges(bobId, None, None, None, None),
+        5.seconds,
+      )
+      bobEdges.exists(e => e.other == charlieId && e.direction == EdgeDirection.Outgoing) shouldBe true
+      bobEdges.exists(e => e.other == aliceId && e.direction == EdgeDirection.Incoming) shouldBe true
+
+      // Check Charlie -> Alice edge
+      val charlieEdges = Await.result(
+        graph.literalOps(namespace).getHalfEdges(charlieId, None, None, None, None),
+        5.seconds,
+      )
+      charlieEdges.exists(e => e.other == aliceId && e.direction == EdgeDirection.Outgoing) shouldBe true
+      charlieEdges.exists(e => e.other == bobId && e.direction == EdgeDirection.Incoming) shouldBe true
+
+      // ========================================
+      // STEP 4: Convert node IDs to string representations
+      // ========================================
+      val aliceIdStr = qidProvider.qidToPrettyString(aliceId)
+      val bobIdStr = qidProvider.qidToPrettyString(bobId)
+      val charlieIdStr = qidProvider.qidToPrettyString(charlieId)
+
+      // ========================================
+      // STEP 5: Run getFilteredEdges with string IDs
+      // ========================================
+      // Parameters: $new and $all are lists of string IDs
+      val edgeParams = Map(
+        Symbol("new") -> Value.List(
+          List(
+            Value.Text(aliceIdStr),
+            Value.Text(bobIdStr),
+            Value.Text(charlieIdStr),
+          ),
+        ),
+        Symbol("all") -> Value.List(
+          List(
+            Value.Text(aliceIdStr),
+            Value.Text(bobIdStr),
+            Value.Text(charlieIdStr),
+          ),
+        ),
+      )
+
+      // Query to get all edges via UNWIND over all 3 nodes
+      val edgeQuery = """
+        UNWIND $new AS newId
+        CALL getFilteredEdges(newId, [], [], $all) YIELD edge
+        RETURN DISTINCT edge AS e
+      """
+
+      val edgePlanned = parseAndPlanWithMetadata(edgeQuery)
+      val edgeResultPromise = Promise[Seq[QueryContext]]()
+
+      val edgeLoader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      edgeLoader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = edgePlanned.plan,
+        mode = RuntimeMode.Eager,
+        params = edgeParams,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(edgeResultPromise),
+        returnColumns = edgePlanned.returnColumns,
+        outputNameMapping = edgePlanned.outputNameMapping,
+      )
+
+      val edgeResults = Await.result(edgeResultPromise.future, 10.seconds)
+
+      // ========================================
+      // STEP 6: Assert all 3 edges are returned
+      // ========================================
+      // We created 3 edges:
+      // - Alice -> Bob (KNOWS)
+      // - Bob -> Charlie (KNOWS)
+      // - Charlie -> Alice (KNOWS)
+
+      edgeResults should have size 3
+
+      // Collect the edge information
+      val returnedEdges = edgeResults.flatMap { edgeCtx =>
+        edgeCtx.bindings.get(Symbol("e")).map {
+          case Value.Relationship(from, label, _, to) =>
+            (from, label.name, to)
+          case other =>
+            fail(s"Expected Value.Relationship, got: $other")
+        }
+      }.toSet
+
+      // Verify all 3 edges are present
+      returnedEdges should contain((aliceId, "KNOWS", bobId))
+      returnedEdges should contain((bobId, "KNOWS", charlieId))
+      returnedEdges should contain((charlieId, "KNOWS", aliceId))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
