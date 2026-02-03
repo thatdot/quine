@@ -11,6 +11,7 @@ import org.apache.pekko.util.Timeout
 
 import io.circe.Encoder
 import io.circe.syntax.EncoderOps
+import org.scalacheck.Gen
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
@@ -78,6 +79,31 @@ class EndpointValidationSpec
         status.intValue() shouldEqual 400
 
         //TODO this should also inspect the output and check that validation strings are correctly generated
+      }
+    }
+  }
+
+  "A kinesis ingest with invalid numRetries" should "fail with 400" in {
+    forAll(Gen.chooseNum(Int.MinValue, 0)) { badRetries =>
+      val url = s"$baseUrl/ingests"
+      val kinesisIngest = Api.IngestSource.Kinesis(
+        format = Api.IngestFormat.StreamingFormat.Json,
+        streamName = "test-stream",
+        shardIds = None,
+        credentials = None,
+        region = None,
+        iteratorType = IteratorType.Latest,
+        numRetries = badRetries,
+        recordDecoders = Seq.empty,
+      )
+      val config = Oss.QuineIngestConfiguration(
+        name = "test-kinesis-bad-retries",
+        source = kinesisIngest,
+        query = "CREATE ($that)",
+      )
+      implicit val timeout: RouteTestTimeout = RouteTestTimeout(5.seconds.dilated)
+      post(url, config) ~> routes ~> check {
+        status.intValue() shouldEqual 400
       }
     }
   }

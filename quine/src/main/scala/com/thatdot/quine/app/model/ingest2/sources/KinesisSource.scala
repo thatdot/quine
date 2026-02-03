@@ -16,6 +16,7 @@ import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
 import cats.data.Validated.{Valid, invalidNel}
 import cats.data.ValidatedNel
+import cats.syntax.apply._
 import software.amazon.awssdk.awscore.retry.AwsRetryStrategy
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient
@@ -31,7 +32,7 @@ import com.thatdot.quine.app.model.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.model.ingest2.source.FramedSource
 import com.thatdot.quine.app.model.ingest2.sources.KinesisSource.buildAsyncClient
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.exceptions.ShardIterationException
+import com.thatdot.quine.exceptions.{KinesisConfigurationError, ShardIterationException}
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisIngest}
 import com.thatdot.quine.util.BaseError
 
@@ -44,26 +45,29 @@ object KinesisSource {
     credentialsOpt: Option[AwsCredentials],
     regionOpt: Option[AwsRegion],
     numRetries: Int,
-  ): KinesisAsyncClient = {
-    val retryStrategy: StandardRetryStrategy = AwsRetryStrategy
-      .standardRetryStrategy()
-      .toBuilder
-      .maxAttempts(numRetries)
-      .build()
-    val builder = KinesisAsyncClient
-      .builder()
-      .credentials(credentialsOpt)
-      .region(regionOpt)
-      .httpClient(buildAsyncHttpClient)
-      .overrideConfiguration(
-        ClientOverrideConfiguration
-          .builder()
-          .retryStrategy(retryStrategy)
-          .build(),
-      )
+  ): ValidatedNel[BaseError, KinesisAsyncClient] =
+    if (numRetries <= 0)
+      invalidNel(KinesisConfigurationError(s"numRetries must be > 0, but was $numRetries"))
+    else {
+      val retryStrategy: StandardRetryStrategy = AwsRetryStrategy
+        .standardRetryStrategy()
+        .toBuilder
+        .maxAttempts(numRetries)
+        .build()
+      val builder = KinesisAsyncClient
+        .builder()
+        .credentials(credentialsOpt)
+        .region(regionOpt)
+        .httpClient(buildAsyncHttpClient)
+        .overrideConfiguration(
+          ClientOverrideConfiguration
+            .builder()
+            .retryStrategy(retryStrategy)
+            .build(),
+        )
 
-    builder.build
-  }
+      Valid(builder.build)
+    }
 
 }
 
@@ -79,7 +83,9 @@ case class KinesisSource(
 )(implicit val ec: ExecutionContext)
     extends FramedSourceProvider {
 
-  val kinesisClient: KinesisAsyncClient = buildAsyncClient(credentialsOpt, regionOpt, numRetries)
+  val kinesisClient: ValidatedNel[BaseError, KinesisAsyncClient] =
+    buildAsyncClient(credentialsOpt, regionOpt, numRetries)
+
   import KinesisIngest.IteratorType
   private val shardIterator: ValidatedNel[BaseError, ShardIterator] = iteratorType match {
     case IteratorType.Latest => Valid(Latest)
@@ -94,13 +100,16 @@ case class KinesisSource(
     case IteratorType.AfterSequenceNumber(seqNo) => Valid(AfterSequenceNumber(seqNo))
   }
 
-  private def kinesisStream(shardIterator: ShardIterator): Source[kinesisModel.Record, NotUsed] = {
+  private def kinesisStream(
+    shardIterator: ShardIterator,
+    client: KinesisAsyncClient,
+  ): Source[kinesisModel.Record, NotUsed] = {
 
     // a Future yielding the shard IDs to read from
     val shardSettingsFut: Future[List[ShardSettings]] =
       (shardIds.getOrElse(Set()) match {
         case noIds if noIds.isEmpty =>
-          kinesisClient
+          client
             .describeStream(
               DescribeStreamRequest.builder().streamName(streamName).build(),
             )
@@ -145,7 +154,7 @@ case class KinesisSource(
 
     Source
       .future(shardSettingsFut)
-      .flatMapConcat(shardSettings => PekkoKinesisSource.basicMerge(shardSettings, kinesisClient))
+      .flatMapConcat(shardSettings => PekkoKinesisSource.basicMerge(shardSettings, client))
       .via(kinesisRateLimiter)
   }
 
@@ -160,13 +169,13 @@ case class KinesisSource(
   }
 
   def framedSource: ValidatedNel[BaseError, FramedSource] =
-    shardIterator.map { si =>
+    (shardIterator, kinesisClient).mapN { (si, client) =>
       FramedSource[kinesisModel.Record](
-        withKillSwitches(kinesisStream(si)),
+        withKillSwitches(kinesisStream(si, client)),
         meter,
         record => ContentDecoder.decode(decoders, record.data().asByteArrayUnsafe()),
         recordFolder,
-        terminationHook = () => kinesisClient.close(),
+        terminationHook = () => client.close(),
       )
     }
 }
