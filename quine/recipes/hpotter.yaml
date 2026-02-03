@@ -20,7 +20,15 @@ ingestStreams:
         MATCH (c) WHERE id(c) = idFrom('name', childName)
         CREATE (c)-[:has_parent]->(p)
 standingQueries: [ ]
-nodeAppearances: [ ]
+nodeAppearances:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Person
+    icon: "\uf381"
+    label:
+      type: Property
+      key: name
 quickQueries:
   - quickQuery:
       name: Adjacent Nodes

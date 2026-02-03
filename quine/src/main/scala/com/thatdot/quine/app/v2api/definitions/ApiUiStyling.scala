@@ -236,17 +236,12 @@ object ApiUiStyling {
       label: Option[UiNodeLabel] = None,
     ) = new UiNodeAppearance(predicate, size, icon, color, label)
 
-    val person: UiNodeAppearance = UiNodeAppearance(
-      predicate = UiNodePredicate(Vector.empty, Map.empty, Some("Person")),
+    val named: UiNodeAppearance = UiNodeAppearance(
+      predicate = UiNodePredicate(Vector.empty, Map.empty, None),
       label = Some(UiNodeLabel.Property("name", None)),
       icon = Some("\uf47e"),
     )
-    val file: UiNodeAppearance = UiNodeAppearance(
-      predicate = UiNodePredicate(Vector.empty, Map.empty, Some("File")),
-      label = Some(UiNodeLabel.Property("path", Some("File path: "))),
-      icon = Some("\uf381"),
-    )
-    val defaults: Vector[UiNodeAppearance] = Vector(person, file)
+    val defaults: Vector[UiNodeAppearance] = Vector(named)
   }
 
   @title("UI Node Label")
