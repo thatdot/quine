@@ -14,7 +14,7 @@ import com.thatdot.quine.graph.{BaseGraph, NamespaceId, StandingQueryId, Standin
 trait NodeWakeHook {
 
   /** Get info needed to send NodeWake message to the host actor */
-  def getNodeWakeInfo: (StandingQueryId, NamespaceId, Map[Symbol, com.thatdot.language.ast.Value])
+  def getNodeWakeInfo: (StandingQueryId, NamespaceId, Map[Symbol, com.thatdot.quine.language.ast.Value])
 }
 
 /** Trait representing operations related to Quine pattern handling within a graph.

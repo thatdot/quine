@@ -772,7 +772,7 @@ trait StateInstantiator {
     descriptor: StateDescriptor,
     graph: StateGraph,
     nodeContext: NodeContext,
-    injectedContext: Map[Symbol, com.thatdot.language.ast.Value],
+    injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
   ): QueryState
 }
 
@@ -783,7 +783,7 @@ object DefaultStateInstantiator extends StateInstantiator {
     descriptor: StateDescriptor,
     stateGraph: StateGraph,
     nodeContext: NodeContext,
-    injectedContext: Map[Symbol, com.thatdot.language.ast.Value],
+    injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
   ): QueryState =
     descriptor match {
 
@@ -1138,7 +1138,7 @@ class UnitState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val injectedContext: Map[Symbol, com.thatdot.language.ast.Value], // Context from parent (e.g., Anchor dispatch)
+  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value], // Context from parent (e.g., Anchor dispatch)
 ) extends QueryState
     with PublishingState {
 
@@ -1179,10 +1179,10 @@ class WatchIdState(
   val mode: RuntimeMode,
   val binding: Symbol,
   val quineId: Option[QuineId],
-  val injectedContext: Map[Symbol, com.thatdot.language.ast.Value],
+  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState {
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
 
   override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = ()
 
@@ -1206,7 +1206,7 @@ class WatchPropertyState(
     with PublishingState
     with PropertySensitiveState {
 
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
 
   // Track whether we've emitted a match (for proper retraction)
   private var currentlyMatched: Option[QueryContext] = None
@@ -1293,13 +1293,13 @@ class WatchAllPropertiesState(
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val binding: Symbol,
-  val injectedContext: Map[Symbol, com.thatdot.language.ast.Value],
+  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState
     with PropertySensitiveState {
 
   import scala.collection.immutable.SortedMap
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
 
   // Track current properties for proper retraction
   private var currentProperties: Map[Symbol, Value] = Map.empty
@@ -1375,7 +1375,7 @@ class WatchLabelsState(
     with PublishingState
     with LabelSensitiveState {
 
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
 
   // Track whether we've emitted a match (for proper retraction)
   private var currentlyMatched: Option[QueryContext] = None
@@ -1452,14 +1452,14 @@ class WatchNodeState(
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val binding: Symbol,
-  val injectedContext: Map[Symbol, com.thatdot.language.ast.Value],
+  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState
     with PropertySensitiveState
     with LabelSensitiveState {
 
   import scala.collection.immutable.SortedMap
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
 
   // Track current state for proper retraction
   private var currentQuineId: Option[QuineId] = None
@@ -1829,14 +1829,14 @@ class FilterState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val predicate: com.thatdot.language.ast.Expression,
+  val predicate: com.thatdot.quine.language.ast.Expression,
   val inputId: StandingQueryId,
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
-  val params: Map[Symbol, com.thatdot.language.ast.Value],
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState {
 
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
   import QuinePatternExpressionInterpreter.{EvalEnvironment, eval}
 
   implicit private val idProvider: com.thatdot.quine.model.QuineIdProvider = graph.idProvider
@@ -1885,7 +1885,7 @@ class ProjectState(
   val dropExisting: Boolean,
   val inputId: StandingQueryId,
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
-  val params: Map[Symbol, com.thatdot.language.ast.Value],
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState {
 
@@ -1982,7 +1982,7 @@ class ExpandState(
   val onNeighborPlan: QueryPlan,
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
   val namespace: com.thatdot.quine.graph.NamespaceId,
-  val params: Map[Symbol, com.thatdot.language.ast.Value],
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState
     with EdgeSensitiveState {
@@ -2134,16 +2134,16 @@ class AnchorState(
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
   val namespace: com.thatdot.quine.graph.NamespaceId,
   val fallbackOutput: Option[OutputTarget], // Used when hosted on NonNodeActor (no QuineId for RemoteState)
-  val params: Map[Symbol, com.thatdot.language.ast.Value],
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
   val injectedContext: Map[
     Symbol,
-    com.thatdot.language.ast.Value,
+    com.thatdot.quine.language.ast.Value,
   ], // Context from parent (e.g., Anchor dispatch) for evaluating target expressions
 ) extends QueryState
     with PublishingState
     with com.thatdot.quine.graph.quinepattern.NodeWakeHook {
 
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
   import com.thatdot.quine.graph.behavior.QuinePatternCommand
   import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
   import QuinePatternExpressionInterpreter.{EvalEnvironment, eval}
@@ -2555,16 +2555,16 @@ class UnwindState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val listExpr: com.thatdot.language.ast.Expression,
+  val listExpr: com.thatdot.quine.language.ast.Expression,
   val binding: Symbol,
   val subqueryId: StandingQueryId,
   val contextBridgeId: Option[StandingQueryId], // Bridge that forwards bindings to subquery's entry point
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
-  val params: Map[Symbol, com.thatdot.language.ast.Value],
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState {
 
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
   import com.thatdot.quine.graph.behavior.QuinePatternCommand
   import QuinePatternExpressionInterpreter.{EvalEnvironment, eval}
 
@@ -2655,13 +2655,13 @@ class ProcedureState(
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val procedureName: Symbol,
-  val arguments: List[com.thatdot.language.ast.Expression],
+  val arguments: List[com.thatdot.quine.language.ast.Expression],
   val yields: List[(Symbol, Symbol)],
   val subqueryId: StandingQueryId,
   val contextBridgeId: Option[StandingQueryId],
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
   val namespace: NamespaceId,
-  val params: Map[Symbol, com.thatdot.language.ast.Value],
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState {
 
@@ -2670,7 +2670,7 @@ class ProcedureState(
 
   import org.apache.pekko.util.Timeout
 
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
   import com.thatdot.quine.graph.behavior.QuinePatternCommand
   import com.thatdot.quine.graph.cypher.quinepattern.procedures.{
     GetFilteredEdgesProcedure,
@@ -2827,11 +2827,11 @@ class EffectState(
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
   val currentNodeId: Option[com.thatdot.common.quineid.QuineId], // The node this effect runs on (None if NonNodeActor)
   val namespace: NamespaceId,
-  val params: Map[Symbol, com.thatdot.language.ast.Value],
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState {
 
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
   import com.thatdot.quine.graph.behavior.QuinePatternCommand
   import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
   import QuinePatternExpressionInterpreter.{EvalEnvironment, eval}
@@ -3162,7 +3162,7 @@ class AggregateState(
 ) extends QueryState
     with PublishingState {
 
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
 
   // Accumulated state: all input contexts with their multiplicities
   private var accumulatedState: Delta.T = Delta.empty
@@ -3249,11 +3249,11 @@ class SortState(
   val orderBy: List[SortKey],
   val inputId: StandingQueryId,
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
-  val params: Map[Symbol, com.thatdot.language.ast.Value],
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState {
 
-  import com.thatdot.language.ast.Value
+  import com.thatdot.quine.language.ast.Value
   import QuinePatternExpressionInterpreter.{EvalEnvironment, eval}
 
   implicit private val idProvider: com.thatdot.quine.model.QuineIdProvider = graph.idProvider

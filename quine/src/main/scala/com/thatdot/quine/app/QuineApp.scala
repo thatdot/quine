@@ -20,7 +20,6 @@ import cats.syntax.all._
 
 import com.thatdot.api.{v2 => Api2}
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.model.ingest.{IngestSrcDef, QuineIngestSource}
@@ -32,6 +31,7 @@ import com.thatdot.quine.app.v2api.converters.ApiToStanding
 import com.thatdot.quine.app.v2api.definitions.query.{standing => V2ApiStanding}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
+import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.StandingQueryPattern.{
@@ -247,7 +247,7 @@ final class QuineApp(
 
                         maybeIsQPEnabled match {
                           case Some(true) =>
-                            import com.thatdot.language.phases.UpgradeModule._
+                            import com.thatdot.quine.language.phases.UpgradeModule._
 
                             val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
                             val (state, result) = parser.process(cypherQuery).value.run(LexerState(Nil)).value
@@ -350,7 +350,7 @@ final class QuineApp(
 
                   maybeIsQPEnabled match {
                     case Some(true) =>
-                      import com.thatdot.language.phases.UpgradeModule._
+                      import com.thatdot.quine.language.phases.UpgradeModule._
 
                       val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
                       val (state, result) = parser.process(cypherQuery).value.run(LexerState(Nil)).value

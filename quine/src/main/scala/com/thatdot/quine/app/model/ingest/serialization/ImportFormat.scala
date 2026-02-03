@@ -11,9 +11,9 @@ import com.typesafe.config.ConfigFactory
 import io.circe.jawn.CirceSupportParser
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
+import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.graph.cypher.quinepattern.{
   CypherAndQuineHelpers,
   OutputTarget,
@@ -155,7 +155,7 @@ abstract class QuinePatternImportFormat(query: String, parameter: String) extend
   override val label: String = "QuinePattern " + query
   implicit protected def logConfig: LogConfig
 
-  import com.thatdot.language.phases.UpgradeModule._
+  import com.thatdot.quine.language.phases.UpgradeModule._
 
   val planned: QueryPlanner.PlannedQuery = {
     val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase

@@ -3,7 +3,7 @@ package com.thatdot.quine.graph.cypher.quinepattern.procedures
 import scala.concurrent.{ExecutionContext, Future}
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.language.ast.Value
+import com.thatdot.quine.language.ast.Value
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 /** QuinePattern implementation of getFilteredEdges procedure.

@@ -7,8 +7,8 @@ import java.util.Locale
 
 import org.apache.commons.codec.net.PercentCodec
 
-import com.thatdot.language.ast.Value
 import com.thatdot.quine.graph.cypher.CypherException.Runtime
+import com.thatdot.quine.language.ast.Value
 
 /** QuinePatternFunction defines built-in pattern functions available in the Quine query language engine.
   *

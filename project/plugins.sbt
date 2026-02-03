@@ -18,3 +18,4 @@ libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "7.5.0.20251202
 addSbtPlugin("com.github.sbt" % "sbt-boilerplate" % "0.8.0")
 addSbtPlugin("net.vonbuchholtz" % "sbt-dependency-check" % "5.1.0")
 addSbtPlugin("com.github.sbt" %% "sbt-sbom" % "0.5.0")
+addSbtPlugin("com.simplytyped" % "sbt-antlr4" % "0.8.3")

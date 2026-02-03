@@ -15,10 +15,8 @@ import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisModule, SymbolAnalysisPhase}
-import com.thatdot.cypher.{ast => Cypher}
-import com.thatdot.language.ast.{Expression, Source, Value}
-import com.thatdot.language.phases.UpgradeModule._
+import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisModule, SymbolAnalysisPhase}
+import com.thatdot.quine.cypher.{ast => Cypher}
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher.quinepattern.OutputTarget.LazyResultCollector
 import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan._
@@ -33,6 +31,8 @@ import com.thatdot.quine.graph.{
   StandingQueryResult,
   defaultNamespaceId,
 }
+import com.thatdot.quine.language.ast.{Expression, Source, Value}
+import com.thatdot.quine.language.phases.UpgradeModule._
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
@@ -407,7 +407,7 @@ class QueryPlanRuntimeTest
           Project(
             List(
               Projection(
-                Expression.Ident(noSource, Left(com.thatdot.language.ast.CypherIdentifier(Symbol("n"))), None),
+                Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("n"))), None),
                 Symbol("result"),
               ),
             ),
@@ -1347,7 +1347,7 @@ class QueryPlanRuntimeTest
           Anchor(
             // This evaluates `a` which is a Value.Node - needs the fix to work
             AnchorTarget.Computed(
-              Expression.Ident(noSource, Left(com.thatdot.language.ast.CypherIdentifier(Symbol("a"))), None),
+              Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("a"))), None),
             ),
             LocalId(Symbol("b")),
           ),
@@ -1657,8 +1657,8 @@ class QueryPlanRuntimeTest
                     label = Symbol("has_parent"),
                     direction = EdgeDirection.Outgoing,
                     // Use `p` from context - this is a Value.Node
-                    other =
-                      Expression.Ident(noSource, Left(com.thatdot.language.ast.CypherIdentifier(Symbol("p"))), None),
+                    other = Expression
+                      .Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("p"))), None),
                   ),
                 ),
                 input = Unit,
@@ -1912,7 +1912,7 @@ class QueryPlanRuntimeTest
             binding = Symbol("item"),
             subquery = Anchor(
               AnchorTarget.Computed(
-                Expression.Ident(noSource, Left(com.thatdot.language.ast.CypherIdentifier(Symbol("item"))), None),
+                Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("item"))), None),
               ),
               Sequence(
                 LocalId(Symbol("target")),
@@ -1924,7 +1924,7 @@ class QueryPlanRuntimeTest
                       direction = EdgeDirection.Incoming,
                       other = Expression.Ident(
                         noSource,
-                        Left(com.thatdot.language.ast.CypherIdentifier(Symbol("n"))),
+                        Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("n"))),
                         None,
                       ),
                     ),

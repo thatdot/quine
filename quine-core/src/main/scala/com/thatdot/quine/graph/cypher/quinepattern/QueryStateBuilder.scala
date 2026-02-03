@@ -1,7 +1,7 @@
 package com.thatdot.quine.graph.cypher.quinepattern
 
-import com.thatdot.language.ast.Value
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId}
+import com.thatdot.quine.language.ast.Value
 
 /** Result of building a query state graph from a QueryPlan.
   *

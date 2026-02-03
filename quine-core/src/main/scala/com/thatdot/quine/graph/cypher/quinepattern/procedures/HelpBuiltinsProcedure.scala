@@ -2,8 +2,8 @@ package com.thatdot.quine.graph.cypher.quinepattern.procedures
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import com.thatdot.language.ast.Value
 import com.thatdot.quine.graph.cypher.Func
+import com.thatdot.quine.language.ast.Value
 
 /** QuinePattern implementation of help.builtins procedure.
   *

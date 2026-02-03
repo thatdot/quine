@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.cypher.quinepattern
 
-import com.thatdot.language.ast.{Expression, Value}
+import com.thatdot.quine.language.ast.{Expression, Value}
 import com.thatdot.quine.model.EdgeDirection
 
 /** Query plan algebra for QuinePattern.

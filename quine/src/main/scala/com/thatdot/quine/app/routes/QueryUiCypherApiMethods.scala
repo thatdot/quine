@@ -18,10 +18,9 @@ import com.thatdot.common.logging.Log.{
 }
 import com.thatdot.common.logging.Pretty.PrettyHelper
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
-import com.thatdot.language.{ast => Pattern}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.CypherProcedures
+import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.graph.cypher.quinepattern.{
   OutputTarget,
   QueryContext => QPQueryContext,
@@ -38,6 +37,7 @@ import com.thatdot.quine.graph.cypher.{
 }
 import com.thatdot.quine.graph.quinepattern.{LoadQuery, QuinePatternOpsGraph}
 import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId, StandingQueryId}
+import com.thatdot.quine.language.{ast => Pattern}
 import com.thatdot.quine.model._
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log.implicits._
@@ -229,7 +229,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     query: CypherQuery,
     namespace: NamespaceId,
   ): (Source[QPQueryContext, NotUsed], QueryPlanner.PlannedQuery) = {
-    import com.thatdot.language.phases.UpgradeModule._
+    import com.thatdot.quine.language.phases.UpgradeModule._
     requireQuinePatternEnabled()
     val parameters = toQuinePatternParameters(query.parameters)
     val qpGraph: QuinePatternOpsGraph = graph.asInstanceOf[QuinePatternOpsGraph]
@@ -340,7 +340,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
       throw new IllegalStateException("QuinePattern requires -Dqp.enabled=true to be set")
     }
 
-  private def toQuinePatternParameters(params: Map[String, Json]): Map[Symbol, com.thatdot.language.ast.Value] = {
+  private def toQuinePatternParameters(params: Map[String, Json]): Map[Symbol, com.thatdot.quine.language.ast.Value] = {
     import com.thatdot.quine.graph.cypher.quinepattern.CypherAndQuineHelpers.quineValueToPatternValue
     params.map { case (k, v) => Symbol(k) -> quineValueToPatternValue(QuineValue.fromJson(v)) }
   }

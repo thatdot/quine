@@ -6,9 +6,9 @@ import cats.data.ReaderT
 import cats.implicits._
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.language.ast.{CypherIdentifier, Expression, Operator, QuineIdentifier, Value}
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.cypher.CypherException.Runtime
+import com.thatdot.quine.language.ast.{CypherIdentifier, Expression, Operator, QuineIdentifier, Value}
 import com.thatdot.quine.model.QuineIdProvider
 
 object QuinePatternExpressionInterpreter {

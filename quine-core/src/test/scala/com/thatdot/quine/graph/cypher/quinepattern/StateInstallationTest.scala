@@ -5,11 +5,11 @@ import scala.concurrent.Promise
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisModule, SymbolAnalysisPhase}
-import com.thatdot.cypher.{ast => Cypher}
-import com.thatdot.language.ast.Value
-import com.thatdot.language.phases.UpgradeModule._
+import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisModule, SymbolAnalysisPhase}
+import com.thatdot.quine.cypher.{ast => Cypher}
 import com.thatdot.quine.graph.defaultNamespaceId
+import com.thatdot.quine.language.ast.Value
+import com.thatdot.quine.language.phases.UpgradeModule._
 
 /** Tests for state installation behavior.
   *

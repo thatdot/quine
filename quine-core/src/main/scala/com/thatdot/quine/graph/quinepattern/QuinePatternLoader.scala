@@ -2,10 +2,10 @@ package com.thatdot.quine.graph.quinepattern
 
 import org.apache.pekko.actor.{Actor, Props}
 
-import com.thatdot.language.{ast => Pattern}
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher.quinepattern.{OutputTarget, QueryPlan, RuntimeMode}
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, StandingQueryOpsGraph}
+import com.thatdot.quine.language.{ast => Pattern}
 
 case class LoadQuery(
   standingQueryId: StandingQueryId,

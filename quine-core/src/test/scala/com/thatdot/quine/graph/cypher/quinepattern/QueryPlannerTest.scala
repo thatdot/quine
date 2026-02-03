@@ -4,12 +4,12 @@ import cats.data.NonEmptyList
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisModule, SymbolAnalysisPhase}
-import com.thatdot.cypher.{ast => Cypher}
-import com.thatdot.language.ast.Expression
-import com.thatdot.language.phases.UpgradeModule._
+import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisModule, SymbolAnalysisPhase}
+import com.thatdot.quine.cypher.{ast => Cypher}
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.{GraphQueryPattern, QuineIdRandomLongProvider}
+import com.thatdot.quine.language.ast.Expression
+import com.thatdot.quine.language.phases.UpgradeModule._
 
 /** Tests for QueryPlanner.
   *

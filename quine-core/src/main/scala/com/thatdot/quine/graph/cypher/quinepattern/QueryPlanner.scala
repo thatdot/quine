@@ -1,9 +1,9 @@
 package com.thatdot.quine.graph.cypher.quinepattern
 
-import com.thatdot.cypher.phases.SymbolAnalysisModule
-import com.thatdot.cypher.{ast => Cypher}
-import com.thatdot.language.ast.Direction
-import com.thatdot.language.{ast => Pattern}
+import com.thatdot.quine.cypher.phases.SymbolAnalysisModule
+import com.thatdot.quine.cypher.{ast => Cypher}
+import com.thatdot.quine.language.ast.Direction
+import com.thatdot.quine.language.{ast => Pattern}
 import com.thatdot.quine.model.EdgeDirection
 
 /** Query Planner for QuinePattern.

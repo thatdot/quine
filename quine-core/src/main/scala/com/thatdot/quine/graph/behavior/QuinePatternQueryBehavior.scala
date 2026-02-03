@@ -4,7 +4,6 @@ import org.apache.pekko.actor.Actor
 
 import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.language.{ast => Pattern}
 import com.thatdot.quine.graph.EdgeEvent.EdgeAdded
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.quinepattern.{
@@ -20,6 +19,7 @@ import com.thatdot.quine.graph.cypher.quinepattern.{
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineMessage, QuineRefOps}
 import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
 import com.thatdot.quine.graph.{BaseNodeActor, NamespaceId, StandingQueryId, StandingQueryOpsGraph}
+import com.thatdot.quine.language.{ast => Pattern}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 /** `QuinePatternCommand` represents commands or instructions used within the Quine graph processing system.

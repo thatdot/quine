@@ -6,10 +6,10 @@ import scala.collection.immutable.SortedMap
 import cats.implicits._
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.language.ast._
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.CypherException.Runtime
 import com.thatdot.quine.graph.cypher.{CypherException, Expr}
+import com.thatdot.quine.language.ast._
 import com.thatdot.quine.model.{PropertyValue, QuineIdProvider, QuineValue}
 
 class QuinePatternUnimplementedException(msg: String) extends RuntimeException(msg)

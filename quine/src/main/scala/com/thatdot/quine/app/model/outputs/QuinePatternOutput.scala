@@ -7,8 +7,7 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig}
-import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
-import com.thatdot.language.{ast => Pattern}
+import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.cypher.quinepattern.CypherAndQuineHelpers.quineValueToPatternValue
 import com.thatdot.quine.graph.cypher.quinepattern.{
@@ -20,6 +19,7 @@ import com.thatdot.quine.graph.cypher.quinepattern.{
 import com.thatdot.quine.graph.cypher.{Expr, QueryContext}
 import com.thatdot.quine.graph.quinepattern.{LoadQuery, QuinePatternOpsGraph}
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryId, StandingQueryResult}
+import com.thatdot.quine.language.{ast => Pattern}
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.QuinePatternQuery
@@ -58,7 +58,7 @@ class QuinePatternOutput(
   ): Flow[StandingQueryResult, MasterStream.SqResultsExecToken, NotUsed] = {
     val token = execToken(name, inNamespace)
 
-    import com.thatdot.language.phases.UpgradeModule._
+    import com.thatdot.quine.language.phases.UpgradeModule._
 
     val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
     val (symbolState, result) = parser.process(config.query).value.run(LexerState(Nil)).value

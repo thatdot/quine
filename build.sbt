@@ -18,6 +18,7 @@ Global / concurrentRestrictions := Seq(
 // Core streaming graph interpreter
 lazy val `quine-core`: Project = project
   .settings(commonSettings)
+  .dependsOn(`quine-language`)
   .settings(
     libraryDependencies ++= Seq(
       "org.graalvm.js" % "js" % graalV,
@@ -34,7 +35,6 @@ lazy val `quine-core`: Project = project
       "io.github.hakky54" % "ayza" % ayzaV,
       "org.typelevel" %% "cats-core" % catsV,
       "org.typelevel" %% "cats-effect" % catsEffectV,
-      "com.thatdot" %% "query-language" % quineQueryV,
       "com.thatdot" %% "quine-id" % quineCommonV,
       "com.lihaoyi" %% "pprint" % pprintV,
       "commons-codec" % "commons-codec" % commonsCodecV,
@@ -70,6 +70,32 @@ lazy val `quine-core`: Project = project
       BuildInfoKey.action("javaVersion")(scala.util.Properties.javaVersion),
     ),
     buildInfoPackage := "com.thatdot.quine",
+  )
+
+// Quine Language - Cypher parser and language services
+lazy val `quine-language`: Project = project
+  .settings(commonSettings)
+  .enablePlugins(Antlr4Plugin)
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.antlr" % "antlr4-runtime" % antlr4RuntimeV,
+      "org.typelevel" %% "cats-effect" % catsEffectV,
+      "org.typelevel" %% "cats-parse" % catsParseV,
+      "org.eclipse.lsp4j" % "org.eclipse.lsp4j" % lsp4jV,
+      "com.chuusai" %% "shapeless" % shapelessV,
+      "com.google.guava" % "guava" % guavaV,
+      "com.47deg" %% "memeid4s" % memeid4sV,
+      "com.thatdot" %% "quine-id" % quineCommonV,
+      "com.thatdot" %% "quine-utils" % quineCommonV,
+      // Testing
+      "org.scalameta" %% "munit" % munitV % Test,
+    ),
+    Antlr4 / antlr4PackageName := Some("com.thatdot.quine.cypher.parsing"),
+    Antlr4 / antlr4Version := antlr4RuntimeV,
+    Antlr4 / antlr4GenListener := false,
+    Antlr4 / antlr4GenVisitor := true,
+    testFrameworks += new TestFramework("munit.Framework"),
+    addCompilerPlugin("org.typelevel" %% "kind-projector" % kindProjectorV cross CrossVersion.full),
   )
 
 lazy val `quine-serialization`: Project = project

@@ -4,8 +4,8 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.util.Timeout
 
-import com.thatdot.language.ast.Value
 import com.thatdot.quine.graph.{BaseGraph, LiteralOpsGraph, NamespaceId}
+import com.thatdot.quine.language.ast.Value
 import com.thatdot.quine.model.Milliseconds
 
 /** Context available to QuinePattern procedures during execution.

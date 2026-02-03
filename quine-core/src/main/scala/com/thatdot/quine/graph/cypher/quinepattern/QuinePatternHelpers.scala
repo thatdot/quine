@@ -6,11 +6,11 @@ import org.apache.pekko.actor.Status.Success
 import org.apache.pekko.stream.CompletionStrategy
 import org.apache.pekko.stream.scaladsl.Source
 
-import com.thatdot.language.ast.{CypherIdentifier, Direction, Expression, QuineIdentifier, Value}
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.CypherException.Runtime
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, QueryContext}
+import com.thatdot.quine.language.ast.{CypherIdentifier, Direction, Expression, QuineIdentifier, Value}
 import com.thatdot.quine.model.EdgeDirection
 
 object QuinePatternHelpers {
