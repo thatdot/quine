@@ -65,7 +65,7 @@ object Dependencies {
   val guavaV = "33.3.0-jre"
   val memeid4sV = "0.8.0"
   val munitV = "1.0.0"
-  val quineCommonV = "0.0.3"
+  val quineCommonV = "0.0.4"
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"
   val lodashV = "4.17.23" // Patched for CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
