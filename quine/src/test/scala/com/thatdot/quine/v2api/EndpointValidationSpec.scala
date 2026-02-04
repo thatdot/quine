@@ -73,7 +73,7 @@ class EndpointValidationSpec
         ingest.copy(source = kinesisIngest)
 
       // Increase timeout for check using implicit, for use when many tests are running at once and longer timeouts may be needed.
-      implicit val timeout: RouteTestTimeout = RouteTestTimeout(5.seconds.dilated)
+      implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
       post(url, quineIngestConfiguration) ~> routes ~> check {
 
         status.intValue() shouldEqual 400
@@ -101,7 +101,7 @@ class EndpointValidationSpec
         source = kinesisIngest,
         query = "CREATE ($that)",
       )
-      implicit val timeout: RouteTestTimeout = RouteTestTimeout(5.seconds.dilated)
+      implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
       post(url, config) ~> routes ~> check {
         status.intValue() shouldEqual 400
       }
@@ -124,6 +124,31 @@ class EndpointValidationSpec
         status.intValue() shouldEqual 400
         //TODO this should also inspect the output and check that validation strings are correctly generated
       }
+    }
+  }
+
+  "A kinesis ingest with no explicit region" should "not return 500" in {
+    val url = s"$baseUrl/ingests"
+    val kinesisIngest = Api.IngestSource.Kinesis(
+      format = Api.IngestFormat.StreamingFormat.Json,
+      streamName = "test-stream",
+      shardIds = None,
+      credentials = None,
+      region = None,
+      iteratorType = IteratorType.Latest,
+      numRetries = 3,
+      recordDecoders = Seq.empty,
+    )
+    val config = Oss.QuineIngestConfiguration(
+      name = "test-kinesis-no-region",
+      source = kinesisIngest,
+      query = "CREATE ($that)",
+    )
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    post(url, config) ~> routes ~> check {
+      // 400 if no region is resolvable from the environment, 201 if one is.
+      // The key invariant: this must never be a 500.
+      status.intValue() should (equal(400) or equal(201))
     }
   }
 

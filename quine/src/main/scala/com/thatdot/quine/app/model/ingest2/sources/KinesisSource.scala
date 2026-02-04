@@ -7,6 +7,7 @@ import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
+import scala.util.Try
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.connectors.kinesis.ShardIterator._
@@ -21,6 +22,7 @@ import software.amazon.awssdk.awscore.retry.AwsRetryStrategy
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
+import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain
 import software.amazon.awssdk.retries.StandardRetryStrategy
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
@@ -41,23 +43,45 @@ object KinesisSource {
   def buildAsyncHttpClient: SdkAsyncHttpClient =
     NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
 
+  private def validateRegion(regionOpt: Option[AwsRegion]): ValidatedNel[BaseError, Option[AwsRegion]] =
+    regionOpt match {
+      case some @ Some(_) => Valid(some)
+      case None =>
+        // This has the potential to error in other ways unless
+        // we validate all of the logic the `DefaultAwsRegionProviderChain`
+        // implements. But this should take care of the failing test
+        // due to the Kinesis Client reading from the environment.
+        Try(new DefaultAwsRegionProviderChain().getRegion).fold(
+          _ =>
+            invalidNel(
+              KinesisConfigurationError(
+                "No AWS region was provided and no default could be determined from the environment. " +
+                "Provide an explicit region or set AWS_REGION.",
+              ),
+            ),
+          _ => Valid(None),
+        )
+    }
+
+  private def validateRetries(numRetries: Int): ValidatedNel[BaseError, Int] =
+    if (numRetries > 0) Valid(numRetries)
+    else invalidNel(KinesisConfigurationError(s"numRetries must be > 0, but was $numRetries"))
+
   def buildAsyncClient(
     credentialsOpt: Option[AwsCredentials],
     regionOpt: Option[AwsRegion],
     numRetries: Int,
   ): ValidatedNel[BaseError, KinesisAsyncClient] =
-    if (numRetries <= 0)
-      invalidNel(KinesisConfigurationError(s"numRetries must be > 0, but was $numRetries"))
-    else {
+    (validateRetries(numRetries), validateRegion(regionOpt)).mapN { (retries, region) =>
       val retryStrategy: StandardRetryStrategy = AwsRetryStrategy
         .standardRetryStrategy()
         .toBuilder
-        .maxAttempts(numRetries)
+        .maxAttempts(retries)
         .build()
-      val builder = KinesisAsyncClient
+      KinesisAsyncClient
         .builder()
         .credentials(credentialsOpt)
-        .region(regionOpt)
+        .region(region)
         .httpClient(buildAsyncHttpClient)
         .overrideConfiguration(
           ClientOverrideConfiguration
@@ -65,8 +89,7 @@ object KinesisSource {
             .retryStrategy(retryStrategy)
             .build(),
         )
-
-      Valid(builder.build)
+        .build
     }
 
 }
