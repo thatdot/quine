@@ -338,9 +338,10 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
       term.onComplete {
         case Failure(err) =>
-          // If the output stream gets terminated badly, cancel the standing query and log the error
+          // If the output stream gets terminated badly, cancel the standing query and log the error.
+          // We skip the persistor so the SQ remains persisted and can be restored on restart.
           logSqOutputFailure(sq.name, err)
-          cancelStandingQuery(sq.id)
+          cancelStandingQuery(sq.id, skipPersistor = true)
         case Success(_) => // Do nothing. This is the shutdown case.
       }(shardDispatcherEC)
 

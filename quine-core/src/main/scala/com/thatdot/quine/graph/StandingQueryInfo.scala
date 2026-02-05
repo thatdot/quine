@@ -182,7 +182,10 @@ final class RunningStandingQuery(
     )
 
   def terminateOutputQueue(): Future[Unit] = {
-    resultsQueue.complete()
+    if (!resultsQueue.isCompleted) {
+      resultsQueue.complete()
+    }
+
     /* Using outputTermination instead of resultsQueue.watchCompletion, because a watchCompletion future may not
      * complete if the termination is caused by a sink cancellation rather than a source completion. Note that since
      * [[resultsHub]] is (so far) always a BroadcastHub, it shouldn't ever cancel, so this is probably unnecessary
