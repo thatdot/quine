@@ -10,6 +10,10 @@ import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.model.ingest2._
 import com.thatdot.quine.{routes => V1}
 
+/** Codec tests for V2 Ingest types verifying default (API-facing) behavior.
+  *
+  * For preserving encoder tests (persistence), see [[V2IngestEntitiesPreservingCodecSpec]].
+  */
 class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheckDrivenPropertyChecks {
 
   import V2IngestEntitiesGenerators.Arbs._
@@ -186,12 +190,25 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
   }
 
   describe("V1.AwsCredentials codec") {
-    it("should roundtrip encode/decode") {
-      forAll { (creds: V1.AwsCredentials) =>
-        val json = creds.asJson
-        val decoded = json.as[V1.AwsCredentials]
-        decoded shouldBe Right(creds)
-      }
+    import com.thatdot.common.security.Secret
+    import io.circe.parser.parse
+
+    it("should encode with redacted credential values") {
+      val creds = V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))
+      val json = creds.asJson
+
+      json.hcursor.downField("accessKeyId").as[String] shouldBe Right("Secret(****)")
+      json.hcursor.downField("secretAccessKey").as[String] shouldBe Right("Secret(****)")
+    }
+
+    it("should decode from JSON with credential values") {
+      import Secret.Unsafe._
+      val json = parse("""{"accessKeyId": "AKIAIOSFODNN7EXAMPLE", "secretAccessKey": "wJalrXUtnFEMI/K7MDENG"}""")
+        .getOrElse(fail("Invalid JSON"))
+      val decoded = json.as[V1.AwsCredentials].getOrElse(fail("Failed to decode"))
+
+      decoded.accessKeyId.unsafeValue shouldBe "AKIAIOSFODNN7EXAMPLE"
+      decoded.secretAccessKey.unsafeValue shouldBe "wJalrXUtnFEMI/K7MDENG"
     }
   }
 
@@ -250,32 +267,53 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
   }
 
   describe("IngestSource codec") {
-    it("should roundtrip encode/decode") {
-      forAll { (is: IngestSource) =>
-        val json = is.asJson
-        val decoded = json.as[IngestSource]
-        decoded shouldBe Right(is)
-      }
+    import com.thatdot.common.security.Secret
+
+    it("should encode with type discriminator") {
+      val source: IngestSource = SQSIngest(
+        format = StreamingFormat.JsonFormat,
+        queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue",
+        credentials = None,
+        region = None,
+      )
+      val json = source.asJson
+
+      json.hcursor.downField("type").as[String] shouldBe Right("SQSIngest")
     }
 
-    it("should include type discriminator") {
-      forAll { (is: IngestSource) =>
-        val json = is.asJson
-        val expectedType = is match {
-          case _: FileIngest => "FileIngest"
-          case _: S3Ingest => "S3Ingest"
-          case _: ReactiveStreamIngest => "ReactiveStreamIngest"
-          case _: WebSocketFileUpload => "WebSocketFileUpload"
-          case _: StdInputIngest => "StdInputIngest"
-          case _: NumberIteratorIngest => "NumberIteratorIngest"
-          case _: WebsocketIngest => "WebsocketIngest"
-          case _: KinesisIngest => "KinesisIngest"
-          case _: KinesisKclIngest => "KinesisKclIngest"
-          case _: ServerSentEventIngest => "ServerSentEventIngest"
-          case _: SQSIngest => "SQSIngest"
-          case _: KafkaIngest => "KafkaIngest"
-        }
-        json.hcursor.downField("type").as[String] shouldBe Right(expectedType)
+    it("should redact credentials in encoded JSON") {
+      val source: IngestSource = SQSIngest(
+        format = StreamingFormat.JsonFormat,
+        queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue",
+        credentials = Some(V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
+        region = Some(V1.AwsRegion("us-east-1")),
+      )
+      val json = source.asJson
+
+      json.hcursor.downField("credentials").downField("accessKeyId").as[String] shouldBe Right("Secret(****)")
+      json.hcursor.downField("credentials").downField("secretAccessKey").as[String] shouldBe Right("Secret(****)")
+    }
+
+    it("should decode from JSON with credential values") {
+      import Secret.Unsafe._
+      import io.circe.parser.parse
+      val json = parse("""{
+        "type": "SQSIngest",
+        "format": {"type": "JsonFormat"},
+        "queueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue",
+        "credentials": {"accessKeyId": "AKIAIOSFODNN7EXAMPLE", "secretAccessKey": "wJalrXUtnFEMI/K7MDENG"},
+        "region": {"region": "us-east-1"}
+      }""").getOrElse(fail("Invalid JSON"))
+
+      val decoded = json.as[IngestSource].getOrElse(fail("Failed to decode IngestSource"))
+
+      decoded match {
+        case sqs: SQSIngest =>
+          val creds = sqs.credentials.getOrElse(fail("Credentials missing"))
+          creds.accessKeyId.unsafeValue shouldBe "AKIAIOSFODNN7EXAMPLE"
+          creds.secretAccessKey.unsafeValue shouldBe "wJalrXUtnFEMI/K7MDENG"
+        case other =>
+          fail(s"Expected SQSIngest but got: $other")
       }
     }
   }
@@ -373,11 +411,11 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
   }
 
   describe("IngestStreamInfo codec") {
-    it("should roundtrip encode/decode") {
+    it("should encode and decode successfully preserving status") {
       forAll { (isi: IngestStreamInfo) =>
         val json = isi.asJson
-        val decoded = json.as[IngestStreamInfo]
-        decoded shouldBe Right(isi)
+        val decoded = json.as[IngestStreamInfo].getOrElse(fail("Failed to decode IngestStreamInfo"))
+        decoded.status shouldBe isi.status
       }
     }
 
@@ -389,14 +427,34 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
         json.hcursor.downField("stats").succeeded shouldBe true
       }
     }
+
+    it("should redact credentials in encoded JSON") {
+      import com.thatdot.common.security.Secret
+      val info = IngestStreamInfo(
+        status = IngestStreamStatus.Running,
+        message = None,
+        settings = SQSIngest(
+          format = StreamingFormat.JsonFormat,
+          queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/queue",
+          credentials = Some(V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
+          region = Some(V1.AwsRegion("us-east-1")),
+        ),
+        stats = IngestStreamStats(0, RatesSummary(0, 0, 0, 0, 0), RatesSummary(0, 0, 0, 0, 0), java.time.Instant.now, 0),
+      )
+      val json = info.asJson
+
+      json.hcursor.downField("settings").downField("credentials").downField("accessKeyId").as[String] shouldBe
+      Right("Secret(****)")
+    }
   }
 
   describe("IngestStreamInfoWithName codec") {
-    it("should roundtrip encode/decode") {
+    it("should encode and decode successfully preserving name and status") {
       forAll { (isi: IngestStreamInfoWithName) =>
         val json = isi.asJson
-        val decoded = json.as[IngestStreamInfoWithName]
-        decoded shouldBe Right(isi)
+        val decoded = json.as[IngestStreamInfoWithName].getOrElse(fail("Failed to decode IngestStreamInfoWithName"))
+        decoded.name shouldBe isi.name
+        decoded.status shouldBe isi.status
       }
     }
 
@@ -408,6 +466,26 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
         json.hcursor.downField("settings").succeeded shouldBe true
         json.hcursor.downField("stats").succeeded shouldBe true
       }
+    }
+
+    it("should redact credentials in encoded JSON") {
+      import com.thatdot.common.security.Secret
+      val info = IngestStreamInfoWithName(
+        name = "test-ingest",
+        status = IngestStreamStatus.Running,
+        message = None,
+        settings = SQSIngest(
+          format = StreamingFormat.JsonFormat,
+          queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/queue",
+          credentials = Some(V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
+          region = Some(V1.AwsRegion("us-east-1")),
+        ),
+        stats = IngestStreamStats(0, RatesSummary(0, 0, 0, 0, 0), RatesSummary(0, 0, 0, 0, 0), java.time.Instant.now, 0),
+      )
+      val json = info.asJson
+
+      json.hcursor.downField("settings").downField("credentials").downField("accessKeyId").as[String] shouldBe
+      Right("Secret(****)")
     }
   }
 
@@ -438,12 +516,16 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
     }
   }
 
+  // Note: roundtrip equality can't be tested because API codecs intentionally redact
+  // Secret values (AWS credentials in SQS/Kinesis ingests).
   describe("QuineIngestConfiguration codec") {
-    it("should roundtrip encode/decode") {
+    it("should encode and decode successfully preserving non-credential fields") {
       forAll { (config: QuineIngestConfiguration) =>
         val json = config.asJson
-        val decoded = json.as[QuineIngestConfiguration]
-        decoded shouldBe Right(config)
+        val decoded = json.as[QuineIngestConfiguration].getOrElse(fail("Failed to decode QuineIngestConfiguration"))
+        decoded.name shouldBe config.name
+        decoded.query shouldBe config.query
+        decoded.parallelism shouldBe config.parallelism
       }
     }
 
@@ -455,15 +537,65 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
         json.hcursor.downField("parallelism").as[Int] shouldBe Right(config.parallelism)
       }
     }
+
+    it("should redact credentials in encoded JSON") {
+      import com.thatdot.common.security.Secret
+      val config = QuineIngestConfiguration(
+        name = "test-config",
+        source = SQSIngest(
+          format = StreamingFormat.JsonFormat,
+          queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/queue",
+          credentials = Some(V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
+          region = Some(V1.AwsRegion("us-east-1")),
+        ),
+        query = "CREATE ($that)",
+      )
+      val json = config.asJson
+
+      json.hcursor.downField("source").downField("credentials").downField("accessKeyId").as[String] shouldBe
+      Right("Secret(****)")
+      json.hcursor.downField("source").downField("credentials").downField("secretAccessKey").as[String] shouldBe
+      Right("Secret(****)")
+    }
   }
 
   describe("QuineIngestStreamWithStatus codec") {
-    it("should roundtrip encode/decode") {
+    it("should encode and decode successfully preserving status") {
       forAll { (ingest: QuineIngestStreamWithStatus) =>
         val json = ingest.asJson
-        val decoded = json.as[QuineIngestStreamWithStatus]
-        decoded shouldBe Right(ingest)
+        val decoded =
+          json.as[QuineIngestStreamWithStatus].getOrElse(fail("Failed to decode QuineIngestStreamWithStatus"))
+        decoded.status shouldBe ingest.status
       }
+    }
+
+    it("should redact credentials in encoded JSON") {
+      import com.thatdot.common.security.Secret
+      val config = QuineIngestConfiguration(
+        name = "test-config",
+        source = SQSIngest(
+          format = StreamingFormat.JsonFormat,
+          queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/queue",
+          credentials = Some(V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
+          region = Some(V1.AwsRegion("us-east-1")),
+        ),
+        query = "CREATE ($that)",
+      )
+      val ingest = QuineIngestStreamWithStatus(config, Some(V1.IngestStreamStatus.Running))
+      val json = ingest.asJson
+
+      json.hcursor
+        .downField("config")
+        .downField("source")
+        .downField("credentials")
+        .downField("accessKeyId")
+        .as[String] shouldBe Right("Secret(****)")
+      json.hcursor
+        .downField("config")
+        .downField("source")
+        .downField("credentials")
+        .downField("secretAccessKey")
+        .as[String] shouldBe Right("Secret(****)")
     }
 
     it("should encode with correct structure") {
@@ -484,5 +616,6 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
         }
       }
     }
+
   }
 }

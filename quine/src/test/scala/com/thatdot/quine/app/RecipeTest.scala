@@ -286,6 +286,44 @@ class RecipeTest extends AnyFunSuite with EitherValues {
     )
   }
 
+  test("recipe substitution for AWS credentials") {
+    import com.thatdot.common.security.Secret
+    import Secret.Unsafe._
+
+    val yaml = """
+        | version: 1
+        | title: sqs-test
+        | ingestStreams:
+        | - type: SQSIngest
+        |   queueUrl: https://sqs.us-east-1.amazonaws.com/123456789/my-queue
+        |   credentials:
+        |     accessKeyId: $accessKey
+        |     secretAccessKey: $secretKey
+        |   format:
+        |     type: CypherJson
+        |     query: CREATE ($that)
+        | standingQueries: []
+        | nodeAppearances: []
+        | quickQueries: []
+        | sampleQueries: []
+        |""".stripMargin
+    val recipe = loadYamlString(yaml)
+    val values = Map(
+      "accessKey" -> "AKIAIOSFODNN7EXAMPLE",
+      "secretKey" -> "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    )
+
+    val substituted = Recipe.applySubstitutions(recipe.value, values)
+    assert(substituted.isValid, s"Substitution failed: $substituted")
+
+    val resultRecipe = substituted.toOption.get
+    val sqsIngest = resultRecipe.ingestStreams.head.asInstanceOf[SQSIngest]
+    val creds = sqsIngest.credentials.get
+
+    assert(creds.accessKeyId.unsafeValue == "AKIAIOSFODNN7EXAMPLE")
+    assert(creds.secretAccessKey.unsafeValue == "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+  }
+
   test("recipe canonical name") {
     val invalidShortName: String = "somethingElse"
     val validShortName: String = "wikipedia"

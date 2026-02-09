@@ -13,10 +13,11 @@ object Api2ToModel1 {
     overall = rates.overall,
   )
 
-  def apply(c: api.v2.AwsCredentials): V1.AwsCredentials = V1.AwsCredentials(
-    accessKeyId = c.accessKeyId,
-    secretAccessKey = c.secretAccessKey,
-  )
+  def apply(c: api.v2.AwsCredentials): V1.AwsCredentials =
+    V1.AwsCredentials(
+      accessKeyId = c.accessKeyId,
+      secretAccessKey = c.secretAccessKey,
+    )
 
   def apply(r: api.v2.AwsRegion): V1.AwsRegion = V1.AwsRegion(r.region)
 }

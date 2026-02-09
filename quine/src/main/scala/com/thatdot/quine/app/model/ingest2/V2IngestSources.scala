@@ -14,6 +14,7 @@ import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
 import com.thatdot.quine.app.util.StringOps.syntax.MultilineTransforms
 import com.thatdot.quine.{routes => V1}
@@ -205,6 +206,50 @@ object IngestSource {
 
   implicit lazy val encoder: Encoder[IngestSource] = deriveConfiguredEncoder
   implicit lazy val decoder: Decoder[IngestSource] = deriveConfiguredDecoder
+
+  /** Encoder that preserves credential values for persistence and cluster communication.
+    * Requires witness (`import Secret.Unsafe._`) to call.
+    */
+  def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[IngestSource] =
+    IngestSourcePreservingCodecs.encoder
+}
+
+/** Separate object to derive preserving encoders without implicit conflicts. */
+private object IngestSourcePreservingCodecs {
+  import io.circe.generic.extras.semiauto.deriveConfiguredEncoder
+  import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+  import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.charsetEncoder
+  import com.thatdot.api.v2.codec.DisjointEither.syntax._
+  import com.thatdot.api.v2.codec.DisjointEvidence._
+  import V1IngestCodecs.{
+    csvCharacterEncoder,
+    fileIngestModeEncoder,
+    kafkaAutoOffsetResetEncoder,
+    kafkaOffsetCommittingEncoder,
+    kafkaSecurityProtocolEncoder,
+    keepaliveProtocolEncoder,
+    kinesisIteratorTypeEncoder,
+    recordDecodingTypeEncoder,
+  }
+
+  def encoder(implicit ev: Secret.UnsafeAccess): Encoder[IngestSource] = {
+    implicit val awsCredsEnc: Encoder[V1.AwsCredentials] = V1IngestCodecs.awsCredentialsPreservingEncoder
+    implicit val awsRegionEnc: Encoder[V1.AwsRegion] = V1IngestCodecs.awsRegionEncoder
+    implicit val sqsIngestEnc: Encoder[SQSIngest] = deriveConfiguredEncoder
+    implicit val kinesisIngestEnc: Encoder[KinesisIngest] = deriveConfiguredEncoder
+    implicit val kinesisKclIngestEnc: Encoder[KinesisKclIngest] = deriveConfiguredEncoder
+    implicit val s3IngestEnc: Encoder[S3Ingest] = deriveConfiguredEncoder
+    implicit val fileIngestEnc: Encoder[FileIngest] = deriveConfiguredEncoder
+    implicit val stdInputIngestEnc: Encoder[StdInputIngest] = deriveConfiguredEncoder
+    implicit val numberIteratorIngestEnc: Encoder[NumberIteratorIngest] = deriveConfiguredEncoder
+    implicit val websocketIngestEnc: Encoder[WebsocketIngest] = deriveConfiguredEncoder
+    implicit val serverSentEventIngestEnc: Encoder[ServerSentEventIngest] = deriveConfiguredEncoder
+    implicit val kafkaIngestEnc: Encoder[KafkaIngest] = deriveConfiguredEncoder
+    implicit val reactiveStreamIngestEnc: Encoder[ReactiveStreamIngest] = deriveConfiguredEncoder
+    implicit val webSocketFileUploadEnc: Encoder[WebSocketFileUpload] = deriveConfiguredEncoder
+
+    deriveConfiguredEncoder[IngestSource]
+  }
 }
 
 @title("File Ingest")

@@ -18,6 +18,7 @@ import io.circe.generic.extras.semiauto._
 import io.circe.{Decoder, DecodingFailure, Json}
 import org.snakeyaml.engine.v2.api.YamlUnicodeReader
 
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef._
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.CirceJsonAnySchema
@@ -105,6 +106,11 @@ object Recipe {
     // Implicit classes so that .subs can be used below.
     implicit class Subs(s: String) {
       def subs: ValidatedNel[UnboundVariableError, String] = applySubstitution(s, values)
+    }
+    implicit class SubSecret(s: Secret) {
+      import Secret.Unsafe._
+      def subs: ValidatedNel[UnboundVariableError, Secret] =
+        applySubstitution(s.unsafeValue, values).map(Secret.apply)
     }
     implicit class SubCreds(c: AwsCredentials) {
       def subs: ValidatedNel[UnboundVariableError, AwsCredentials] =

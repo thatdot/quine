@@ -1,5 +1,6 @@
 package com.thatdot.quine.outputs
 
+import io.circe.Encoder
 import io.circe.syntax.EncoderOps
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
@@ -7,6 +8,7 @@ import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.OutputFormat
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.CirceCodecTestSupport
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.{
@@ -144,6 +146,8 @@ class StandingQueryOutputCodecSpec
   }
 
   test("QuineDestinationSteps property-based roundtrip") {
+    import Secret.Unsafe._
+    implicit val enc: Encoder[QuineDestinationSteps] = QuineDestinationSteps.preservingEncoder
     forAll { (dest: QuineDestinationSteps) =>
       val json = dest.asJson.deepDropNullValues
       val decoded = json.as[QuineDestinationSteps]
@@ -152,6 +156,8 @@ class StandingQueryOutputCodecSpec
   }
 
   test("Checking for ugly QuineDestinationSteps encodings") {
+    import Secret.Unsafe._
+    implicit val enc: Encoder[QuineDestinationSteps] = QuineDestinationSteps.preservingEncoder
     forAll { (dest: QuineDestinationSteps) =>
       val json = dest.asJson.deepDropNullValues
       val decoded = json.as[QuineDestinationSteps]
@@ -203,6 +209,8 @@ class StandingQueryOutputCodecSpec
   }
 
   test("StandingQueryResultWorkflow property-based roundtrip") {
+    import Secret.Unsafe._
+    implicit val enc: Encoder[StandingQueryResultWorkflow] = StandingQueryResultWorkflow.preservingEncoder
     forAll { (workflow: StandingQueryResultWorkflow) =>
       val json = workflow.asJson.deepDropNullValues
       val decoded = json.as[StandingQueryResultWorkflow]
@@ -211,6 +219,8 @@ class StandingQueryOutputCodecSpec
   }
 
   test("Checking for ugly StandingQueryResultWorkflow encodings") {
+    import Secret.Unsafe._
+    implicit val enc: Encoder[StandingQueryResultWorkflow] = StandingQueryResultWorkflow.preservingEncoder
     forAll { (workflow: StandingQueryResultWorkflow) =>
       val json = workflow.asJson.deepDropNullValues
       val decoded = json.as[StandingQueryResultWorkflow]
@@ -245,6 +255,8 @@ class StandingQueryOutputCodecSpec
   }
 
   test("StandingQueryResultWorkflow decodes from minimal JSON with defaults applied") {
+    import Secret.Unsafe._
+    implicit val enc: Encoder[StandingQueryResultWorkflow] = StandingQueryResultWorkflow.preservingEncoder
     forAll { workflow: StandingQueryResultWorkflow =>
       // Drop fields with defaults to simulate minimal client payloads
       val minimalJson = workflow.asJson.deepDropNullValues.asObject.get

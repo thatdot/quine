@@ -16,6 +16,7 @@ import com.typesafe.config.ConfigOrigin
 
 import com.thatdot.common.logging.Pretty.PrettyHelper
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.common.security.Secret
 import com.thatdot.common.util.ByteConversions
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
 import com.thatdot.quine.graph.cypher.{
@@ -309,6 +310,7 @@ object Log {
     implicit val LogStandingQueryId: AlwaysSafeLoggable[StandingQueryId] =
       Loggable.alwaysSafe[StandingQueryId](_.toString)
     implicit val LogCharset: AlwaysSafeLoggable[Charset] = Loggable.alwaysSafe[Charset](_.toString)
+    implicit val LogSecret: AlwaysSafeLoggable[Secret] = _.toString // Trust `Secret` to redact in `.toString`
     implicit val LogDistinctIdSubscription: Loggable[DistinctIdSubscription] = toStringLoggable[DistinctIdSubscription]
     implicit val LogUnitState: AlwaysSafeLoggable[UnitState] = _.toString
     implicit val LogCrossState: Loggable[CrossState] = toStringLoggable[com.thatdot.quine.graph.cypher.CrossState]

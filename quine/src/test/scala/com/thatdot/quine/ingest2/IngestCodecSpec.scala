@@ -10,6 +10,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, TypeDiscriminatorConfig}
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.CirceCodecTestSupport
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.RecordDecodingType._
@@ -71,18 +72,20 @@ class IngestCodecSpec
   }
 
   test("s3 json encode/decode") {
-    testJsonRoundtrip[IngestSource](
+    import Secret.Unsafe._
+    testJsonRoundtripWithEncoder[IngestSource](
       ApiIngest.IngestSource.S3(
         format = IngestFormat.FileFormat.JsonL,
         bucket = "bucket",
         key = "key",
-        credentials = Some(AwsCredentials("A", "B")),
+        credentials = Some(AwsCredentials(Secret("A"), Secret("B"))),
         maximumLineSize = Some(10),
         startOffset = 10,
         limit = Some(20),
         characterEncoding = Charset.forName("UTF-16"),
         recordDecoders = Seq(Zlib),
       ),
+      IngestSource.preservingEncoder,
     )
   }
 
@@ -109,17 +112,19 @@ class IngestCodecSpec
   }
 
   test("kinesis json encode/decode") {
-    testJsonRoundtrip[IngestSource](
+    import Secret.Unsafe._
+    testJsonRoundtripWithEncoder[IngestSource](
       ApiIngest.IngestSource.Kinesis(
         format = IngestFormat.StreamingFormat.Json,
         streamName = "streamName",
         shardIds = Some(Set("A", "B", "C")),
-        credentials = Some(AwsCredentials("A", "B")),
+        credentials = Some(AwsCredentials(Secret("A"), Secret("B"))),
         region = Some(AwsRegion.apply("us-east-1")),
         iteratorType = IteratorType.AfterSequenceNumber("sequenceNumber"),
         numRetries = 2,
         recordDecoders = Seq(Base64, Zlib),
       ),
+      IngestSource.preservingEncoder,
     )
   }
 
@@ -131,15 +136,17 @@ class IngestCodecSpec
   }
 
   test("sqs json encode/decode") {
-    testJsonRoundtrip[IngestSource](
+    import Secret.Unsafe._
+    testJsonRoundtripWithEncoder[IngestSource](
       ApiIngest.IngestSource.SQS(
         format = IngestFormat.StreamingFormat.Json,
         queueUrl = "queueUrl",
         readParallelism = 12,
-        credentials = Some(AwsCredentials("A", "B")),
+        credentials = Some(AwsCredentials(Secret("A"), Secret("B"))),
         region = Some(AwsRegion.apply("us-east-1")),
         recordDecoders = Seq(Base64, Zlib),
       ),
+      IngestSource.preservingEncoder,
     )
   }
   test("kafka json encode/decode") {
@@ -195,6 +202,8 @@ class IngestCodecSpec
   }
 
   test("V2 Ingest configuration encode/decode") {
+    import Secret.Unsafe._
+    implicit val enc: io.circe.Encoder[Oss.QuineIngestConfiguration] = Oss.QuineIngestConfiguration.preservingEncoder
     forAll { ic: Oss.QuineIngestConfiguration =>
       val j: Json = ic.asJson.deepDropNullValues
       val r: Result[Oss.QuineIngestConfiguration] = j.as[Oss.QuineIngestConfiguration]
@@ -204,6 +213,8 @@ class IngestCodecSpec
   }
 
   test("Checking for ugly IngestSource encodings") {
+    import Secret.Unsafe._
+    implicit val enc: io.circe.Encoder[IngestSource] = IngestSource.preservingEncoder
     forAll { ic: IngestSource =>
       val j: Json = ic.asJson.deepDropNullValues
       val r: Result[IngestSource] = j.as[IngestSource]

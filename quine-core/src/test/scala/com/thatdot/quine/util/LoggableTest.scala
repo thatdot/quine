@@ -8,11 +8,12 @@ import scala.jdk.DurationConverters._
 import org.scalatest.funspec.AnyFunSpecLike
 
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.cypher.Func.UserDefined
 import com.thatdot.quine.model.QuineValue
 
-import Log.implicits.{logExpr, logQuineValue, LogQuineIdRaw}
+import Log.implicits.{logExpr, logQuineValue, LogQuineIdRaw, LogSecret}
 
 class LoggableTest extends AnyFunSpecLike {
   describe("cypher.Expr") {
@@ -187,6 +188,38 @@ class LoggableTest extends AnyFunSpecLike {
             ),
         )
       }
+    }
+  }
+
+  describe("Secret") {
+    it("always redacts the actual value") {
+      val secret = Secret("super-secret-password")
+      val logged = LogSecret.safe(secret)
+
+      assert(logged.contains("Secret(****)"), s"Expected redacted form, got: $logged")
+      assert(!logged.contains("super-secret-password"), "Secret value should not appear in log output")
+    }
+
+    it("redacts different secrets identically") {
+      val secret1 = Secret("password123")
+      val secret2 = Secret("different-secret-456")
+
+      val logged1 = LogSecret.safe(secret1)
+      val logged2 = LogSecret.safe(secret2)
+
+      assert(logged1 == logged2, s"Different secrets should log identically: '$logged1' vs '$logged2'")
+    }
+
+    it("is AlwaysSafeLoggable (safe and unsafe produce same output)") {
+      val secret = Secret("credential-value")
+
+      val safeOutput = LogSecret.safe(secret)
+      val unsafeOutput = LogSecret.unsafe(secret, _ => "*")
+
+      assert(
+        safeOutput == unsafeOutput,
+        s"safe() and unsafe() should produce same output: '$safeOutput' vs '$unsafeOutput'",
+      )
     }
   }
 }

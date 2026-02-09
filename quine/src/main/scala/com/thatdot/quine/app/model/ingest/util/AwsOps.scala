@@ -13,6 +13,7 @@ import software.amazon.awssdk.regions.Region
 
 import com.thatdot.aws.{util => awsutil}
 import com.thatdot.common.logging.Log._
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.{routes => V1}
 
 case object AwsOps extends LazySafeLogging {
@@ -22,8 +23,9 @@ case object AwsOps extends LazySafeLogging {
 
   def staticCredentialsProvider(credsOpt: Option[V1.AwsCredentials]): AwsCredentialsProvider =
     credsOpt.fold[AwsCredentialsProvider](DefaultCredentialsProvider.builder().build()) { credentials =>
+      import Secret.Unsafe._
       StaticCredentialsProvider.create(
-        AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey),
+        AwsBasicCredentials.create(credentials.accessKeyId.unsafeValue, credentials.secretAccessKey.unsafeValue),
       )
     }
 

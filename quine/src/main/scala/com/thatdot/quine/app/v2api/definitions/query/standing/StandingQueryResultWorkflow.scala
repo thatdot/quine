@@ -8,6 +8,7 @@ import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.schema.ThirdPartySchemas.cats._
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.CypherQuery
 import com.thatdot.quine.app.v2api.definitions.query.standing.Predicate.OnlyPositiveMatch
@@ -33,6 +34,14 @@ object StandingQueryResultWorkflow {
   implicit val encoder: Encoder[StandingQueryResultWorkflow] = deriveConfiguredEncoder
   implicit val decoder: Decoder[StandingQueryResultWorkflow] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[StandingQueryResultWorkflow] = Schema.derived
+
+  /** Encoder that preserves credential values for persistence.
+    * Requires witness (`import Secret.Unsafe._`) to call.
+    */
+  def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[StandingQueryResultWorkflow] = {
+    implicit val destEnc: Encoder[QuineDestinationSteps] = QuineDestinationSteps.preservingEncoder
+    deriveConfiguredEncoder
+  }
 
   val exampleToStandardOut: StandingQueryResultWorkflow = StandingQueryResultWorkflow(
     name = "stdout-example",

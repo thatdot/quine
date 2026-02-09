@@ -8,9 +8,12 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationDecoder,
   deriveEnumerationEncoder,
 }
-import io.circe.{Decoder, Encoder}
+import io.circe.{Decoder, Encoder, Json}
 
+import com.thatdot.api.codec.SecretCodecs
+import com.thatdot.api.codec.SecretCodecs._
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.{routes => V1}
 
 /** Circe encoders and decoders for V1 routes types used by V2 ingest.
@@ -69,4 +72,18 @@ object V1IngestCodecs {
 
   implicit val kinesisIteratorTypeEncoder: Encoder[V1.KinesisIngest.IteratorType] = deriveConfiguredEncoder
   implicit val kinesisIteratorTypeDecoder: Decoder[V1.KinesisIngest.IteratorType] = deriveConfiguredDecoder
+
+  /** Encoder that preserves credential values for persistence and cluster communication.
+    * Requires witness (`import Secret.Unsafe._`) to call.
+    */
+  def awsCredentialsPreservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[V1.AwsCredentials] = {
+    val preservingSecretEnc: Encoder[Secret] = SecretCodecs.preservingEncoder
+    // Defined manually to avoid implicit scope collision of `Encoder[Secret]`
+    Encoder.instance { creds =>
+      Json.obj(
+        "accessKeyId" -> preservingSecretEnc(creds.accessKeyId),
+        "secretAccessKey" -> preservingSecretEnc(creds.secretAccessKey),
+      )
+    }
+  }
 }

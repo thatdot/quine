@@ -8,6 +8,7 @@ import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
 
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.common.security.Secret
 
 object StandingQuery {
 
@@ -36,6 +37,14 @@ object StandingQuery {
     implicit val encoder: Encoder[StandingQueryDefinition] = deriveConfiguredEncoder
     implicit val decoder: Decoder[StandingQueryDefinition] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[StandingQueryDefinition] = Schema.derived
+
+    /** Encoder that preserves credential values for persistence and cluster communication.
+      * Requires witness (`import Secret.Unsafe._`) to call.
+      */
+    def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[StandingQueryDefinition] = {
+      implicit val workflowEnc: Encoder[StandingQueryResultWorkflow] = StandingQueryResultWorkflow.preservingEncoder
+      deriveConfiguredEncoder
+    }
   }
 
   @title("Registered Standing Query")
@@ -64,6 +73,14 @@ object StandingQuery {
     implicit val encoder: Encoder[RegisteredStandingQuery] = deriveConfiguredEncoder
     implicit val decoder: Decoder[RegisteredStandingQuery] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[RegisteredStandingQuery] = Schema.derived
+
+    /** Encoder that preserves credential values for persistence and cluster communication.
+      * Requires witness (`import Secret.Unsafe._`) to call.
+      */
+    def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[RegisteredStandingQuery] = {
+      implicit val workflowEnc: Encoder[StandingQueryResultWorkflow] = StandingQueryResultWorkflow.preservingEncoder
+      deriveConfiguredEncoder
+    }
   }
 
 }

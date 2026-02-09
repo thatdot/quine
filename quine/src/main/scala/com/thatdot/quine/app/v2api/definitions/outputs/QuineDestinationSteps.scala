@@ -9,6 +9,7 @@ import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.{DestinationSteps, Format, OutputFormat}
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
+import com.thatdot.common.security.Secret
 
 /** The Quine-local ADT for result destinations. Note that it includes both "copies" of ADT values defined also in
   * [[DestinationSteps]] <em>and</em> unique ADT values that are supported in Quine but not necessarily other products.
@@ -182,4 +183,12 @@ object QuineDestinationSteps {
   implicit val encoder: Encoder[QuineDestinationSteps] = deriveConfiguredEncoder
   implicit val decoder: Decoder[QuineDestinationSteps] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[QuineDestinationSteps] = Schema.derived
+
+  /** Encoder that preserves credential values for persistence.
+    * Requires witness (`import Secret.Unsafe._`) to call.
+    */
+  def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[QuineDestinationSteps] = {
+    implicit val awsCredsEnc: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
+    deriveConfiguredEncoder
+  }
 }

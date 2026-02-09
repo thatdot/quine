@@ -234,7 +234,9 @@ lazy val `aws`: Project = project
   .settings(
     libraryDependencies ++= Seq(
       "com.thatdot" %% "quine-logging" % quineCommonV,
+      "com.thatdot" %% "quine-security" % quineCommonV,
       "software.amazon.awssdk" % "aws-core" % awsSdkV,
+      "org.scalatest" %% "scalatest" % scalaTestV % Test,
     ),
   )
 
@@ -258,6 +260,7 @@ lazy val `api`: Project = project
   )
   .settings(
     libraryDependencies ++= Seq(
+      "com.thatdot" %% "quine-security" % quineCommonV,
       "com.softwaremill.sttp.tapir" %% "tapir-core" % tapirV,
       "com.softwaremill.sttp.tapir" %% "tapir-json-circe" % tapirV,
       "io.circe" %% "circe-core" % circeV,
@@ -295,12 +298,14 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= Seq(
+      "com.thatdot" %%% "quine-security" % quineCommonV,
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
       "org.endpoints4s" %%% "json-schema-circe" % endpoints4sCirceV,
       "io.circe" %% "circe-core" % circeV,
       "org.endpoints4s" %%% "openapi" % endpoints4sOpenapiV,
       "com.lihaoyi" %% "ujson-circe" % ujsonCirceV, // For the OpenAPI rendering
       "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test,
+      "org.scalatest" %%% "scalatest" % scalaTestV % Test,
       "com.softwaremill.sttp.tapir" %% "tapir-core" % tapirV, // For tapir annotations
     ),
   )

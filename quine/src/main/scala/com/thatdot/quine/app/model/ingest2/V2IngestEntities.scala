@@ -12,6 +12,7 @@ import sttp.tapir.Schema.annotations.{description, title}
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
 import com.thatdot.common.logging.Log.LazySafeLogging
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.OnRecordErrorHandler
 import com.thatdot.quine.serialization.EncoderDecoder
 import com.thatdot.quine.{routes => V1}
@@ -155,6 +156,14 @@ object V2IngestEntities {
     implicit lazy val encoder: Encoder[QuineIngestStreamWithStatus] = deriveConfiguredEncoder
     implicit lazy val decoder: Decoder[QuineIngestStreamWithStatus] = deriveConfiguredDecoder
     implicit lazy val encoderDecoder: EncoderDecoder[QuineIngestStreamWithStatus] = EncoderDecoder.ofEncodeDecode
+
+    /** Encoder that preserves credential values for persistence and cluster communication.
+      * Requires witness (`import Secret.Unsafe._`) to call.
+      */
+    def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[QuineIngestStreamWithStatus] = {
+      implicit val configEnc: Encoder[QuineIngestConfiguration] = QuineIngestConfiguration.preservingEncoder
+      deriveConfiguredEncoder
+    }
   }
 
   case class IngestStreamInfo(
@@ -474,6 +483,14 @@ object V2IngestEntities {
     implicit lazy val encoder: Encoder[QuineIngestConfiguration] = deriveConfiguredEncoder
     implicit lazy val decoder: Decoder[QuineIngestConfiguration] = deriveConfiguredDecoder
     implicit lazy val encoderDecoder: EncoderDecoder[QuineIngestConfiguration] = EncoderDecoder.ofEncodeDecode
+
+    /** Encoder that preserves credential values for persistence and cluster communication.
+      * Requires witness (`import Secret.Unsafe._`) to call.
+      */
+    def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[QuineIngestConfiguration] = {
+      implicit val ingestSourceEnc: Encoder[IngestSource] = IngestSource.preservingEncoder
+      deriveConfiguredEncoder
+    }
   }
 
   /** WebSocket file upload feedback messages sent from server to client */

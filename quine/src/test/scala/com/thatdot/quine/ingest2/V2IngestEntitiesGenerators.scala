@@ -7,6 +7,7 @@ import scala.jdk.CollectionConverters._
 
 import org.scalacheck.{Arbitrary, Gen}
 
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.model.ingest2._
 import com.thatdot.quine.{ScalaPrimitiveGenerators, TimeGenerators, routes => V1}
@@ -170,7 +171,7 @@ object V2IngestEntitiesGenerators {
     val awsCredentials: Gen[V1.AwsCredentials] = for {
       accessKeyId <- nonEmptyAlphaNumStr
       secretAccessKey <- nonEmptyAlphaNumStr
-    } yield V1.AwsCredentials(accessKeyId, secretAccessKey)
+    } yield V1.AwsCredentials(Secret(accessKeyId), Secret(secretAccessKey))
 
     val awsRegion: Gen[V1.AwsRegion] =
       Gen.oneOf("us-east-1", "us-west-2", "eu-west-1", "ap-northeast-1").map(V1.AwsRegion.apply)

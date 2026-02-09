@@ -19,6 +19,7 @@ import com.thatdot.api.v2.codec.DisjointEvidence._
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEncoder, instantDecoder, instantEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.{charsetSchema, instantSchema}
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.{routes => V1}
 
 object ApiIngest {
@@ -359,6 +360,14 @@ object ApiIngest {
       implicit val encoder: Encoder[QuineIngestConfiguration] = deriveConfiguredEncoder
       implicit val decoder: Decoder[QuineIngestConfiguration] = deriveConfiguredDecoder
       implicit lazy val schema: Schema[QuineIngestConfiguration] = Schema.derived
+
+      /** Encoder that preserves Secret values for persistence and testing.
+        * Requires witness (`import Secret.Unsafe._`) to call.
+        */
+      def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[QuineIngestConfiguration] = {
+        implicit val ingestSourceEnc: Encoder[IngestSource] = IngestSource.preservingEncoder
+        deriveConfiguredEncoder
+      }
     }
   }
 
@@ -676,6 +685,14 @@ object ApiIngest {
     implicit val encoder: Encoder[IngestSource] = deriveConfiguredEncoder
     implicit val decoder: Decoder[IngestSource] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[IngestSource] = Schema.derived
+
+    /** Encoder that preserves Secret values for persistence and testing.
+      * Requires witness (`import Secret.Unsafe._`) to call.
+      */
+    def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[IngestSource] = {
+      implicit val awsCredsEnc: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
+      deriveConfiguredEncoder
+    }
   }
 
   @title("Scheduler Checkpoint Settings")

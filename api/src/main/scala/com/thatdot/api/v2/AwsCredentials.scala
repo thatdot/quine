@@ -5,7 +5,9 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
 
+import com.thatdot.api.codec.SecretCodecs
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.common.security.Secret
 
 @title("AWS Credentials")
 @description(
@@ -13,13 +15,33 @@ import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 )
 final case class AwsCredentials(
   @encodedExample("ATIAXNKBTSB57V2QF11X")
-  accessKeyId: String,
+  accessKeyId: Secret,
   @encodedExample("MDwbQe5XT4uOA3jQB/FhPaZpJdFkW13ryAL29bAk")
-  secretAccessKey: String,
+  secretAccessKey: Secret,
 )
 
 object AwsCredentials {
+  import com.thatdot.api.codec.SecretCodecs.{secretEncoder, secretDecoder}
+
+  /** Encoder that redacts credential values for API responses. */
   implicit val encoder: Encoder[AwsCredentials] = deriveConfiguredEncoder
   implicit val decoder: Decoder[AwsCredentials] = deriveConfiguredDecoder
-  implicit lazy val schema: Schema[AwsCredentials] = Schema.derived
+  implicit lazy val schema: Schema[AwsCredentials] = {
+    import com.thatdot.api.schema.SecretSchemas.secretSchema
+    Schema.derived
+  }
+
+  /** Encoder that preserves credential values for persistence.
+    * Requires witness (`import Secret.Unsafe._`) to call.
+    */
+  def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[AwsCredentials] =
+    PreservingCodecs.encoder
+}
+
+/** Separate object to avoid implicit scope pollution. */
+private object PreservingCodecs {
+  def encoder(implicit ev: Secret.UnsafeAccess): Encoder[AwsCredentials] = {
+    implicit val secretEnc: Encoder[Secret] = SecretCodecs.preservingEncoder
+    deriveConfiguredEncoder
+  }
 }

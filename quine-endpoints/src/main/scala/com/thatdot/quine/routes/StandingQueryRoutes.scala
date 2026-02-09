@@ -427,11 +427,7 @@ object OutputFormat {
   ) extends OutputFormat
 }
 
-trait StandingQuerySchemas
-    extends endpoints4s.generic.JsonSchemas
-    with exts.AnySchema
-    with AwsConfigurationSchemas
-    with MetricsSummarySchemas {
+trait StandingQuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema with IngestSchemas {
 
   import StandingQueryPattern._
   import StandingQueryResultOutputUserDef._
@@ -533,6 +529,41 @@ trait StandingQuerySchemas
   implicit lazy val runningStandingQuerySchema: Record[RegisteredStandingQuery] =
     genericRecord[RegisteredStandingQuery].withExample(runningSqExample)
 
+}
+
+/** Helper object for creating preserving schemas (credentials not redacted).
+  * Uses a singleton trait instance with overridden secretSchema to ensure the preserving encoder is used.
+  * WARNING: Only use for internal persistence, never for API responses.
+  */
+object PreservingStandingQuerySchemas {
+  import com.thatdot.common.security.Secret
+  import Secret.Unsafe._ // Witness for unsafeValue in schema derivation
+
+  // Singleton schema derivation context with preserving secretSchema
+  private lazy val schemas = new StandingQuerySchemas with endpoints4s.circe.JsonSchemas with exts.CirceJsonAnySchema {
+
+    // Override secretSchema to use preserving encoder
+    implicit override lazy val secretSchema: JsonSchema[Secret] =
+      stringJsonSchema(format = None).xmap(Secret.apply)(_.unsafeValue)
+
+    // Re-derive awsCredentialsSchema with new secretSchema
+    implicit override lazy val awsCredentialsSchema: Record[AwsCredentials] =
+      genericRecord[AwsCredentials]
+
+    // Re-derive standingQueryResultOutputSchema with new awsCredentialsSchema
+    implicit override lazy val standingQueryResultOutputSchema: Tagged[StandingQueryResultOutputUserDef] =
+      lazyTagged(StandingQueryResultOutputUserDef.title)(
+        genericTagged[StandingQueryResultOutputUserDef],
+      )
+  }
+
+  /** Returns the preserving StandingQueryResultOutputUserDef schema.
+    * Requires witness (`import Secret.Unsafe._`) at call site to document intentional unsafe access.
+    */
+  def standingQueryResultOutputSchema(implicit
+    ev: Secret.UnsafeAccess,
+  ): endpoints4s.circe.JsonSchemas#Tagged[StandingQueryResultOutputUserDef] =
+    schemas.standingQueryResultOutputSchema
 }
 
 trait StandingQueryRoutes

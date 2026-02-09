@@ -1,3 +1,5 @@
 package com.thatdot.aws.model
 
-final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
+import com.thatdot.common.security.Secret
+
+final case class AwsCredentials(accessKeyId: Secret, secretAccessKey: Secret)

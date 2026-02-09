@@ -13,6 +13,7 @@ import software.amazon.awssdk.regions.Region
 
 import com.thatdot.aws.model._
 import com.thatdot.common.logging.Log._
+import com.thatdot.common.security.Secret
 
 case object AwsOps extends LazySafeLogging {
   // the maximum number of simultaneous API requests any individual AWS client should make
@@ -21,8 +22,9 @@ case object AwsOps extends LazySafeLogging {
 
   def staticCredentialsProviderV2(credsOpt: Option[AwsCredentials]): AwsCredentialsProvider =
     credsOpt.fold[AwsCredentialsProvider](DefaultCredentialsProvider.builder.build) { credentials =>
+      import Secret.Unsafe._
       StaticCredentialsProvider.create(
-        AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey),
+        AwsBasicCredentials.create(credentials.accessKeyId.unsafeValue, credentials.secretAccessKey.unsafeValue),
       )
     }
 

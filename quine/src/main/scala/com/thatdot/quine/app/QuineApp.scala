@@ -20,6 +20,7 @@ import cats.syntax.all._
 
 import com.thatdot.api.{v2 => Api2}
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.model.ingest.{IngestSrcDef, QuineIngestSource}
@@ -1013,6 +1014,7 @@ final class QuineApp(
     }
 
   private def syncIngestStreamsMetaData(thisMemberId: Int): Future[Unit] = {
+    import Secret.Unsafe._
     implicit val ec: ExecutionContext = graph.nodeDispatcherEC
     Future
       .sequence(
@@ -1032,7 +1034,7 @@ final class QuineApp(
               namespace,
               thisMemberId,
               v2StreamsWithStatus.toMap,
-            )
+            )(QuinePreservingCodecs.ingestStreamWithStatusCodec)
           } yield (),
         ),
       )
@@ -1200,27 +1202,33 @@ final class QuineApp(
       new CypherStandingWiretap((queryName, namespace) => getStandingQueryId(queryName, namespace)),
     )
 
-    val standingQueryOutputsFut = Future
-      .sequence(
-        getNamespaces.map(ns =>
-          getOrDefaultGlobalMetaData(
-            makeNamespaceMetaDataKey(ns, StandingQueryOutputsKey),
-            Map.empty: Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])],
-          ).map(ns -> _),
-        ),
-      )
-      .map(_.toMap)
+    val standingQueryOutputsFut = {
+      import Secret.Unsafe._
+      Future
+        .sequence(
+          getNamespaces.map(ns =>
+            getOrDefaultGlobalMetaData(
+              makeNamespaceMetaDataKey(ns, StandingQueryOutputsKey),
+              Map.empty: V1StandingQueryDataMap,
+            )(sqOutputs1MapPersistenceCodec).map(ns -> _),
+          ),
+        )
+        .map(_.toMap)
+    }
 
-    val standingQueryOutputs2DataFut = Future
-      .sequence(
-        getNamespaces.map(ns =>
-          getOrDefaultGlobalMetaData(
-            makeNamespaceMetaDataKey(ns, V2StandingQueryOutputsKey),
-            Map.empty: V2StandingQueryDataMap,
-          ).map(ns -> _),
-        ),
-      )
-      .map(_.toMap)
+    val standingQueryOutputs2DataFut = {
+      import Secret.Unsafe._
+      Future
+        .sequence(
+          getNamespaces.map(ns =>
+            getOrDefaultGlobalMetaData(
+              makeNamespaceMetaDataKey(ns, V2StandingQueryOutputsKey),
+              Map.empty: V2StandingQueryDataMap,
+            )(sqOutputs2PersistenceCodec).map(ns -> _),
+          ),
+        )
+        .map(_.toMap)
+    }
 
     // Constructing an output 2 interpreter is asynchronous. It is chained onto the async read of the data version
     // rather than done as a synchronous step afterward like it is for the V1 outputs.
@@ -1274,10 +1282,13 @@ final class QuineApp(
         ),
       )
       .map(_.toMap)
-    val v2IngestStreamFut = loadV2IngestsFromPersistor(thisMemberIdx)(
-      QuineIngestStreamWithStatus.encoderDecoder,
-      implicitly,
-    )
+    val v2IngestStreamFut = {
+      import Secret.Unsafe._
+      loadV2IngestsFromPersistor(thisMemberIdx)(
+        QuinePreservingCodecs.ingestStreamWithStatusCodec,
+        implicitly,
+      )
+    }
     for {
       sq <- sampleQueriesFut
       qq <- quickQueriesFut
@@ -1368,20 +1379,13 @@ final class QuineApp(
     }
   }
 
-  implicit private[this] val standingQueriesSchema: JsonSchema[
-    Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])],
-  ] = {
-    implicit val sqIdSchema = genericRecord[StandingQueryId]
-    implicit val tupSchema = genericRecord[(StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])]
-    mapJsonSchema(tupSchema)
-  }
-
   private[this] def storeStandingQueryOutputs(): Future[Unit] = {
     storeStandingQueryOutputs1()
     storeStandingQueryOutputs2()
   }
 
   private[this] def storeStandingQueryOutputs1(): Future[Unit] = {
+    import Secret.Unsafe._
     implicit val ec = graph.system.dispatcher
     Future
       .sequence(outputTargets.map { case (ns, targets) =>
@@ -1392,12 +1396,13 @@ final class QuineApp(
               outputName -> definition
             })
           },
-        )
+        )(sqOutputs1MapPersistenceCodec)
       })
       .map(_ => ())(ExecutionContext.parasitic)
   }
 
   private[this] def storeStandingQueryOutputs2(): Future[Unit] = {
+    import Secret.Unsafe._
     implicit val ec = graph.system.dispatcher
     Future
       .sequence(outputTargets.map { case (ns, targets) =>
@@ -1408,7 +1413,7 @@ final class QuineApp(
               outputName -> definition
             })
           },
-        )(sqOutputs2Codec)
+        )(sqOutputs2PersistenceCodec)
       })
       .map(_ => ())(ExecutionContext.parasitic)
   }
@@ -1449,11 +1454,76 @@ object QuineApp {
   private type V2StandingQueryDataMap =
     Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, Api2Defs.query.standing.StandingQueryResultWorkflow])]
 
-  implicit val sqOutputs2Codec: EncoderDecoder[V2StandingQueryDataMap] = {
+  /** Type alias for V1 standing query data map (matches the type used in persistence). */
+  private[app] type V1StandingQueryDataMap =
+    Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])]
+
+  // `StandingQueryId` is in `quine-core` where we shouldn't have codec concerns.
+  // Circe codecs defined here for use by persistence and cluster communication.
+  private[app] val standingQueryIdEncoder: io.circe.Encoder[StandingQueryId] =
+    io.circe.Encoder[UUID].contramap(_.uuid)
+  private[app] val standingQueryIdDecoder: io.circe.Decoder[StandingQueryId] =
+    io.circe.Decoder[UUID].map(StandingQueryId(_))
+
+  /** Codec for persistence of V1 standing query outputs.
+    * Uses preserving encoder so credentials survive round-trip (not redacted).
+    * Requires witness (`import Secret.Unsafe._`) to call, making unsafe access explicit at call sites.
+    */
+  def sqOutputs1PersistenceCodec(implicit
+    ev: Secret.UnsafeAccess,
+  ): EncoderDecoder[V1.StandingQueryResultOutputUserDef] = {
+    val preservingSchema = V1.PreservingStandingQuerySchemas.standingQueryResultOutputSchema
+    new EncoderDecoder[V1.StandingQueryResultOutputUserDef] {
+      override def encoder: io.circe.Encoder[V1.StandingQueryResultOutputUserDef] = preservingSchema.encoder
+      override def decoder: io.circe.Decoder[V1.StandingQueryResultOutputUserDef] = preservingSchema.decoder
+    }
+  }
+
+  /** Codec for persistence of V1 standing query data map (full persistence type).
+    * Uses preserving encoder so credentials survive round-trip (not redacted).
+    * Requires witness (`import Secret.Unsafe._`) to call, making unsafe access explicit at call sites.
+    */
+  def sqOutputs1MapPersistenceCodec(implicit ev: Secret.UnsafeAccess): EncoderDecoder[V1StandingQueryDataMap] = {
+    import io.circe.{Decoder, Encoder, Json}
+
+    implicit val outputCodec: EncoderDecoder[V1.StandingQueryResultOutputUserDef] = sqOutputs1PersistenceCodec
+    implicit val outputEnc: Encoder[V1.StandingQueryResultOutputUserDef] = outputCodec.encoder
+    implicit val outputDec: Decoder[V1.StandingQueryResultOutputUserDef] = outputCodec.decoder
+    implicit val sqIdDec: Decoder[StandingQueryId] = standingQueryIdDecoder
+    implicit val innerMapEnc: Encoder[Map[SQOutputName, V1.StandingQueryResultOutputUserDef]] = Encoder.encodeMap
+    implicit val innerMapDec: Decoder[Map[SQOutputName, V1.StandingQueryResultOutputUserDef]] = Decoder.decodeMap
+
+    // Encode tuple as JSON array [sqId, outputs] for backwards compatibility with persisted data
+    type TupleType = (StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])
+    implicit val tupleEnc: Encoder[TupleType] = Encoder.instance { case (id, outputs) =>
+      Json.arr(standingQueryIdEncoder(id), innerMapEnc(outputs))
+    }
+    implicit val tupleDec: Decoder[TupleType] = Decoder.instance { cursor =>
+      for {
+        arr <- cursor.as[Vector[Json]]
+        id <- arr.headOption
+          .toRight(io.circe.DecodingFailure("Missing sqId", cursor.history))
+          .flatMap(_.as[StandingQueryId])
+        outputs <- arr
+          .lift(1)
+          .toRight(io.circe.DecodingFailure("Missing outputs", cursor.history))
+          .flatMap(_.as[Map[SQOutputName, V1.StandingQueryResultOutputUserDef]])
+      } yield (id, outputs)
+    }
+
+    EncoderDecoder.ofEncodeDecode
+  }
+
+  /** Codec for persistence of V2 standing query outputs.
+    * Uses preserving encoder so credentials survive round-trip (not redacted).
+    * Requires witness (`import Secret.Unsafe._`) to call.
+    */
+  def sqOutputs2PersistenceCodec(implicit ev: Secret.UnsafeAccess): EncoderDecoder[V2StandingQueryDataMap] = {
     import io.circe.{Decoder, Encoder}
-    // `StandingQueryId` is in `quine-core` where we shouldn't have codec concerns, so encoder/decoder defined at call sites for the moment
-    implicit val standingQueryIdEncoder: Encoder[StandingQueryId] = Encoder[UUID].contramap(_.uuid)
-    implicit val standingQueryIdDecoder: Decoder[StandingQueryId] = Decoder[UUID].map(StandingQueryId(_))
+    implicit val workflowEnc: Encoder[Api2Defs.query.standing.StandingQueryResultWorkflow] =
+      Api2Defs.query.standing.StandingQueryResultWorkflow.preservingEncoder
+    implicit val sqIdEnc: Encoder[StandingQueryId] = standingQueryIdEncoder
+    implicit val sqIdDec: Decoder[StandingQueryId] = standingQueryIdDecoder
     EncoderDecoder.ofEncodeDecode
   }
 

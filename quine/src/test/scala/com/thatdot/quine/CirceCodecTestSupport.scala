@@ -16,6 +16,13 @@ trait CirceCodecTestSupport {
     assert(decoded == Right(v), s"Roundtrip failed for: $v\nJSON: ${json.spaces2}\nError: $decoded")
   }
 
+  /** Test roundtrip with an explicit encoder (useful for preserving encoders). */
+  def testJsonRoundtripWithEncoder[V: Decoder](v: V, encoder: Encoder[V]): Assertion = {
+    val json = encoder(v)
+    val decoded: Result[V] = json.as[V]
+    assert(decoded == Right(v), s"Roundtrip failed for: $v\nJSON: ${json.spaces2}\nError: $decoded")
+  }
+
   /** Checks to see if a json encoding produces any "ugly" values.
     * Any time a "Left" or "Right" appears as a key, we probably have an Either that was encoded wrong.
     * Any class that encodes to an empty object is also probably wrong.

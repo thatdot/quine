@@ -2,6 +2,7 @@ package com.thatdot.api.v2
 
 import org.scalacheck.{Arbitrary, Gen}
 
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.ScalaPrimitiveGenerators
 
 object AwsGenerators {
@@ -13,7 +14,7 @@ object AwsGenerators {
     val awsCredentials: Gen[AwsCredentials] = for {
       accessKey <- nonEmptyAlphaNumStr
       secretKey <- nonEmptyAlphaNumStr
-    } yield AwsCredentials(accessKey, secretKey)
+    } yield AwsCredentials(Secret(accessKey), Secret(secretKey))
 
     val optAwsCredentials: Gen[Option[AwsCredentials]] = Gen.option(awsCredentials)
 

@@ -2,6 +2,7 @@ package com.thatdot.quine.app.model.ingest2
 
 import sttp.tapir.Schema
 
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.{routes => V1}
 
 /** Tapir schemas for V1 routes types used by V2 ingest.
@@ -23,6 +24,8 @@ object V1IngestSchemas {
   implicit lazy val kafkaSecurityProtocolSchema: Schema[V1.KafkaSecurityProtocol] = Schema.derived
   implicit lazy val kafkaAutoOffsetResetSchema: Schema[V1.KafkaAutoOffsetReset] = Schema.derived
   implicit lazy val kafkaOffsetCommittingSchema: Schema[V1.KafkaOffsetCommitting] = Schema.derived
+  implicit lazy val secretSchema: Schema[Secret] =
+    Schema.string.map((s: String) => Some(Secret(s)))(_.toString)
   implicit lazy val awsCredentialsSchema: Schema[V1.AwsCredentials] = Schema.derived
   implicit lazy val awsRegionSchema: Schema[V1.AwsRegion] = Schema.derived
   implicit lazy val keepaliveProtocolSchema: Schema[V1.WebsocketSimpleStartupIngest.KeepaliveProtocol] = Schema.derived
