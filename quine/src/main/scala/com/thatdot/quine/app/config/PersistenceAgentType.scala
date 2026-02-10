@@ -7,7 +7,6 @@ import java.nio.file.Paths
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLevel}
-import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
 import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
 import software.amazon.awssdk.regions.Region
@@ -140,7 +139,7 @@ object PersistenceAgentType extends PureconfigInstances {
       }
   }
 
-  implicit val cassandraConfigConvert: ConfigConvert[ConsistencyLevel] = {
+  implicit val consistencyLevelConvert: ConfigConvert[ConsistencyLevel] = {
     import ConfigReader.javaEnumReader
     import ConfigWriter.javaEnumWriter
     val reader: ConfigReader[ConsistencyLevel] = javaEnumReader[DefaultConsistencyLevel].map(identity)
@@ -153,14 +152,22 @@ object PersistenceAgentType extends PureconfigInstances {
   implicit val charArrayReader: ConfigReader[Array[Char]] = QuineConfig.charArrayReader
   implicit val charArrayWriter: ConfigWriter[Array[Char]] = QuineConfig.charArrayWriter
 
-  implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
-    // This assumes the Cassandra port if port is omitted! (so beware about re-using it)
-    implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
-      ConfigConvert.viaNonEmptyString[InetSocketAddress](
-        s => Right(Address.parseHostAndPort(s, PersistenceAgentType.defaultCassandraPort)),
-        addr => addr.getHostString + ':' + addr.getPort,
-      )
+  // InetSocketAddress converter (assumes Cassandra port if port is omitted)
+  implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
+    ConfigConvert.viaNonEmptyString[InetSocketAddress](
+      s => Right(Address.parseHostAndPort(s, PersistenceAgentType.defaultCassandraPort)),
+      addr => addr.getHostString + ':' + addr.getPort,
+    )
 
+  implicit val emptyConfigConvert: ConfigConvert[Empty.type] = deriveConvert[Empty.type]
+  implicit val inMemoryConfigConvert: ConfigConvert[InMemory.type] = deriveConvert[InMemory.type]
+  implicit val rocksDbConfigConvert: ConfigConvert[RocksDb] = deriveConvert[RocksDb]
+  implicit val mapDbConfigConvert: ConfigConvert[MapDb] = deriveConvert[MapDb]
+  implicit val oauth2ConfigConvert: ConfigConvert[OAuth2Config] = deriveConvert[OAuth2Config]
+  implicit val cassandraConfigConvert: ConfigConvert[Cassandra] = deriveConvert[Cassandra]
+  implicit val keyspacesConfigConvert: ConfigConvert[Keyspaces] = deriveConvert[Keyspaces]
+  implicit val clickHouseConfigConvert: ConfigConvert[ClickHouse] = deriveConvert[ClickHouse]
+
+  implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] =
     deriveConvert[PersistenceAgentType]
-  }
 }

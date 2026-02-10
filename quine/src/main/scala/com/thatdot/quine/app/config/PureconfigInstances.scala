@@ -8,10 +8,11 @@ import org.apache.pekko.util.Timeout
 import pureconfig.BasicReaders.stringConfigReader
 import pureconfig.error.CannotConvert
 import pureconfig.generic.ProductHint
-import pureconfig.generic.semiauto.deriveEnumerationConvert
+import pureconfig.generic.semiauto.{deriveConvert, deriveEnumerationConvert}
 import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
 
-import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceSchedule}
+import com.thatdot.common.logging.Log.{LogConfig, RedactHide, RedactMethod}
+import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceConfig, PersistenceSchedule}
 import com.thatdot.quine.util.Config._
 import com.thatdot.quine.util.{Host, Port}
 
@@ -29,6 +30,17 @@ trait PureconfigInstances {
 
   implicit val effectOrderConvert: ConfigConvert[EventEffectOrder] =
     deriveEnumerationConvert[EventEffectOrder]
+
+  implicit val persistenceConfigConvert: ConfigConvert[PersistenceConfig] =
+    deriveConvert[PersistenceConfig]
+
+  // RedactMethod is a sealed trait with only RedactHide case object
+  // Uses type discriminator (e.g., redactor { type = redact-hide })
+  implicit val redactHideConvert: ConfigConvert[RedactHide.type] = deriveConvert[RedactHide.type]
+  implicit val redactMethodConvert: ConfigConvert[RedactMethod] = deriveConvert[RedactMethod]
+
+  implicit val logConfigConvert: ConfigConvert[LogConfig] =
+    deriveConvert[LogConfig]
 
   implicit val symbolConvert: ConfigConvert[Symbol] =
     ConfigConvert[String].xmap(Symbol(_), _.name)

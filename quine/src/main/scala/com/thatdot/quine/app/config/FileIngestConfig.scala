@@ -1,7 +1,8 @@
 package com.thatdot.quine.app.config
 
-import pureconfig.ConfigReader
 import pureconfig.error.CannotConvert
+import pureconfig.generic.semiauto.deriveConvert
+import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
 
 /** File resolution mode for file ingest security
   *
@@ -28,6 +29,11 @@ object ResolutionMode {
         )
     }
   }
+
+  implicit val configWriter: ConfigWriter[ResolutionMode] = ConfigWriter.toString {
+    case Static => "static"
+    case Dynamic => "dynamic"
+  }
 }
 
 /** Configuration for file ingest security
@@ -47,3 +53,7 @@ final case class FileIngestConfig(
   allowedDirectories: Option[List[String]] = None,
   resolutionMode: Option[ResolutionMode] = None,
 )
+
+object FileIngestConfig extends PureconfigInstances {
+  implicit val configConvert: ConfigConvert[FileIngestConfig] = deriveConvert[FileIngestConfig]
+}

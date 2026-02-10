@@ -3,6 +3,8 @@ package com.thatdot.quine.app.config
 import java.{util => ju}
 
 import memeid.{UUID => UUID4s}
+import pureconfig.ConfigConvert
+import pureconfig.generic.semiauto.deriveConvert
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.{
@@ -32,7 +34,7 @@ sealed abstract class IdProviderType {
   /** Construct the unpartitioned ID provider associated with this configuration */
   protected def createUnpartitioned: QuineIdProvider
 }
-object IdProviderType {
+object IdProviderType extends PureconfigInstances {
 
   final case class Long(
     consecutiveStart: Option[scala.Long],
@@ -69,4 +71,14 @@ object IdProviderType {
   final case class ByteArray(partitioned: Boolean = false) extends IdProviderType {
     def createUnpartitioned = IdentityIdProvider
   }
+
+  implicit val longConfigConvert: ConfigConvert[Long] = deriveConvert[Long]
+  implicit val uuidConfigConvert: ConfigConvert[UUID] = deriveConvert[UUID]
+  implicit val uuid3ConfigConvert: ConfigConvert[Uuid3] = deriveConvert[Uuid3]
+  implicit val uuid4ConfigConvert: ConfigConvert[Uuid4] = deriveConvert[Uuid4]
+  implicit val uuid5ConfigConvert: ConfigConvert[Uuid5] = deriveConvert[Uuid5]
+  implicit val byteArrayConfigConvert: ConfigConvert[ByteArray] = deriveConvert[ByteArray]
+
+  implicit val configConvert: ConfigConvert[IdProviderType] =
+    deriveConvert[IdProviderType]
 }

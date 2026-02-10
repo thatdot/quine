@@ -7,7 +7,6 @@ import org.apache.pekko.util.Timeout
 import com.typesafe.config.{Config, ConfigObject}
 import pureconfig._
 import pureconfig.generic.ProductHint
-import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
 import shapeless.{Lens, lens}
 

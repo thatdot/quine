@@ -10,7 +10,9 @@ import com.codahale.metrics.{CsvReporter, MetricRegistry, Reporter, ScheduledRep
 import metrics_influxdb.api.measurements.MetricMeasurementTransformer
 import metrics_influxdb.{HttpInfluxdbProtocol, InfluxdbReporter}
 import org.slf4j.LoggerFactory
+import pureconfig.ConfigConvert
 import pureconfig.generic.FieldCoproductHint
+import pureconfig.generic.semiauto.deriveConvert
 
 abstract class ReporterWrapper(reporter: Reporter) {
   def start(): Unit
@@ -35,7 +37,7 @@ sealed abstract class MetricsReporter {
     */
   def register(registry: MetricRegistry, namespace: String): ReporterWrapper
 }
-object MetricsReporter {
+object MetricsReporter extends PureconfigInstances {
   // This is so 'Slf4j' doesn't get turned into 'slf-4j' by the default impl
   implicit val metricsReporterNameHint: FieldCoproductHint[MetricsReporter] =
     new FieldCoproductHint[MetricsReporter]("type") {
@@ -58,11 +60,13 @@ object MetricsReporter {
       wrapReporter(CsvReporter.forRegistry(registry).build(logDirectory))
     }
   }
+
   final case class Slf4j(period: FiniteDuration, loggerName: String = "metrics") extends PeriodicReporter {
     def register(registry: MetricRegistry, namespace: String): ReporterWrapper = wrapReporter(
       Slf4jReporter.forRegistry(registry).outputTo(LoggerFactory.getLogger(loggerName)).build(),
     )
   }
+
   final case class Influxdb(
     period: FiniteDuration,
     database: String = "metrics",
@@ -83,6 +87,14 @@ object MetricsReporter {
         .build(),
     )
   }
+
+  implicit val jmxConfigConvert: ConfigConvert[Jmx.type] = deriveConvert[Jmx.type]
+  implicit val csvConfigConvert: ConfigConvert[Csv] = deriveConvert[Csv]
+  implicit val slf4jConfigConvert: ConfigConvert[Slf4j] = deriveConvert[Slf4j]
+  implicit val influxdbConfigConvert: ConfigConvert[Influxdb] = deriveConvert[Influxdb]
+
+  implicit val configConvert: ConfigConvert[MetricsReporter] =
+    deriveConvert[MetricsReporter]
 }
 
 class TagInfluxMetrics(tags: Map[String, String]) extends MetricMeasurementTransformer {

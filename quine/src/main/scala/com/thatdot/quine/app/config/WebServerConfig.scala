@@ -5,23 +5,46 @@ import java.net.{InetAddress, URL}
 
 import org.apache.pekko.http.scaladsl.model.Uri
 
+import pureconfig.generic.semiauto.deriveConvert
+import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
+
 import com.thatdot.quine.app.config.WebServerBindConfig.{KeystorePasswordEnvVar, KeystorePathEnvVar}
 import com.thatdot.quine.util.{Host, Port}
 
 final case class SslConfig(path: File, password: Array[Char])
 
+object SslConfig extends PureconfigInstances {
+  implicit val configConvert: ConfigConvert[SslConfig] = {
+    implicit val charArrayReader: ConfigReader[Array[Char]] = QuineConfig.charArrayReader
+    implicit val charArrayWriter: ConfigWriter[Array[Char]] = QuineConfig.charArrayWriter
+    deriveConvert[SslConfig]
+  }
+}
+
 final case class MtlsTrustStore(path: File, password: String)
+
+object MtlsTrustStore extends PureconfigInstances {
+  implicit val configConvert: ConfigConvert[MtlsTrustStore] = deriveConvert[MtlsTrustStore]
+}
 
 final case class MtlsHealthEndpoints(
   enabled: Boolean = false,
   port: Port = Port(8081),
 )
 
+object MtlsHealthEndpoints extends PureconfigInstances {
+  implicit val configConvert: ConfigConvert[MtlsHealthEndpoints] = deriveConvert[MtlsHealthEndpoints]
+}
+
 final case class UseMtls(
   enabled: Boolean = false,
   trustStore: Option[MtlsTrustStore] = None,
   healthEndpoints: MtlsHealthEndpoints = MtlsHealthEndpoints(),
 )
+
+object UseMtls extends PureconfigInstances {
+  implicit val configConvert: ConfigConvert[UseMtls] = deriveConvert[UseMtls]
+}
 
 final case class WebServerBindConfig(
   address: Host = Host("0.0.0.0"),
@@ -48,9 +71,11 @@ final case class WebServerBindConfig(
   }
 
 }
-object WebServerBindConfig {
+object WebServerBindConfig extends PureconfigInstances {
   val KeystorePathEnvVar = "SSL_KEYSTORE_PATH"
   val KeystorePasswordEnvVar = "SSL_KEYSTORE_PASSWORD"
+
+  implicit val configConvert: ConfigConvert[WebServerBindConfig] = deriveConvert[WebServerBindConfig]
 }
 final case class WebserverAdvertiseConfig(
   address: Host,
@@ -59,4 +84,8 @@ final case class WebserverAdvertiseConfig(
 ) {
   def url(protocol: String): URL =
     new URL(protocol, address.asString, port.asInt, path.getOrElse(""))
+}
+
+object WebserverAdvertiseConfig extends PureconfigInstances {
+  implicit val configConvert: ConfigConvert[WebserverAdvertiseConfig] = deriveConvert[WebserverAdvertiseConfig]
 }
