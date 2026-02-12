@@ -1484,34 +1484,33 @@ object QuineApp {
     * Requires witness (`import Secret.Unsafe._`) to call, making unsafe access explicit at call sites.
     */
   def sqOutputs1MapPersistenceCodec(implicit ev: Secret.UnsafeAccess): EncoderDecoder[V1StandingQueryDataMap] = {
-    import io.circe.{Decoder, Encoder, Json}
+    // Schema derivation context with preserving output schema and genericRecord for StandingQueryId/tuples
+    object Schemas
+        extends V1.StandingQuerySchemas
+        with endpoints4s.circe.JsonSchemas
+        with endpoints4s.generic.JsonSchemas
+        with com.thatdot.quine.routes.exts.CirceJsonAnySchema {
 
-    implicit val outputCodec: EncoderDecoder[V1.StandingQueryResultOutputUserDef] = sqOutputs1PersistenceCodec
-    implicit val outputEnc: Encoder[V1.StandingQueryResultOutputUserDef] = outputCodec.encoder
-    implicit val outputDec: Decoder[V1.StandingQueryResultOutputUserDef] = outputCodec.decoder
-    implicit val sqIdDec: Decoder[StandingQueryId] = standingQueryIdDecoder
-    implicit val innerMapEnc: Encoder[Map[SQOutputName, V1.StandingQueryResultOutputUserDef]] = Encoder.encodeMap
-    implicit val innerMapDec: Decoder[Map[SQOutputName, V1.StandingQueryResultOutputUserDef]] = Decoder.decodeMap
+      // Override to preserve credentials (not redact)
+      implicit override lazy val secretSchema: JsonSchema[Secret] =
+        stringJsonSchema(format = None).xmap(Secret.apply)(_.unsafeValue)
 
-    // Encode tuple as JSON array [sqId, outputs] for backwards compatibility with persisted data
-    type TupleType = (StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])
-    implicit val tupleEnc: Encoder[TupleType] = Encoder.instance { case (id, outputs) =>
-      Json.arr(standingQueryIdEncoder(id), innerMapEnc(outputs))
+      // Re-derive schemas that depend on secretSchema
+      implicit override lazy val awsCredentialsSchema: Record[V1.AwsCredentials] =
+        genericRecord[V1.AwsCredentials]
+
+      implicit override lazy val standingQueryResultOutputSchema: Tagged[V1.StandingQueryResultOutputUserDef] =
+        lazyTagged(V1.StandingQueryResultOutputUserDef.title)(genericTagged[V1.StandingQueryResultOutputUserDef])
+
+      // Derive using genericRecord, matching the original pre-22f99d13f format
+      implicit val sqIdSchema: Record[StandingQueryId] = genericRecord[StandingQueryId]
+      implicit val tupSchema: Record[(StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])] =
+        genericRecord[(StandingQueryId, Map[SQOutputName, V1.StandingQueryResultOutputUserDef])]
+
+      val mapSchema: JsonSchema[V1StandingQueryDataMap] = mapJsonSchema(tupSchema)
     }
-    implicit val tupleDec: Decoder[TupleType] = Decoder.instance { cursor =>
-      for {
-        arr <- cursor.as[Vector[Json]]
-        id <- arr.headOption
-          .toRight(io.circe.DecodingFailure("Missing sqId", cursor.history))
-          .flatMap(_.as[StandingQueryId])
-        outputs <- arr
-          .lift(1)
-          .toRight(io.circe.DecodingFailure("Missing outputs", cursor.history))
-          .flatMap(_.as[Map[SQOutputName, V1.StandingQueryResultOutputUserDef]])
-      } yield (id, outputs)
-    }
 
-    EncoderDecoder.ofEncodeDecode
+    EncoderDecoder.ofEncodeDecode(Schemas.mapSchema.encoder, Schemas.mapSchema.decoder)
   }
 
   /** Codec for persistence of V2 standing query outputs.
