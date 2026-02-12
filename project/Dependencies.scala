@@ -58,7 +58,7 @@ object Dependencies {
   val pprintV = "0.9.6"
   val protobufV = "4.33.2"
   val protobufCommonV = "2.14.2"
-  val pureconfigV = "0.17.9"
+  val pureconfigV = "0.17.10"
   val antlr4RuntimeV = "4.13.1"
   val catsParseV = "1.0.0"
   val lsp4jV = "0.23.1"
