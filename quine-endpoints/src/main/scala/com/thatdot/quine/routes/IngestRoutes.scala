@@ -253,6 +253,141 @@ object KafkaSecurityProtocol {
   val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl, Sasl_Plaintext)
 }
 
+/** SASL/JAAS configuration for Kafka authentication.
+  *
+  * Represents the structured form of Kafka's `sasl.jaas.config` property. Each subtype
+  * corresponds to a specific SASL mechanism supported by Kafka.
+  *
+  * @see [[https://kafka.apache.org/41/security/authentication-using-sasl Kafka SASL Authentication]]
+  */
+@title("SASL/JAAS Configuration")
+@ttitle("SASL/JAAS Configuration")
+@docs("SASL/JAAS configuration for Kafka authentication.")
+@description("SASL/JAAS configuration for Kafka authentication.")
+sealed trait SaslJaasConfig
+
+object SaslJaasConfig {
+
+  /** PLAIN authentication mechanism for Kafka SASL.
+    *
+    * Uses simple username/password authentication. The password is transmitted in cleartext
+    * (though typically over TLS), so this mechanism should only be used with SSL/TLS encryption.
+    *
+    * @param username SASL username for authentication
+    * @param password SASL password (redacted in API responses and logs)
+    */
+  @unnamed
+  @title("Plain Login")
+  @ttitle("Plain Login")
+  @docs("PLAIN authentication using username and password.")
+  @description("PLAIN authentication using username and password.")
+  final case class PlainLogin(
+    @docs("SASL username for authentication.")
+    @description("SASL username for authentication.")
+    username: String,
+    @docs("SASL password (redacted in API responses).")
+    @description("SASL password (redacted in API responses).")
+    password: Secret,
+  ) extends SaslJaasConfig
+
+  /** SCRAM authentication mechanism for Kafka SASL.
+    *
+    * A more secure alternative to PLAIN that does not transmit the password in cleartext.
+    * Kafka supports SCRAM-SHA-256 and SCRAM-SHA-512 variants.
+    *
+    * @param username SASL username for authentication
+    * @param password SASL password (redacted in API responses and logs)
+    */
+  @unnamed
+  @title("SCRAM Login")
+  @ttitle("SCRAM Login")
+  @docs("SCRAM authentication using username and password.")
+  @description("SCRAM authentication using username and password.")
+  final case class ScramLogin(
+    @docs("SASL username for authentication.")
+    @description("SASL username for authentication.")
+    username: String,
+    @docs("SASL password (redacted in API responses).")
+    @description("SASL password (redacted in API responses).")
+    password: Secret,
+  ) extends SaslJaasConfig
+
+  /** OAuth Bearer authentication mechanism for Kafka SASL.
+    *
+    * Uses OAuth 2.0 client credentials flow to obtain access tokens for Kafka authentication.
+    *
+    * @param clientId OAuth 2.0 client identifier
+    * @param clientSecret OAuth 2.0 client secret (redacted in API responses and logs)
+    * @param scope Optional OAuth scope(s) to request
+    * @param tokenEndpointUrl Optional OAuth token endpoint URL
+    */
+  @unnamed
+  @title("OAuth Bearer Login")
+  @ttitle("OAuth Bearer Login")
+  @docs("OAuth Bearer authentication using client credentials.")
+  @description("OAuth Bearer authentication using client credentials.")
+  final case class OAuthBearerLogin(
+    @docs("OAuth 2.0 client identifier.")
+    @description("OAuth 2.0 client identifier.")
+    clientId: String,
+    @docs("OAuth 2.0 client secret (redacted in API responses).")
+    @description("OAuth 2.0 client secret (redacted in API responses).")
+    clientSecret: Secret,
+    @docs("Optional OAuth scope(s) to request.")
+    @description("Optional OAuth scope(s) to request.")
+    scope: Option[String] = None,
+    @docs("Optional OAuth token endpoint URL.")
+    @description("Optional OAuth token endpoint URL.")
+    tokenEndpointUrl: Option[String] = None,
+  ) extends SaslJaasConfig
+
+  /** Format a SASL/JAAS configuration as a Kafka JAAS config string.
+    *
+    * @param config the SASL/JAAS configuration to format
+    * @param renderSecret function to render secret values (e.g., redact or expose)
+    * @return a JAAS configuration string
+    */
+  private def formatJaasString(config: SaslJaasConfig, renderSecret: Secret => String): String = config match {
+    case PlainLogin(username, password) =>
+      s"""org.apache.kafka.common.security.plain.PlainLoginModule required username="$username" password="${renderSecret(
+        password,
+      )}";"""
+    case ScramLogin(username, password) =>
+      s"""org.apache.kafka.common.security.scram.ScramLoginModule required username="$username" password="${renderSecret(
+        password,
+      )}";"""
+    case OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl) =>
+      val scopePart = scope.map(s => s""" scope="$s"""").getOrElse("")
+      val tokenUrlPart = tokenEndpointUrl.map(u => s""" sasl.oauthbearer.token.endpoint.url="$u"""").getOrElse("")
+      s"""org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required clientId="$clientId" clientSecret="${renderSecret(
+        clientSecret,
+      )}"$scopePart$tokenUrlPart;"""
+  }
+
+  /** Format a SASL/JAAS configuration as a redacted JAAS config string for logging.
+    *
+    * Produces output in Kafka's native JAAS config string format, making logs directly
+    * comparable to Kafka documentation and examples. Passwords and client secrets are
+    * shown as "****".
+    *
+    * @param config the SASL/JAAS configuration to format
+    * @return a JAAS configuration string with secrets redacted
+    */
+  def toRedactedString(config: SaslJaasConfig): String =
+    formatJaasString(config, _ => "****")
+
+  /** Convert a SASL/JAAS configuration to Kafka's JAAS config string format.
+    *
+    * Requires an unsafe access witness to extract the secret values.
+    *
+    * @param config the SASL/JAAS configuration to convert
+    * @param ev witness that the caller has acknowledged unsafe access to secrets
+    * @return a JAAS configuration string suitable for Kafka's `sasl.jaas.config` property
+    */
+  def toJaasConfigString(config: SaslJaasConfig)(implicit ev: Secret.UnsafeAccess): String =
+    formatJaasString(config, _.unsafeValue)
+}
+
 @unnamed
 @title("Kafka offset tracking mechanism")
 @ttitle("Kafka offset tracking mechanism")
@@ -390,6 +525,18 @@ final case class KafkaIngest(
   @docs("List of decodings to be applied to each input. The specified decodings are applied in declared array order.")
   @unnamed
   recordDecoders: Seq[RecordDecodingType] = Seq.empty,
+  @docs("SSL keystore password (redacted in API responses).")
+  @description("SSL keystore password (redacted in API responses).")
+  sslKeystorePassword: Option[Secret] = None,
+  @docs("SSL truststore password (redacted in API responses).")
+  @description("SSL truststore password (redacted in API responses).")
+  sslTruststorePassword: Option[Secret] = None,
+  @docs("SSL key password (redacted in API responses).")
+  @description("SSL key password (redacted in API responses).")
+  sslKeyPassword: Option[Secret] = None,
+  @docs("SASL JAAS configuration for authentication (passwords redacted in API responses).")
+  @description("SASL JAAS configuration for authentication (passwords redacted in API responses).")
+  saslJaasConfig: Option[SaslJaasConfig] = None,
 ) extends IngestStreamConfiguration {
   def getQuery: Option[String] = StreamedRecordFormat.getQuery(format)
   override def slug: String = "kafka"
@@ -1253,7 +1400,16 @@ object CsvCharacter {
   val values: Seq[CsvCharacter] = Seq(Backslash, Comma, Semicolon, Colon, Tab, Pipe, DoubleQuote)
 }
 
-trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfigurationSchemas with MetricsSummarySchemas {
+trait IngestSchemas
+    extends endpoints4s.generic.JsonSchemas
+    with exts.AnySchema
+    with AwsConfigurationSchemas
+    with MetricsSummarySchemas {
+
+  implicit lazy val optionalSecretSchema: JsonSchema[Option[Secret]] =
+    optionalSchema(secretSchema)
+  implicit lazy val optionalSaslJaasConfigSchema: JsonSchema[Option[SaslJaasConfig]] =
+    optionalSchema(saslJaasConfigSchema)
 
   implicit lazy val recordEncodingTypeFormatSchema: Enum[RecordDecodingType] =
     stringEnumeration(RecordDecodingType.values)(_.toString)
@@ -1503,6 +1659,18 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
     stringEnumeration(KafkaAutoOffsetReset.values)(_.name)
   implicit lazy val kafkaOffsetCommittingSchema: Tagged[KafkaOffsetCommitting] =
     genericTagged[KafkaOffsetCommitting]
+  implicit lazy val saslPlainLoginSchema: Record[SaslJaasConfig.PlainLogin] =
+    genericRecord[SaslJaasConfig.PlainLogin]
+  implicit lazy val saslScramLoginSchema: Record[SaslJaasConfig.ScramLogin] =
+    genericRecord[SaslJaasConfig.ScramLogin]
+  implicit lazy val saslOAuthBearerLoginSchema: Record[SaslJaasConfig.OAuthBearerLogin] = {
+    implicit val optStr: JsonSchema[Option[String]] = optionalSchema(stringJsonSchema(None))
+    genericRecord[SaslJaasConfig.OAuthBearerLogin]
+  }
+  implicit lazy val saslJaasConfigSchema: Tagged[SaslJaasConfig] = {
+    implicit val optStr: JsonSchema[Option[String]] = optionalSchema(stringJsonSchema(None))
+    genericTagged[SaslJaasConfig]
+  }
   implicit lazy val wsKeepaliveSchema: Tagged[WebsocketSimpleStartupIngest.KeepaliveProtocol] =
     genericTagged[WebsocketSimpleStartupIngest.KeepaliveProtocol]
   implicit lazy val ingestStreamConfigurationSchema: Tagged[IngestStreamConfiguration] =

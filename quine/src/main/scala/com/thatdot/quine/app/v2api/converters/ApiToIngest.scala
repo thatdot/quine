@@ -321,16 +321,20 @@ object ApiToIngest {
       )
     case src: Api.IngestSource.Kafka =>
       KafkaIngest(
-        apply(src.format),
-        src.topics,
-        src.bootstrapServers,
-        src.groupId,
-        apply(src.securityProtocol),
-        src.offsetCommitting.map(apply),
-        apply(src.autoOffsetReset),
-        src.kafkaProperties,
-        src.endingOffset,
-        src.recordDecoders.map(apply),
+        format = apply(src.format),
+        topics = src.topics,
+        bootstrapServers = src.bootstrapServers,
+        groupId = src.groupId,
+        securityProtocol = apply(src.securityProtocol),
+        offsetCommitting = src.offsetCommitting.map(apply),
+        autoOffsetReset = apply(src.autoOffsetReset),
+        sslKeystorePassword = src.sslKeystorePassword,
+        sslTruststorePassword = src.sslTruststorePassword,
+        sslKeyPassword = src.sslKeyPassword,
+        saslJaasConfig = src.saslJaasConfig,
+        kafkaProperties = src.kafkaProperties,
+        endingOffset = src.endingOffset,
+        recordDecoders = src.recordDecoders.map(apply),
       )
     case src: Api.IngestSource.S3 =>
       S3Ingest(

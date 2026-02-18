@@ -132,11 +132,33 @@ object Recipe {
           (
             url.subs
           ).map(PostToEndpoint(_, parallelism, onlyPositiveMatchData, structure))
-        case WriteToKafka(topic, bootstrapServers, format, properties, structure) =>
+        case WriteToKafka(
+              topic,
+              bootstrapServers,
+              format,
+              kafkaProperties,
+              sslKeystorePassword,
+              sslTruststorePassword,
+              sslKeyPassword,
+              saslJaasConfig,
+              structure,
+            ) =>
           (
             topic.subs,
             bootstrapServers.subs,
-          ).mapN(WriteToKafka(_, _, format, properties, structure))
+          ).mapN(
+            WriteToKafka(
+              _,
+              _,
+              format,
+              kafkaProperties,
+              sslKeystorePassword,
+              sslTruststorePassword,
+              sslKeyPassword,
+              saslJaasConfig,
+              structure,
+            ),
+          )
         case WriteToSNS(credentialsOpt, regionOpt, topic, structure) =>
           (
             credentialsOpt.traverse(_.subs),
@@ -218,6 +240,10 @@ object Recipe {
               endingOffset,
               maximumPerSecond,
               recordEncodingTypes,
+              sslKeystorePassword,
+              sslTruststorePassword,
+              sslKeyPassword,
+              saslJaasConfig,
             ) =>
           (
             bootstrapServers.subs
@@ -235,6 +261,10 @@ object Recipe {
               endingOffset,
               maximumPerSecond,
               recordEncodingTypes,
+              sslKeystorePassword,
+              sslTruststorePassword,
+              sslKeyPassword,
+              saslJaasConfig,
             ),
           )
         case KinesisIngest(

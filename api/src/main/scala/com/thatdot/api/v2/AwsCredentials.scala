@@ -41,7 +41,8 @@ object AwsCredentials {
 /** Separate object to avoid implicit scope pollution. */
 private object PreservingCodecs {
   def encoder(implicit ev: Secret.UnsafeAccess): Encoder[AwsCredentials] = {
-    implicit val secretEnc: Encoder[Secret] = SecretCodecs.preservingEncoder
+    // Shadow the redacting encoder with the preserving version
+    implicit val secretEncoder: Encoder[Secret] = SecretCodecs.preservingEncoder
     deriveConfiguredEncoder
   }
 }

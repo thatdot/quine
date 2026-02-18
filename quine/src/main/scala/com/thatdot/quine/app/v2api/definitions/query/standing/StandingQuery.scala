@@ -38,11 +38,13 @@ object StandingQuery {
     implicit val decoder: Decoder[StandingQueryDefinition] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[StandingQueryDefinition] = Schema.derived
 
-    /** Encoder that preserves credential values for persistence and cluster communication.
+    /** Encoder that preserves credential values for persistence.
       * Requires witness (`import Secret.Unsafe._`) to call.
       */
     def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[StandingQueryDefinition] = {
-      implicit val workflowEnc: Encoder[StandingQueryResultWorkflow] = StandingQueryResultWorkflow.preservingEncoder
+      // Use preserving encoder for workflows that may contain secrets
+      implicit val standingQueryResultWorkflowEncoder: Encoder[StandingQueryResultWorkflow] =
+        StandingQueryResultWorkflow.preservingEncoder
       deriveConfiguredEncoder
     }
   }
@@ -74,11 +76,13 @@ object StandingQuery {
     implicit val decoder: Decoder[RegisteredStandingQuery] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[RegisteredStandingQuery] = Schema.derived
 
-    /** Encoder that preserves credential values for persistence and cluster communication.
+    /** Encoder that preserves credential values for persistence.
       * Requires witness (`import Secret.Unsafe._`) to call.
       */
     def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[RegisteredStandingQuery] = {
-      implicit val workflowEnc: Encoder[StandingQueryResultWorkflow] = StandingQueryResultWorkflow.preservingEncoder
+      // Use preserving encoder for workflows that may contain secrets
+      implicit val standingQueryResultWorkflowEncoder: Encoder[StandingQueryResultWorkflow] =
+        StandingQueryResultWorkflow.preservingEncoder
       deriveConfiguredEncoder
     }
   }

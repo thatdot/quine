@@ -6,7 +6,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
+import sttp.tapir.Schema.annotations.description
 
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.routes.exts.{EndpointsWithCustomErrorText, NamespaceParameter}
 
 @title("Standing Query")
@@ -189,6 +191,18 @@ object StandingQueryResultOutputUserDef {
       "Map of Kafka producer properties. See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>",
     )
     kafkaProperties: Map[String, String] = Map.empty[String, String],
+    @docs("SSL keystore password (redacted in API responses).")
+    @description("SSL keystore password (redacted in API responses).")
+    sslKeystorePassword: Option[Secret] = None,
+    @docs("SSL truststore password (redacted in API responses).")
+    @description("SSL truststore password (redacted in API responses).")
+    sslTruststorePassword: Option[Secret] = None,
+    @docs("SSL key password (redacted in API responses).")
+    @description("SSL key password (redacted in API responses).")
+    sslKeyPassword: Option[Secret] = None,
+    @docs("SASL JAAS configuration for authentication (passwords redacted in API responses).")
+    @description("SASL JAAS configuration for authentication (passwords redacted in API responses).")
+    saslJaasConfig: Option[SaslJaasConfig] = None,
     @docs(StandingQueryOutputStructure.docString)
     structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
   ) extends StandingQueryResultOutputUserDef {

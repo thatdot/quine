@@ -30,7 +30,9 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.config.ConfigException
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
 
+import com.thatdot.api.v2.SaslJaasConfig
 import com.thatdot.common.logging.Log._
+import com.thatdot.common.security.Secret
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
@@ -228,17 +230,55 @@ case class KafkaSource(
   decoders: Seq[ContentDecoder],
   meter: IngestMeter,
   system: ActorSystem,
+  sslKeystorePassword: Option[Secret] = None,
+  sslTruststorePassword: Option[Secret] = None,
+  sslKeyPassword: Option[Secret] = None,
+  saslJaasConfig: Option[SaslJaasConfig] = None,
 ) extends FramedSourceProvider
     with LazySafeLogging {
 
+  /** Log warnings for any kafkaProperties keys that will be overridden by typed Secret params. */
+  private def warnOnOverriddenProperties(): Unit = {
+    val typedSecretKeys: Set[String] = Set.empty ++
+      sslKeystorePassword.map(_ => "ssl.keystore.password") ++
+      sslTruststorePassword.map(_ => "ssl.truststore.password") ++
+      sslKeyPassword.map(_ => "ssl.key.password") ++
+      saslJaasConfig.map(_ => "sasl.jaas.config")
+
+    val overriddenKeys = kafkaProperties.keySet.intersect(typedSecretKeys)
+    overriddenKeys.foreach { key =>
+      logger.warn(
+        safe"Kafka property '${Safe(key)}' in kafkaProperties will be overridden by typed Secret parameter. " +
+        safe"Remove '${Safe(key)}' from kafkaProperties to suppress this warning.",
+      )
+    }
+  }
+
+  /** Merge typed secret params into Kafka properties. Typed params take precedence.
+    *
+    * Visible within `ingest2` for testing.
+    */
+  private[ingest2] def effectiveProperties: Map[String, String] = {
+    import Secret.Unsafe._
+    val secretProps: Map[String, String] = Map.empty ++
+      sslKeystorePassword.map("ssl.keystore.password" -> _.unsafeValue) ++
+      sslTruststorePassword.map("ssl.truststore.password" -> _.unsafeValue) ++
+      sslKeyPassword.map("ssl.key.password" -> _.unsafeValue) ++
+      saslJaasConfig.map("sasl.jaas.config" -> SaslJaasConfig.toJaasConfigString(_))
+
+    kafkaProperties ++ secretProps
+  }
+
   def framedSource: ValidatedNel[BaseError, FramedSource] = Try {
+    warnOnOverriddenProperties()
+    saslJaasConfig.foreach(config => logger.info(safe"Kafka SASL config: $config"))
     val subs = subscription(topics)
     val consumerSettings: ConsumerSettings[Array[Byte], Array[Byte]] =
       buildConsumerSettings(
         bootstrapServers,
         groupId,
         autoOffsetReset,
-        kafkaProperties,
+        effectiveProperties,
         securityProtocol,
         decoders,
         system,

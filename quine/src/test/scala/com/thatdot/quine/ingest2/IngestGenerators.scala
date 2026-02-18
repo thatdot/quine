@@ -6,9 +6,10 @@ import scala.jdk.CollectionConverters._
 
 import org.scalacheck.{Arbitrary, Gen}
 
-import com.thatdot.api.v2.AwsGenerators
+import com.thatdot.api.v2.{AwsGenerators, SaslJaasConfigGenerators}
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.ScalaPrimitiveGenerators
+import com.thatdot.quine.ScalaPrimitiveGenerators.Gens.nonEmptyAlphaNumStr
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.FileIngestMode.{NamedPipe, Regular}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.KafkaOffsetCommitting.ExplicitCommit
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.WebSocketClient.KeepaliveProtocol
@@ -18,6 +19,7 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.{DeadLetterQueueOutput, D
 object IngestGenerators {
 
   import AwsGenerators.Gens.{optAwsCredentials, optAwsRegion}
+  import SaslJaasConfigGenerators.Gens.{optSaslJaasConfig, optSecret}
   import ScalaPrimitiveGenerators.Gens.{bool, unitInterval}
 
   object Gens {
@@ -168,16 +170,37 @@ object IngestGenerators {
 
     val onStreamErrorHandler: Gen[OnStreamErrorHandler] = Gen.oneOf(LogStreamError, RetryStreamError(1))
 
-    val deadLetterQueueOutput: Gen[DeadLetterQueueOutput] =
-      Gen.asciiPrintableStr.map(DeadLetterQueueOutput.File(_))
-
-    val deadLetterQueueSettings: Gen[DeadLetterQueueSettings] = for {
-      destinations <- Gen.listOf(deadLetterQueueOutput)
-    } yield DeadLetterQueueSettings(destinations)
+    val deadLetterQueueOutputFile: Gen[DeadLetterQueueOutput.File] =
+      nonEmptyAlphaNumStr.map(DeadLetterQueueOutput.File(_))
 
     val outputFormatJSON: Gen[OutputFormat.JSON] = for {
       withInfoEnvelope <- bool
     } yield OutputFormat.JSON(withInfoEnvelope)
+
+    val deadLetterQueueOutputKafka: Gen[DeadLetterQueueOutput.Kafka] = for {
+      topic <- nonEmptyAlphaNumStr
+      bootstrapServers <- nonEmptyAlphaNumStr.map(s => s"localhost:9092,$s:9092")
+      sslKeystorePassword <- optSecret
+      sslTruststorePassword <- optSecret
+      sslKeyPassword <- optSecret
+      saslJaasConfig <- optSaslJaasConfig
+      outputFormat <- outputFormatJSON
+    } yield DeadLetterQueueOutput.Kafka(
+      topic = topic,
+      bootstrapServers = bootstrapServers,
+      sslKeystorePassword = sslKeystorePassword,
+      sslTruststorePassword = sslTruststorePassword,
+      sslKeyPassword = sslKeyPassword,
+      saslJaasConfig = saslJaasConfig,
+      outputFormat = outputFormat,
+    )
+
+    val deadLetterQueueOutput: Gen[DeadLetterQueueOutput] =
+      Gen.oneOf(deadLetterQueueOutputFile, deadLetterQueueOutputKafka)
+
+    val deadLetterQueueSettings: Gen[DeadLetterQueueSettings] = for {
+      destinations <- Gen.listOf(deadLetterQueueOutput)
+    } yield DeadLetterQueueSettings(destinations)
 
     val file: Gen[IngestSource.File] = for {
       format <- fileFormat
@@ -287,6 +310,10 @@ object IngestGenerators {
       securityProtocol <- kafkaSecurityProtocol
       offsetCommitting <- Gen.option(kafkaOffsetCommitting)
       autoOffsetReset <- kafkaAutoOffsetReset
+      sslKeystorePassword <- optSecret
+      sslTruststorePassword <- optSecret
+      sslKeyPassword <- optSecret
+      saslJaasConfig <- optSaslJaasConfig
       kafkaProperties <- Gen.const(Map.empty[String, String])
       endingOffset <- Gen.option(Gen.posNum[Long])
       recordDecoders <- recordDecodingTypes
@@ -298,6 +325,10 @@ object IngestGenerators {
       securityProtocol,
       offsetCommitting,
       autoOffsetReset,
+      sslKeystorePassword,
+      sslTruststorePassword,
+      sslKeyPassword,
+      saslJaasConfig,
       kafkaProperties,
       endingOffset,
       recordDecoders,

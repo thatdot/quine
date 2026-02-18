@@ -2,7 +2,8 @@ package com.thatdot.api.v2.outputs
 
 import io.circe.{Decoder, Encoder}
 
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, SaslJaasConfig}
+import com.thatdot.common.security.Secret
 
 /** The ADT for shared result destinations. These correspond to the API types in each product, but only exist
   * for more convenient lowering to an interpreter. It's easier to automatically derive a conversion between
@@ -78,6 +79,10 @@ object DestinationSteps {
     topic: String,
     bootstrapServers: String,
     format: OutputFormat = Kafka.propertyDefaultValueForFormat,
+    sslKeystorePassword: Option[Secret] = None,
+    sslTruststorePassword: Option[Secret] = None,
+    sslKeyPassword: Option[Secret] = None,
+    saslJaasConfig: Option[SaslJaasConfig] = None,
     kafkaProperties: Map[String, KafkaPropertyValue] = Kafka.propertyDefaultValueForKafkaProperties,
   ) extends DestinationSteps
       with Format

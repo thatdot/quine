@@ -7,6 +7,7 @@ import scala.jdk.CollectionConverters._
 
 import org.scalacheck.{Arbitrary, Gen}
 
+import com.thatdot.api.v2.SaslJaasConfigGenerators
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.model.ingest2._
@@ -15,6 +16,7 @@ import com.thatdot.quine.{ScalaPrimitiveGenerators, TimeGenerators, routes => V1
 object V2IngestEntitiesGenerators {
 
   import ScalaPrimitiveGenerators.Gens._
+  import SaslJaasConfigGenerators.Gens.{optSecret, optSaslJaasConfig}
 
   object Gens {
 
@@ -435,6 +437,10 @@ object V2IngestEntitiesGenerators {
       securityProtocol <- kafkaSecurityProtocol
       offsetCommitting <- Gen.option(kafkaOffsetCommitting)
       autoOffsetReset <- kafkaAutoOffsetReset
+      sslKeystorePassword <- optSecret
+      sslTruststorePassword <- optSecret
+      sslKeyPassword <- optSecret
+      saslJaasConfig <- optSaslJaasConfig
       kafkaProperties <- kafkaProperties
       endingOffset <- Gen.option(mediumPosLong)
       recordDecoders <- recordDecodingSeq
@@ -446,6 +452,10 @@ object V2IngestEntitiesGenerators {
       securityProtocol,
       offsetCommitting,
       autoOffsetReset,
+      sslKeystorePassword,
+      sslTruststorePassword,
+      sslKeyPassword,
+      saslJaasConfig,
       kafkaProperties,
       endingOffset,
       recordDecoders,

@@ -98,6 +98,172 @@ class V2IngestEntitiesPreservingCodecSpec extends AnyFunSpec with Matchers with 
     }
   }
 
+  describe("KafkaIngest preserving encoder") {
+    import Secret.Unsafe._
+    import com.thatdot.api.v2.{PlainLogin, ScramLogin, OAuthBearerLogin}
+    val ingestSourcePreservingEncoder = IngestSource.preservingEncoder
+
+    it("should preserve sslKeystorePassword for storage") {
+      val kafka = KafkaIngest(
+        format = StreamingFormat.JsonFormat,
+        topics = Left(Set("test-topic")),
+        bootstrapServers = "localhost:9092",
+        groupId = Some("test-group"),
+        offsetCommitting = None,
+        endingOffset = None,
+        sslKeystorePassword = Some(Secret("keystore-secret-123")),
+      )
+
+      val json = ingestSourcePreservingEncoder(kafka)
+      val jsonString = json.noSpaces
+
+      json.hcursor.downField("sslKeystorePassword").as[String] shouldBe Right("keystore-secret-123")
+      jsonString should not include "Secret(****)"
+    }
+
+    it("should preserve sslTruststorePassword for storage") {
+      val kafka = KafkaIngest(
+        format = StreamingFormat.JsonFormat,
+        topics = Left(Set("test-topic")),
+        bootstrapServers = "localhost:9092",
+        groupId = Some("test-group"),
+        offsetCommitting = None,
+        endingOffset = None,
+        sslTruststorePassword = Some(Secret("truststore-secret-456")),
+      )
+
+      val json = ingestSourcePreservingEncoder(kafka)
+      val jsonString = json.noSpaces
+
+      json.hcursor.downField("sslTruststorePassword").as[String] shouldBe Right("truststore-secret-456")
+      jsonString should not include "Secret(****)"
+    }
+
+    it("should preserve sslKeyPassword for storage") {
+      val kafka = KafkaIngest(
+        format = StreamingFormat.JsonFormat,
+        topics = Left(Set("test-topic")),
+        bootstrapServers = "localhost:9092",
+        groupId = Some("test-group"),
+        offsetCommitting = None,
+        endingOffset = None,
+        sslKeyPassword = Some(Secret("key-secret-789")),
+      )
+
+      val json = ingestSourcePreservingEncoder(kafka)
+      val jsonString = json.noSpaces
+
+      json.hcursor.downField("sslKeyPassword").as[String] shouldBe Right("key-secret-789")
+      jsonString should not include "Secret(****)"
+    }
+
+    it("should preserve saslJaasConfig PlainLogin for storage") {
+      val kafka = KafkaIngest(
+        format = StreamingFormat.JsonFormat,
+        topics = Left(Set("test-topic")),
+        bootstrapServers = "localhost:9092",
+        groupId = Some("test-group"),
+        offsetCommitting = None,
+        endingOffset = None,
+        saslJaasConfig = Some(PlainLogin("alice", Secret("plain-password"))),
+      )
+
+      val json = ingestSourcePreservingEncoder(kafka)
+      val jsonString = json.noSpaces
+      val jaasJson = json.hcursor.downField("saslJaasConfig")
+
+      jaasJson.downField("username").as[String] shouldBe Right("alice")
+      jaasJson.downField("password").as[String] shouldBe Right("plain-password")
+      jsonString should not include "Secret(****)"
+    }
+
+    it("should preserve saslJaasConfig ScramLogin for storage") {
+      val kafka = KafkaIngest(
+        format = StreamingFormat.JsonFormat,
+        topics = Left(Set("test-topic")),
+        bootstrapServers = "localhost:9092",
+        groupId = Some("test-group"),
+        offsetCommitting = None,
+        endingOffset = None,
+        saslJaasConfig = Some(ScramLogin("bob", Secret("scram-password"))),
+      )
+
+      val json = ingestSourcePreservingEncoder(kafka)
+      val jsonString = json.noSpaces
+      val jaasJson = json.hcursor.downField("saslJaasConfig")
+
+      jaasJson.downField("username").as[String] shouldBe Right("bob")
+      jaasJson.downField("password").as[String] shouldBe Right("scram-password")
+      jsonString should not include "Secret(****)"
+    }
+
+    it("should preserve saslJaasConfig OAuthBearerLogin for storage") {
+      val kafka = KafkaIngest(
+        format = StreamingFormat.JsonFormat,
+        topics = Left(Set("test-topic")),
+        bootstrapServers = "localhost:9092",
+        groupId = Some("test-group"),
+        offsetCommitting = None,
+        endingOffset = None,
+        saslJaasConfig = Some(OAuthBearerLogin("client-id", Secret("client-secret"), Some("scope"), None)),
+      )
+
+      val json = ingestSourcePreservingEncoder(kafka)
+      val jsonString = json.noSpaces
+      val jaasJson = json.hcursor.downField("saslJaasConfig")
+
+      jaasJson.downField("clientId").as[String] shouldBe Right("client-id")
+      jaasJson.downField("clientSecret").as[String] shouldBe Right("client-secret")
+      jsonString should not include "Secret(****)"
+    }
+
+    it("should preserve all Kafka secrets together for storage") {
+      val kafka = KafkaIngest(
+        format = StreamingFormat.JsonFormat,
+        topics = Left(Set("test-topic")),
+        bootstrapServers = "localhost:9092",
+        groupId = Some("test-group"),
+        offsetCommitting = None,
+        endingOffset = None,
+        sslKeystorePassword = Some(Secret("ks-pass")),
+        sslTruststorePassword = Some(Secret("ts-pass")),
+        sslKeyPassword = Some(Secret("key-pass")),
+        saslJaasConfig = Some(PlainLogin("user", Secret("sasl-pass"))),
+      )
+
+      val json = ingestSourcePreservingEncoder(kafka)
+      val jsonString = json.noSpaces
+
+      // All secrets should be preserved
+      json.hcursor.downField("sslKeystorePassword").as[String] shouldBe Right("ks-pass")
+      json.hcursor.downField("sslTruststorePassword").as[String] shouldBe Right("ts-pass")
+      json.hcursor.downField("sslKeyPassword").as[String] shouldBe Right("key-pass")
+      json.hcursor.downField("saslJaasConfig").downField("password").as[String] shouldBe Right("sasl-pass")
+      // None should be redacted
+      jsonString should not include "Secret(****)"
+    }
+
+    it("should roundtrip with preserving encoder") {
+      val kafka = KafkaIngest(
+        format = StreamingFormat.JsonFormat,
+        topics = Left(Set("test-topic")),
+        bootstrapServers = "localhost:9092",
+        groupId = Some("test-group"),
+        offsetCommitting = None,
+        endingOffset = None,
+        sslKeystorePassword = Some(Secret("ks-pass")),
+        sslTruststorePassword = Some(Secret("ts-pass")),
+        sslKeyPassword = Some(Secret("key-pass")),
+        saslJaasConfig = Some(PlainLogin("user", Secret("sasl-pass"))),
+      )
+
+      val json = ingestSourcePreservingEncoder(kafka)
+      val decoded = json.as[IngestSource]
+
+      decoded shouldBe Right(kafka)
+    }
+  }
+
   describe("IngestSource preserving encoder") {
     import Secret.Unsafe._
     val ingestSourcePreservingEncoder = IngestSource.preservingEncoder
@@ -140,6 +306,131 @@ class V2IngestEntitiesPreservingCodecSpec extends AnyFunSpec with Matchers with 
         val decoded = json.as[QuineIngestConfiguration]
         decoded shouldBe Right(config)
       }
+    }
+
+    it("should preserve DLQ Kafka secrets for storage") {
+      import com.thatdot.quine.app.v2api.definitions.ingest2.{
+        DeadLetterQueueOutput,
+        DeadLetterQueueSettings,
+        OutputFormat,
+      }
+      import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.OnRecordErrorHandler
+      import com.thatdot.api.v2.PlainLogin
+
+      val config = QuineIngestConfiguration(
+        name = "test-kafka-dlq-config",
+        source = NumberIteratorIngest(StreamingFormat.JsonFormat, limit = None),
+        query = "CREATE ($that)",
+        onRecordError = OnRecordErrorHandler(
+          deadLetterQueueSettings = DeadLetterQueueSettings(
+            destinations = List(
+              DeadLetterQueueOutput.Kafka(
+                topic = "dlq-topic",
+                bootstrapServers = "localhost:9092",
+                sslKeystorePassword = Some(Secret("keystore-secret")),
+                sslTruststorePassword = Some(Secret("truststore-secret")),
+                sslKeyPassword = Some(Secret("key-secret")),
+                saslJaasConfig = Some(PlainLogin("user", Secret("password"))),
+                outputFormat = OutputFormat.JSON(),
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val json = configPreservingEncoder(config)
+      val dlqKafka = json.hcursor
+        .downField("onRecordError")
+        .downField("deadLetterQueueSettings")
+        .downField("destinations")
+        .downArray
+
+      dlqKafka.downField("sslKeystorePassword").as[String] shouldBe Right("keystore-secret")
+      dlqKafka.downField("sslTruststorePassword").as[String] shouldBe Right("truststore-secret")
+      dlqKafka.downField("sslKeyPassword").as[String] shouldBe Right("key-secret")
+      dlqKafka.downField("saslJaasConfig").downField("password").as[String] shouldBe Right("password")
+    }
+
+    it("should preserve DLQ Kinesis AWS credentials for storage") {
+      import com.thatdot.quine.app.v2api.definitions.ingest2.{
+        DeadLetterQueueOutput,
+        DeadLetterQueueSettings,
+        OutputFormat,
+      }
+      import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.OnRecordErrorHandler
+      import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
+
+      val config = QuineIngestConfiguration(
+        name = "test-kinesis-dlq-config",
+        source = NumberIteratorIngest(StreamingFormat.JsonFormat, limit = None),
+        query = "CREATE ($that)",
+        onRecordError = OnRecordErrorHandler(
+          deadLetterQueueSettings = DeadLetterQueueSettings(
+            destinations = List(
+              DeadLetterQueueOutput.Kinesis(
+                credentials = Some(AwsCredentials(Secret("AKIAEXAMPLE"), Secret("secretkey123"))),
+                region = Some(AwsRegion("us-east-1")),
+                streamName = "dlq-stream",
+                kinesisParallelism = None,
+                kinesisMaxBatchSize = None,
+                kinesisMaxRecordsPerSecond = None,
+                kinesisMaxBytesPerSecond = None,
+                outputFormat = OutputFormat.JSON(),
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val json = configPreservingEncoder(config)
+      val dlqKinesis = json.hcursor
+        .downField("onRecordError")
+        .downField("deadLetterQueueSettings")
+        .downField("destinations")
+        .downArray
+
+      val credsJson = dlqKinesis.downField("credentials")
+      credsJson.downField("accessKeyId").as[String] shouldBe Right("AKIAEXAMPLE")
+      credsJson.downField("secretAccessKey").as[String] shouldBe Right("secretkey123")
+    }
+
+    it("should preserve DLQ SNS AWS credentials for storage") {
+      import com.thatdot.quine.app.v2api.definitions.ingest2.{
+        DeadLetterQueueOutput,
+        DeadLetterQueueSettings,
+        OutputFormat,
+      }
+      import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.OnRecordErrorHandler
+      import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
+
+      val config = QuineIngestConfiguration(
+        name = "test-sns-dlq-config",
+        source = NumberIteratorIngest(StreamingFormat.JsonFormat, limit = None),
+        query = "CREATE ($that)",
+        onRecordError = OnRecordErrorHandler(
+          deadLetterQueueSettings = DeadLetterQueueSettings(
+            destinations = List(
+              DeadLetterQueueOutput.SNS(
+                credentials = Some(AwsCredentials(Secret("AKIAEXAMPLE"), Secret("secretkey123"))),
+                region = Some(AwsRegion("us-east-1")),
+                topic = "arn:aws:sns:us-east-1:123456789012:dlq-topic",
+                outputFormat = OutputFormat.JSON(),
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val json = configPreservingEncoder(config)
+      val dlqSns = json.hcursor
+        .downField("onRecordError")
+        .downField("deadLetterQueueSettings")
+        .downField("destinations")
+        .downArray
+
+      val credsJson = dlqSns.downField("credentials")
+      credsJson.downField("accessKeyId").as[String] shouldBe Right("AKIAEXAMPLE")
+      credsJson.downField("secretAccessKey").as[String] shouldBe Right("secretkey123")
     }
   }
 

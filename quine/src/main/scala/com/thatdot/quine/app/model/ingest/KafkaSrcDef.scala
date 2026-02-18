@@ -24,22 +24,67 @@ import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
 
-import com.thatdot.common.logging.Log.{LogConfig, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.model.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
-import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}
+import com.thatdot.quine.routes.{
+  KafkaAutoOffsetReset,
+  KafkaIngest,
+  KafkaOffsetCommitting,
+  KafkaSecurityProtocol,
+  SaslJaasConfig,
+}
 import com.thatdot.quine.util.SwitchMode
 
-object KafkaSrcDef {
+object KafkaSrcDef extends LazySafeLogging {
 
   /** Stream values where we won't need to retain committable offset information */
   type NoOffset = ConsumerRecord[Array[Byte], Try[Value]]
 
   /** Stream values where we'll retain committable offset information */
   type WithOffset = ConsumerMessage.CommittableMessage[Array[Byte], Try[Value]]
+
+  /** Log warnings for any kafkaProperties keys that will be overridden by typed Secret params. */
+  private def warnOnOverriddenProperties(
+    kafkaProperties: KafkaIngest.KafkaProperties,
+    sslKeystorePassword: Option[Secret],
+    sslTruststorePassword: Option[Secret],
+    sslKeyPassword: Option[Secret],
+    saslJaasConfig: Option[SaslJaasConfig],
+  ): Unit = {
+    val typedSecretKeys: Set[String] = Set.empty ++
+      sslKeystorePassword.map(_ => "ssl.keystore.password") ++
+      sslTruststorePassword.map(_ => "ssl.truststore.password") ++
+      sslKeyPassword.map(_ => "ssl.key.password") ++
+      saslJaasConfig.map(_ => "sasl.jaas.config")
+
+    val overriddenKeys = kafkaProperties.keySet.intersect(typedSecretKeys)
+    overriddenKeys.foreach { key =>
+      logger.warn(
+        safe"Kafka property '${Safe(key)}' in kafkaProperties will be overridden by typed Secret parameter. " +
+        safe"Remove '${Safe(key)}' from kafkaProperties to suppress this warning.",
+      )
+    }
+  }
+
+  /** Merge typed secret params into Kafka properties. Typed params take precedence. */
+  private def effectiveSecretProperties(
+    sslKeystorePassword: Option[Secret],
+    sslTruststorePassword: Option[Secret],
+    sslKeyPassword: Option[Secret],
+    saslJaasConfig: Option[SaslJaasConfig],
+  ): Map[String, String] = {
+    import Secret.Unsafe._
+    Map.empty ++
+    sslKeystorePassword.map("ssl.keystore.password" -> _.unsafeValue) ++
+    sslTruststorePassword.map("ssl.truststore.password" -> _.unsafeValue) ++
+    sslKeyPassword.map("ssl.key.password" -> _.unsafeValue) ++
+    saslJaasConfig.map("sasl.jaas.config" -> SaslJaasConfig.toJaasConfigString(_))
+  }
 
   private def buildConsumerSettings(
     format: ImportFormat,
@@ -49,10 +94,13 @@ object KafkaSrcDef {
     autoOffsetReset: KafkaAutoOffsetReset,
     kafkaProperties: KafkaIngest.KafkaProperties,
     securityProtocol: KafkaSecurityProtocol,
+    sslKeystorePassword: Option[Secret],
+    sslTruststorePassword: Option[Secret],
+    sslKeyPassword: Option[Secret],
+    saslJaasConfig: Option[SaslJaasConfig],
     decoders: Seq[ContentDecoder],
     deserializationTimer: Timer,
   )(implicit graph: CypherOpsGraph): ConsumerSettings[Array[Byte], Try[Value]] = {
-
     val deserializer: Deserializer[Try[Value]] =
       (_: String, data: Array[Byte]) => {
         format.importMessageSafeBytes(ContentDecoder.decode(decoders, data), isSingleHost, deserializationTimer)
@@ -60,12 +108,27 @@ object KafkaSrcDef {
 
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
+    warnOnOverriddenProperties(
+      kafkaProperties,
+      sslKeystorePassword,
+      sslTruststorePassword,
+      sslKeyPassword,
+      saslJaasConfig,
+    )
+
+    saslJaasConfig.foreach { config =>
+      logger.info(safe"Kafka SASL config: ${Safe(SaslJaasConfig.toRedactedString(config))}")
+    }
+
+    val secretProps =
+      effectiveSecretProperties(sslKeystorePassword, sslTruststorePassword, sslKeyPassword, saslJaasConfig)
+
     // Create Map of kafka properties: combination of user passed properties from `kafkaProperties`
     // as well as those templated by `KafkaAutoOffsetReset` and `KafkaSecurityProtocol`
     // NOTE: This divergence between how kafka properties are set should be resolved, most likely by removing
     // `KafkaAutoOffsetReset`, `KafkaSecurityProtocol`, and `KafkaOffsetCommitting.AutoCommit`
     // in favor of `KafkaIngest.KafkaProperties`. Additionally, the current "template" properties override those in kafkaProperties
-    val properties = kafkaProperties ++ Map(
+    val properties = kafkaProperties ++ secretProps ++ Map(
       AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
       SECURITY_PROTOCOL_CONFIG -> securityProtocol.name,
     )
@@ -97,6 +160,10 @@ object KafkaSrcDef {
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
     decoders: Seq[ContentDecoder],
+    sslKeystorePassword: Option[Secret],
+    sslTruststorePassword: Option[Secret],
+    sslKeyPassword: Option[Secret],
+    saslJaasConfig: Option[SaslJaasConfig],
   )(implicit
     graph: CypherOpsGraph,
     logConfig: LogConfig,
@@ -124,6 +191,10 @@ object KafkaSrcDef {
         autoOffsetReset,
         kafkaProperties,
         securityProtocol,
+        sslKeystorePassword,
+        sslTruststorePassword,
+        sslKeyPassword,
+        saslJaasConfig,
         decoders,
         graph.metrics.ingestDeserializationTimer(intoNamespace, name),
       )

@@ -12,6 +12,15 @@ import com.thatdot.{api, outputs2}
 /** Conversions from API models in [[api.v2.outputs]] to internal models in [[outputs2]]. */
 object Api2ToOutputs2 {
 
+  def apply(config: api.v2.SaslJaasConfig): outputs2.SaslJaasConfig = config match {
+    case api.v2.PlainLogin(username, password) =>
+      outputs2.PlainLogin(username, password)
+    case api.v2.ScramLogin(username, password) =>
+      outputs2.ScramLogin(username, password)
+    case api.v2.OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl) =>
+      outputs2.OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl)
+  }
+
   def apply(
     format: api.v2.outputs.OutputFormat,
   )(implicit protobufSchemaCache: ProtobufSchemaCache, ec: ExecutionContext): Future[outputs2.OutputEncoder] =
@@ -59,13 +68,26 @@ object Api2ToOutputs2 {
             ),
           ),
         )
-      case api.v2.outputs.DestinationSteps.Kafka(topic, bootstrapServers, format, kafkaProperties) =>
+      case api.v2.outputs.DestinationSteps.Kafka(
+            topic,
+            bootstrapServers,
+            format,
+            sslKeystorePassword,
+            sslTruststorePassword,
+            sslKeyPassword,
+            saslJaasConfig,
+            kafkaProperties,
+          ) =>
         apply(format).map(enc =>
           outputs2.FoldableDestinationSteps.WithByteEncoding(
             formatAndEncode = enc,
             destination = outputs2.destination.Kafka(
               topic = topic,
               bootstrapServers = bootstrapServers,
+              sslKeystorePassword = sslKeystorePassword,
+              sslTruststorePassword = sslTruststorePassword,
+              sslKeyPassword = sslKeyPassword,
+              saslJaasConfig = saslJaasConfig.map(apply),
               kafkaProperties = kafkaProperties.view.mapValues(_.s).toMap,
             ),
           ),

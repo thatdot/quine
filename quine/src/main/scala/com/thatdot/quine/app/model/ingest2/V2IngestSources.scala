@@ -13,6 +13,8 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
+import com.thatdot.api.codec.SecretCodecs
+import com.thatdot.api.v2.SaslJaasConfig
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
@@ -70,6 +72,10 @@ object IngestSource {
         ingest.securityProtocol,
         ingest.offsetCommitting,
         ingest.autoOffsetReset,
+        sslKeystorePassword = None, // V1 doesn't have typed secret params
+        sslTruststorePassword = None,
+        sslKeyPassword = None,
+        saslJaasConfig = None,
         ingest.kafkaProperties,
         ingest.endingOffset,
         ingest.recordDecoders,
@@ -201,8 +207,14 @@ object IngestSource {
   implicit lazy val serverSentEventIngestDecoder: Decoder[ServerSentEventIngest] = deriveConfiguredDecoder
   implicit lazy val sqsIngestEncoder: Encoder[SQSIngest] = deriveConfiguredEncoder
   implicit lazy val sqsIngestDecoder: Decoder[SQSIngest] = deriveConfiguredDecoder
-  implicit lazy val kafkaIngestEncoder: Encoder[KafkaIngest] = deriveConfiguredEncoder
-  implicit lazy val kafkaIngestDecoder: Decoder[KafkaIngest] = deriveConfiguredDecoder
+  implicit lazy val kafkaIngestEncoder: Encoder[KafkaIngest] = {
+    import SecretCodecs.secretEncoder
+    deriveConfiguredEncoder
+  }
+  implicit lazy val kafkaIngestDecoder: Decoder[KafkaIngest] = {
+    import SecretCodecs.secretDecoder
+    deriveConfiguredDecoder
+  }
 
   implicit lazy val encoder: Encoder[IngestSource] = deriveConfiguredEncoder
   implicit lazy val decoder: Decoder[IngestSource] = deriveConfiguredDecoder
@@ -214,9 +226,10 @@ object IngestSource {
     IngestSourcePreservingCodecs.encoder
 }
 
-/** Separate object to derive preserving encoders without implicit conflicts. */
+/** Separate object to derive preserving encoders for persistence and cluster communication (without implicit conflicts). */
 private object IngestSourcePreservingCodecs {
   import io.circe.generic.extras.semiauto.deriveConfiguredEncoder
+  import com.thatdot.api.codec.SecretCodecs
   import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
   import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.charsetEncoder
   import com.thatdot.api.v2.codec.DisjointEither.syntax._
@@ -233,20 +246,24 @@ private object IngestSourcePreservingCodecs {
   }
 
   def encoder(implicit ev: Secret.UnsafeAccess): Encoder[IngestSource] = {
-    implicit val awsCredsEnc: Encoder[V1.AwsCredentials] = V1IngestCodecs.awsCredentialsPreservingEncoder
-    implicit val awsRegionEnc: Encoder[V1.AwsRegion] = V1IngestCodecs.awsRegionEncoder
-    implicit val sqsIngestEnc: Encoder[SQSIngest] = deriveConfiguredEncoder
-    implicit val kinesisIngestEnc: Encoder[KinesisIngest] = deriveConfiguredEncoder
-    implicit val kinesisKclIngestEnc: Encoder[KinesisKclIngest] = deriveConfiguredEncoder
-    implicit val s3IngestEnc: Encoder[S3Ingest] = deriveConfiguredEncoder
-    implicit val fileIngestEnc: Encoder[FileIngest] = deriveConfiguredEncoder
-    implicit val stdInputIngestEnc: Encoder[StdInputIngest] = deriveConfiguredEncoder
-    implicit val numberIteratorIngestEnc: Encoder[NumberIteratorIngest] = deriveConfiguredEncoder
-    implicit val websocketIngestEnc: Encoder[WebsocketIngest] = deriveConfiguredEncoder
-    implicit val serverSentEventIngestEnc: Encoder[ServerSentEventIngest] = deriveConfiguredEncoder
-    implicit val kafkaIngestEnc: Encoder[KafkaIngest] = deriveConfiguredEncoder
-    implicit val reactiveStreamIngestEnc: Encoder[ReactiveStreamIngest] = deriveConfiguredEncoder
-    implicit val webSocketFileUploadEnc: Encoder[WebSocketFileUpload] = deriveConfiguredEncoder
+    // Shadow the redacting encoders with preserving versions
+    implicit val secretEncoder: Encoder[Secret] = SecretCodecs.preservingEncoder
+    implicit val saslJaasConfigEncoder: Encoder[SaslJaasConfig] = SaslJaasConfig.preservingEncoder
+    implicit val awsCredentialsEncoder: Encoder[V1.AwsCredentials] = V1IngestCodecs.awsCredentialsPreservingEncoder
+    implicit val awsRegionEncoder: Encoder[V1.AwsRegion] = V1IngestCodecs.awsRegionEncoder
+    // Derive encoders for subtypes that contain secrets
+    implicit val sqsIngestEncoder: Encoder[SQSIngest] = deriveConfiguredEncoder
+    implicit val kinesisIngestEncoder: Encoder[KinesisIngest] = deriveConfiguredEncoder
+    implicit val kinesisKclIngestEncoder: Encoder[KinesisKclIngest] = deriveConfiguredEncoder
+    implicit val s3IngestEncoder: Encoder[S3Ingest] = deriveConfiguredEncoder
+    implicit val fileIngestEncoder: Encoder[FileIngest] = deriveConfiguredEncoder
+    implicit val stdInputIngestEncoder: Encoder[StdInputIngest] = deriveConfiguredEncoder
+    implicit val numberIteratorIngestEncoder: Encoder[NumberIteratorIngest] = deriveConfiguredEncoder
+    implicit val websocketIngestEncoder: Encoder[WebsocketIngest] = deriveConfiguredEncoder
+    implicit val serverSentEventIngestEncoder: Encoder[ServerSentEventIngest] = deriveConfiguredEncoder
+    implicit val kafkaIngestEncoder: Encoder[KafkaIngest] = deriveConfiguredEncoder
+    implicit val reactiveStreamIngestEncoder: Encoder[ReactiveStreamIngest] = deriveConfiguredEncoder
+    implicit val webSocketFileUploadEncoder: Encoder[WebSocketFileUpload] = deriveConfiguredEncoder
 
     deriveConfiguredEncoder[IngestSource]
   }
@@ -479,6 +496,14 @@ case class KafkaIngest(
   securityProtocol: V1.KafkaSecurityProtocol = V1.KafkaSecurityProtocol.PlainText,
   offsetCommitting: Option[V1.KafkaOffsetCommitting],
   autoOffsetReset: V1.KafkaAutoOffsetReset = V1.KafkaAutoOffsetReset.Latest,
+  @description("Password for the SSL keystore. Redacted in API responses.")
+  sslKeystorePassword: Option[Secret] = None,
+  @description("Password for the SSL truststore. Redacted in API responses.")
+  sslTruststorePassword: Option[Secret] = None,
+  @description("Password for the SSL key. Redacted in API responses.")
+  sslKeyPassword: Option[Secret] = None,
+  @description("SASL/JAAS configuration for Kafka authentication. Secrets are redacted in API responses.")
+  saslJaasConfig: Option[SaslJaasConfig] = None,
   @description(
     "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>",
   )

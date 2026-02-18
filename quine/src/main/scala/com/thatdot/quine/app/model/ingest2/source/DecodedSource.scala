@@ -25,7 +25,7 @@ import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.convert.Api2ToAws
+import com.thatdot.convert.{Api2ToAws, Api2ToOutputs2}
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.outputs2.FoldableDestinationSteps.{WithByteEncoding, WithDataFoldable}
 import com.thatdot.outputs2.NonFoldableDestinationSteps.WithRawBytes
@@ -264,8 +264,25 @@ abstract class DecodedSource(val meter: IngestMeter) {
         // Update this when non-JSON outputs are supported for File (or to support including the info envelope)
         (WithByteEncoding(JSON(), destination.File(path)), false)
 
-      case DeadLetterQueueOutput.Kafka(topic, bootstrapServers, kafkaProperties, outputFormat) =>
-        val kafkaDestination = destination.Kafka(topic, bootstrapServers, kafkaProperties)
+      case DeadLetterQueueOutput.Kafka(
+            topic,
+            bootstrapServers,
+            sslKeystorePassword,
+            sslTruststorePassword,
+            sslKeyPassword,
+            saslJaasConfig,
+            kafkaProperties,
+            outputFormat,
+          ) =>
+        val kafkaDestination = destination.Kafka(
+          topic = topic,
+          bootstrapServers = bootstrapServers,
+          sslKeystorePassword = sslKeystorePassword,
+          sslTruststorePassword = sslTruststorePassword,
+          sslKeyPassword = sslKeyPassword,
+          saslJaasConfig = saslJaasConfig.map(Api2ToOutputs2.apply),
+          kafkaProperties = kafkaProperties,
+        )
         outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = kafkaDestination)
 
       case DeadLetterQueueOutput.Kinesis(
@@ -435,6 +452,10 @@ object DecodedSource extends LazySafeLogging {
             endingOffset,
             _,
             recordDecoders,
+            sslKeystorePassword,
+            sslTruststorePassword,
+            sslKeyPassword,
+            saslJaasConfig,
           ) =>
         KafkaSource(
           topics,
@@ -448,6 +469,10 @@ object DecodedSource extends LazySafeLogging {
           recordDecoders.map(ContentDecoder(_)),
           meter,
           system,
+          sslKeystorePassword,
+          sslTruststorePassword,
+          sslKeyPassword,
+          saslJaasConfig.map(V1ToV2(_)),
         ).framedSource.map(_.toDecoded(FrameDecoder(format)))
 
       case V1.FileIngest(
@@ -749,6 +774,10 @@ object DecodedSource extends LazySafeLogging {
             securityProtocol,
             maybeExplicitCommit,
             autoOffsetReset,
+            sslKeystorePassword,
+            sslTruststorePassword,
+            sslKeyPassword,
+            saslJaasConfig,
             kafkaProperties,
             endingOffset,
             recordDecoders,
@@ -765,6 +794,10 @@ object DecodedSource extends LazySafeLogging {
           recordDecoders.map(ContentDecoder(_)),
           meter,
           system,
+          sslKeystorePassword,
+          sslTruststorePassword,
+          sslKeyPassword,
+          saslJaasConfig,
         ).framedSource.map(_.toDecoded(FrameDecoder(format)))
       case ReactiveStreamIngest(format, url, port) =>
         ReactiveSource(url, port, meter)(system).framedSource.map(_.toDecoded(FrameDecoder(format)))

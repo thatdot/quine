@@ -3,7 +3,7 @@ package com.thatdot.quine.outputs
 import cats.data.NonEmptyList
 import org.scalacheck.{Arbitrary, Gen}
 
-import com.thatdot.api.v2.AwsGenerators
+import com.thatdot.api.v2.{AwsGenerators, SaslJaasConfigGenerators}
 import com.thatdot.quine.ScalaPrimitiveGenerators
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.{
@@ -20,6 +20,8 @@ object StandingQueryOutputGenerators {
   import V2ApiCommonGenerators.Gens._
 
   object Gens {
+    import SaslJaasConfigGenerators.Gens.{optSaslJaasConfig, optSecret}
+
     val predicate: Gen[Predicate] = Gen.const(Predicate.OnlyPositiveMatch)
 
     val transformation: Gen[StandingQueryResultTransformation] =
@@ -45,8 +47,21 @@ object StandingQueryOutputGenerators {
       topic <- nonEmptyAlphaNumStr
       bootstrapServers <- nonEmptyAlphaNumStr.map(s => s"localhost:9092,$s:9092")
       format <- outputFormat
+      sslKeystorePassword <- optSecret
+      sslTruststorePassword <- optSecret
+      sslKeyPassword <- optSecret
+      saslJaasConfig <- optSaslJaasConfig
       props <- kafkaProperties
-    } yield QuineDestinationSteps.Kafka(topic, bootstrapServers, format, props)
+    } yield QuineDestinationSteps.Kafka(
+      topic,
+      bootstrapServers,
+      format,
+      sslKeystorePassword,
+      sslTruststorePassword,
+      sslKeyPassword,
+      saslJaasConfig,
+      props,
+    )
 
     val kinesis: Gen[QuineDestinationSteps.Kinesis] = for {
       credentials <- optAwsCredentials

@@ -266,6 +266,7 @@ lazy val `api`: Project = project
       "io.circe" %% "circe-core" % circeV,
       "io.circe" %% "circe-generic-extras" % circeGenericExtrasV,
       "io.circe" %% "circe-yaml" % circeYamlV,
+      "com.thatdot" %% "quine-security" % quineCommonV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
     ),

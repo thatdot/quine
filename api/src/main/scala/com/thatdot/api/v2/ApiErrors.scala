@@ -123,6 +123,8 @@ object ErrorResponse {
     implicit lazy val schema: Schema[Unauthorized] = Schema.derived
     implicit val encoder: Encoder[Unauthorized] = deriveConfiguredEncoder
     implicit val decoder: Decoder[Unauthorized] = deriveConfiguredDecoder
+    implicit val loggable: AlwaysSafeLoggable[Unauthorized] = unauthorized =>
+      s"Unauthorized: ${unauthorized.errors.mkString("[", ", ", "]")}"
   }
 
   object ServiceUnavailable {

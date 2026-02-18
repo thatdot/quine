@@ -353,6 +353,10 @@ object IngestSrcDef extends LazySafeLogging {
           endingOffset,
           maxPerSecond,
           recordEncodings,
+          sslKeystorePassword,
+          sslTruststorePassword,
+          sslKeyPassword,
+          saslJaasConfig,
         ) =>
       KafkaSrcDef(
         name,
@@ -370,6 +374,10 @@ object IngestSrcDef extends LazySafeLogging {
         endingOffset,
         maxPerSecond,
         recordEncodings.map(ContentDecoder.apply),
+        sslKeystorePassword,
+        sslTruststorePassword,
+        sslKeyPassword,
+        saslJaasConfig,
       )
 
     case KinesisIngest(

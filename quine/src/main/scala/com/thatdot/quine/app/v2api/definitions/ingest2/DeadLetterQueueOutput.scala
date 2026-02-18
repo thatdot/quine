@@ -5,9 +5,12 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
 
+import com.thatdot.api.codec.SecretCodecs._
+import com.thatdot.api.schema.SecretSchemas._
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.outputs.{DestinationSteps, DestinationSteps => Outputs, OutputFormat => OutputFormats}
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, SaslJaasConfig}
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.v2api.definitions.ingest2.OutputFormat.JSON
 
 sealed trait DeadLetterQueueOutput
@@ -34,6 +37,14 @@ object DeadLetterQueueOutput {
   final case class Kafka(
     topic: String,
     bootstrapServers: String,
+    @description("Password for the SSL keystore. Redacted in API responses.")
+    sslKeystorePassword: Option[Secret] = None,
+    @description("Password for the SSL truststore. Redacted in API responses.")
+    sslTruststorePassword: Option[Secret] = None,
+    @description("Password for the SSL key. Redacted in API responses.")
+    sslKeyPassword: Option[Secret] = None,
+    @description("SASL/JAAS configuration for Kafka authentication. Secrets are redacted in API responses.")
+    saslJaasConfig: Option[SaslJaasConfig] = None,
     @description(
       """Map of Kafka producer properties.
         |See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>""".asOneLine,
@@ -119,12 +130,24 @@ object DeadLetterQueueOutput {
     case DestinationSteps.StandardOut() =>
       DeadLetterQueueOutput.StandardOut
 
-    // ──────────────── mappings with reordered params ────────────────
-    case DestinationSteps.Kafka(topic, bootstrapServers, format, kafkaProperties) =>
+    case DestinationSteps.Kafka(
+          topic,
+          bootstrapServers,
+          format,
+          sslKeystorePassword,
+          sslTruststorePassword,
+          sslKeyPassword,
+          saslJaasConfig,
+          kafkaProperties,
+        ) =>
       DeadLetterQueueOutput.Kafka(
         topic,
         bootstrapServers,
-        kafkaProperties.view.mapValues(_.toString).toMap,
+        sslKeystorePassword,
+        sslTruststorePassword,
+        sslKeyPassword,
+        saslJaasConfig,
+        kafkaProperties.view.mapValues(_.s).toMap,
         formatMatchesOutput(format),
       )
 
@@ -156,6 +179,22 @@ object DeadLetterQueueOutput {
   implicit val encoder: Encoder[DeadLetterQueueOutput] = deriveConfiguredEncoder
   implicit val decoder: Decoder[DeadLetterQueueOutput] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[DeadLetterQueueOutput] = Schema.derived
+
+  /** Encoder that preserves credential values for persistence.
+    * Requires witness (`import Secret.Unsafe._`) to call.
+    */
+  def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[DeadLetterQueueOutput] = {
+    import com.thatdot.api.codec.SecretCodecs
+    // Shadow the redacting encoders (names must match to shadow)
+    implicit val secretEncoder: Encoder[Secret] = SecretCodecs.preservingEncoder
+    implicit val awsCredentialsEncoder: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
+    implicit val saslJaasConfigEncoder: Encoder[SaslJaasConfig] = SaslJaasConfig.preservingEncoder
+    // Derive encoders for subtypes that contain secrets
+    implicit val kafkaEncoder: Encoder[Kafka] = deriveConfiguredEncoder
+    implicit val kinesisEncoder: Encoder[Kinesis] = deriveConfiguredEncoder
+    implicit val snsEncoder: Encoder[SNS] = deriveConfiguredEncoder
+    deriveConfiguredEncoder
+  }
 }
 
 @title("Error Output Format")
@@ -205,4 +244,14 @@ object DeadLetterQueueSettings {
   implicit val encoder: Encoder[DeadLetterQueueSettings] = deriveConfiguredEncoder
   implicit val decoder: Decoder[DeadLetterQueueSettings] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[DeadLetterQueueSettings] = Schema.derived
+
+  /** Encoder that preserves credential values for persistence.
+    * Requires witness (`import Secret.Unsafe._`) to call.
+    */
+  def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[DeadLetterQueueSettings] = {
+    // Use preserving encoder for destinations that may contain secrets
+    implicit val deadLetterQueueOutputEncoder: Encoder[DeadLetterQueueOutput] =
+      DeadLetterQueueOutput.preservingEncoder
+    deriveConfiguredEncoder
+  }
 }

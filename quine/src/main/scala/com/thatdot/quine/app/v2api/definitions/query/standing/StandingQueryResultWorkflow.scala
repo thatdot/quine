@@ -39,7 +39,9 @@ object StandingQueryResultWorkflow {
     * Requires witness (`import Secret.Unsafe._`) to call.
     */
   def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[StandingQueryResultWorkflow] = {
-    implicit val destEnc: Encoder[QuineDestinationSteps] = QuineDestinationSteps.preservingEncoder
+    // Use preserving encoder for destinations that may contain secrets
+    implicit val quineDestinationStepsEncoder: Encoder[QuineDestinationSteps] =
+      QuineDestinationSteps.preservingEncoder
     deriveConfiguredEncoder
   }
 

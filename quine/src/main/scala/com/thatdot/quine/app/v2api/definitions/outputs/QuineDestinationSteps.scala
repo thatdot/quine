@@ -5,10 +5,12 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
+import com.thatdot.api.codec.SecretCodecs._
+import com.thatdot.api.schema.SecretSchemas._
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.{DestinationSteps, Format, OutputFormat}
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, SaslJaasConfig}
 import com.thatdot.common.security.Secret
 
 /** The Quine-local ADT for result destinations. Note that it includes both "copies" of ADT values defined also in
@@ -62,6 +64,14 @@ object QuineDestinationSteps {
     bootstrapServers: String,
     @default(DestinationSteps.Kafka.propertyDefaultValueForFormat)
     format: OutputFormat = DestinationSteps.Kafka.propertyDefaultValueForFormat,
+    @description("Password for the SSL keystore. Redacted in API responses.")
+    sslKeystorePassword: Option[Secret] = None,
+    @description("Password for the SSL truststore. Redacted in API responses.")
+    sslTruststorePassword: Option[Secret] = None,
+    @description("Password for the SSL key. Redacted in API responses.")
+    sslKeyPassword: Option[Secret] = None,
+    @description("SASL/JAAS configuration for Kafka authentication. Secrets are redacted in API responses.")
+    saslJaasConfig: Option[SaslJaasConfig] = None,
     // @encodedExample provided in V2ApiSchemas (not working as annotation)
     @default(
       DestinationSteps.Kafka.propertyDefaultValueForKafkaProperties,
@@ -188,7 +198,15 @@ object QuineDestinationSteps {
     * Requires witness (`import Secret.Unsafe._`) to call.
     */
   def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[QuineDestinationSteps] = {
-    implicit val awsCredsEnc: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
+    import com.thatdot.api.codec.SecretCodecs
+    // Shadow the redacting encoders (names must match to shadow)
+    implicit val secretEncoder: Encoder[Secret] = SecretCodecs.preservingEncoder
+    implicit val awsCredentialsEncoder: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
+    implicit val saslJaasConfigEncoder: Encoder[SaslJaasConfig] = SaslJaasConfig.preservingEncoder
+    // Derive encoders for subtypes that contain secrets
+    implicit val kafkaEncoder: Encoder[Kafka] = deriveConfiguredEncoder
+    implicit val kinesisEncoder: Encoder[Kinesis] = deriveConfiguredEncoder
+    implicit val snsEncoder: Encoder[SNS] = deriveConfiguredEncoder
     deriveConfiguredEncoder
   }
 }

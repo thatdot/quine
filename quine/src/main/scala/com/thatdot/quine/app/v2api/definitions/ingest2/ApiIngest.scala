@@ -13,12 +13,15 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
 
+import com.thatdot.api.codec.SecretCodecs
+import com.thatdot.api.codec.SecretCodecs._
+import com.thatdot.api.schema.SecretSchemas._
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.codec.DisjointEither.syntax._
 import com.thatdot.api.v2.codec.DisjointEvidence._
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEncoder, instantDecoder, instantEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.{charsetSchema, instantSchema}
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary, SaslJaasConfig}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.{routes => V1}
 
@@ -361,11 +364,13 @@ object ApiIngest {
       implicit val decoder: Decoder[QuineIngestConfiguration] = deriveConfiguredDecoder
       implicit lazy val schema: Schema[QuineIngestConfiguration] = Schema.derived
 
-      /** Encoder that preserves Secret values for persistence and testing.
+      /** Encoder that preserves credential values for persistence.
         * Requires witness (`import Secret.Unsafe._`) to call.
         */
       def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[QuineIngestConfiguration] = {
-        implicit val ingestSourceEnc: Encoder[IngestSource] = IngestSource.preservingEncoder
+        // Use preserving encoders for components that contain secrets
+        implicit val ingestSourceEncoder: Encoder[IngestSource] = IngestSource.preservingEncoder
+        implicit val onRecordErrorEncoder: Encoder[OnRecordErrorHandler] = OnRecordErrorHandler.preservingEncoder
         deriveConfiguredEncoder
       }
     }
@@ -433,6 +438,14 @@ object ApiIngest {
       offsetCommitting: Option[KafkaOffsetCommitting],
       @default(KafkaAutoOffsetReset.Latest)
       autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
+      @description("Password for the SSL keystore. Redacted in API responses.")
+      sslKeystorePassword: Option[Secret] = None,
+      @description("Password for the SSL truststore. Redacted in API responses.")
+      sslTruststorePassword: Option[Secret] = None,
+      @description("Password for the SSL key. Redacted in API responses.")
+      sslKeyPassword: Option[Secret] = None,
+      @description("SASL/JAAS configuration for Kafka authentication. Secrets are redacted in API responses.")
+      saslJaasConfig: Option[SaslJaasConfig] = None,
       @description(
         "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>",
       )
@@ -686,11 +699,14 @@ object ApiIngest {
     implicit val decoder: Decoder[IngestSource] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[IngestSource] = Schema.derived
 
-    /** Encoder that preserves Secret values for persistence and testing.
+    /** Encoder that preserves credential values for persistence.
       * Requires witness (`import Secret.Unsafe._`) to call.
       */
     def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[IngestSource] = {
-      implicit val awsCredsEnc: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
+      // Shadow the redacting encoders (names must match to shadow)
+      implicit val secretEncoder: Encoder[Secret] = SecretCodecs.preservingEncoder
+      implicit val awsCredentialsEncoder: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
+      implicit val saslJaasConfigEncoder: Encoder[SaslJaasConfig] = SaslJaasConfig.preservingEncoder
       deriveConfiguredEncoder
     }
   }
@@ -1303,5 +1319,15 @@ object ApiIngest {
     implicit val encoder: Encoder[OnRecordErrorHandler] = deriveConfiguredEncoder
     implicit val decoder: Decoder[OnRecordErrorHandler] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[OnRecordErrorHandler] = Schema.derived
+
+    /** Encoder that preserves credential values for persistence.
+      * Requires witness (`import Secret.Unsafe._`) to call.
+      */
+    def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[OnRecordErrorHandler] = {
+      // Use preserving encoder for DLQ settings that may contain secrets
+      implicit val deadLetterQueueSettingsEncoder: Encoder[DeadLetterQueueSettings] =
+        DeadLetterQueueSettings.preservingEncoder
+      deriveConfiguredEncoder
+    }
   }
 }

@@ -1,10 +1,20 @@
 package com.thatdot.quine.app.model.ingest2
 
+import com.thatdot.api.{v2 => api}
 import com.thatdot.quine.app.model.ingest2.{V2IngestEntities => V2}
 import com.thatdot.quine.{routes => V1}
 
 /** Converts V1 API types to V2 API types. */
 object V1ToV2 {
+
+  def apply(config: V1.SaslJaasConfig): api.SaslJaasConfig = config match {
+    case V1.SaslJaasConfig.PlainLogin(username, password) =>
+      api.PlainLogin(username, password)
+    case V1.SaslJaasConfig.ScramLogin(username, password) =>
+      api.ScramLogin(username, password)
+    case V1.SaslJaasConfig.OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl) =>
+      api.OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl)
+  }
 
   def apply(
     schedulerSourceSettings: V1.KinesisIngest.KinesisSchedulerSourceSettings,

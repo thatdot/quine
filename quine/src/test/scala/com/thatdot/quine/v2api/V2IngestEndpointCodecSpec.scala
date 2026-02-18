@@ -104,5 +104,50 @@ class V2IngestEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
         decoded.onStreamError shouldBe config.onStreamError
       }
     }
+
+    it("should preserve DLQ Kafka secrets with preservingEncoder") {
+      import com.thatdot.common.security.Secret
+      import com.thatdot.api.v2.PlainLogin
+      import com.thatdot.quine.app.v2api.definitions.ingest2.{
+        DeadLetterQueueOutput,
+        DeadLetterQueueSettings,
+        OutputFormat,
+      }
+
+      val config = Oss.QuineIngestConfiguration(
+        name = "test-api-dlq-config",
+        source = IngestSource.NumberIterator(limit = None),
+        query = "CREATE ($that)",
+        onRecordError = OnRecordErrorHandler(
+          deadLetterQueueSettings = DeadLetterQueueSettings(
+            destinations = List(
+              DeadLetterQueueOutput.Kafka(
+                topic = "dlq-topic",
+                bootstrapServers = "localhost:9092",
+                sslKeystorePassword = Some(Secret("keystore-secret")),
+                sslTruststorePassword = Some(Secret("truststore-secret")),
+                sslKeyPassword = Some(Secret("key-secret")),
+                saslJaasConfig = Some(PlainLogin("user", Secret("password"))),
+                outputFormat = OutputFormat.JSON(),
+              ),
+            ),
+          ),
+        ),
+      )
+
+      import Secret.Unsafe._
+      val configPreservingEncoder = Oss.QuineIngestConfiguration.preservingEncoder
+      val json = configPreservingEncoder(config)
+      val dlqKafka = json.hcursor
+        .downField("onRecordError")
+        .downField("deadLetterQueueSettings")
+        .downField("destinations")
+        .downArray
+
+      dlqKafka.downField("sslKeystorePassword").as[String] shouldBe Right("keystore-secret")
+      dlqKafka.downField("sslTruststorePassword").as[String] shouldBe Right("truststore-secret")
+      dlqKafka.downField("sslKeyPassword").as[String] shouldBe Right("key-secret")
+      dlqKafka.downField("saslJaasConfig").downField("password").as[String] shouldBe Right("password")
+    }
   }
 }

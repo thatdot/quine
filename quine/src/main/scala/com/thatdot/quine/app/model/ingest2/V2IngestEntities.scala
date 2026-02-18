@@ -16,6 +16,7 @@ import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.OnRecordErrorHandler
 import com.thatdot.quine.serialization.EncoderDecoder
 import com.thatdot.quine.{routes => V1}
+import com.thatdot.{api => api}
 
 /** Base trait for all ingest formats. */
 sealed trait IngestFormat
@@ -157,11 +158,13 @@ object V2IngestEntities {
     implicit lazy val decoder: Decoder[QuineIngestStreamWithStatus] = deriveConfiguredDecoder
     implicit lazy val encoderDecoder: EncoderDecoder[QuineIngestStreamWithStatus] = EncoderDecoder.ofEncodeDecode
 
-    /** Encoder that preserves credential values for persistence and cluster communication.
+    /** Encoder that preserves credential values for persistence.
       * Requires witness (`import Secret.Unsafe._`) to call.
       */
     def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[QuineIngestStreamWithStatus] = {
-      implicit val configEnc: Encoder[QuineIngestConfiguration] = QuineIngestConfiguration.preservingEncoder
+      // Use preserving encoder for configuration that may contain secrets
+      implicit val quineIngestConfigurationEncoder: Encoder[QuineIngestConfiguration] =
+        QuineIngestConfiguration.preservingEncoder
       deriveConfiguredEncoder
     }
   }
@@ -430,6 +433,10 @@ object V2IngestEntities {
               securityProtocol,
               offsetCommitting,
               autoOffsetReset,
+              sslKeystorePassword,
+              sslTruststorePassword,
+              sslKeyPassword,
+              saslJaasConfig,
               kafkaProperties,
               endingOffset,
               recordDecoders,
@@ -448,6 +455,17 @@ object V2IngestEntities {
               endingOffset,
               maxPerSecond,
               recordDecoders,
+              sslKeystorePassword,
+              sslTruststorePassword,
+              sslKeyPassword,
+              saslJaasConfig.map {
+                case api.v2.PlainLogin(username, password) =>
+                  V1.SaslJaasConfig.PlainLogin(username, password)
+                case api.v2.ScramLogin(username, password) =>
+                  V1.SaslJaasConfig.ScramLogin(username, password)
+                case api.v2.OAuthBearerLogin(clientId, clientSecret, _, _) =>
+                  V1.SaslJaasConfig.OAuthBearerLogin(clientId, clientSecret)
+              },
             )
           }
         case _: KinesisKclIngest =>
@@ -484,11 +502,13 @@ object V2IngestEntities {
     implicit lazy val decoder: Decoder[QuineIngestConfiguration] = deriveConfiguredDecoder
     implicit lazy val encoderDecoder: EncoderDecoder[QuineIngestConfiguration] = EncoderDecoder.ofEncodeDecode
 
-    /** Encoder that preserves credential values for persistence and cluster communication.
+    /** Encoder that preserves credential values for persistence.
       * Requires witness (`import Secret.Unsafe._`) to call.
       */
     def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[QuineIngestConfiguration] = {
-      implicit val ingestSourceEnc: Encoder[IngestSource] = IngestSource.preservingEncoder
+      // Use preserving encoders for components that contain secrets
+      implicit val ingestSourceEncoder: Encoder[IngestSource] = IngestSource.preservingEncoder
+      implicit val onRecordErrorEncoder: Encoder[OnRecordErrorHandler] = OnRecordErrorHandler.preservingEncoder
       deriveConfiguredEncoder
     }
   }
