@@ -50,7 +50,7 @@ object Dependencies {
   val pekkoV = "1.4.0"
   val pekkoTestkitV = "1.4.0"
   val pekkoHttpV = "1.3.0"
-  val pekkoHttpCirceV = "3.7.0"
+  val pekkoHttpCirceV = "3.8.0"
   val pekkoManagementV = "1.2.0"
   val pekkoKafkaV = "1.1.0"
   val pekkoConnectorsV = "1.2.0"
