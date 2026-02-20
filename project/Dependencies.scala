@@ -37,7 +37,7 @@ object Dependencies {
   val logbackV = "1.5.32"
   val logstashLogbackV = "8.1"
   val laminarV = "17.2.1"
-  val waypointV = "10.0.0-M1"
+  val waypointV = "10.0.0-M2"
   val lz4JavaV = "1.10.3" // Try to keep this in sync w/ the version kafka-client depends on.
   val mapDbV = "3.1.0"
   val metricsInfluxdbV = "1.1.0"
