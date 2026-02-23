@@ -3,7 +3,7 @@ object Dependencies {
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.1"
   val awsSdkV = "2.37.5"
-  val amazonGlueV = "1.1.25"
+  val amazonGlueV = "1.1.27"
   val betterMonadicForV = "0.3.1"
   val boopickleV = "1.5.0"
   val bootstrapV = "5.3.6"
