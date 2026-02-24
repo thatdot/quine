@@ -26,10 +26,12 @@ jobs:
   clone-code:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/cache@v5
+      - name: Cache Docker registry
+        uses: actions/cache@v5
         with:
           path: /tmp/docker-registry
           key: universal
@@ -44,7 +46,7 @@ jobs:
           docker run -d -p 5000:5000 --restart=always --name registry -v /tmp/docker-registry:/var/lib/registry registry:2 && npx wait-on tcp:5000
           docker pull localhost:5000/copybara:latest || docker pull public.ecr.aws/p0a2o6c9/copybara:latest
           docker tag public.ecr.aws/p0a2o6c9/copybara:latest localhost:5000/copybara:latest && docker push localhost:5000/copybara:latest || true
-      - name: Copybara Action 2
+      - name: Run Copybara
         uses: thatdot/copybara-action@73152945ea4bb6c57b3d68e74787bdc1f80392ab # main@2024-05-13
         with:
           copybara_image: localhost:5000/copybara # thatdot-managed copy of olivr/copybara (itself a build of https://github.com/google/copybara/blob/master/Dockerfile)
