@@ -53,7 +53,7 @@ object Docker extends AutoPlugin {
         from(
           ImageName(
             repository = "eclipse-temurin",
-            tag = Some("21_35-jre-jammy"),
+            tag = Some("21.0.10_7-jre-noble"),
           ),
         )
         healthCheckShell(
