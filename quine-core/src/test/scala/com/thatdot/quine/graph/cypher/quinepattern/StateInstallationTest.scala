@@ -5,11 +5,8 @@ import scala.concurrent.Promise
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisModule, SymbolAnalysisPhase}
-import com.thatdot.quine.cypher.{ast => Cypher}
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.language.ast.Value
-import com.thatdot.quine.language.phases.UpgradeModule._
 
 /** Tests for state installation behavior.
   *
@@ -22,20 +19,11 @@ class StateInstallationTest extends AnyFlatSpec with Matchers {
   // HELPERS
   // ============================================================
 
-  private def parseCypher(query: String): (Cypher.Query.SingleQuery, SymbolAnalysisModule.SymbolTable) = {
-    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
-    val (tableState, result) = parser.process(query).value.run(LexerState(Nil)).value
-    result match {
-      case Some(q: Cypher.Query.SingleQuery) => (q, tableState.symbolTable)
-      case Some(other) => fail(s"Expected SingleQuery, got: $other")
-      case None => fail(s"Parse error for query: $query")
+  private def planQuery(query: String): QueryPlan =
+    QueryPlanner.planFromString(query) match {
+      case Right(planned) => planned.plan
+      case Left(error) => fail(s"Failed to plan query: $error")
     }
-  }
-
-  private def planQuery(query: String): QueryPlan = {
-    val (parsedQuery, symbolTable) = parseCypher(query)
-    QueryPlanner.plan(parsedQuery, symbolTable)
-  }
 
   private def buildStateGraph(
     query: String,

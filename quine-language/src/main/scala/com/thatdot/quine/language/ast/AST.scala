@@ -86,6 +86,7 @@ object Expression {
   case class UnaryOp(source: Source, op: Operator, exp: Expression, ty: Option[Type]) extends Expression
   case class BinOp(source: Source, op: Operator, lhs: Expression, rhs: Expression, ty: Option[Type]) extends Expression
   case class FieldAccess(source: Source, of: Expression, fieldName: Symbol, ty: Option[Type]) extends Expression
+
   case class IndexIntoArray(source: Source, of: Expression, index: Expression, ty: Option[Type]) extends Expression
   case class IsNull(source: Source, of: Expression, ty: Option[Type]) extends Expression
   case class CaseBlock(source: Source, cases: List[SpecificCase], alternative: Expression, ty: Option[Type])

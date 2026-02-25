@@ -15,8 +15,6 @@ import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisModule, SymbolAnalysisPhase}
-import com.thatdot.quine.cypher.{ast => Cypher}
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher.quinepattern.OutputTarget.LazyResultCollector
 import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan._
@@ -32,7 +30,6 @@ import com.thatdot.quine.graph.{
   defaultNamespaceId,
 }
 import com.thatdot.quine.language.ast.{Expression, Source, Value}
-import com.thatdot.quine.language.phases.UpgradeModule._
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
@@ -2342,30 +2339,19 @@ class QueryPlanRuntimeTest
   // These tests replicate the actual recipe flow to catch planner bugs
   // ============================================================
 
-  /** Parse a Cypher query string and return the AST and symbol table */
-  private def parseCypher(query: String): (Cypher.Query.SingleQuery, SymbolAnalysisModule.SymbolTable) = {
-    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
-    val (tableState, result) = parser.process(query).value.run(LexerState(Nil)).value
-    result match {
-      case Some(q: Cypher.Query.SingleQuery) => (q, tableState.symbolTable)
-      case Some(other) => fail(s"Expected SingleQuery, got: $other")
-      case None =>
-        val diagnostics = tableState.diagnostics.mkString("\n  ")
-        fail(s"Parse error for query: $query\nDiagnostics:\n  $diagnostics")
-    }
-  }
-
   /** Parse and plan a Cypher query string */
-  private def parseAndPlan(query: String): QueryPlan = {
-    val (parsedQuery, symbolTable) = parseCypher(query)
-    QueryPlanner.plan(parsedQuery, symbolTable)
-  }
+  private def parseAndPlan(query: String): QueryPlan =
+    QueryPlanner.planFromString(query) match {
+      case Right(planned) => planned.plan
+      case Left(error) => fail(s"Failed to plan query: $error")
+    }
 
   /** Parse and plan a query, returning both the plan and output name mapping */
-  private def parseAndPlanWithMetadata(query: String): QueryPlanner.PlannedQuery = {
-    val (parsedQuery, symbolTable) = parseCypher(query)
-    QueryPlanner.planWithMetadata(parsedQuery, symbolTable)
-  }
+  private def parseAndPlanWithMetadata(query: String): QueryPlanner.PlannedQuery =
+    QueryPlanner.planFromString(query) match {
+      case Right(planned) => planned
+      case Left(error) => fail(s"Failed to plan query: $error")
+    }
 
   "QuinePattern End-to-End Edge Creation" should "create edges via parsed Cypher (INGEST-3 pattern)" in {
     // This test replicates the actual movie data INGEST-3 pattern:

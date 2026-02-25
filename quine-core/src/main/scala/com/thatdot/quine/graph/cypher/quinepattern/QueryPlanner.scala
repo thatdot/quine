@@ -3,7 +3,7 @@ package com.thatdot.quine.graph.cypher.quinepattern
 import com.thatdot.quine.cypher.phases.SymbolAnalysisModule
 import com.thatdot.quine.cypher.{ast => Cypher}
 import com.thatdot.quine.language.ast.Direction
-import com.thatdot.quine.language.{ast => Pattern}
+import com.thatdot.quine.language.{Cypher => CypherCompiler, ast => Pattern}
 import com.thatdot.quine.model.EdgeDirection
 
 /** Query Planner for QuinePattern.
@@ -186,6 +186,35 @@ object QueryPlanner {
       }.toMap
   }
 
+  /** A property binding created during symbol analysis.
+    * Records that property access `nodeBinding.property` was rewritten to `Ident(synthId)`.
+    *
+    * @param nodeBinding The graph element binding being accessed
+    * @param property The property name being accessed
+    * @param synthId The synthetic identifier to alias the property value to
+    */
+  case class PropertyBinding(nodeBinding: Int, property: Symbol, synthId: Int)
+
+  /** Extract property bindings from the symbol table.
+    * These come from PropertyAccessEntry entries created during symbol analysis
+    * when `n.prop` on a node/edge is rewritten to `Ident(synthId)`.
+    */
+  def extractPropertyBindings(symbolTable: SymbolAnalysisModule.SymbolTable): List[PropertyBinding] =
+    symbolTable.references.collect {
+      case SymbolAnalysisModule.SymbolTableEntry.PropertyAccessEntry(_, synthId, onBinding, property) =>
+        PropertyBinding(onBinding, property, synthId)
+    }
+
+  /** Convert property bindings to NodeDeps format for compatibility.
+    * Groups property bindings by their node binding and adds NodeDep.Property entries.
+    */
+  def propertyBindingsToNodeDeps(bindings: List[PropertyBinding]): NodeDeps =
+    bindings
+      .groupBy(_.nodeBinding)
+      .view
+      .mapValues(_.map(b => NodeDep.Property(b.property): NodeDep).toSet)
+      .toMap
+
   // ============================================================
   // ID LOOKUPS (WHERE id(n) = ...)
   // ============================================================
@@ -195,8 +224,24 @@ object QueryPlanner {
 
     /** Get the variable references in this lookup's expression.
       * These are the bindings (as Int IDs) that must be in scope before this lookup can be evaluated.
+      * Note: After symbol analysis, property accesses like `a.x` become `Ident(synthId)`.
+      * Use `dependenciesWithPropertyResolution` to resolve synthetic IDs back to source bindings.
       */
     def dependencies: Set[Int] = extractVariableRefs(exp)
+
+    /** Get dependencies with synthetic property IDs resolved to their source node bindings.
+      * This is needed because symbol analysis rewrites `a.x` to `Ident(synthId)`, but for
+      * dependency analysis we need to know that `synthId` actually depends on binding `a`.
+      */
+    def dependenciesWithPropertyResolution(propertyBindings: List[PropertyBinding]): Set[Int] = {
+      val synthToSource = propertyBindings.map(pb => pb.synthId -> pb.nodeBinding).toMap
+      dependencies.flatMap { id =>
+        synthToSource.get(id) match {
+          case Some(sourceBinding) => Set(sourceBinding) // Resolve to source binding
+          case None => Set(id) // Not a synthetic property ID, keep as-is
+        }
+      }
+    }
   }
 
   /** Extract variable references from an expression (not parameters).
@@ -859,10 +904,16 @@ object QueryPlanner {
     binding: Int,
     labels: Set[Symbol],
     deps: NodeDeps,
+    propertyBindings: List[PropertyBinding] = Nil,
     isNotNullConstraints: List[(Int, Symbol)] = Nil,
     propertyEqualities: List[PropertyEquality] = Nil,
   ): List[QueryPlan] = {
     val myDeps = deps.getOrElse(binding, Set.empty)
+
+    // Property bindings for this binding: property -> synthId
+    val myPropertyBindings: Map[Symbol, Int] = propertyBindings.collect {
+      case PropertyBinding(b, prop, synthId) if b == binding => prop -> synthId
+    }.toMap
 
     // Properties with IS NOT NULL constraints for this binding
     val isNotNullProps: Set[Symbol] = isNotNullConstraints.collect {
@@ -930,9 +981,13 @@ object QueryPlanner {
         case None =>
           PropertyConstraint.Unconditional
       }
-      // Always alias the property value so it's accessible in expressions
-      // Format: "{bindingId}.{propName}" e.g., "1.name" for node binding 1's name property
-      QueryPlan.LocalProperty(prop, aliasAs = Some(Symbol(s"${binding}.${prop.name}")), constraint)
+      // Alias to the synthetic identifier created by symbol analysis (for Ident lookup)
+      // or fall back to the old format if no property binding exists
+      val aliasAs = myPropertyBindings.get(prop) match {
+        case Some(synthId) => Some(Symbol(synthId.toString))
+        case None => Some(Symbol(s"${binding}.${prop.name}"))
+      }
+      QueryPlan.LocalProperty(prop, aliasAs = aliasAs, constraint)
     }
 
     // Also generate LocalProperty for IS NOT NULL properties not otherwise accessed
@@ -962,18 +1017,28 @@ object QueryPlanner {
     tree: GraphPatternTree,
     idLookups: List[IdLookup],
     nodeDeps: NodeDeps,
+    propertyBindings: List[PropertyBinding] = Nil,
     propertyConstraints: List[(Int, Symbol)] = Nil,
     propertyEqualities: List[PropertyEquality] = Nil,
     isRoot: Boolean = true,
   ): QueryPlan = tree match {
     case GraphPatternTree.Branch(binding, labels, children) =>
       // Generate watches for this node, including property constraints and equalities
-      val watches: List[QueryPlan] = generateWatches(binding, labels, nodeDeps, propertyConstraints, propertyEqualities)
+      val watches: List[QueryPlan] =
+        generateWatches(binding, labels, nodeDeps, propertyBindings, propertyConstraints, propertyEqualities)
 
       // Plan child expansions (children are NOT roots - they're reached via Expand)
       val expansions: List[QueryPlan] = children.map { conn =>
         val childPlan: QueryPlan =
-          planTree(conn.tree, idLookups, nodeDeps, propertyConstraints, propertyEqualities, isRoot = false)
+          planTree(
+            conn.tree,
+            idLookups,
+            nodeDeps,
+            propertyBindings,
+            propertyConstraints,
+            propertyEqualities,
+            isRoot = false,
+          )
         val direction = conn.direction match {
           case Direction.Left => EdgeDirection.Incoming
           case Direction.Right => EdgeDirection.Outgoing
@@ -1041,24 +1106,43 @@ object QueryPlanner {
     *
     * @param expr The predicate expression to filter
     * @param nodeDeps The node dependencies (used to identify which properties are watched)
+    * @param propertyBindings Property bindings from symbol analysis for resolving synthIds
     * @return The filtered predicate, or None if entirely redundant
     */
-  def filterOutPropertyExistenceChecks(expr: Pattern.Expression, nodeDeps: NodeDeps): Option[Pattern.Expression] = {
+  def filterOutPropertyExistenceChecks(
+    expr: Pattern.Expression,
+    nodeDeps: NodeDeps,
+    propertyBindings: List[PropertyBinding] = Nil,
+  ): Option[Pattern.Expression] = {
+    val synthIdToProperty: Map[Int, (Int, Symbol)] =
+      propertyBindings.map(pb => pb.synthId -> (pb.nodeBinding, pb.property)).toMap
+
     // Check if an expression is `node.prop IS NOT NULL` where node.prop is in our watches
     def isRedundantExistenceCheck(e: Pattern.Expression): Boolean = e match {
-      // Pattern: NOT(IsNull(FieldAccess(node.prop)))
-      case Pattern.Expression.UnaryOp(_, Pattern.Operator.Not, Pattern.Expression.IsNull(_, fieldAccess, _), _) =>
-        isWatchedProperty(fieldAccess, nodeDeps)
-      // Also handle direct IS NOT NULL patterns (they might compile differently)
+      // Pattern: NOT(IsNull(FieldAccess(node.prop))) or NOT(IsNull(Ident(synthId)))
+      case Pattern.Expression.UnaryOp(_, Pattern.Operator.Not, Pattern.Expression.IsNull(_, inner, _), _) =>
+        isWatchedProperty(inner, nodeDeps)
       case _ => false
     }
 
     def isWatchedProperty(e: Pattern.Expression, deps: NodeDeps): Boolean = e match {
+      // FieldAccess form (pre-rewrite): node.prop
       case Pattern.Expression.FieldAccess(_, on, fieldName, _) =>
         on match {
           case Pattern.Expression.Ident(_, ident, _) =>
             deps.getOrElse(identInt(ident), Set.empty).contains(NodeDep.Property(fieldName))
           case _ => false
+        }
+      // Ident form (post-rewrite): synthId
+      case Pattern.Expression.Ident(_, ident, _) =>
+        ident match {
+          case Right(quineId) =>
+            synthIdToProperty.get(quineId.name) match {
+              case Some((binding, property)) =>
+                deps.getOrElse(binding, Set.empty).contains(NodeDep.Property(property))
+              case None => false
+            }
+          case Left(_) => false
         }
       case _ => false
     }
@@ -1067,7 +1151,10 @@ object QueryPlanner {
       case e if isRedundantExistenceCheck(e) => None
 
       case Pattern.Expression.BinOp(src, Pattern.Operator.And, lhs, rhs, typ) =>
-        (filterOutPropertyExistenceChecks(lhs, nodeDeps), filterOutPropertyExistenceChecks(rhs, nodeDeps)) match {
+        (
+          filterOutPropertyExistenceChecks(lhs, nodeDeps, propertyBindings),
+          filterOutPropertyExistenceChecks(rhs, nodeDeps, propertyBindings),
+        ) match {
           case (None, None) => None
           case (Some(l), None) => Some(l)
           case (None, Some(r)) => Some(r)
@@ -1082,16 +1169,33 @@ object QueryPlanner {
   /** Extract IS NOT NULL constraints from a predicate as (bindingId, property) pairs.
     * These will become LocalProperty watches with Any constraint (which requires property to exist).
     */
-  def extractIsNotNullConstraints(expr: Pattern.Expression): List[(Int, Symbol)] = {
+  def extractIsNotNullConstraints(
+    expr: Pattern.Expression,
+    propertyBindings: List[PropertyBinding] = Nil,
+  ): List[(Int, Symbol)] = {
+    val synthIdToProperty: Map[Int, (Int, Symbol)] =
+      propertyBindings.map(pb => pb.synthId -> (pb.nodeBinding, pb.property)).toMap
+
     def extractFromExpr(e: Pattern.Expression): List[(Int, Symbol)] = e match {
-      // Pattern: NOT(IsNull(FieldAccess(node.prop))) means node.prop IS NOT NULL
-      case Pattern.Expression.UnaryOp(_, Pattern.Operator.Not, Pattern.Expression.IsNull(_, fieldAccess, _), _) =>
-        fieldAccess match {
+      // Pattern: NOT(IsNull(...)) means IS NOT NULL
+      case Pattern.Expression.UnaryOp(_, Pattern.Operator.Not, Pattern.Expression.IsNull(_, inner, _), _) =>
+        inner match {
+          // FieldAccess form (pre-rewrite): node.prop
           case Pattern.Expression.FieldAccess(_, on, fieldName, _) =>
             on match {
               case Pattern.Expression.Ident(_, ident, _) =>
                 List((identInt(ident), fieldName))
               case _ => Nil
+            }
+          // Ident form (post-rewrite): synthId
+          case Pattern.Expression.Ident(_, ident, _) =>
+            ident match {
+              case Right(quineId) =>
+                synthIdToProperty.get(quineId.name) match {
+                  case Some((binding, property)) => List((binding, property))
+                  case None => Nil
+                }
+              case Left(_) => Nil
             }
           case _ => Nil
         }
@@ -1108,24 +1212,53 @@ object QueryPlanner {
     */
   case class PropertyEquality(binding: Int, property: Symbol, value: Pattern.Value)
 
-  def extractPropertyEqualities(expr: Pattern.Expression): List[PropertyEquality] = {
+  def extractPropertyEqualities(
+    expr: Pattern.Expression,
+    propertyBindings: List[PropertyBinding] = Nil,
+  ): List[PropertyEquality] = {
+    // Build map from synthetic property ID to (nodeBinding, property)
+    val synthIdToProperty: Map[Int, (Int, Symbol)] =
+      propertyBindings.map(pb => pb.synthId -> (pb.nodeBinding, pb.property)).toMap
+
     def extractFromExpr(e: Pattern.Expression): List[PropertyEquality] = e match {
       // Pattern: node.prop = literalValue
       case Pattern.Expression.BinOp(_, Pattern.Operator.Equals, lhs, rhs, _) =>
         (lhs, rhs) match {
-          // node.prop = literal
+          // node.prop = literal (FieldAccess form - may still exist for non-node bindings)
           case (Pattern.Expression.FieldAccess(_, on, fieldName, _), Pattern.Expression.AtomicLiteral(_, value, _)) =>
             on match {
               case Pattern.Expression.Ident(_, ident, _) =>
                 List(PropertyEquality(identInt(ident), fieldName, value))
               case _ => Nil
             }
-          // literal = node.prop
+          // literal = node.prop (FieldAccess form)
           case (Pattern.Expression.AtomicLiteral(_, value, _), Pattern.Expression.FieldAccess(_, on, fieldName, _)) =>
             on match {
               case Pattern.Expression.Ident(_, ident, _) =>
                 List(PropertyEquality(identInt(ident), fieldName, value))
               case _ => Nil
+            }
+          // synthId = literal (Ident form after symbol analysis rewrite)
+          case (Pattern.Expression.Ident(_, ident, _), Pattern.Expression.AtomicLiteral(_, value, _)) =>
+            ident match {
+              case Right(quineId) =>
+                synthIdToProperty.get(quineId.name) match {
+                  case Some((nodeBinding, property)) =>
+                    List(PropertyEquality(nodeBinding, property, value))
+                  case None => Nil // Not a synthetic property ID
+                }
+              case Left(_) => Nil
+            }
+          // literal = synthId (Ident form after symbol analysis rewrite)
+          case (Pattern.Expression.AtomicLiteral(_, value, _), Pattern.Expression.Ident(_, ident, _)) =>
+            ident match {
+              case Right(quineId) =>
+                synthIdToProperty.get(quineId.name) match {
+                  case Some((nodeBinding, property)) =>
+                    List(PropertyEquality(nodeBinding, property, value))
+                  case None => Nil
+                }
+              case Left(_) => Nil
             }
           case _ => Nil
         }
@@ -1183,12 +1316,17 @@ object QueryPlanner {
   def filterOutPropertyEqualities(
     expr: Pattern.Expression,
     equalities: List[PropertyEquality],
+    propertyBindings: List[PropertyBinding] = Nil,
   ): Option[Pattern.Expression] = {
     val equalitySet: Set[(Int, Symbol)] = equalities.map(e => (e.binding, e.property)).toSet
+    // Map from synthId to (binding, property) for checking rewritten Ident patterns
+    val synthIdToProperty: Map[Int, (Int, Symbol)] =
+      propertyBindings.map(pb => pb.synthId -> (pb.nodeBinding, pb.property)).toMap
 
     def filter(e: Pattern.Expression): Option[Pattern.Expression] = e match {
       case Pattern.Expression.BinOp(_, Pattern.Operator.Equals, lhs, rhs, _) =>
         val isPushedDown = (lhs, rhs) match {
+          // FieldAccess pattern (pre-rewrite): node.prop = literal
           case (Pattern.Expression.FieldAccess(_, on, fieldName, _), _: Pattern.Expression.AtomicLiteral) =>
             on match {
               case Pattern.Expression.Ident(_, ident, _) => equalitySet.contains((identInt(ident), fieldName))
@@ -1198,6 +1336,25 @@ object QueryPlanner {
             on match {
               case Pattern.Expression.Ident(_, ident, _) => equalitySet.contains((identInt(ident), fieldName))
               case _ => false
+            }
+          // Ident pattern (post-rewrite): synthId = literal
+          case (Pattern.Expression.Ident(_, ident, _), _: Pattern.Expression.AtomicLiteral) =>
+            ident match {
+              case Right(quineId) =>
+                synthIdToProperty.get(quineId.name) match {
+                  case Some((binding, property)) => equalitySet.contains((binding, property))
+                  case None => false
+                }
+              case Left(_) => false
+            }
+          case (_: Pattern.Expression.AtomicLiteral, Pattern.Expression.Ident(_, ident, _)) =>
+            ident match {
+              case Right(quineId) =>
+                synthIdToProperty.get(quineId.name) match {
+                  case Some((binding, property)) => equalitySet.contains((binding, property))
+                  case None => false
+                }
+              case Left(_) => false
             }
           case _ => false
         }
@@ -1225,10 +1382,11 @@ object QueryPlanner {
     expr: Pattern.Expression,
     nodeDeps: NodeDeps,
     propertyEqualities: List[PropertyEquality] = Nil,
+    propertyBindings: List[PropertyBinding] = Nil,
   ): Option[Pattern.Expression] =
     filterOutIdLookups(expr)
-      .flatMap(filterOutPropertyExistenceChecks(_, nodeDeps))
-      .flatMap(filterOutPropertyEqualities(_, propertyEqualities))
+      .flatMap(filterOutPropertyExistenceChecks(_, nodeDeps, propertyBindings))
+      .flatMap(filterOutPropertyEqualities(_, propertyEqualities, propertyBindings))
 
   /** Plan a MATCH clause with optional WHERE.
     *
@@ -1247,17 +1405,18 @@ object QueryPlanner {
     maybePredicate: Option[Pattern.Expression],
     idLookups: List[IdLookup],
     nodeDeps: NodeDeps,
+    propertyBindings: List[PropertyBinding] = Nil,
   ): QueryPlan = {
     // Extract IS NOT NULL constraints from the predicate
     // These become LocalProperty watches with Any constraint (requires property to exist)
     val propertyConstraints: List[(Int, Symbol)] = maybePredicate
-      .map(extractIsNotNullConstraints)
+      .map(pred => extractIsNotNullConstraints(pred, propertyBindings))
       .getOrElse(Nil)
 
     // Extract property equality constraints for predicate pushdown
     // These become LocalProperty watches with Equal constraint (filters at the source)
     val whereClauseEqualities: List[PropertyEquality] = maybePredicate
-      .map(extractPropertyEqualities)
+      .map(pred => extractPropertyEqualities(pred, propertyBindings))
       .getOrElse(Nil)
 
     // Extract inline property constraints from node patterns (e.g., MATCH (n {foo: "bar"}))
@@ -1313,7 +1472,8 @@ object QueryPlanner {
 
     val patternInfos = treesWithBindings.map { case (tree, binding) =>
       val lookup = idLookups.find(_.forName == binding)
-      val deps = lookup.map(_.dependencies).getOrElse(Set.empty)
+      // Use dependenciesWithPropertyResolution to resolve synthetic property IDs to source bindings
+      val deps = lookup.map(_.dependenciesWithPropertyResolution(propertyBindings)).getOrElse(Set.empty)
       PatternInfo(tree, binding, lookup, deps)
     }
 
@@ -1345,11 +1505,27 @@ object QueryPlanner {
       case Nil => QueryPlan.Unit
 
       case single :: Nil =>
-        planTree(single.tree, idLookups, depsWithRenames, propertyConstraints, propertyEqualities, isRoot = true)
+        planTree(
+          single.tree,
+          idLookups,
+          depsWithRenames,
+          propertyBindings,
+          propertyConstraints,
+          propertyEqualities,
+          isRoot = true,
+        )
 
       case first :: rest =>
         val firstPlan =
-          planTree(first.tree, idLookups, depsWithRenames, propertyConstraints, propertyEqualities, isRoot = true)
+          planTree(
+            first.tree,
+            idLookups,
+            depsWithRenames,
+            propertyBindings,
+            propertyConstraints,
+            propertyEqualities,
+            isRoot = true,
+          )
         val newScope = inScope + first.binding
 
         // Check if any remaining patterns depend on what we just added
@@ -1386,7 +1562,7 @@ object QueryPlanner {
 
     // Apply WHERE predicate (minus ID lookups, property IS NOT NULL checks, and pushed-down equalities
     // which are already handled by Anchor and LocalProperty constraints)
-    maybePredicate.flatMap(filterOutRedundantPredicates(_, nodeDeps, propertyEqualities)) match {
+    maybePredicate.flatMap(filterOutRedundantPredicates(_, nodeDeps, propertyEqualities, propertyBindings)) match {
       case Some(predicate) =>
         QueryPlan.Filter(predicate, withDiamondJoin)
       case None =>
@@ -1783,12 +1959,13 @@ object QueryPlanner {
     idLookups: List[IdLookup],
     nodeDeps: NodeDeps,
     symbolTable: SymbolAnalysisModule.SymbolTable,
+    propertyBindings: List[PropertyBinding] = Nil,
     existingBindings: Set[Symbol] = Set.empty,
   ): QueryPlan = part match {
     case Cypher.QueryPart.ReadingClausePart(readingClause) =>
       readingClause match {
         case patterns: Cypher.ReadingClause.FromPatterns =>
-          planMatch(patterns.patterns, patterns.maybePredicate, idLookups, nodeDeps)
+          planMatch(patterns.patterns, patterns.maybePredicate, idLookups, nodeDeps, propertyBindings)
 
         case proc: Cypher.ReadingClause.FromProcedure =>
           // CALL procedureName(args...) YIELD bindings
@@ -1820,7 +1997,7 @@ object QueryPlanner {
       else {
         val projected = QueryPlan.Project(columns, dropExisting = !withClause.hasWildCard, QueryPlan.Unit)
         // Apply WHERE if present (minus redundant predicates)
-        withClause.maybePredicate.flatMap(filterOutRedundantPredicates(_, nodeDeps)) match {
+        withClause.maybePredicate.flatMap(filterOutRedundantPredicates(_, nodeDeps, Nil, propertyBindings)) match {
           case Some(pred) => QueryPlan.Filter(pred, projected)
           case None => projected
         }
@@ -1838,10 +2015,11 @@ object QueryPlanner {
     idLookups: List[IdLookup],
     nodeDeps: NodeDeps,
     symbolTable: SymbolAnalysisModule.SymbolTable,
+    propertyBindings: List[PropertyBinding] = Nil,
     existingBindings: Set[Symbol] = Set.empty,
   ): QueryPlan = parts match {
     case Nil => QueryPlan.Unit
-    case single :: Nil => planQueryPart(single, idLookups, nodeDeps, symbolTable, existingBindings)
+    case single :: Nil => planQueryPart(single, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
     case first :: rest =>
       // Track bindings established by this part for subsequent parts
       val bindingsFromFirst = extractBindingsFromPart(first)
@@ -1851,11 +2029,11 @@ object QueryPlanner {
       // These are like flatMap - for each element/result, evaluate the subquery
       first match {
         case Cypher.QueryPart.ReadingClausePart(unwind: Cypher.ReadingClause.FromUnwind) =>
-          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, accumulatedBindings)
+          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
           QueryPlan.Unwind(unwind.list, bindingSymbol(identInt(unwind.as)), restPlan)
 
         case Cypher.QueryPart.ReadingClausePart(proc: Cypher.ReadingClause.FromProcedure) =>
-          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, accumulatedBindings)
+          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
           // Convert YieldItems to (resultField, boundAs) pairs
           val yieldPairs = proc.yields.map { yi =>
             (yi.resultField, bindingSymbol(identInt(yi.boundAs)))
@@ -1868,8 +2046,8 @@ object QueryPlanner {
           )
 
         case _ =>
-          val firstPlan = planQueryPart(first, idLookups, nodeDeps, symbolTable, existingBindings)
-          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, accumulatedBindings)
+          val firstPlan = planQueryPart(first, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
+          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
           // Determine if we need sequential binding flow between parts:
           // - Effects depend on prior match results
           // - WITH clauses create sequence points (receive bindings and establish new ones)
@@ -2394,7 +2572,14 @@ object QueryPlanner {
     // This ensures that if CREATE needs id(m) where m was renamed through WITH clauses,
     // the original binding also gets NodeDep.Id
     val aliases = extractWithAliases(cypherAst)
-    val nodeDeps = propagateIdDepsBackward(rawNodeDeps, aliases)
+    val nodeDepsWithoutProps = propagateIdDepsBackward(rawNodeDeps, aliases)
+
+    // Extract property bindings from the symbol table (created during symbol analysis)
+    // These tell us which properties are accessed on which nodes and what synthetic IDs they map to
+    val propertyBindings = extractPropertyBindings(symbolTable)
+
+    // Merge property binding dependencies into nodeDeps
+    val nodeDeps = NodeDeps.combine(nodeDepsWithoutProps, propertyBindingsToNodeDeps(propertyBindings))
 
     val rawPlan = cypherAst match {
       case _: Cypher.Query.Union =>
@@ -2403,7 +2588,7 @@ object QueryPlanner {
       case single: Cypher.Query.SingleQuery =>
         single match {
           case spq: Cypher.Query.SingleQuery.SinglepartQuery =>
-            val bodyPlan = planQueryParts(spq.queryParts, idLookups, nodeDeps, symbolTable)
+            val bodyPlan = planQueryParts(spq.queryParts, idLookups, nodeDeps, symbolTable, propertyBindings)
             planProjection(spq.bindings, isDistinct = spq.isDistinct, bodyPlan, symbolTable)
 
           case mpq: Cypher.Query.SingleQuery.MultipartQuery =>
@@ -2413,7 +2598,7 @@ object QueryPlanner {
             // If we planned them separately, UNWIND in queryParts wouldn't include
             // the parts from "into", leading to incorrect plan structure.
             val allParts = mpq.queryParts ++ mpq.into.queryParts
-            val bodyPlan = planQueryParts(allParts, idLookups, nodeDeps, symbolTable)
+            val bodyPlan = planQueryParts(allParts, idLookups, nodeDeps, symbolTable, propertyBindings)
             planProjection(mpq.into.bindings, isDistinct = mpq.into.isDistinct, bodyPlan, symbolTable)
         }
     }
@@ -2429,6 +2614,10 @@ object QueryPlanner {
     // Post-process to push effects inside anchors
     // This ensures SET/CREATE effects run on the actual node, not the dispatcher
     val transformedPlan = pushIntoAnchors(rawPlan, idLookups)
+
+    // Note: Expression rewriting (FieldAccess → Ident) is now done during symbol analysis.
+    // The PropertyAccessEntry entries in the symbol table track which properties map to which synthetic IDs,
+    // and generateWatches uses this to set up the correct aliasing for LocalProperty.
 
     PlannedQuery(transformedPlan, returnColumns, outputNameMapping)
   }
@@ -2477,4 +2666,62 @@ object QueryPlanner {
   /** Convenience method to wrap a plan with AllNodes anchor for standing query deployment */
   def wrapForStandingQuery(plan: QueryPlan): QueryPlan =
     QueryPlan.Anchor(AnchorTarget.AllNodes, plan)
+
+  // ============================================================
+  // COMPILATION API
+  // ============================================================
+
+  /** Parse and plan a Cypher query string.
+    *
+    * This is the primary entry point for compiling Cypher to a QueryPlan.
+    * Use this instead of manually constructing the parser pipeline.
+    *
+    * @param query The Cypher query string
+    * @return Either an error message or the planned query with metadata
+    *
+    * Example usage:
+    * {{{
+    * import com.thatdot.quine.graph.cypher.quinepattern.QueryPlanner
+    *
+    * QueryPlanner.planFromString("MATCH (n) WHERE n.name = 'Alice' RETURN n.name") match {
+    *   case Right(planned) => println(planned.plan)
+    *   case Left(error) => println(s"Error: $error")
+    * }
+    * }}}
+    */
+  def planFromString(query: String): Either[String, PlannedQuery] = {
+    val result = CypherCompiler.analyze(query)
+    // Only check for AST presence, not diagnostics - some queries may have warnings
+    // that don't prevent planning (matching the old behavior)
+    result.ast match {
+      case Some(q: Cypher.Query.SingleQuery) =>
+        Right(planWithMetadata(q, result.symbolTable))
+      case Some(other) =>
+        Left(s"Expected SingleQuery, got: ${other.getClass.getSimpleName}")
+      case None =>
+        Left(result.diagnostics.map(_.toString).mkString("; "))
+    }
+  }
+
+  /** Parse a Cypher query string and return the AST and symbol table.
+    *
+    * Use this when you need access to the raw AST for testing internal planner methods.
+    * For normal compilation, prefer `planFromString` which handles everything.
+    *
+    * @param query The Cypher query string
+    * @return Either an error message or the parsed AST and symbol table
+    */
+  def parseToAST(query: String): Either[String, (Cypher.Query.SingleQuery, SymbolAnalysisModule.SymbolTable)] = {
+    val result = CypherCompiler.analyze(query)
+    // Only check for AST presence, not diagnostics - some queries may have warnings
+    // that don't prevent planning (matching the old behavior)
+    result.ast match {
+      case Some(q: Cypher.Query.SingleQuery) =>
+        Right((q, result.symbolTable))
+      case Some(other) =>
+        Left(s"Expected SingleQuery, got: ${other.getClass.getSimpleName}")
+      case None =>
+        Left(result.diagnostics.map(_.toString).mkString("; "))
+    }
+  }
 }

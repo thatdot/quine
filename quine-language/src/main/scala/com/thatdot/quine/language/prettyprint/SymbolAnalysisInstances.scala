@@ -172,6 +172,33 @@ trait SymbolAnalysisInstances extends CypherASTInstances {
           text(")"),
         )
 
+      case SymbolTableEntry.PropertyAccessEntry(source, identifier, onBinding, property) =>
+        concat(
+          text("PropertyAccessEntry("),
+          nest(
+            1,
+            concat(
+              line,
+              text("id = "),
+              text(identifier.toString),
+              text(","),
+              line,
+              text("onBinding = "),
+              text(onBinding.toString),
+              text(","),
+              line,
+              text("property = "),
+              symbolPrettyPrint.doc(property),
+              text(","),
+              line,
+              text("source = "),
+              sourcePrettyPrint.doc(source),
+            ),
+          ),
+          line,
+          text(")"),
+        )
+
       case SymbolTableEntry.QuineToCypherIdEntry(source, identifier, cypherIdentifier) =>
         concat(
           text("QuineToCypherIdEntry("),

@@ -4,12 +4,11 @@ import cats.data.NonEmptyList
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisModule, SymbolAnalysisPhase}
+import com.thatdot.quine.cypher.phases.SymbolAnalysisModule
 import com.thatdot.quine.cypher.{ast => Cypher}
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.{GraphQueryPattern, QuineIdRandomLongProvider}
 import com.thatdot.quine.language.ast.Expression
-import com.thatdot.quine.language.phases.UpgradeModule._
 
 /** Tests for QueryPlanner.
   *
@@ -19,25 +18,24 @@ import com.thatdot.quine.language.phases.UpgradeModule._
 class QueryPlannerTest extends AnyFlatSpec with Matchers {
 
   // ============================================================
-  // PARSING HELPER
+  // PARSING HELPERS
   // ============================================================
 
-  /** Parse a Cypher query string and return the AST and symbol table */
-  private def parseCypher(query: String): (Cypher.Query.SingleQuery, SymbolAnalysisModule.SymbolTable) = {
-    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
-    val (tableState, result) = parser.process(query).value.run(LexerState(Nil)).value
-    result match {
-      case Some(q: Cypher.Query.SingleQuery) => (q, tableState.symbolTable)
-      case Some(other) => fail(s"Expected SingleQuery, got: $other")
-      case None => fail(s"Parse error for query: $query")
-    }
-  }
-
   /** Plan a Cypher query string */
-  private def planQuery(query: String): QueryPlan = {
-    val (parsedQuery, symbolTable) = parseCypher(query)
-    QueryPlanner.plan(parsedQuery, symbolTable)
-  }
+  private def planQuery(query: String): QueryPlan =
+    QueryPlanner.planFromString(query) match {
+      case Right(planned) => planned.plan
+      case Left(error) => fail(s"Failed to plan query: $error")
+    }
+
+  /** Parse a Cypher query string and return the AST and symbol table.
+    * Use this when testing internal planner methods that need the raw AST.
+    */
+  private def parseCypher(query: String): (Cypher.Query.SingleQuery, SymbolAnalysisModule.SymbolTable) =
+    QueryPlanner.parseToAST(query) match {
+      case Right(result) => result
+      case Left(error) => fail(s"Failed to parse query: $error")
+    }
 
   // ============================================================
   // PLAN INSPECTION HELPERS
@@ -1840,5 +1838,311 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
 
     // Verify the edge labels are KNOWS
     createEdges.map(_.label.name).toSet shouldBe Set("KNOWS")
+  }
+
+  // ============================================================
+  // PROPERTY BINDING TESTS - Symbol Analysis Rewrite Scenarios
+  // ============================================================
+
+  "Property binding rewrite" should "reuse synthId when same property is accessed multiple times" in {
+    // When n.name is accessed multiple times in a query, symbol analysis should
+    // create only ONE PropertyAccessEntry and reuse the synthId for all accesses
+    val query = """
+      MATCH (n)
+      WHERE n.name = "Alice"
+      RETURN n.name AS name1, n.name AS name2
+    """
+
+    val planned = QueryPlanner.planFromString(query) match {
+      case Right(p) => p
+      case Left(error) => fail(s"Failed to plan query: $error")
+    }
+
+    // Find LocalProperty operators that alias to synthetic IDs
+    def findLocalProperties(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
+      case lp: QueryPlan.LocalProperty => List(lp)
+      case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
+      case QueryPlan.Project(_, _, input) => findLocalProperties(input)
+      case QueryPlan.Filter(_, input) => findLocalProperties(input)
+      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
+      case QueryPlan.Distinct(input) => findLocalProperties(input)
+      case _ => Nil
+    }
+
+    val localProps = findLocalProperties(planned.plan)
+
+    // Should have exactly ONE LocalProperty for 'name' (not duplicated)
+    val nameProps = localProps.filter(_.property.name == "name")
+    nameProps should have size 1
+
+    // The aliasAs should be a numeric synthId (not the old "binding.prop" format)
+    val alias = nameProps.head.aliasAs
+    alias shouldBe defined
+    alias.get.name.forall(_.isDigit) shouldBe true
+  }
+
+  it should "handle multiple different properties on same node" in {
+    // When n.name and n.age are accessed, each should get its own synthId
+    val query = """
+      MATCH (n)
+      WHERE n.name = "Alice" AND n.age > 21
+      RETURN n.name, n.age
+    """
+
+    val planned = QueryPlanner.planFromString(query) match {
+      case Right(p) => p
+      case Left(error) => fail(s"Failed to plan query: $error")
+    }
+
+    def findLocalProperties(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
+      case lp: QueryPlan.LocalProperty => List(lp)
+      case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
+      case QueryPlan.Project(_, _, input) => findLocalProperties(input)
+      case QueryPlan.Filter(_, input) => findLocalProperties(input)
+      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
+      case QueryPlan.Distinct(input) => findLocalProperties(input)
+      case _ => Nil
+    }
+
+    val localProps = findLocalProperties(planned.plan)
+
+    // Should have LocalProperty for both 'name' and 'age'
+    val propNames = localProps.map(_.property.name).toSet
+    propNames should contain("name")
+    propNames should contain("age")
+
+    // Each should have a different synthId alias
+    val aliases = localProps.flatMap(_.aliasAs).map(_.name).toSet
+    aliases should have size localProps.size.toLong // All unique
+  }
+
+  it should "handle property access across multiple nodes" in {
+    // When a.name and b.name are accessed, each node gets its own property bindings
+    val query = """
+      MATCH (a)-[:KNOWS]->(b)
+      WHERE a.name = "Alice" AND b.name = "Bob"
+      RETURN a.name, b.name
+    """
+
+    val planned = QueryPlanner.planFromString(query) match {
+      case Right(p) => p
+      case Left(error) => fail(s"Failed to plan query: $error")
+    }
+
+    def findLocalProperties(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
+      case lp: QueryPlan.LocalProperty => List(lp)
+      case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
+      case QueryPlan.Project(_, _, input) => findLocalProperties(input)
+      case QueryPlan.Filter(_, input) => findLocalProperties(input)
+      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
+      case QueryPlan.Distinct(input) => findLocalProperties(input)
+      case QueryPlan.Expand(_, _, child) => findLocalProperties(child)
+      case _ => Nil
+    }
+
+    val localProps = findLocalProperties(planned.plan)
+
+    // Should have TWO LocalProperty entries for 'name' (one for a, one for b)
+    val nameProps = localProps.filter(_.property.name == "name")
+    nameProps should have size 2
+
+    // Each should have a different synthId alias
+    val aliases = nameProps.flatMap(_.aliasAs).map(_.name).toSet
+    aliases should have size 2
+  }
+
+  it should "push down property equality when property is rewritten to synthId" in {
+    // After symbol analysis rewrites n.name to Ident(synthId), the planner should
+    // still recognize this as a property equality and push it down
+    val query = """
+      MATCH (n)
+      WHERE n.type = "person"
+      RETURN id(n)
+    """
+
+    val plan = planQuery(query)
+
+    // Should have LocalProperty with Equal constraint (pushed down)
+    def findEqualConstraints(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
+      case lp @ QueryPlan.LocalProperty(_, _, PropertyConstraint.Equal(_)) => List(lp)
+      case QueryPlan.Anchor(_, onTarget) => findEqualConstraints(onTarget)
+      case QueryPlan.Project(_, _, input) => findEqualConstraints(input)
+      case QueryPlan.Filter(_, input) => findEqualConstraints(input)
+      case QueryPlan.Sequence(first, andThen, _) => findEqualConstraints(first) ++ findEqualConstraints(andThen)
+      case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findEqualConstraints)
+      case QueryPlan.Distinct(input) => findEqualConstraints(input)
+      case _ => Nil
+    }
+
+    val equalConstraints = findEqualConstraints(plan)
+    equalConstraints should have size 1
+    equalConstraints.head.property.name shouldBe "type"
+
+    // Should NOT have a Filter operator (predicate was pushed down)
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Filter]) shouldBe false
+  }
+
+  it should "filter out pushed-down property equalities from Filter expression" in {
+    // When n.type = "person" is pushed down, it should be removed from the Filter
+    // If there's another non-pushable predicate, only that should remain in Filter
+    val query = """
+      MATCH (n)
+      WHERE n.type = "person" AND n.score > 100
+      RETURN n
+    """
+
+    val plan = planQuery(query)
+
+    // Should have LocalProperty with Equal constraint for type
+    def findEqualConstraints(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
+      case lp @ QueryPlan.LocalProperty(_, _, PropertyConstraint.Equal(_)) => List(lp)
+      case QueryPlan.Anchor(_, onTarget) => findEqualConstraints(onTarget)
+      case QueryPlan.Project(_, _, input) => findEqualConstraints(input)
+      case QueryPlan.Filter(_, input) => findEqualConstraints(input)
+      case QueryPlan.Sequence(first, andThen, _) => findEqualConstraints(first) ++ findEqualConstraints(andThen)
+      case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findEqualConstraints)
+      case QueryPlan.Distinct(input) => findEqualConstraints(input)
+      case _ => Nil
+    }
+
+    val equalConstraints = findEqualConstraints(plan)
+    equalConstraints should have size 1
+
+    // Should have a Filter for the remaining n.score > 100 predicate
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Filter]) shouldBe true
+  }
+
+  it should "handle diamond join with property access on shared node" in {
+    // In a diamond pattern where the same node is reached via two paths,
+    // property access on that node should still work correctly
+    val query = """
+      MATCH (a)-[:R]->(shared)<-[:R]-(b), (c)-[:R]->(shared)
+      WHERE shared.key = "value"
+      RETURN a, b, c, shared.key
+    """
+
+    val plan = planQuery(query)
+
+    // Should have exactly 1 AllNodes anchor (for the merged tree)
+    def countAllNodesAnchors(p: QueryPlan): Int = p match {
+      case QueryPlan.Anchor(AnchorTarget.AllNodes, onTarget) => 1 + countAllNodesAnchors(onTarget)
+      case QueryPlan.Anchor(_, onTarget) => countAllNodesAnchors(onTarget)
+      case QueryPlan.CrossProduct(queries, _) => queries.map(countAllNodesAnchors).sum
+      case QueryPlan.Sequence(first, andThen, _) => countAllNodesAnchors(first) + countAllNodesAnchors(andThen)
+      case QueryPlan.Filter(_, input) => countAllNodesAnchors(input)
+      case QueryPlan.Project(_, _, input) => countAllNodesAnchors(input)
+      case QueryPlan.Expand(_, _, onNeighbor) => countAllNodesAnchors(onNeighbor)
+      case _ => 0
+    }
+
+    countAllNodesAnchors(plan) shouldBe 1
+
+    // Should have LocalProperty for 'key' with Equal constraint
+    def findEqualConstraints(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
+      case lp @ QueryPlan.LocalProperty(_, _, PropertyConstraint.Equal(_)) => List(lp)
+      case QueryPlan.Anchor(_, onTarget) => findEqualConstraints(onTarget)
+      case QueryPlan.Project(_, _, input) => findEqualConstraints(input)
+      case QueryPlan.Filter(_, input) => findEqualConstraints(input)
+      case QueryPlan.Sequence(first, andThen, _) => findEqualConstraints(first) ++ findEqualConstraints(andThen)
+      case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findEqualConstraints)
+      case QueryPlan.Distinct(input) => findEqualConstraints(input)
+      case QueryPlan.Expand(_, _, child) => findEqualConstraints(child)
+      case _ => Nil
+    }
+
+    val equalConstraints = findEqualConstraints(plan)
+    equalConstraints.exists(_.property.name == "key") shouldBe true
+  }
+
+  it should "not rewrite property access on non-graph-element bindings" in {
+    // Property access on non-node bindings (like UNWIND variables or WITH projections)
+    // should NOT be rewritten to synthIds - they stay as FieldAccess
+    val query = """
+      WITH {name: "Alice", age: 30} AS person
+      RETURN person.name, person.age
+    """
+
+    val plan = planQuery(query)
+
+    // Should NOT have any LocalProperty operators (person is not a graph element)
+    def findLocalProperties(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
+      case lp: QueryPlan.LocalProperty => List(lp)
+      case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
+      case QueryPlan.Project(_, _, input) => findLocalProperties(input)
+      case QueryPlan.Filter(_, input) => findLocalProperties(input)
+      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
+      case QueryPlan.Distinct(input) => findLocalProperties(input)
+      case QueryPlan.Unwind(_, _, subquery) => findLocalProperties(subquery)
+      case _ => Nil
+    }
+
+    val localProps = findLocalProperties(plan)
+    localProps shouldBe empty
+  }
+
+  it should "handle property access in complex expressions" in {
+    // Property access inside complex expressions should still be tracked
+    val query = """
+      MATCH (n)
+      WHERE n.age + 10 > 30
+      RETURN n.name, n.age * 2
+    """
+
+    val plan = planQuery(query)
+
+    def findLocalProperties(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
+      case lp: QueryPlan.LocalProperty => List(lp)
+      case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
+      case QueryPlan.Project(_, _, input) => findLocalProperties(input)
+      case QueryPlan.Filter(_, input) => findLocalProperties(input)
+      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
+      case QueryPlan.Distinct(input) => findLocalProperties(input)
+      case _ => Nil
+    }
+
+    val localProps = findLocalProperties(plan)
+
+    // Should have LocalProperty for both 'name' and 'age'
+    val propNames = localProps.map(_.property.name).toSet
+    propNames should contain("name")
+    propNames should contain("age")
+  }
+
+  it should "handle dependent anchor with property reference" in {
+    // When id(b) = idFrom(a.x), the planner needs to resolve the synthId
+    // for a.x back to binding 'a' for correct dependency analysis
+    val query = """
+      MATCH (a), (b)
+      WHERE id(a) = $aId AND id(b) = idFrom(a.x)
+      RETURN a, b
+    """
+
+    val plan = planQuery(query)
+
+    // Should have 2 computed anchors
+    countComputedAnchors(plan) shouldBe 2
+
+    // Should have Sequence (b depends on a)
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Sequence]) shouldBe true
+
+    // Should have LocalProperty for 'x' on binding a
+    def findLocalProperties(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
+      case lp: QueryPlan.LocalProperty => List(lp)
+      case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
+      case QueryPlan.Project(_, _, input) => findLocalProperties(input)
+      case QueryPlan.Filter(_, input) => findLocalProperties(input)
+      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
+      case QueryPlan.Distinct(input) => findLocalProperties(input)
+      case _ => Nil
+    }
+
+    val localProps = findLocalProperties(plan)
+    localProps.exists(_.property.name == "x") shouldBe true
   }
 }

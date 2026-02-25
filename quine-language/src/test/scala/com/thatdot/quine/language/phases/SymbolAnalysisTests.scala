@@ -10,9 +10,9 @@ import com.thatdot.quine.language.ast.{Direction, Expression, Operator, QuineIde
 import com.thatdot.quine.language.diagnostic.Diagnostic
 import com.thatdot.quine.language.diagnostic.Diagnostic.{ParseError, TypeCheckError}
 
-import Expression.{AtomicLiteral, BinOp, FieldAccess, IdLookup, Ident, ListLiteral, MapLiteral, SynthesizeId}
+import Expression.{AtomicLiteral, BinOp, IdLookup, Ident, ListLiteral, MapLiteral, SynthesizeId}
 import Source.TextSource
-import SymbolTableEntry.{ExpressionEntry, NodeEntry, QuineToCypherIdEntry, UnwindEntry}
+import SymbolTableEntry.{ExpressionEntry, NodeEntry, PropertyAccessEntry, QuineToCypherIdEntry, UnwindEntry}
 
 class SymbolAnalysisTests extends munit.FunSuite {
   def parseQueryWithSymbolTable(
@@ -84,31 +84,27 @@ class SymbolAnalysisTests extends munit.FunSuite {
       "MATCH (a:Nat)-[:edge]->(b:Nat) WHERE a.value % 2 = 0 RETURN a.value + b.value",
     )
 
+    // After symbol analysis with property access rewriting:
+    // - a gets id 1, b gets id 2
+    // - a.value in WHERE gets rewritten to Ident(3), creates PropertyAccessEntry(3, 1, "value")
+    // - a.value in RETURN reuses synthId=3
+    // - b.value in RETURN gets rewritten to Ident(4), creates PropertyAccessEntry(4, 2, "value")
+    // - RETURN expression gets ExpressionEntry with id=5
     val expectedTable: List[SymbolTableEntry] = List(
       ExpressionEntry(
         source = TextSource(60, 76),
-        identifier = 3,
+        identifier = 5,
         exp = BinOp(
           source = TextSource(60, 76),
           op = Operator.Plus,
-          lhs = FieldAccess(
+          lhs = Ident(
             source = TextSource(61, 66),
-            of = Ident(
-              source = TextSource(60, 60),
-              identifier = Right(QuineIdentifier(1)),
-              ty = None,
-            ),
-            fieldName = Symbol("value"),
+            identifier = Right(QuineIdentifier(3)),
             ty = None,
           ),
-          rhs = FieldAccess(
+          rhs = Ident(
             source = TextSource(71, 76),
-            of = Ident(
-              source = Source.TextSource(70, 70),
-              identifier = Right(QuineIdentifier(2)),
-              ty = None,
-            ),
-            fieldName = Symbol("value"),
+            identifier = Right(QuineIdentifier(4)),
             ty = None,
           ),
           ty = None,
@@ -116,8 +112,20 @@ class SymbolAnalysisTests extends munit.FunSuite {
       ),
       QuineToCypherIdEntry(
         source = TextSource(60, 76),
-        identifier = 3,
+        identifier = 5,
         cypherIdentifier = Symbol("a.value + b.value"),
+      ),
+      PropertyAccessEntry(
+        source = TextSource(71, 76),
+        identifier = 4,
+        onBinding = 2,
+        property = Symbol("value"),
+      ),
+      PropertyAccessEntry(
+        source = TextSource(38, 43),
+        identifier = 3,
+        onBinding = 1,
+        property = Symbol("value"),
       ),
       NodeEntry(
         source = TextSource(23, 29),
@@ -183,14 +191,9 @@ class SymbolAnalysisTests extends munit.FunSuite {
                 lhs = BinOp(
                   source = TextSource(37, 47),
                   op = Operator.Percent,
-                  lhs = FieldAccess(
+                  lhs = Ident(
                     source = TextSource(38, 43),
-                    of = Ident(
-                      source = TextSource(37, 37),
-                      identifier = Right(QuineIdentifier(1)),
-                      ty = None,
-                    ),
-                    fieldName = Symbol("value"),
+                    identifier = Right(QuineIdentifier(3)),
                     ty = None,
                   ),
                   rhs = AtomicLiteral(
@@ -219,29 +222,19 @@ class SymbolAnalysisTests extends munit.FunSuite {
           expression = BinOp(
             source = TextSource(60, 76),
             op = Operator.Plus,
-            lhs = FieldAccess(
+            lhs = Ident(
               source = TextSource(61, 66),
-              of = Ident(
-                source = TextSource(60, 60),
-                identifier = Right(QuineIdentifier(1)),
-                ty = None,
-              ),
-              fieldName = Symbol("value"),
+              identifier = Right(QuineIdentifier(3)),
               ty = None,
             ),
-            rhs = FieldAccess(
+            rhs = Ident(
               source = TextSource(71, 76),
-              of = Ident(
-                source = TextSource(70, 70),
-                identifier = Right(QuineIdentifier(2)),
-                ty = None,
-              ),
-              fieldName = Symbol("value"),
+              identifier = Right(QuineIdentifier(4)),
               ty = None,
             ),
             ty = None,
           ),
-          as = Right(QuineIdentifier(3)),
+          as = Right(QuineIdentifier(5)),
         ),
       ),
     )
@@ -311,34 +304,38 @@ class SymbolAnalysisTests extends munit.FunSuite {
       parseQueryWithSymbolTable(tq)
 
     // With proper imports flow, x inside the subquery uses the same id (1) as the outer x.
-    // This means foo gets id=3 (not 4), and there's no extra QuineToCypherIdEntry for the
-    // reference to x inside idFrom(x).
+    // After property access rewriting:
+    // - x gets id 1
+    // - a gets id 2
+    // - a.foo gets rewritten to Ident(3), creates PropertyAccessEntry(3, 2, "foo")
+    // - foo binding gets id 4
     val expectedTable: SymbolTable =
       SymbolTable(
         List(
           ExpressionEntry(
             source = TextSource(103, 105),
-            identifier = 3,
-            exp = Ident(TextSource(103, 105), Right(QuineIdentifier(3)), None),
+            identifier = 4,
+            exp = Ident(TextSource(103, 105), Right(QuineIdentifier(4)), None),
           ),
           ExpressionEntry(
             source = TextSource(81, 92),
-            identifier = 3,
-            exp = FieldAccess(
+            identifier = 4,
+            exp = Ident(
               TextSource(82, 85),
-              Ident(
-                TextSource(81, 81),
-                Right(QuineIdentifier(2)),
-                None,
-              ),
-              Symbol("foo"),
+              Right(QuineIdentifier(3)),
               None,
             ),
           ),
           QuineToCypherIdEntry(
             source = TextSource(81, 92),
-            identifier = 3,
+            identifier = 4,
             cypherIdentifier = Symbol("foo"),
+          ),
+          PropertyAccessEntry(
+            source = TextSource(82, 85),
+            identifier = 3,
+            onBinding = 2,
+            property = Symbol("foo"),
           ),
           NodeEntry(
             TextSource(42, 44),
@@ -449,17 +446,12 @@ class SymbolAnalysisTests extends munit.FunSuite {
                 List(
                   Projection(
                     TextSource(81, 92),
-                    FieldAccess(
+                    Ident(
                       TextSource(82, 85),
-                      Ident(
-                        TextSource(81, 81),
-                        Right(QuineIdentifier(2)),
-                        None,
-                      ),
-                      Symbol("foo"),
+                      Right(QuineIdentifier(3)), // a.foo rewritten to Ident(3)
                       None,
                     ),
-                    Right(QuineIdentifier(3)), // foo gets id=3 now
+                    Right(QuineIdentifier(4)), // foo gets id=4 now
                   ),
                 ),
               ),
@@ -473,10 +465,10 @@ class SymbolAnalysisTests extends munit.FunSuite {
             TextSource(103, 105),
             Ident(
               TextSource(103, 105),
-              Right(QuineIdentifier(3)), // foo reference
+              Right(QuineIdentifier(4)), // foo reference
               None,
             ),
-            Right(QuineIdentifier(3)), // foo
+            Right(QuineIdentifier(4)), // foo
           ),
         ),
       )
@@ -526,19 +518,28 @@ class SymbolAnalysisTests extends munit.FunSuite {
     val actual = parseQueryWithSymbolTable(testQuery)._1
 
     // With proper imports flow, 'a' inside the subquery uses the imported id=1.
-    // This means bleh gets id=4 (not 5), and there's no extra QuineToCypherIdEntry
-    // for references to 'a' inside the subquery.
+    // After property access rewriting:
+    // - a gets id 1, b gets id 2
+    // - x gets id 3
+    // - x.foo in WHERE gets rewritten to Ident(4), creates PropertyAccessEntry(4, 3, "foo")
+    // - bleh gets id 5
     val expected: List[SymbolTableEntry] = List(
       NodeEntry(
         source = TextSource(93, 98),
-        identifier = 4,
+        identifier = 5,
         labels = Set(),
         maybeProperties = None,
       ),
       QuineToCypherIdEntry(
         source = TextSource(93, 98),
-        identifier = 4,
+        identifier = 5,
         cypherIdentifier = Symbol("bleh"),
+      ),
+      PropertyAccessEntry(
+        source = TextSource(55, 58),
+        identifier = 4,
+        onBinding = 3,
+        property = Symbol("foo"),
       ),
       NodeEntry(
         source = TextSource(42, 44),

@@ -45,6 +45,16 @@ object SymbolAnalysisModule {
         extends SymbolTableEntry
     case class ExpressionEntry(source: Source, identifier: Int, exp: Expression) extends SymbolTableEntry
 
+    /** Entry for property access on a graph element (node or edge).
+      * Created when symbol analysis rewrites `n.propName` to an identifier.
+      *
+      * @param identifier The synthetic identifier for this property access
+      * @param onBinding The graph element binding being accessed
+      * @param property The property name being accessed
+      */
+    case class PropertyAccessEntry(source: Source, identifier: Int, onBinding: Int, property: Symbol)
+        extends SymbolTableEntry
+
     case class QuineToCypherIdEntry(source: Source, identifier: Int, cypherIdentifier: Symbol) extends SymbolTableEntry
   }
 
@@ -139,6 +149,29 @@ object SymbolAnalysisModule {
   def entryExists(identifier: Int): SymbolProgram[Boolean] =
     inspect(_.table.references.exists(_.identifier == identifier))
 
+  /** Checks if an identifier refers to a graph element (node or edge).
+    * Property access on graph elements gets rewritten to synthetic identifiers.
+    */
+  def isGraphElementBinding(identifier: Int): SymbolProgram[Boolean] =
+    inspect { st =>
+      st.table.references.exists { entry =>
+        entry.identifier == identifier && (entry.isInstanceOf[SymbolTableEntry.NodeEntry] ||
+        entry.isInstanceOf[SymbolTableEntry.EdgeEntry])
+      }
+    }
+
+  /** Find an existing PropertyAccessEntry for a (binding, property) pair.
+    * Returns the synthId if found, None otherwise.
+    * This allows reusing synthIds when the same property is accessed multiple times.
+    */
+  def findPropertyAccessEntry(onBinding: Int, property: Symbol): SymbolProgram[Option[Int]] =
+    inspect { st =>
+      st.table.references.collectFirst {
+        case SymbolTableEntry.PropertyAccessEntry(_, synthId, b, p) if b == onBinding && p == property =>
+          synthId
+      }
+    }
+
   /** Adds an error to the current state of a SymbolProgram
     *
     * @param msg Diagnostic message
@@ -210,12 +243,55 @@ object SymbolAnalysisModule {
         .traverse(p => analyzeExpression(p._2).map(v => p._1 -> v))
     } yield ml.copy(value = rewrittenExps.toMap)
 
-  def analyzeFieldAccess(
+  /** Analyzes a field access expression that is a write target (e.g., SET n.name = ...).
+    * Write targets are NOT rewritten to identifiers - they stay as FieldAccess.
+    */
+  def analyzeFieldAccessWriteTarget(
     fa: Expression.FieldAccess,
   ): SymbolProgram[Expression.FieldAccess] =
     for {
       rewrittenOf <- analyzeExpression(fa.of)
     } yield fa.copy(of = rewrittenOf)
+
+  /** Analyzes a field access expression that is a read (e.g., RETURN n.name).
+    * If the target is a graph element (node/edge), rewrites to an identifier
+    * and records a PropertyAccessEntry in the symbol table.
+    * Reuses existing synthIds when the same (node, property) pair is accessed multiple times.
+    */
+  def analyzeFieldAccess(
+    fa: Expression.FieldAccess,
+  ): SymbolProgram[Expression] =
+    for {
+      rewrittenOf <- analyzeExpression(fa.of)
+      result <- rewrittenOf match {
+        case Expression.Ident(_, Right(quineId), _) =>
+          // Check if this identifier refers to a graph element
+          isGraphElementBinding(quineId.name).flatMap { isGraphElement =>
+            if (isGraphElement) {
+              // Check if we already have a PropertyAccessEntry for this (node, property) pair
+              findPropertyAccessEntry(quineId.name, fa.fieldName).flatMap {
+                case Some(existingSynthId) =>
+                  // Reuse the existing synthId
+                  pure(Expression.Ident(fa.source, Right(QuineIdentifier(existingSynthId)), fa.ty): Expression)
+                case None =>
+                  // Create a new synthetic identifier
+                  for {
+                    synthId <- freshId
+                    _ <- addEntry(
+                      SymbolTableEntry.PropertyAccessEntry(fa.source, synthId, quineId.name, fa.fieldName),
+                    )
+                  } yield Expression.Ident(fa.source, Right(QuineIdentifier(synthId)), fa.ty): Expression
+              }
+            } else {
+              // Not a graph element - keep as FieldAccess
+              pure(fa.copy(of = rewrittenOf): Expression)
+            }
+          }
+        case _ =>
+          // Target is not a simple identifier - keep as FieldAccess
+          pure(fa.copy(of = rewrittenOf): Expression)
+      }
+    } yield result
 
   def analyzeExpression(expression: Expression): SymbolProgram[Expression] =
     expression match {
@@ -256,7 +332,7 @@ object SymbolAnalysisModule {
           rewrittenRight <- analyzeExpression(bo.rhs)
         } yield bo.copy(lhs = rewrittenLeft, rhs = rewrittenRight)
       case fa: Expression.FieldAccess =>
-        analyzeFieldAccess(fa).widen[Expression]
+        analyzeFieldAccess(fa)
       case arrayIndex: Expression.IndexIntoArray =>
         for {
           rewrittenOf <- analyzeExpression(arrayIndex.of)
@@ -539,7 +615,7 @@ object SymbolAnalysisModule {
     case sp: Effect.SetProperty =>
       for {
         rewrittenExpression <- analyzeExpression(sp.value)
-        rewrittenProperty <- analyzeFieldAccess(sp.property)
+        rewrittenProperty <- analyzeFieldAccessWriteTarget(sp.property)
       } yield sp.copy(
         property = rewrittenProperty,
         value = rewrittenExpression,

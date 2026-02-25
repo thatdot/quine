@@ -18,6 +18,8 @@ class PrettyPrintTest extends FunSuite {
     val (state, maybeAst) = parseQuery("MATCH (n:Person) RETURN n.name")
 
     assert(maybeAst.isDefined, "Should parse successfully")
+    // After symbol analysis, n.name is rewritten to Ident(#2) with PropertyAccessEntry
+    // The expression entry gets id=3, which references the property synthId=2
     assertEquals(
       maybeAst.get.pretty,
       """|SinglepartQuery(
@@ -27,10 +29,7 @@ class PrettyPrintTest extends FunSuite {
          |    ] @[0-15]
          |  ],
          |  bindings = [
-         |    FieldAccess(
-         |      of = Ident(#1) @[24-24],
-         |      field = 'name
-         |    ) @[25-29] AS #2 @[24-29]
+         |    Ident(#2) @[25-29] AS #3 @[24-29]
          |  ]
          |) @[0-29]""".stripMargin,
     )
@@ -39,22 +38,27 @@ class PrettyPrintTest extends FunSuite {
   test("pretty print symbol table") {
     val (state, _) = parseQuery("MATCH (n:Person) RETURN n.name")
 
+    // After symbol analysis, n.name is rewritten to Ident(#2) with PropertyAccessEntry(id=2)
+    // The RETURN expression entry gets id=3
     assertEquals(
       state.symbolTable.pretty,
       s"""|SymbolTable(
           |  references = [
           |    ExpressionEntry(
-          |      id = 2,
-          |      exp = FieldAccess(
-          |        of = Ident(#1) @[24-24],
-          |        field = 'name
-          |      ) @[25-29],
+          |      id = 3,
+          |      exp = Ident(#2) @[25-29],
           |      source = @[24-29]
           |    ),
           |    QuineToCypherIdEntry(
-          |      id = 2,
+          |      id = 3,
           |      cypherName = 'n.name,
           |      source = @[24-29]
+          |    ),
+          |    PropertyAccessEntry(
+          |      id = 2,
+          |      onBinding = 1,
+          |      property = 'name,
+          |      source = @[25-29]
           |    ),
           |    NodeEntry(
           |      id = 1,
@@ -81,6 +85,7 @@ class PrettyPrintTest extends FunSuite {
       parseQuery("MATCH (n:Person)-[r:KNOWS]->(m:Person) WHERE n.age > 30 RETURN n, m, r")
 
     assert(maybeAst.isDefined, "Should parse successfully")
+    // After symbol analysis, n.age in WHERE is rewritten to Ident(#4) with PropertyAccessEntry
     assertEquals(
       maybeAst.get.pretty,
       """|SinglepartQuery(
@@ -90,10 +95,7 @@ class PrettyPrintTest extends FunSuite {
          |    ]
          |    WHERE BinOp(
          |      op = >,
-         |      lhs = FieldAccess(
-         |        of = Ident(#1) @[45-45],
-         |        field = 'age
-         |      ) @[46-49],
+         |      lhs = Ident(#4) @[46-49],
          |      rhs = 30 @[53-54]
          |    ) @[45-54] @[0-54]
          |  ],
@@ -105,6 +107,7 @@ class PrettyPrintTest extends FunSuite {
          |) @[0-69]""".stripMargin,
     )
 
+    // Symbol table now includes PropertyAccessEntry for n.age
     assertEquals(
       state.symbolTable.pretty,
       s"""|SymbolTable(
@@ -123,6 +126,12 @@ class PrettyPrintTest extends FunSuite {
           |      id = 1,
           |      exp = Ident(#1) @[63-63],
           |      source = @[63-63]
+          |    ),
+          |    PropertyAccessEntry(
+          |      id = 4,
+          |      onBinding = 1,
+          |      property = 'age,
+          |      source = @[46-49]
           |    ),
           |    NodeEntry(
           |      id = 3,
