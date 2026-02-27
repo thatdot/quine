@@ -26,9 +26,6 @@ object Styles {
   val queryInput = "query-input"
   val queryInputInput = "query-input-input"
   val queryInputButton = "query-input-button"
-  val queryTextareaInput = "query-textarea-input"
-  val sampleQueries = "sample-queries"
-  val focused = "focused"
 
   val cypherResultsTable = "cypher-results"
 
@@ -51,6 +48,4 @@ object Styles {
   val sideBarItem = "side-bar-item"
   val selectedSideBarItem = "side-bar-item selected"
 
-  // Cypher functions listing
-  val cypherFunctions = "cypher-functions"
 }

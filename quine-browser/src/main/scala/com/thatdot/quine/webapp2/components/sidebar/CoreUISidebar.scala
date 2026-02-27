@@ -19,7 +19,7 @@ object CoreUISidebar {
     showSidebarSignal: Signal[Boolean],
   ): Div =
     div(
-      cls := "sidebar sidebar-dark sidebar-fixed border-end",
+      cls := "sidebar sidebar-light sidebar-fixed border-end",
       cls("show") <-- showSidebarSignal,
       cls("hide") <-- showSidebarSignal.map(!_),
       idAttr := "sidebar",

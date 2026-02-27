@@ -1,13 +1,72 @@
+/* ==========================================================================
+   thatDot Brand Color System
+   Source: thatDot Brand Style Guide 2025-04-02
+   ========================================================================== */
+
+:root {
+  /* Primary brand colors */
+  --thatdot-dark-blue: #0a295b;    /* All type, structural lines, unfilled shapes, header/footer */
+  --thatdot-brite-blue: #1658b7;   /* Highlighted text (H1/H2), attention-grabbing elements */
+  --thatdot-gray: #acacc9;         /* Design variety elements */
+  --thatdot-green: #00fa9a;        /* CTA buttons, important navigation only — extremely rare */
+
+  /* Background gradient (light grays for section/page backgrounds) */
+  --thatdot-gradient-start: #e2e2ed;
+  --thatdot-gradient-end: #f4f4f9;
+
+  /* Brand color extensions — unofficial */
+  --thatdot-gradient-middle: #ebebf3
+
+  /* Map brand colors to CoreUI taxonomy */
+  --cui-body-bg: var(--thatdot-gradient-end);
+  --cui-body-color: var(--thatdot-dark-blue);
+  --cui-emphasis-color: var(--thatdot-dark-blue);
+  --cui-tertiary-color: var(--thatdot-gray);
+  --cui-tertiary-bg: var(--thatdot-gradient-start);
+  --cui-secondary-color: var(--thatdot-gray);
+  --cui-primary: var(--thatdot-dark-blue);
+
+  /*** Color Variable Selection Guidance
+
+  When choosing color values, follow this priority order:
+
+  Priority 1: CoreUI taxonomy variables (--cui-body-bg, --cui-body-color, --cui-primary, etc.)
+    - Use when the variable's semantic name accurately describes the use case
+    - Example: Use --cui-body-bg for backgrounds, --cui-body-color for text
+    - DO NOT use if the name would mischaracterize the purpose
+      (e.g., don't use --cui-body-bg for a foreground/text color)
+
+  Priority 2: CoreUI scoped variables (--cui-sidebar-bg, --cui-sidebar-color, etc.)
+    - Use for component-specific overrides that chain to deeper taxonomy variables
+
+  Priority 3: Brand theme variables (--thatdot-dark-blue, --thatdot-gradient-end, etc.)
+    - Use when Priority 1 or 2 variables would mischaracterize the purpose
+    - Example: Use --thatdot-gradient-end for light text on dark backgrounds
+      (since --cui-body-bg implies "background" but we need a foreground color)
+    - Also use for brand-specific expressions like gradients
+
+  Priority 4: Raw hex/rgb/hsl values
+    - Last resort for purely functional colors with no semantic meaning
+    - Acceptable for: shadows, overlays, canvas background
+    - Examples: rgba(0,0,0,0.5) for overlay dimming, white for graph canvas
+
+  ***/
+}
+
+/* ==========================================================================
+   Component Styles
+   ========================================================================== */
+
 .gray-clickable {
-  background-color: #ddd;
+  background-color: var(--cui-body-bg);
   transition:background-color .15s ease-in-out
 }
 .gray-clickable:hover {
-  background-color: #ccc;
+  background-color: var(--cui-tertiary-bg);
   cursor: pointer;
 }
 .gray-clickable:hover:active {
-  background-color: #bbb;
+  background-color: var(--thatdot-gray);
 }
 
 pre.wrap {
@@ -55,45 +114,11 @@ pre.wrap {
   border-radius: 0 .2em .2em 0;
 }
 
-.query-textarea-input {
-  resize: both;
-  flex-grow: 1;
-  margin: .4em 0 .4em .4em;
-  padding: .2em;
-  border-radius: .2em 0 0 .2em;
-  border: none;
-  font-size: 1.2em;
-  background-color: #fff;
-}
-
-.sample-queries {
-  opacity: 0;
-  height: auto;
-  max-height: 70vh;
-  width: auto;
-  max-width: 70vw;
-  background-color: hsl(0, 0%, 95%);
-  bottom: 50px;
-  left: 90px;
-  visibility: hidden;
-  transition:
-    opacity 0.3s ease-in-out,
-    visibility 0s linear 0.3s;
-}
-
-.focused {
-  opacity: 1;
-  visibility: visible;
-  transition:
-    opacity 0.3s ease-in-out,
-    visibility 0s linear 0s;
-}
-
 .nav-bar {
   display: flex;
   flex-wrap: wrap;
   overflow: visible;
-  background-color: #0a295b;
+  background-color: var(--cui-primary);
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.28);
   position: relative;
   z-index: 5;
@@ -110,7 +135,7 @@ pre.wrap {
 .nav-bar-button {
   float: left;
   display: flex;
-  color: white;
+  color: var(--thatdot-gradient-end);
   align-items: center;
   padding: .6em .5em;
   text-decoration: none;
@@ -120,15 +145,15 @@ pre.wrap {
   transition:color .15s ease-in-out,background-color .15s ease-in-out
 }
 .nav-bar-button.clickable:hover {
-  background-color: rgba(255,255,255,0.5);
-  color: #111;
+  background-color: var(--cui-tertiary-bg);
+  color: var(--cui-body-color);
   cursor: pointer;
 }
 .nav-bar-button.clickable:hover:active {
-  background-color: rgba(255,255,255,0.3);
+  background-color: var(--cui-secondary-color);
 }
 .nav-bar-button.disabled {
-  color: #AAAFC8;
+  color: var(--cui-tertiary-color);
 }
 .nav-bar-button.right-icon {
   float: right;
@@ -148,27 +173,12 @@ table.cypher-results td, table.cypher-results th {
   border-collapse: collapse;
 }
 
-/* Cypher function listing */
-.cypher-functions table {
-  font-family: Ionicons, Consolas, monaco, monospace;
-  border-collapse: collapse;
-  width: 100%;
-}
-.cypher-functions td, .cypher-functions th {
-  border: 1px solid rgba(59,65,81,.3);
-  text-align: left;
-  padding: 8px !important;
-}
-.cypher-functions tr:nth-child(even) {
-  background-color: #eee;
-}
-
 /* Context menu */
 .context-menu {
   z-index: 6;
   position: absolute;
-  background-color: #ddd;
-  border: 1px solid #424242;
+  background-color: var(--cui-body-bg);
+  border: 1px solid var(--cui-primary);
   border-radius: .2em;
   margin: 0;
   list-style: none;
@@ -198,7 +208,7 @@ table.cypher-results td, table.cypher-results th {
   width: 2.4em;
   height: 2.4em;
   border: none;
-  border-top: .3em solid #c1c1c1;
+  border-top: .3em solid var(--cui-tertiary-color);
   border-radius: 50%;
   animation: spin 0.5s linear infinite;
   position: absolute;
@@ -210,7 +220,7 @@ table.cypher-results td, table.cypher-results th {
   display: flex;
   justify-content: center;
   align-items: center;
-  color: #c1c1c1;
+  color: var(--cui-tertiary-color);
 }
 @keyframes spin {
   0% { transform: rotate(0deg); }
@@ -228,7 +238,7 @@ table.cypher-results td, table.cypher-results th {
   border-top: none;
 }
 .loader-cancellable.loader:hover:before, .loader-cancellable.loader:hover:after {
-  background-color: #c1c1c1;
+  background-color: var(--cui-tertiary-color);
   position: absolute;
   content: '';
   height: 0.3em;
@@ -262,41 +272,9 @@ table.cypher-results td, table.cypher-results th {
   opacity: 0
 }
 
-/* Side bar */
-.side-bar {
-  height: 100%;
-  position: fixed;
-  z-index: 10;
-  top: 0;
-  left: 0;
-  background-color: #eee;
-  overflow-x: hidden;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-  transition: width 0.25s ease 0s;
-  white-space: nowrap;
-}
-.side-bar table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-/* Side bar items */
-.side-bar-item {
-  cursor: pointer;
-  color: rgba(0, 0, 0, 0.87);
-  transition:background-color .15s ease-in-out
-}
-.side-bar-item:hover {
-  background-color: #ccc;
-  background-color: rgba(0,0,0,0.1);
-}
-.side-bar-item:hover:active {
-  background-color: #bbb;
-  background-color: rgba(0,0,0,0.2);
-}
-.side-bar-item.selected {
-  color: #444;
-  background-color: rgba(0,0,0,0.2);
+/* vis-network canvas */
+div.vis-network canvas {
+  background-color: white;
 }
 
 /* Prevent the `vis-network` tooltip from filling the whole page */
@@ -307,10 +285,10 @@ div.vis-tooltip {
 }
 
 @keyframes activequery {
-  0% { background-color: #e0fae0; }
-  7% { background-color: lightgreen; }
-  30% { background-color: #a1eda1; }
-  100% { background-color: #e0fae0; }
+  0% { background-color: color-mix(in srgb, var(--cui-success) 15%, white); }
+  7% { background-color: color-mix(in srgb, var(--cui-success) 50%, white); }
+  30% { background-color: color-mix(in srgb, var(--cui-success) 30%, white); }
+  100% { background-color: color-mix(in srgb, var(--cui-success) 15%, white); }
 }
 
 /* Download dropdown menu */
@@ -320,8 +298,8 @@ div.vis-tooltip {
   top: 100%;
   left: 0;
   z-index: 100;
-  background-color: #ddd;
-  border: 1px solid #424242;
+  background-color: var(--cui-body-bg);
+  border: 1px solid var(--cui-primary);
   border-radius: .2em;
   min-width: 150px;
   list-style: none;
@@ -335,10 +313,10 @@ div.vis-tooltip {
 .download-dropdown-menu li {
   padding: 0.5em 0.75em;
   cursor: pointer;
-  color: #333;
+  color: var(--cui-body-color);
 }
 .download-dropdown-menu li:hover {
-  background-color: #ccc;
+  background-color: var(--cui-tertiary-bg);
 }
 .download-dropdown-menu li:first-child {
   border-radius: .2em .2em 0 0;
@@ -347,22 +325,10 @@ div.vis-tooltip {
   border-radius: 0 0 .2em .2em;
 }
 
-/* CoreUI sidebar color overrides - thatDot brand colors */
-.sidebar.sidebar-dark {
-  /* Light sidebar with brand colors */
-  --cui-body-bg: #F0F1F3;                             /* Light gray background */
-  --cui-body-color: #173759;                          /* Dark navy text */
-  --cui-emphasis-color: #173759;                      /* Dark navy emphasis */
-  --cui-tertiary-color: #798089;                      /* Secondary gray for nav titles */
-  --cui-tertiary-bg: rgba(23, 55, 89, 0.08);          /* Subtle hover bg */
-  --cui-secondary-color: #798089;
-  --cui-secondary-bg: rgba(23, 55, 89, 0.04);
-}
-
-/* Active nav link highlight with brand primary */
-.sidebar.sidebar-dark .sidebar-nav .nav-link.active {
-  background: #1F4C7C;                                /* Brand primary color */
-  color: #FFFFFF;                                     /* White text */
+/* CoreUI sidebar - chain to taxonomy */
+.sidebar.sidebar-light {
+  --cui-sidebar-bg: var(--cui-body-bg);
+  --cui-sidebar-color: var(--cui-body-color);
 }
 
 
