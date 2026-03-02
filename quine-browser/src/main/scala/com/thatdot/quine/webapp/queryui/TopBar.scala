@@ -7,7 +7,7 @@ import slinky.core.annotations.react
 import slinky.web.html._
 
 import com.thatdot.quine.routes.SampleQuery
-import com.thatdot.quine.webapp.{QuineLogo, Styles}
+import com.thatdot.quine.webapp.Styles
 
 /** Blue bar at the top of the page which contains the logo, query input,
   * navigation buttons, and counters
@@ -25,7 +25,6 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles}
     submitButton: Boolean => Unit,
     cancelButton: () => Unit,
     navButtons: HistoryNavigationButtons.Props,
-    downloadSvg: () => Unit,
   )
 
   val component: FunctionalComponent[TopBar.Props] = FunctionalComponent[Props] { props =>
@@ -40,13 +39,6 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles}
       else "Hold \"Shift\" to return results as a table"
 
     div(className := Styles.navBar)(
-      div(style := jsObj(flex = "0 1 auto", minWidth = "128px"))(
-        img(
-          src := QuineLogo.toString,
-          className := Styles.navBarLogo,
-          onClick := (e => if (e.shiftKey) props.downloadSvg()),
-        ),
-      ),
       div(className := Styles.queryInput)(
         input(
           `type` := "text",

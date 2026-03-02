@@ -17,7 +17,7 @@ object NavItem {
         cls := (if (isActive) "nav-link active" else "nav-link"),
         router.navigateTo(page),
         i(cls := s"nav-icon $iconClass"),
-        label,
+        span(cls := "nav-link-text", label),
       ),
     )
 }

@@ -1,13 +1,18 @@
 package com.thatdot.quine.webapp2
 
+import scala.scalajs.js
+
 import com.raquo.laminar.api.L._
 import com.raquo.waypoint.Router
+import org.scalajs.dom
 
-import com.thatdot.quine.webapp2.components.header.Header
-import com.thatdot.quine.webapp2.components.sidebar.SidebarState.{HideSidebar, ShowSidebar}
+import com.thatdot.quine.webapp2.components.sidebar.SidebarState.{Expanded, Narrow}
 import com.thatdot.quine.webapp2.components.sidebar.{CoreUISidebar, SidebarState}
 
 object LaminarRoot {
+  // CoreUI's mobile breakpoint media query (lg breakpoint = 992px, so max-width is 991.98px)
+  private val MobileBreakpointQuery = "(max-width: 991.98px)"
+
   case class NavItemData[Page](name: String, icon: String, page: Page, hidden: Boolean = false)
   case class LaminarRootProps[Page](
     productName: String,
@@ -18,28 +23,45 @@ object LaminarRoot {
   )
 
   def apply[Page](props: LaminarRootProps[Page]): Div = {
-    val sidebarWidth = "255px"
-    val sidebarStateVar = Var[SidebarState](SidebarState.ShowSidebar)
+    // Media query for responsive sidebar
+    val mediaQuery = dom.window.matchMedia(MobileBreakpointQuery)
+
+    // Determine initial state based on media query
+    val initialState =
+      if (mediaQuery.matches) SidebarState.Narrow
+      else SidebarState.Expanded
+
+    val sidebarStateVar = Var[SidebarState](initialState)
 
     val mainContentWidthSignal = sidebarStateVar.signal.map {
-      case ShowSidebar => s"calc(100% - ${sidebarWidth})"
-      case HideSidebar => "100%"
-    }
-    val showSidebarSignal = sidebarStateVar.signal.map {
-      case ShowSidebar => true
-      case HideSidebar => false
+      case Expanded => "calc(100% - var(--cui-sidebar-width, 256px))"
+      case Narrow => "calc(100% - var(--cui-sidebar-narrow-width, 4rem))"
     }
     val marginLeftSignal = sidebarStateVar.signal.map {
-      case ShowSidebar => sidebarWidth
-      case HideSidebar => "0"
+      case Expanded => "var(--cui-sidebar-width, 256px)"
+      case Narrow => "var(--cui-sidebar-narrow-width, 4rem)"
+    }
+
+    // Sync sidebar state with viewport width changes
+    val handleMediaChange: js.Function0[Unit] = { () =>
+      val newState = if (mediaQuery.matches) SidebarState.Narrow else SidebarState.Expanded
+      sidebarStateVar.set(newState)
     }
 
     div(
+      // Set up media query listener via onchange
+      onMountCallback { _ =>
+        mediaQuery.asInstanceOf[js.Dynamic].onchange = handleMediaChange
+      },
+      onUnmountCallback { _ =>
+        mediaQuery.asInstanceOf[js.Dynamic].onchange = null
+      },
       CoreUISidebar(
         productName = props.productName,
         navItems = props.navItems,
         router = props.router,
-        showSidebarSignal = showSidebarSignal,
+        userAvatar = props.userAvatar,
+        sidebarStateVar = sidebarStateVar,
       ),
       div(
         cls := "d-flex flex-column",
@@ -47,7 +69,6 @@ object LaminarRoot {
         marginLeft <-- marginLeftSignal,
         width <-- mainContentWidthSignal,
         height := "100vh",
-        Header(sidebarStateVar, props.userAvatar),
         props.views,
       ),
     )

@@ -7,8 +7,8 @@ import com.thatdot.quine.webapp2.LaminarRoot.NavItemData
 
 sealed trait SidebarState
 object SidebarState {
-  object ShowSidebar extends SidebarState
-  object HideSidebar extends SidebarState
+  object Expanded extends SidebarState
+  object Narrow extends SidebarState
 }
 
 object CoreUISidebar {
@@ -16,22 +16,30 @@ object CoreUISidebar {
     productName: String,
     navItems: Seq[NavItemData[Page]],
     router: Router[Page],
-    showSidebarSignal: Signal[Boolean],
+    userAvatar: Option[HtmlElement],
+    sidebarStateVar: Var[SidebarState],
   ): Div =
     div(
-      cls := "sidebar sidebar-light sidebar-fixed border-end",
-      cls("show") <-- showSidebarSignal,
-      cls("hide") <-- showSidebarSignal.map(!_),
+      cls := "sidebar sidebar-light sidebar-fixed border-end d-flex flex-column",
+      cls("sidebar-narrow") <-- sidebarStateVar.signal.map(_ == SidebarState.Narrow),
       idAttr := "sidebar",
       div(
         cls := "sidebar-header border-bottom",
         div(
-          cls := "sidebar-brand",
+          cls := "sidebar-brand d-flex justify-content-between align-items-center",
           span(cls := "sidebar-brand-full", productName),
+        ),
+        button(
+          cls := "sidebar-toggler",
+          typ := "button",
+          onClick.compose(_.sample(sidebarStateVar).map {
+            case SidebarState.Expanded => SidebarState.Narrow
+            case SidebarState.Narrow => SidebarState.Expanded
+          }) --> sidebarStateVar,
         ),
       ),
       ul(
-        cls := "sidebar-nav",
+        cls := "sidebar-nav flex-grow-1",
         NavTitle("Navigation"),
         children <-- router.currentPageSignal.map { currentPage =>
           navItems
@@ -47,5 +55,13 @@ object CoreUISidebar {
             }
         },
       ),
+      userAvatar
+        .map { avatar =>
+          div(
+            cls := "sidebar-footer border-top",
+            avatar,
+          )
+        }
+        .getOrElse(emptyNode),
     )
 }

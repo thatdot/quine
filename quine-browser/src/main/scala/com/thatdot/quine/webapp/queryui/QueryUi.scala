@@ -1272,16 +1272,27 @@ import com.thatdot.{visnetwork => vis}
 
   def networkRightClick(event: vis.ClickEvent): Unit = {
 
-    // Pull out the node that was right clicked
-    val rightClickedId = network.get.getNodeAt(event.pointer.DOM).toOption match {
-      case None => return
-      case Some(nodeId) => nodeId.asInstanceOf[String]
+    // Pull out the node that was right-clicked (if any)
+    val contextMenuItems = network.get.getNodeAt(event.pointer.DOM).toOption match {
+      case None =>
+        // Right-clicked on empty canvas
+        Seq(
+          ContextMenuItem(
+            item = "Export SVG",
+            title = "Download the current graph as an SVG image",
+            action = () => {
+              setState(_.copy(contextMenuOpt = None))
+              downloadSvgSnapshot()
+            },
+          ),
+        )
+      case Some(nodeId) =>
+        // Right-clicked on a node
+        getContextMenuItems(
+          nodeId.asInstanceOf[String],
+          event.nodes.toSeq.asInstanceOf[Seq[String]],
+        )
     }
-
-    val contextMenuItems = getContextMenuItems(
-      rightClickedId,
-      event.nodes.toSeq.asInstanceOf[Seq[String]],
-    )
 
     setState(
       _.copy(
@@ -1514,7 +1525,6 @@ import com.thatdot.{visnetwork => vis}
           toggleLayout = toggleNetworkLayout,
           recenterViewport = recenterNetworkViewport,
         ),
-        downloadSvg = () => downloadSvgSnapshot(),
       )
     }
 

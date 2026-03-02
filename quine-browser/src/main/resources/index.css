@@ -331,4 +331,36 @@ div.vis-tooltip {
   --cui-sidebar-color: var(--cui-body-color);
 }
 
+/* Override CoreUI's mobile sidebar behavior - we use narrow mode instead of hiding */
+@media (max-width: 991.98px) {
+  /* Prevent CoreUI from pushing sidebar off-screen */
+  .sidebar.sidebar-fixed {
+    margin-inline-start: 0 !important;
+  }
+
+  /* Apply narrow sidebar styles (CoreUI only applies these above 992px) */
+  .sidebar.sidebar-narrow {
+    flex: 0 0 var(--cui-sidebar-narrow-width, 4rem);
+    width: var(--cui-sidebar-narrow-width, 4rem);
+  }
+
+  .sidebar.sidebar-narrow .sidebar-brand-full,
+  .sidebar.sidebar-narrow .nav-link-text {
+    display: none;
+  }
+
+  .sidebar.sidebar-narrow .nav-link {
+    justify-content: center;
+  }
+
+  .sidebar.sidebar-narrow .nav-icon {
+    flex: 0 0 auto;
+    margin-right: 0;
+  }
+
+  .sidebar.sidebar-narrow .nav-title {
+    display: none;
+  }
+}
+
 
