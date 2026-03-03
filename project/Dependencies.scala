@@ -32,7 +32,7 @@ object Dependencies {
   val jwtV = "0.13.0"
   val jwtScalaV = "11.0.3"
   // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
-  val kafkaClientsV = "3.9.1"
+  val kafkaClientsV = "3.9.2"
   val kindProjectorV = "0.13.4"
   val logbackV = "1.5.32"
   val laminarV = "17.2.1"
