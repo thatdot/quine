@@ -86,7 +86,7 @@ object Dependencies {
   val ayzaV = "10.0.3"
   val stoplightElementsV = "9.0.1"
   val sugarV = "2.0.6"
-  val tapirV = "1.13.9"
+  val tapirV = "1.13.10"
   val ujsonCirceV = "3.3.1"
   val circeV = "0.14.15"
   val circeGenericExtrasV = "0.14.4"
