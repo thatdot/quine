@@ -63,7 +63,7 @@ object Dependencies {
   val lsp4jV = "0.23.1"
   val guavaV = "33.3.0-jre"
   val memeid4sV = "0.8.0"
-  val munitV = "1.0.4"
+  val munitV = "1.2.3"
   val quineCommonV = "0.0.4"
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"
