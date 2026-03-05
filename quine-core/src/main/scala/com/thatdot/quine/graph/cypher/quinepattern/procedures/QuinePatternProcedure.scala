@@ -98,4 +98,5 @@ object QuinePatternProcedureRegistry {
   // Register built-in procedures
   register(GetFilteredEdgesProcedure)
   register(HelpBuiltinsProcedure)
+  register(RecentNodesProcedure)
 }

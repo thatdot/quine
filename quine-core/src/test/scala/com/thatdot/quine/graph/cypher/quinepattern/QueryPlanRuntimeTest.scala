@@ -7876,6 +7876,410 @@ class QueryPlanRuntimeTest
   }
 
   // ============================================================
+  // CALL PROCEDURE TESTS - recentNodes
+  // ============================================================
+
+  "QuinePattern CALL recentNodes" should "return Value.Node with correct structure (default limit)" in {
+    val graph = makeGraph("call-recentNodes-default-limit")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Create 3 nodes with properties and labels
+      val id1 = qidProvider.newQid()
+      val id2 = qidProvider.newQid()
+      val id3 = qidProvider.newQid()
+
+      Await.result(graph.literalOps(namespace).setLabels(id1, Set("Person")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(id1, "name", QuineValue.Str("Alice")), 5.seconds)
+
+      Await.result(graph.literalOps(namespace).setLabels(id2, Set("Person")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(id2, "name", QuineValue.Str("Bob")), 5.seconds)
+
+      Await.result(graph.literalOps(namespace).setLabels(id3, Set("Place")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(id3, "city", QuineValue.Str("NYC")), 5.seconds)
+
+      Thread.sleep(500) // Let nodes settle
+
+      val query = """
+        CALL recentNodes() YIELD node
+        RETURN node
+      """
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Should return at least the 3 nodes we created
+      results.size should be >= 3
+
+      // Each result should contain a 'node' binding that is a Value.Node
+      results.foreach { ctx =>
+        ctx.bindings should contain key Symbol("node")
+        ctx.bindings(Symbol("node")) shouldBe a[Value.Node]
+
+        val node = ctx.bindings(Symbol("node")).asInstanceOf[Value.Node]
+        // Each node should have labels or properties (they are interesting)
+        val hasLabels = node.labels.nonEmpty
+        val hasProps = node.props.values.nonEmpty
+        (hasLabels || hasProps) shouldBe true
+      }
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "respect explicit integer limit" in {
+    val graph = makeGraph("call-recentNodes-explicit-limit")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Create 5 interesting nodes
+      for (i <- 1 to 5) {
+        val id = qidProvider.newQid()
+        Await.result(graph.literalOps(namespace).setLabels(id, Set("Item")), 5.seconds)
+        Await.result(graph.literalOps(namespace).setProp(id, "index", QuineValue.Integer(i.toLong)), 5.seconds)
+      }
+
+      Thread.sleep(500)
+
+      val query = """
+        CALL recentNodes(2) YIELD node
+        RETURN node
+      """
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Limit was 2, so at most 2 results
+      results.size should be <= 2
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "filter out uninteresting nodes" in {
+    val graph = makeGraph("call-recentNodes-uninteresting")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Create 2 interesting nodes
+      val interesting1 = qidProvider.newQid()
+      val interesting2 = qidProvider.newQid()
+      Await.result(graph.literalOps(namespace).setLabels(interesting1, Set("Person")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(interesting1, "name", QuineValue.Str("Alice")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setLabels(interesting2, Set("Person")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(interesting2, "name", QuineValue.Str("Bob")), 5.seconds)
+
+      // Create 1 "ghost" node: set a property then remove it (recently touched but empty)
+      val ghostId = qidProvider.newQid()
+      Await.result(graph.literalOps(namespace).setProp(ghostId, "temp", QuineValue.Str("gone")), 5.seconds)
+      Await.result(graph.literalOps(namespace).removeProp(ghostId, "temp"), 5.seconds)
+
+      Thread.sleep(500)
+
+      val query = """
+        CALL recentNodes(100) YIELD node
+        RETURN node
+      """
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Every returned node should have non-empty labels or non-empty props
+      results.foreach { ctx =>
+        val node = ctx.bindings(Symbol("node")).asInstanceOf[Value.Node]
+        val hasLabels = node.labels.nonEmpty
+        val hasProps = node.props.values.nonEmpty
+        withClue(s"Node ${node.id} should be interesting: ") {
+          (hasLabels || hasProps) shouldBe true
+        }
+      }
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "hydrate node with correct properties and labels" in {
+    val graph = makeGraph("call-recentNodes-hydration")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Create 1 node with deterministic ID, specific labels and props
+      val nodeId = qidProvider.newQid()
+      Await.result(graph.literalOps(namespace).setLabels(nodeId, Set("Person", "Employee")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Alice")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeId, "age", QuineValue.Integer(30L)), 5.seconds)
+
+      Thread.sleep(500)
+
+      val query = """
+        CALL recentNodes(100) YIELD node
+        RETURN node
+      """
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Find our specific node by ID
+      val ourNode = results.collectFirst {
+        case ctx if ctx.bindings(Symbol("node")).asInstanceOf[Value.Node].id == nodeId =>
+          ctx.bindings(Symbol("node")).asInstanceOf[Value.Node]
+      }
+
+      ourNode shouldBe defined
+      val node = ourNode.get
+
+      // Verify labels
+      node.labels should contain(Symbol("Person"))
+      node.labels should contain(Symbol("Employee"))
+      node.labels should have size 2
+
+      // Verify properties
+      node.props.values should contain key Symbol("name")
+      node.props.values should contain key Symbol("age")
+      node.props.values(Symbol("name")) shouldBe Value.Text("Alice")
+      node.props.values(Symbol("age")) shouldBe Value.Integer(30L)
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "produce results in lazy mode via kickstart" in {
+    val graph = makeGraph("call-recentNodes-lazy")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Create 2 interesting nodes before installing the standing query
+      val id1 = qidProvider.newQid()
+      val id2 = qidProvider.newQid()
+      Await.result(graph.literalOps(namespace).setLabels(id1, Set("Person")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(id1, "name", QuineValue.Str("Alice")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setLabels(id2, Set("Person")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(id2, "name", QuineValue.Str("Bob")), 5.seconds)
+
+      Thread.sleep(500)
+
+      val query = """
+        CALL recentNodes() YIELD node
+        RETURN node
+      """
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val collector = new LazyResultCollector()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Lazy,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      // Wait for the kickstart to produce results
+      collector.awaitFirstDelta(10.seconds) shouldBe true
+
+      collector.positiveCount should be >= 1
+      collector.hasRetractions shouldBe false
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return empty results on empty graph without timeout" in {
+    val graph = makeGraph("call-recentNodes-empty-graph")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // No nodes created - fresh graph
+
+      val query = """
+        CALL recentNodes() YIELD node
+        RETURN node
+      """
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Empty graph should yield empty results
+      results shouldBe empty
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "support YIELD alias correctly" in {
+    val graph = makeGraph("call-recentNodes-yield-alias")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Create 1 node
+      val nodeId = qidProvider.newQid()
+      Await.result(graph.literalOps(namespace).setLabels(nodeId, Set("Person")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Alice")), 5.seconds)
+
+      Thread.sleep(500)
+
+      val query = """CALL recentNodes() YIELD node AS n RETURN n"""
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      results.size should be >= 1
+
+      val result = results.head
+      // Should have alias 'n', not original 'node'
+      result.bindings should contain key Symbol("n")
+      result.bindings(Symbol("n")) shouldBe a[Value.Node]
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "not spontaneously re-fire or retract in lazy mode" in {
+    val graph = makeGraph("call-recentNodes-no-refire")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Create 2 nodes first
+      val id1 = qidProvider.newQid()
+      val id2 = qidProvider.newQid()
+      Await.result(graph.literalOps(namespace).setLabels(id1, Set("Person")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(id1, "name", QuineValue.Str("Alice")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setLabels(id2, Set("Person")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(id2, "name", QuineValue.Str("Bob")), 5.seconds)
+
+      Thread.sleep(500)
+
+      val query = """
+        CALL recentNodes() YIELD node
+        RETURN node
+      """
+
+      val plannedQuery = parseAndPlanWithMetadata(query)
+
+      val collector = new LazyResultCollector()
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plannedQuery.plan,
+        mode = RuntimeMode.Lazy,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        returnColumns = plannedQuery.returnColumns,
+        outputNameMapping = plannedQuery.outputNameMapping,
+      )
+
+      // Wait for kickstart results
+      collector.awaitFirstDelta(10.seconds) shouldBe true
+      val initialPositiveCount = collector.positiveCount
+
+      // Now add a new node to the graph
+      val id3 = qidProvider.newQid()
+      Await.result(graph.literalOps(namespace).setLabels(id3, Set("NewPerson")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(id3, "name", QuineValue.Str("Charlie")), 5.seconds)
+
+      // Wait a bit for any potential spurious re-fires
+      Thread.sleep(2000)
+
+      // Should have no retractions
+      collector.hasRetractions shouldBe false
+
+      // The procedure should not have spontaneously re-executed
+      // (positive count should not have changed since standalone CALL has no upstream context injection)
+      collector.positiveCount shouldBe initialPositiveCount
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  // ============================================================
   // NODE WAKE BUG FIX TEST
   // ============================================================
 
@@ -7934,7 +8338,6 @@ class QueryPlanRuntimeTest
       // handleNodeWake from being called.
       collector.awaitFirstDelta(5.seconds) shouldBe true
       collector.positiveCount shouldBe 1
-
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
 }
