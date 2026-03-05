@@ -88,7 +88,7 @@ class NonNodeActor(graph: QuinePatternOpsGraph with StandingQueryOpsGraph, names
       }
 
     // Catch node-specific commands that shouldn't be sent to NonNodeActor
-    case cmd @ QuinePatternCommand.SetProperty(_, _, _, _) =>
+    case cmd @ QuinePatternCommand.SetProperty(_, _) =>
       System.err.println(
         s"[QP WARNING] NonNodeActor received node-specific command: $cmd. " +
         "This indicates a planner bug - effects should be inside an Anchor's onTarget so they run on actual nodes.",

@@ -7874,4 +7874,67 @@ class QueryPlanRuntimeTest
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
+
+  // ============================================================
+  // NODE WAKE BUG FIX TEST
+  // ============================================================
+
+  "QuinePattern NodeWake Bug Fix" should "not throw QuinePatternUnimplementedException" in {
+    // Regression test for the bug where QuinePatternCommand.NodeWake, when delivered to a
+    // node actor (QuinePatternQueryBehavior), would hit the wildcard `case _ =>` and throw
+    // QuinePatternUnimplementedException instead of calling AnchorState.handleNodeWake.
+    val graph = makeGraph("nodewake-node-hosted-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val hostNodeId = qidProvider.newQid()
+      val collector = new LazyResultCollector()
+      val sqId = StandingQueryId.fresh()
+
+      // Query: AllNodes anchor (lazy mode) with LocalProperty("name") sub-plan.
+      // Only produces a result when a node has the "name" property set.
+      val plan = Anchor(
+        AnchorTarget.AllNodes,
+        LocalProperty(Symbol("name"), Some(Symbol("n"))),
+      )
+
+      // KEY: send LoadQueryPlan directly to a NODE ACTOR via relayTell, not to a NonNodeActor.
+      // This causes the AnchorState to be hosted on the node actor, so NodeWakeHook.hostActorRef
+      // points to the node actor. When a new node is later created, NodeWake is sent to the
+      // node actor. Before the fix: QuinePatternUnimplementedException. After: handleNodeWake runs.
+      graph.relayTell(
+        com.thatdot.quine.graph.messaging.SpaceTimeQuineId(hostNodeId, namespace, None),
+        QuinePatternCommand.LoadQueryPlan(
+          sqid = sqId,
+          plan = plan,
+          mode = RuntimeMode.Lazy,
+          params = Map.empty,
+          namespace = namespace,
+          output = OutputTarget.LazyCollector(collector),
+        ),
+      )
+
+      // Wait for the anchor state to install and register its NodeWakeHook.
+      // The host node has no "name" property, so no result from the initial enumeration.
+      Thread.sleep(500)
+      collector.allDeltas shouldBe empty
+
+      // Create a new node with the "name" property set.
+      // This triggers: onNodeCreated -> NodeWake sent to the host NODE ACTOR.
+      // With the fix: NodeWake is handled, handleNodeWake dispatches to the new node,
+      // LocalProperty("name") fires on kickstart, and a result arrives in the collector.
+      val newNodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(newNodeId, "name", QuineValue.Str("Bob")),
+        5.seconds,
+      )
+
+      // Verify the result arrived — NodeWake was handled and dispatch to the new node succeeded.
+      // Without the fix, no result would ever arrive because the exception prevented
+      // handleNodeWake from being called.
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
 }

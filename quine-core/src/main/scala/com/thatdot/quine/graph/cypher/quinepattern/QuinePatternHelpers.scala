@@ -1,15 +1,8 @@
 package com.thatdot.quine.graph.cypher.quinepattern
 
-import org.apache.pekko.NotUsed
-import org.apache.pekko.actor.ActorRef
-import org.apache.pekko.actor.Status.Success
-import org.apache.pekko.stream.CompletionStrategy
-import org.apache.pekko.stream.scaladsl.Source
-
-import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.CypherException.Runtime
-import com.thatdot.quine.graph.cypher.{CypherException, Expr, QueryContext}
+import com.thatdot.quine.graph.cypher.{CypherException, Expr}
 import com.thatdot.quine.language.ast.{CypherIdentifier, Direction, Expression, QuineIdentifier, Value}
 import com.thatdot.quine.model.EdgeDirection
 
@@ -36,17 +29,6 @@ object QuinePatternHelpers {
       case Value.Duration(d) => Expr.Duration(d)
       case Value.DateTimeLocal(dtl) => Expr.LocalDateTime(dtl)
     }
-
-  def createNodeActionSource(nodeAction: ActorRef => NotUsed): Source[QueryContext, NotUsed] =
-    Source
-      .actorRefWithBackpressure[QueryContext](
-        ackMessage = QuinePatternCommand.QuinePatternAck,
-        completionMatcher = { case _: Success =>
-          CompletionStrategy.immediately
-        },
-        failureMatcher = PartialFunction.empty,
-      )
-      .mapMaterializedValue(nodeAction)
 
   def directionToEdgeDirection(direction: Direction): EdgeDirection = direction match {
     case Direction.Left => EdgeDirection.Outgoing

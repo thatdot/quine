@@ -949,12 +949,6 @@ object DefaultStateInstantiator extends StateInstantiator {
     }
 }
 
-// ============================================================
-// STUB STATE IMPLEMENTATIONS
-// These are minimal implementations to make the code compile.
-// Real implementations will have full logic.
-// ============================================================
-
 class OutputState(
   val id: StandingQueryId,
   val mode: RuntimeMode,
@@ -3012,7 +3006,7 @@ class EffectState(
 
       case LocalQueryEffect.SetProperty(targetBindingOpt, property, valueExpr) =>
         eval(valueExpr).run(env) match {
-          case Right(_) =>
+          case Right(value) =>
             // Determine which node should receive this property
             val targetNodeOpt: Option[com.thatdot.common.quineid.QuineId] = targetBindingOpt.flatMap { targetBinding =>
               ctx.bindings.get(targetBinding) match {
@@ -3025,17 +3019,17 @@ class EffectState(
             targetNodeOpt match {
               case Some(targetQid) if currentNodeId.contains(targetQid) =>
                 // Target matches current node - set property locally
-                actor ! QuinePatternCommand.SetProperty(property, valueExpr, ctx, params)
+                actor ! QuinePatternCommand.SetProperty(property, value)
               case Some(targetQid) =>
                 // Target is a different node - dispatch via relayTell
                 QPTrace.log(
                   s"SetProperty: remote dispatch to ${idProvider.qidToPrettyString(targetQid)} for property $property",
                 )
                 val stqid = SpaceTimeQuineId(targetQid, namespace, None)
-                graph.relayTell(stqid, QuinePatternCommand.SetProperty(property, valueExpr, ctx, params))
+                graph.relayTell(stqid, QuinePatternCommand.SetProperty(property, value))
               case None =>
                 // No target binding - use current actor (legacy behavior)
-                actor ! QuinePatternCommand.SetProperty(property, valueExpr, ctx, params)
+                actor ! QuinePatternCommand.SetProperty(property, value)
             }
           case Left(_) =>
             ()

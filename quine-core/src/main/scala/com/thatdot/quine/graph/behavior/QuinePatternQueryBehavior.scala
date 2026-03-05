@@ -7,14 +7,13 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.EdgeEvent.EdgeAdded
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.quinepattern.{
+  AnchorState,
   CypherAndQuineHelpers,
   DefaultStateInstantiator,
   NodeContext,
   QPMetrics,
   QueryStateBuilder,
   QueryStateHost,
-  QuinePatternExpressionInterpreter,
-  QuinePatternUnimplementedException,
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineMessage, QuineRefOps}
 import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
@@ -39,16 +38,12 @@ import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 sealed trait QuinePatternCommand extends QuineMessage
 
 object QuinePatternCommand {
-  case object QuinePatternAck extends QuinePatternCommand
-
   case object QuinePatternStop extends QuinePatternCommand
 
   // Local execution instructions
   case class SetProperty(
     property: Symbol,
-    valueExpr: Pattern.Expression,
-    context: com.thatdot.quine.graph.cypher.quinepattern.QueryContext, // Uses Pattern.Value directly
-    params: Map[Symbol, Pattern.Value],
+    value: Pattern.Value,
   ) extends QuinePatternCommand
   case class SetProperties(props: Map[Symbol, Pattern.Value]) extends QuinePatternCommand
   case class SetLabels(labels: Set[Symbol]) extends QuinePatternCommand
@@ -155,7 +150,6 @@ trait QuinePatternQueryBehavior
       }
     case QuinePatternCommand.QuinePatternStop =>
       hostedStates.clear()
-    case QuinePatternCommand.QuinePatternAck => ()
     case QuinePatternCommand.SetLabels(labels) =>
       // Labels are stored in a special property; state notifications happen inside applyPropertyEffect
       setLabels(labels)
@@ -179,25 +173,27 @@ trait QuinePatternQueryBehavior
       val event = EdgeAdded(halfEdge)
       processEdgeEvent(event)
       ()
-    case QuinePatternCommand.SetProperty(property, valueExpr, context, params) =>
-      // Evaluate the expression and set the property - context uses Pattern.Value directly
-      val env = QuinePatternExpressionInterpreter.EvalEnvironment(context, params)
-      QuinePatternExpressionInterpreter.eval(valueExpr)(graph.idProvider).run(env) match {
-        case Right(value) =>
-          val events = value match {
-            case Pattern.Value.Null =>
-              properties.get(property) match {
-                case Some(oldValue) => List(PropertyRemoved(property, oldValue))
-                case None => Nil
-              }
-            case v => List(PropertySet(property, CypherAndQuineHelpers.patternValueToPropertyValue(v).get))
+    case QuinePatternCommand.SetProperty(property, value) =>
+      val events = value match {
+        case Pattern.Value.Null =>
+          properties.get(property) match {
+            case Some(oldValue) => List(PropertyRemoved(property, oldValue))
+            case None => Nil
           }
-          processPropertyEvents(events)
-        case Left(err) =>
-          System.err.println(s"[QuinePattern WARNING] Failed to evaluate SetProperty expression: ${err.getMessage}")
+        case v => List(PropertySet(property, CypherAndQuineHelpers.patternValueToPropertyValue(v).get))
       }
+      processPropertyEvents(events)
       ()
-    case _ => throw new QuinePatternUnimplementedException(s"Not yet implemented: $command")
+    case QuinePatternCommand.NodeWake(anchorStateId, nodeId, _, context) =>
+      hostedStates.get(anchorStateId) match {
+        case Some(anchor: AnchorState) =>
+          anchor.handleNodeWake(nodeId, context, self)
+        case Some(other) =>
+          System.err.println(
+            s"[QP WARNING] NodeWake for state $anchorStateId but found ${other.getClass.getSimpleName} instead of AnchorState",
+          )
+        case None => ()
+      }
   }
 
   /** Load a query plan on this node.
