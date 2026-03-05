@@ -60,7 +60,7 @@ object Dependencies {
   val pureconfigV = "0.17.10"
   val antlr4RuntimeV = "4.13.2"
   val catsParseV = "1.0.0"
-  val lsp4jV = "0.23.1"
+  val lsp4jV = "0.24.0"
   val guavaV = "33.3.0-jre"
   val memeid4sV = "0.8.0"
   val munitV = "1.2.4"
