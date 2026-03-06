@@ -80,7 +80,6 @@ lazy val `quine-language`: Project = project
     libraryDependencies ++= Seq(
       "org.antlr" % "antlr4-runtime" % antlr4RuntimeV,
       "org.typelevel" %% "cats-effect" % catsEffectV,
-      "org.typelevel" %% "cats-parse" % catsParseV,
       "org.eclipse.lsp4j" % "org.eclipse.lsp4j" % lsp4jV,
       "com.chuusai" %% "shapeless" % shapelessV,
       "com.google.guava" % "guava" % guavaV,
