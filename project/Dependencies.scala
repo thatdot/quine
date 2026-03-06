@@ -1,5 +1,5 @@
 object Dependencies {
-  val amazonKinesisClientV = "3.3.0"
+  val amazonKinesisClientV = "3.4.1"
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.1"
   val awsSdkV = "2.42.7"
