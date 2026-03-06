@@ -331,7 +331,8 @@ object QueryPlanner {
             val allParts = mpq.queryParts ++ mpq.into.queryParts
             allParts.flatMap(fromQueryPart)
         }
-      case _: Cypher.Query.Union => Nil // TODO: Handle union
+      case union: Cypher.Query.Union =>
+        extractIdLookups(union.lhs) ++ extractIdLookups(union.rhs)
     }
   }
 
@@ -491,7 +492,8 @@ object QueryPlanner {
             val bindingDeps = fromProjections(mpq.into.bindings)
             NodeDeps.combine(partDeps, bindingDeps)
         }
-      case _: Cypher.Query.Union => NodeDeps.empty
+      case union: Cypher.Query.Union =>
+        NodeDeps.combine(getNodeDeps(union.lhs, symbolTable), getNodeDeps(union.rhs, symbolTable))
     }
   }
 
@@ -581,7 +583,8 @@ object QueryPlanner {
             val allParts = mpq.queryParts ++ mpq.into.queryParts
             allParts.flatMap(p => fromQueryPart(p).toList).toMap
         }
-      case _ => Map.empty
+      case union: Cypher.Query.Union =>
+        extractWithAliases(union.lhs) ++ extractWithAliases(union.rhs)
     }
   }
 
@@ -1573,17 +1576,41 @@ object QueryPlanner {
   /** Convert Cypher projections to QueryPlan Projections.
     * Uses Int-based binding format for consistency with expression interpreter lookups.
     * Human-readable names are applied at output time via outputNameMapping.
+    *
+    * @param targetBindings Optional target binding symbols to use instead of the projection's
+    *                       original binding IDs. When provided, projections use these symbols
+    *                       positionally (first projection uses first target, etc.).
     */
   def convertProjections(
     projections: List[Cypher.Projection],
     @scala.annotation.unused symbolTable: SymbolAnalysisModule.SymbolTable,
+    targetBindings: Option[List[Symbol]] = None,
   ): List[Projection] =
-    projections.map { p =>
-      val alias = p.as match {
-        case Right(quineId) => bindingSymbol(quineId.name)
-        case Left(cypherIdent) => cypherIdent.name // Fallback for unresolved identifiers
-      }
-      Projection(p.expression, alias)
+    targetBindings match {
+      case Some(targets) if targets.length == projections.length =>
+        // Use provided target bindings (for UNION normalization)
+        projections.zip(targets).map { case (p, target) =>
+          Projection(p.expression, target)
+        }
+      case Some(targets) =>
+        QPLog.warn(
+          s"UNION target binding count (${targets.length}) does not match projection count (${projections.length}); falling back to original bindings",
+        )
+        projections.map { p =>
+          val alias = p.as match {
+            case Right(quineId) => bindingSymbol(quineId.name)
+            case Left(cypherIdent) => cypherIdent.name
+          }
+          Projection(p.expression, alias)
+        }
+      case _ =>
+        projections.map { p =>
+          val alias = p.as match {
+            case Right(quineId) => bindingSymbol(quineId.name)
+            case Left(cypherIdent) => cypherIdent.name
+          }
+          Projection(p.expression, alias)
+        }
     }
 
   /** Known aggregation function names */
@@ -1635,12 +1662,18 @@ object QueryPlanner {
     case _ => None
   }
 
-  /** Plan a RETURN or WITH clause */
+  /** Plan a RETURN or WITH clause.
+    *
+    * @param targetBindings Optional target binding symbols to use instead of the projection's
+    *                       original binding IDs. Used by UNION to ensure all sides produce
+    *                       the same column names for proper deduplication.
+    */
   def planProjection(
     projections: List[Cypher.Projection],
     isDistinct: Boolean,
     input: QueryPlan,
     symbolTable: SymbolAnalysisModule.SymbolTable,
+    targetBindings: Option[List[Symbol]] = None,
   ): QueryPlan = {
     // Check if any projection contains an aggregation function
     val hasAggregation = projections.exists(p => containsAggregation(p.expression))
@@ -1699,13 +1732,13 @@ object QueryPlanner {
         else QueryPlan.Project(allColumns, dropExisting = true, aggregate)
       } else {
         // Fallback to regular projection
-        val columns = convertProjections(projections, symbolTable)
+        val columns = convertProjections(projections, symbolTable, targetBindings)
         if (columns.isEmpty) input
         else QueryPlan.Project(columns, dropExisting = true, input)
       }
     } else {
       // No aggregation - regular projection
-      val columns = convertProjections(projections, symbolTable)
+      val columns = convertProjections(projections, symbolTable, targetBindings)
       if (columns.isEmpty) input
       else QueryPlan.Project(columns, dropExisting = true, input)
     }
@@ -2479,6 +2512,9 @@ object QueryPlanner {
       case QueryPlan.CrossProduct(children, emitLazily) =>
         QueryPlan.CrossProduct(children.map(push(_, anchorContext)), emitLazily)
 
+      case QueryPlan.Union(lhs, rhs) =>
+        QueryPlan.Union(push(lhs, anchorContext), push(rhs, anchorContext))
+
       case QueryPlan.Expand(label, direction, onDest) =>
         QueryPlan.Expand(label, direction, push(onDest, anchorContext))
 
@@ -2558,8 +2594,80 @@ object QueryPlanner {
     outputNameMapping: Map[Symbol, Symbol],
   )
 
-  def plan(cypherAst: Cypher.Query, symbolTable: SymbolAnalysisModule.SymbolTable): QueryPlan =
-    planWithMetadata(cypherAst, symbolTable).plan
+  /** Plan a SingleQuery (either SinglepartQuery or MultipartQuery) into a QueryPlan.
+    *
+    * @param targetBindings Optional target binding symbols for RETURN projections.
+    *                       When provided, projections will use these symbols instead of the
+    *                       original binding IDs. This is used by UNION to normalize bindings.
+    */
+  private def planSingleQuery(
+    single: Cypher.Query.SingleQuery,
+    idLookups: List[IdLookup],
+    nodeDeps: NodeDeps,
+    symbolTable: SymbolAnalysisModule.SymbolTable,
+    propertyBindings: List[PropertyBinding],
+    targetBindings: Option[List[Symbol]],
+  ): QueryPlan = single match {
+    case spq: Cypher.Query.SingleQuery.SinglepartQuery =>
+      val bodyPlan = planQueryParts(spq.queryParts, idLookups, nodeDeps, symbolTable, propertyBindings)
+      planProjection(spq.bindings, isDistinct = spq.isDistinct, bodyPlan, symbolTable, targetBindings)
+    case mpq: Cypher.Query.SingleQuery.MultipartQuery =>
+      val allParts = mpq.queryParts ++ mpq.into.queryParts
+      val bodyPlan = planQueryParts(allParts, idLookups, nodeDeps, symbolTable, propertyBindings)
+      planProjection(mpq.into.bindings, isDistinct = mpq.into.isDistinct, bodyPlan, symbolTable, targetBindings)
+  }
+
+  /** Plan a Query (either Union or SingleQuery) into a QueryPlan.
+    * For Union chains, unfolds the left-associative tree into a list and folds
+    * left to build the plan iteratively, wrapping with Distinct where needed.
+    *
+    * @param targetBindings Optional target binding symbols for RETURN projections.
+    *                       Used by UNION to ensure all sides use the same projection targets,
+    *                       which is required for proper deduplication by Distinct.
+    */
+  private def planQuery(
+    query: Cypher.Query,
+    idLookups: List[IdLookup],
+    nodeDeps: NodeDeps,
+    symbolTable: SymbolAnalysisModule.SymbolTable,
+    propertyBindings: List[PropertyBinding],
+    targetBindings: Option[List[Symbol]] = None,
+  ): QueryPlan = {
+    // Unfold left-associative Union tree into a flat chain:
+    // Union(Union(A, B), C) => (A, [(isAll1, B), (isAll2, C)])
+    @scala.annotation.tailrec
+    def collectUnionChain(
+      q: Cypher.Query,
+      acc: List[(Boolean, Cypher.Query.SingleQuery)],
+    ): (Cypher.Query.SingleQuery, List[(Boolean, Cypher.Query.SingleQuery)]) =
+      q match {
+        case union: Cypher.Query.Union => collectUnionChain(union.lhs, (union.all, union.rhs) :: acc)
+        case single: Cypher.Query.SingleQuery => (single, acc)
+      }
+
+    val (first, rest) = collectUnionChain(query, Nil)
+    val firstPlan = planSingleQuery(first, idLookups, nodeDeps, symbolTable, propertyBindings, targetBindings)
+    rest.foldLeft(firstPlan) { case (lhsPlan, (isAll, rhs)) =>
+      val lhsTargetBindings = extractProjectTargets(lhsPlan)
+      val rhsPlan =
+        planSingleQuery(rhs, idLookups, nodeDeps, symbolTable, propertyBindings, Some(lhsTargetBindings))
+      val unionPlan = QueryPlan.Union(lhsPlan, rhsPlan)
+      if (!isAll) QueryPlan.Distinct(unionPlan) else unionPlan
+    }
+  }
+
+  /** Extract projection target symbols from a plan's outermost Project.
+    * Every planned SingleQuery should end with a Project (from the RETURN clause),
+    * optionally wrapped in Distinct. If neither is found, the plan is malformed.
+    */
+  private def extractProjectTargets(plan: QueryPlan): List[Symbol] = plan match {
+    case QueryPlan.Project(columns, _, _) => columns.map(_.as)
+    case QueryPlan.Distinct(child) => extractProjectTargets(child)
+    case other =>
+      throw new IllegalStateException(
+        s"Expected Project or Distinct(Project) at top of UNION branch, got: ${other.getClass.getSimpleName}",
+      )
+  }
 
   /** Plan a query and return both the plan and metadata (return columns).
     *
@@ -2581,27 +2689,7 @@ object QueryPlanner {
     // Merge property binding dependencies into nodeDeps
     val nodeDeps = NodeDeps.combine(nodeDepsWithoutProps, propertyBindingsToNodeDeps(propertyBindings))
 
-    val rawPlan = cypherAst match {
-      case _: Cypher.Query.Union =>
-        throw new QuinePatternUnimplementedException("UNION queries not yet supported in planner")
-
-      case single: Cypher.Query.SingleQuery =>
-        single match {
-          case spq: Cypher.Query.SingleQuery.SinglepartQuery =>
-            val bodyPlan = planQueryParts(spq.queryParts, idLookups, nodeDeps, symbolTable, propertyBindings)
-            planProjection(spq.bindings, isDistinct = spq.isDistinct, bodyPlan, symbolTable)
-
-          case mpq: Cypher.Query.SingleQuery.MultipartQuery =>
-            // Multipart queries have WITH clauses that create sequence points
-            // IMPORTANT: Flatten all parts together before planning so that UNWIND
-            // correctly captures subsequent parts (including "into" parts) in its subquery.
-            // If we planned them separately, UNWIND in queryParts wouldn't include
-            // the parts from "into", leading to incorrect plan structure.
-            val allParts = mpq.queryParts ++ mpq.into.queryParts
-            val bodyPlan = planQueryParts(allParts, idLookups, nodeDeps, symbolTable, propertyBindings)
-            planProjection(mpq.into.bindings, isDistinct = mpq.into.isDistinct, bodyPlan, symbolTable)
-        }
-    }
+    val rawPlan = planQuery(cypherAst, idLookups, nodeDeps, symbolTable, propertyBindings)
 
     // Extract return columns from the raw plan BEFORE pushIntoAnchors transformation
     // This is needed because pushIntoAnchors may push the Project inside an Anchor
@@ -2624,41 +2712,75 @@ object QueryPlanner {
 
   /** Build a mapping from internal binding IDs to human-readable output names.
     * This mapping is used at output time to convert internal names to user-facing names.
+    *
+    * For UNION queries, each side has different internal binding IDs but must produce
+    * the same column names. This function collects mappings from ALL sides of the UNION.
     */
   private def buildOutputNameMapping(
     cypherAst: Cypher.Query,
     symbolTable: SymbolAnalysisModule.SymbolTable,
   ): Map[Symbol, Symbol] = {
-    // Get the final projections (RETURN clause bindings)
-    val finalProjections: List[Cypher.Projection] = cypherAst match {
-      case single: Cypher.Query.SingleQuery =>
-        single match {
-          case spq: Cypher.Query.SingleQuery.SinglepartQuery => spq.bindings
-          case mpq: Cypher.Query.SingleQuery.MultipartQuery => mpq.into.bindings
-        }
-      case _: Cypher.Query.Union => Nil // TODO: Handle union
+    // Helper to extract projections from a SingleQuery
+    def getSingleQueryProjections(single: Cypher.Query.SingleQuery): List[Cypher.Projection] = single match {
+      case spq: Cypher.Query.SingleQuery.SinglepartQuery => spq.bindings
+      case mpq: Cypher.Query.SingleQuery.MultipartQuery => mpq.into.bindings
     }
 
-    // Build mapping: internal name -> human-readable name
-    finalProjections.flatMap { p =>
-      p.as match {
-        case Right(quineId) =>
-          val internalName = bindingSymbol(quineId.name)
-          val humanReadableName = identDisplayName(p.as, symbolTable)
-          Some(internalName -> humanReadableName)
-        case Left(cypherIdent) =>
-          // Unresolved identifier - use as-is
-          Some(cypherIdent.name -> cypherIdent.name)
-      }
-    }.toMap
+    // Helper to build mapping from projections, using a reference list for human-readable names
+    def buildMappingFromProjections(
+      projections: List[Cypher.Projection],
+      referenceProjections: List[Cypher.Projection],
+    ): Map[Symbol, Symbol] =
+      projections
+        .zip(referenceProjections)
+        .flatMap { case (p, ref) =>
+          p.as match {
+            case Right(quineId) =>
+              val internalName = bindingSymbol(quineId.name)
+              // Use the reference projection's name as the human-readable name
+              val humanReadableName = identDisplayName(ref.as, symbolTable)
+              Some(internalName -> humanReadableName)
+            case Left(cypherIdent) =>
+              Some(cypherIdent.name -> cypherIdent.name)
+          }
+        }
+        .toMap
+
+    // Recursively collect all projections from UNION and its nested parts
+    def collectAllProjections(query: Cypher.Query): List[List[Cypher.Projection]] = query match {
+      case single: Cypher.Query.SingleQuery =>
+        List(getSingleQueryProjections(single))
+      case union: Cypher.Query.Union =>
+        collectAllProjections(union.lhs) :+ getSingleQueryProjections(union.rhs)
+    }
+
+    val allProjections = collectAllProjections(cypherAst)
+    // Use the first (LHS) projections as the reference for human-readable names
+    val referenceProjections = allProjections.headOption.getOrElse(Nil)
+
+    // Build mappings for all sides, using the reference names
+    allProjections.flatMap(projs => buildMappingFromProjections(projs, referenceProjections)).toMap
   }
 
   /** Extract return columns from the outermost Project with dropExisting=true.
     * This represents the RETURN clause's projection.
+    *
+    * For UNION queries, each side may have different internal binding IDs,
+    * so we collect columns from ALL sides.
     */
   private def extractReturnColumns(plan: QueryPlan): Option[Set[Symbol]] = plan match {
     case QueryPlan.Project(columns, dropExisting, _) if dropExisting =>
       Some(columns.map(_.as).toSet)
+    case QueryPlan.Union(lhs, rhs) =>
+      // For UNION, collect return columns from BOTH sides
+      (extractReturnColumns(lhs), extractReturnColumns(rhs)) match {
+        case (Some(lhsCols), Some(rhsCols)) => Some(lhsCols ++ rhsCols)
+        case (Some(lhsCols), None) => Some(lhsCols)
+        case (None, Some(rhsCols)) => Some(rhsCols)
+        case (None, None) => None
+      }
+    case QueryPlan.Distinct(child) =>
+      extractReturnColumns(child)
     case _ =>
       None
   }
@@ -2694,10 +2816,8 @@ object QueryPlanner {
     // Only check for AST presence, not diagnostics - some queries may have warnings
     // that don't prevent planning (matching the old behavior)
     result.ast match {
-      case Some(q: Cypher.Query.SingleQuery) =>
+      case Some(q: Cypher.Query) =>
         Right(planWithMetadata(q, result.symbolTable))
-      case Some(other) =>
-        Left(s"Expected SingleQuery, got: ${other.getClass.getSimpleName}")
       case None =>
         Left(result.diagnostics.map(_.toString).mkString("; "))
     }

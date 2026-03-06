@@ -229,11 +229,11 @@ trait CypherASTInstances extends ASTInstances {
 
   implicit lazy val queryPrettyPrint: PrettyPrint[Query] =
     PrettyPrint.instance {
-      case Query.Union(source, lhs, rhs) =>
+      case Query.Union(source, all, lhs, rhs) =>
         concat(
           queryPrettyPrint.doc(lhs),
           line,
-          text("UNION"),
+          text(if (all) "UNION ALL" else "UNION"),
           line,
           queryPrettyPrint.doc(rhs),
           text(" "),

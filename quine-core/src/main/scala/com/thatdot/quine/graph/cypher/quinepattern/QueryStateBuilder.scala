@@ -124,6 +124,16 @@ object StateDescriptor {
     childEntryPoints: Set[StandingQueryId] = Set.empty, // Children that need context injection
   ) extends StateDescriptor
 
+  /** State for Union operator */
+  case class Union(
+    id: StandingQueryId,
+    parentId: StandingQueryId,
+    mode: RuntimeMode,
+    plan: QueryPlan.Union,
+    lhsId: StandingQueryId,
+    rhsId: StandingQueryId,
+  ) extends StateDescriptor
+
   /** State for Sequence operator */
   case class Sequence(
     id: StandingQueryId,
@@ -507,6 +517,13 @@ object QueryStateBuilder {
         val updatedDesc = StateDescriptor.Product(id, parentId, mode, p, childIds)
         (finalCtx.copy(states = finalCtx.states + (id -> updatedDesc)), id)
 
+      case p @ QueryPlan.Union(lhs, rhs) =>
+        val id = StandingQueryId.fresh()
+        val (ctxAfterLhs, lhsId) = buildPlan(lhs, id, mode, ctx, fallbackOutput)
+        val (ctxAfterRhs, rhsId) = buildPlan(rhs, id, mode, ctxAfterLhs, fallbackOutput)
+        val desc = StateDescriptor.Union(id, parentId, mode, p, lhsId, rhsId)
+        (ctxAfterRhs.addState(desc, isLeaf = false), id)
+
       case p @ QueryPlan.Sequence(first, andThen, contextFlow) =>
         val id = StandingQueryId.fresh()
         // Build first child
@@ -871,6 +888,12 @@ object QueryStateBuilder {
           StateDescriptor.Procedure(id, parentId, mode, p, subqueryId, maybeSubqueryEntry.map(_ => procBridgeId))
         // Procedure IS the entry point - it receives context from parent and combines with procedure results
         (ctxWithBridge.addState(desc, isLeaf = true), id, Some(id))
+
+      // For Union, both children independently generate their own results.
+      // No context injection needed - falls through to buildPlan.
+      case _: QueryPlan.Union =>
+        val (ctxAfter, rootId) = buildPlan(plan, parentId, mode, ctx, fallbackOutput)
+        (ctxAfter, rootId, None)
 
       // For other leaf operators that generate their own context (LocalId, LocalProperty, etc.),
       // there's no entry point to inject - they don't need context from first

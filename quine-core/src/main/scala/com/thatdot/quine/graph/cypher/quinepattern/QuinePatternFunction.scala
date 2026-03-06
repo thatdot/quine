@@ -31,7 +31,9 @@ object QuinePatternFunction {
     DurationBetweenFunction,
     FloorFunction,
     IdFunction,
+    LabelsFunction,
     LocalDateTimeFunction,
+    PropertiesFunction,
     RegexFirstMatchFunction,
     SignFunction,
     SplitFunction,
@@ -792,7 +794,28 @@ object IdFunction extends QuinePatternFunction {
   override val handleNullsBySpec: Boolean = false
   val cypherFunction: PartialFunction[List[Value], Value] = {
     case List(Value.Node(nodeId, _, _)) => Value.NodeId(nodeId)
+    case List(Value.NodeId(nodeId)) => Value.NodeId(nodeId)
     case List(Value.Null) => throw new IllegalArgumentException("Cannot evaluate id function on null value")
+  }
+}
+
+object PropertiesFunction extends QuinePatternFunction {
+  val name: String = "properties"
+  val arity: FunctionArity = FunctionArity.FixedArity(1)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Node(_, _, props)) => props
+    case List(Value.Relationship(_, _, props, _)) =>
+      Value.Map(scala.collection.immutable.SortedMap.from(props))
+    case List(m: Value.Map) => m
+  }
+}
+
+object LabelsFunction extends QuinePatternFunction {
+  val name: String = "labels"
+  val arity: FunctionArity = FunctionArity.FixedArity(1)
+  val cypherFunction: PartialFunction[List[Value], Value] = {
+    case List(Value.Node(_, labels, _)) => Value.List(labels.toList.map(l => Value.Text(l.name)))
+    case List(Value.Relationship(_, _, _, _)) => Value.List(Nil)
   }
 }
 

@@ -21,7 +21,7 @@ import com.thatdot.quine.cypher.ast.{
   YieldItem,
 }
 import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{SymbolTable, SymbolTableState}
-import com.thatdot.quine.language.ast.{CypherIdentifier, Direction, Expression, QuineIdentifier, Source}
+import com.thatdot.quine.language.ast.{Direction, Expression, QuineIdentifier, Source}
 import com.thatdot.quine.language.diagnostic.Diagnostic
 import com.thatdot.quine.language.phases.CompilerPhase.{SimpleCompilerPhase, SimpleCompilerPhaseEffect}
 import com.thatdot.quine.language.phases.CompilerState
@@ -497,14 +497,20 @@ object SymbolAnalysisModule {
       rewrittenConnections <- pattern.path.traverse(analyzeConnection)
     } yield pattern.copy(initial = rewrittenInitial, path = rewrittenConnections)
 
-  /** A partial function that extracts a `QuineIdentifier` from an `Either[CypherIdentifier, QuineIdentifier]`.
-    * It matches and returns the right value if the input is a `Right` containing a `QuineIdentifier`.
-    *
-    * This captures at runtime an expected invariant which is that all identifiers are rewritten
-    * to be `QuineIdentifier`s.
+  /** Extract the output bindings (projections) from a SingleQuery. */
+  private def singleQueryBindings(sq: SingleQuery): List[Projection] = sq match {
+    case s: SingleQuery.SinglepartQuery => s.bindings
+    case c: SingleQuery.MultipartQuery => c.into.bindings
+  }
+
+  /** Extract rewritten output identifiers from a query (SingleQuery or Union).
+    * For Union, uses lhs bindings since both sides must have the same columns.
     */
-  val collectRewrittenIds: PartialFunction[Either[CypherIdentifier, QuineIdentifier], QuineIdentifier] = {
-    case Right(id) => id
+  private def queryOutputIds(query: Query): Set[QuineIdentifier] = query match {
+    case q: Query.SingleQuery =>
+      singleQueryBindings(q).flatMap(_.as.toOption).toSet
+    case u: Query.Union =>
+      queryOutputIds(u.lhs)
   }
 
   def analyzeReadingClause(
@@ -564,21 +570,7 @@ object SymbolAnalysisModule {
         )
         oldScope <- inspect(_.currentScope)
         rewrittenQuery <- analyzeQuery(fromSq.subquery, rewrittenBindings.toSet)
-        imports = rewrittenQuery match {
-          case query: Query.SingleQuery =>
-            query match {
-              case s: SingleQuery.SinglepartQuery => s.bindings.map(_.as).toSet.collect(collectRewrittenIds)
-              case c: SingleQuery.MultipartQuery => c.into.bindings.map(_.as).toSet.collect(collectRewrittenIds)
-            }
-          case _: Query.Union =>
-            // Union subqueries not yet supported - return empty set and the warning will be added below
-            Set.empty[QuineIdentifier]
-        }
-        _ <- rewrittenQuery match {
-          case _: Query.Union =>
-            addWarning("Union subqueries are not yet supported; bindings from this subquery will not be available.")
-          case _ => pure(())
-        }
+        imports = queryOutputIds(rewrittenQuery)
         newIntros <- imports.toList.traverse(qid =>
           findInScopeByInt(qid.name).map(maybeId => maybeId.map(name => (qid.name -> name))),
         )
@@ -687,8 +679,8 @@ object SymbolAnalysisModule {
     query match {
       case union: Query.Union =>
         for {
-          rewrittenLeft <- analyzeSingleQuery(union.lhs, imports)
-          rewrittenRight <- analyzeQuery(union.rhs, imports)
+          rewrittenLeft <- analyzeQuery(union.lhs, imports)
+          rewrittenRight <- analyzeSingleQuery(union.rhs, imports)
         } yield union.copy(lhs = rewrittenLeft, rhs = rewrittenRight)
       // Pass imports to single queries so that subquery imports (CALL { WITH x ... })
       // correctly make imported variables available inside the subquery scope.

@@ -155,6 +155,25 @@ object QueryPlan {
   }
 
   // ============================================================
+  // UNION (Bag union of two subqueries)
+  // ============================================================
+
+  /** Union of two subqueries (concatenate results).
+    *
+    * Both children are evaluated independently. Results are concatenated (bag union).
+    * For UNION (without ALL), the planner wraps this in Distinct.
+    *
+    * @param lhs Left-hand query
+    * @param rhs Right-hand query
+    */
+  case class Union(
+    lhs: QueryPlan,
+    rhs: QueryPlan,
+  ) extends QueryPlan {
+    def children: Seq[QueryPlan] = Seq(lhs, rhs)
+  }
+
+  // ============================================================
   // SEQUENCE (Imperative extension for WITH clauses)
   // ============================================================
 

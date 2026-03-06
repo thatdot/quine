@@ -94,7 +94,7 @@ sealed trait Query {
 }
 
 object Query {
-  case class Union(source: Source, lhs: SingleQuery, rhs: Query) extends Query
+  case class Union(source: Source, all: Boolean, lhs: Query, rhs: SingleQuery) extends Query
 
   sealed trait SingleQuery extends Query
 

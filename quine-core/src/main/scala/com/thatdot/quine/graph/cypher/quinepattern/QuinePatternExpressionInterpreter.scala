@@ -226,7 +226,19 @@ object QuinePatternExpressionInterpreter {
                 }
               case _ => pure(Value.Null)
             }
-          case Value.Null => pure(Value.Null)
+          case Value.Null =>
+            // When of evaluates to Null (e.g., binding not found), still check for captured property binding.
+            // This handles cases where LocalProperty stored the value under "1.name" but the node binding
+            // "1" itself isn't in context (which happens when Project only has LocalProperty as input).
+            of match {
+              case Expression.Ident(_, ident, _) =>
+                val capturedKey = Symbol(s"${identKey(ident).name}.${fieldName.name}")
+                fromEnvironment(_.queryContext.get(capturedKey)) >>= {
+                  case Some(capturedValue) => pure(capturedValue)
+                  case None => pure(Value.Null)
+                }
+              case _ => pure(Value.Null)
+            }
           case thing => error(s"Don't know how to do field access on $thing")
         }
       case Expression.IndexIntoArray(_, of, indexExp, _) =>

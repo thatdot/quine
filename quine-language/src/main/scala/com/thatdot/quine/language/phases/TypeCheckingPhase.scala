@@ -507,8 +507,8 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
   def annotateQuery(query: Query): TCEffect[Query] = query match {
     case union: Query.Union =>
       for {
-        annotatedLhs <- annotateSingleQuery(union.lhs)
-        annotatedRhs <- annotateQuery(union.rhs)
+        annotatedLhs <- annotateQuery(union.lhs)
+        annotatedRhs <- annotateSingleQuery(union.rhs)
       } yield union.copy(lhs = annotatedLhs, rhs = annotatedRhs)
 
     case single: SingleQuery => annotateSingleQuery(single).widen[Query]

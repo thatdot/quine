@@ -816,6 +816,9 @@ object DefaultStateInstantiator extends StateInstantiator {
       case d @ StateDescriptor.Product(id, parentId, _, plan, childIds, childEntryPoints) =>
         new ProductState(id, parentId, d.mode, childIds, plan.emitSubscriptionsLazily, childEntryPoints)
 
+      case d @ StateDescriptor.Union(id, parentId, _, _, lhsId, rhsId) =>
+        new UnionState(id, parentId, d.mode, lhsId, rhsId)
+
       case d @ StateDescriptor.Sequence(id, parentId, _, _, firstId, andThenId, contextBridgeId, contextFlow) =>
         new SequenceState(id, parentId, d.mode, firstId, andThenId, contextBridgeId, contextFlow)
 
@@ -1711,6 +1714,45 @@ class ProductState(
         }
     }
   }
+
+  override def kickstart(context: NodeContext, actor: ActorRef): Unit = ()
+}
+
+class UnionState(
+  val id: StandingQueryId,
+  val publishTo: StandingQueryId,
+  val mode: RuntimeMode,
+  val lhsId: StandingQueryId,
+  val rhsId: StandingQueryId,
+) extends QueryState
+    with PublishingState {
+
+  // Eager-mode only: track whether each child has notified and accumulate state
+  private var lhsNotified = false
+  private var rhsNotified = false
+  private var lhsState: Delta.T = Delta.empty
+  private var rhsState: Delta.T = Delta.empty
+
+  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit =
+    mode match {
+      case RuntimeMode.Eager =>
+        // Accumulate state and wait for both children before emitting.
+        // Children may notify multiple times before both are ready;
+        // PublishingState.emit guards against duplicate emissions via hasEmitted.
+        if (from == lhsId) {
+          lhsNotified = true
+          lhsState = Delta.add(lhsState, delta)
+        } else if (from == rhsId) {
+          rhsNotified = true
+          rhsState = Delta.add(rhsState, delta)
+        }
+        if (lhsNotified && rhsNotified) {
+          emit(Delta.add(lhsState, rhsState), actor)
+        }
+      case RuntimeMode.Lazy =>
+        // Pass through each child's delta immediately (union = concat of streams)
+        if (delta.nonEmpty) emit(delta, actor)
+    }
 
   override def kickstart(context: NodeContext, actor: ActorRef): Unit = ()
 }

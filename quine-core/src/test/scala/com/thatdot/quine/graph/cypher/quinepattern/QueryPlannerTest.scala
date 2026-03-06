@@ -306,7 +306,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     """
     val (parsedQuery, symbolTable) = parseCypher(query)
 
-    val plan = QueryPlanner.plan(parsedQuery, symbolTable)
+    val plan = QueryPlanner.planWithMetadata(parsedQuery, symbolTable).plan
 
     countComputedAnchors(plan) shouldBe 2
     containsOperator(plan, _.isInstanceOf[QueryPlan.Sequence]) shouldBe true
@@ -1090,7 +1090,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val idLookups = QueryPlanner.extractIdLookups(parsedQuery)
     idLookups.foreach { lookup => }
 
-    val plan = QueryPlanner.plan(parsedQuery, symbolTable)
+    val plan = QueryPlanner.planWithMetadata(parsedQuery, symbolTable).plan
 
     // Should have at least 3 computed anchors (for p, m, r)
     // The planner may create additional anchors for edge effect placement
@@ -1235,7 +1235,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     idLookups.foreach { lookup => }
     idLookups shouldBe empty // No IdLookups - id(a)=id(m) is not anchor-able
 
-    val plan = QueryPlanner.plan(parsedQuery, symbolTable)
+    val plan = QueryPlanner.planWithMetadata(parsedQuery, symbolTable).plan
 
     // Should have an AllNodes anchor (since no computed IDs are available)
     def hasAllNodesAnchor(p: QueryPlan): Boolean = p match {
@@ -1745,7 +1745,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
 
     val (parsedQuery, symbolTable) = parseCypher(query)
 
-    val plan = QueryPlanner.plan(parsedQuery, symbolTable)
+    val plan = QueryPlanner.planWithMetadata(parsedQuery, symbolTable).plan
 
     // Should have exactly ONE computed anchor (for f)
     val computedAnchors = countComputedAnchors(plan)
