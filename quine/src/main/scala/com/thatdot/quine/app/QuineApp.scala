@@ -210,16 +210,16 @@ final class QuineApp(
               .flatMap { sqResultsConsumers =>
                 val (pattern, dgnPackage) = standingQueryDefinition.pattern match {
                   case V2ApiStanding.StandingQueryPattern.Cypher(cypherQuery, mode) =>
-                    val pattern = cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider, logConfig)
-                    val origin = PatternOrigin.GraphPattern(pattern, Some(cypherQuery))
-
                     mode match {
                       case V2ApiStanding.StandingQueryPattern.StandingQueryMode.DistinctId =>
-                        if (!pattern.distinct) {
+                        val graphPattern =
+                          cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider, logConfig)
+                        val origin = PatternOrigin.GraphPattern(graphPattern, Some(cypherQuery))
+                        if (!graphPattern.distinct) {
                           // TODO unit test this behavior
                           throw DistinctIdMustDistinct
                         }
-                        val (branch, returnColumn) = pattern.compiledDomainGraphBranch(graph.labelsProperty)
+                        val (branch, returnColumn) = graphPattern.compiledDomainGraphBranch(graph.labelsProperty)
                         val dgnPackage = branch.toDomainGraphNodePackage
                         val dgnPattern = DomainGraphNodeStandingQueryPattern(
                           dgnPackage.dgnId,
@@ -230,9 +230,12 @@ final class QuineApp(
                         )
                         (dgnPattern, Some(dgnPackage))
                       case V2ApiStanding.StandingQueryPattern.StandingQueryMode.MultipleValues =>
-                        if (pattern.distinct) throw MultipleValuesCantDistinct
+                        val graphPattern =
+                          cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider, logConfig)
+                        val origin = PatternOrigin.GraphPattern(graphPattern, Some(cypherQuery))
+                        if (graphPattern.distinct) throw MultipleValuesCantDistinct
                         val compiledQuery =
-                          pattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
+                          graphPattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
                         val sqv4Pattern =
                           MultipleValuesQueryPattern(
                             compiledQuery,
@@ -241,6 +244,8 @@ final class QuineApp(
                           )
                         (sqv4Pattern, None)
                       case V2ApiStanding.StandingQueryPattern.StandingQueryMode.QuinePattern =>
+                        // QuinePattern mode uses the new parser and planner directly,
+                        // bypassing the traditional StandingQueryPatterns validation
                         val maybeIsQPEnabled = for {
                           pv <- Option(System.getProperty("qp.enabled"))
                           b <- pv.toBooleanOption
@@ -319,16 +324,16 @@ final class QuineApp(
           }
           val (pattern, dgnPackage) = query.pattern match {
             case V1.StandingQueryPattern.Cypher(cypherQuery, mode) =>
-              val pattern = cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider, logConfig)
-              val origin = PatternOrigin.GraphPattern(pattern, Some(cypherQuery))
-
               mode match {
                 case V1.StandingQueryPattern.StandingQueryMode.DistinctId =>
-                  if (!pattern.distinct) {
+                  val graphPattern =
+                    cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider, logConfig)
+                  val origin = PatternOrigin.GraphPattern(graphPattern, Some(cypherQuery))
+                  if (!graphPattern.distinct) {
                     // TODO unit test this behavior
                     throw DistinctIdMustDistinct
                   }
-                  val (branch, returnColumn) = pattern.compiledDomainGraphBranch(graph.labelsProperty)
+                  val (branch, returnColumn) = graphPattern.compiledDomainGraphBranch(graph.labelsProperty)
                   val dgnPackage = branch.toDomainGraphNodePackage
                   val dgnPattern = DomainGraphNodeStandingQueryPattern(
                     dgnPackage.dgnId,
@@ -339,11 +344,16 @@ final class QuineApp(
                   )
                   (dgnPattern, Some(dgnPackage))
                 case V1.StandingQueryPattern.StandingQueryMode.MultipleValues =>
-                  if (pattern.distinct) throw MultipleValuesCantDistinct
-                  val compiledQuery = pattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
+                  val graphPattern =
+                    cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider, logConfig)
+                  val origin = PatternOrigin.GraphPattern(graphPattern, Some(cypherQuery))
+                  if (graphPattern.distinct) throw MultipleValuesCantDistinct
+                  val compiledQuery = graphPattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
                   val sqv4Pattern = MultipleValuesQueryPattern(compiledQuery, query.includeCancellations, origin)
                   (sqv4Pattern, None)
                 case V1.StandingQueryPattern.StandingQueryMode.QuinePattern =>
+                  // QuinePattern mode uses the new parser and planner directly,
+                  // bypassing the traditional StandingQueryPatterns validation
                   val maybeIsQPEnabled = for {
                     pv <- Option(System.getProperty("qp.enabled"))
                     b <- pv.toBooleanOption

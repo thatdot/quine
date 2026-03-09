@@ -2078,7 +2078,35 @@ object QueryPlanner {
     case Cypher.QueryPart.ReadingClausePart(readingClause) =>
       readingClause match {
         case patterns: Cypher.ReadingClause.FromPatterns =>
-          planMatch(patterns.patterns, patterns.maybePredicate, idLookups, nodeDeps, propertyBindings)
+          val matchPlan = planMatch(patterns.patterns, patterns.maybePredicate, idLookups, nodeDeps, propertyBindings)
+
+          if (patterns.isOptional) {
+            // Extract all bindings introduced by this OPTIONAL MATCH
+            // These will be set to null when no match is found
+            // IMPORTANT: Only include NEW bindings, not bindings already in scope from previous clauses
+            val patternBindings: Set[Symbol] = patterns.patterns.flatMap { pattern =>
+              // Initial node binding
+              val initBinding = bindingSymbol(nodeBindingInt(pattern.initial))
+
+              // All path connections (edge and destination node bindings)
+              val pathBindings = pattern.path.flatMap { conn =>
+                // Edge binding (if named)
+                val edgeBinding = conn.edge.maybeBinding.map(b => bindingSymbol(identInt(b)))
+                // Destination node binding
+                val nodeBinding = Some(bindingSymbol(nodeBindingInt(conn.dest)))
+                edgeBinding.toList ++ nodeBinding.toList
+              }
+
+              initBinding :: pathBindings
+            }.toSet
+
+            // Filter out bindings that are already in scope - only null-pad NEW bindings
+            val newBindings = patternBindings -- existingBindings
+
+            QueryPlan.Optional(matchPlan, newBindings)
+          } else {
+            matchPlan
+          }
 
         case proc: Cypher.ReadingClause.FromProcedure =>
           // CALL procedureName(args...) YIELD bindings
@@ -2119,7 +2147,56 @@ object QueryPlanner {
     case Cypher.QueryPart.EffectPart(effect) =>
       val effects = planEffects(effect, existingBindings, symbolTable, idLookups)
       if (effects.isEmpty) QueryPlan.Unit
-      else QueryPlan.LocalEffect(effects, QueryPlan.Unit)
+      else {
+        // Separate CreateNode effects from other effects
+        val (createNodeEffects, otherEffects) = effects.partition {
+          case _: LocalQueryEffect.CreateNode => true
+          case _ => false
+        }
+
+        if (createNodeEffects.isEmpty) {
+          // No node creation - just wrap effects as before
+          QueryPlan.LocalEffect(effects, QueryPlan.Unit)
+        } else {
+          // Transform CreateNode effects into nested FreshNode anchors
+          // CreateNode(binding, labels, props) becomes:
+          //   Anchor(FreshNode(binding), SetLabels + SetProperties)
+          // Multiple CreateNodes are nested so all bindings are in scope
+
+          // Convert CreateNode effects to SetLabels + SetProperties effects with target binding
+          val convertedEffects: List[LocalQueryEffect] = createNodeEffects.flatMap {
+            case LocalQueryEffect.CreateNode(binding, labels, maybeProps) =>
+              val setLabels = if (labels.nonEmpty) {
+                List(LocalQueryEffect.SetLabels(Some(binding), labels))
+              } else Nil
+
+              val setProps = maybeProps.toList.map { propsExpr =>
+                LocalQueryEffect.SetProperties(Some(binding), propsExpr)
+              }
+
+              setLabels ++ setProps
+            case _ => Nil
+          }
+
+          // All effects (converted + other) go at the innermost level
+          val allInnerEffects = convertedEffects ++ otherEffects
+          val innerPlan = if (allInnerEffects.isEmpty) {
+            QueryPlan.Unit
+          } else {
+            QueryPlan.LocalEffect(allInnerEffects, QueryPlan.Unit)
+          }
+
+          // Build nested FreshNode anchors, innermost first
+          // For CREATE (a)-[:KNOWS]->(b): Anchor(FreshNode(a), Anchor(FreshNode(b), effects))
+          val bindings = createNodeEffects.collect { case LocalQueryEffect.CreateNode(binding, _, _) =>
+            binding
+          }
+
+          bindings.foldRight(innerPlan) { (binding, inner) =>
+            QueryPlan.Anchor(AnchorTarget.FreshNode(binding), inner)
+          }
+        }
+      }
   }
 
   /** Plan a group of non-materializing parts using the existing Sequence/CrossProduct logic. */
@@ -2161,6 +2238,8 @@ object QueryPlanner {
             case (_, Some(_: Cypher.QueryPart.EffectPart)) => true
             case (_, Some(_: Cypher.QueryPart.WithClausePart)) => true
             case (_: Cypher.QueryPart.WithClausePart, _) => true
+            case (_, Some(Cypher.QueryPart.ReadingClausePart(p: Cypher.ReadingClause.FromPatterns))) if p.isOptional =>
+              true
             case _ => false
           }
           if (needsSequence) {
@@ -2378,6 +2457,7 @@ object QueryPlanner {
               .orElse(findBindingFromIdLookups(expr, idLookups))
               .orElse(findLocalIdBinding(onTarget))
           case AnchorTarget.AllNodes => findLocalIdBinding(onTarget)
+          case AnchorTarget.FreshNode(b) => Some(b)
         }
         // Push the rest into the anchor's onTarget
         val newOnTarget = QueryPlan.Sequence(onTarget, rest, flow)
@@ -2449,6 +2529,7 @@ object QueryPlanner {
                       .orElse(findBindingFromIdLookups(expr, idLookups))
                       .orElse(findLocalIdBinding(onTarget))
                   case AnchorTarget.AllNodes => findLocalIdBinding(onTarget)
+                  case AnchorTarget.FreshNode(b) => Some(b)
                 }
                 binding.map(_ -> idx)
               case _ => None
@@ -2499,6 +2580,7 @@ object QueryPlanner {
                       .orElse(findBindingFromIdLookups(expr, idLookups))
                       .orElse(findLocalIdBinding(onTarget))
                   case AnchorTarget.AllNodes => findLocalIdBinding(onTarget)
+                  case AnchorTarget.FreshNode(b) => Some(b)
                 }
                 // Get pushable effects for this binding
                 val effectsForBinding = binding.flatMap(pushableByTarget.get).getOrElse(Nil)
@@ -2550,6 +2632,7 @@ object QueryPlanner {
                         .orElse(findBindingFromIdLookups(expr, idLookups))
                         .orElse(findLocalIdBinding(onTarget))
                     case AnchorTarget.AllNodes => findLocalIdBinding(onTarget)
+                    case AnchorTarget.FreshNode(b) => Some(b)
                   }
                   binding match {
                     case Some(b) if effectTargets.contains(b) => (deps, (anchor, b) :: targets, others)
@@ -2651,6 +2734,7 @@ object QueryPlanner {
               .orElse(findBindingFromIdLookups(expr, idLookups))
               .orElse(findLocalIdBinding(onTarget))
           case AnchorTarget.AllNodes => findLocalIdBinding(onTarget)
+          case AnchorTarget.FreshNode(b) => Some(b)
         }
         QueryPlan.Anchor(target, push(onTarget, binding.orElse(anchorContext)))
 
@@ -2850,6 +2934,7 @@ object QueryPlanner {
   private def extractProjectTargets(plan: QueryPlan): List[Symbol] = plan match {
     case QueryPlan.Project(columns, _, _) => columns.map(_.as)
     case QueryPlan.Distinct(child) => extractProjectTargets(child)
+    case QueryPlan.Union(lhs, _) => extractProjectTargets(lhs)
     case other =>
       throw new IllegalStateException(
         s"Expected Project or Distinct(Project) at top of UNION branch, got: ${other.getClass.getSimpleName}",

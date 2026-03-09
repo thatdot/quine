@@ -484,11 +484,11 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
   it should "plan CREATE without AllNodes anchor" in {
     val plan = planQuery("CREATE (n:Foo {x: 1}) RETURN n")
 
+    // CreateNode effects are rewritten into FreshNode anchors with SetLabels/SetProperties
     containsOperator(
       plan,
       {
-        case QueryPlan.LocalEffect(effects, _) =>
-          effects.exists(_.isInstanceOf[LocalQueryEffect.CreateNode])
+        case QueryPlan.Anchor(AnchorTarget.FreshNode(_), _) => true
         case _ => false
       },
     ) shouldBe true

@@ -846,6 +846,9 @@ object DefaultStateInstantiator extends StateInstantiator {
       case d @ StateDescriptor.Union(id, parentId, _, _, lhsId, rhsId) =>
         new UnionState(id, parentId, d.mode, lhsId, rhsId)
 
+      case d @ StateDescriptor.Optional(id, parentId, _, _, innerId, nullBindings, contextBridgeId) =>
+        new OptionalState(id, parentId, d.mode, innerId, nullBindings, contextBridgeId)
+
       case d @ StateDescriptor.Sequence(id, parentId, _, _, firstId, andThenId, contextBridgeId, contextFlow) =>
         new SequenceState(id, parentId, d.mode, firstId, andThenId, contextBridgeId, contextFlow)
 
@@ -1798,6 +1801,169 @@ class UnionState(
   override def kickstart(context: NodeContext, actor: ActorRef): Unit = ()
 }
 
+/** OptionalState implements OPTIONAL MATCH (LEFT JOIN) semantics.
+  *
+  * Implements the Cypher pattern:
+  * {{{
+  * MATCH (p) OPTIONAL MATCH (p)-[:KNOWS]->(friend) RETURN p, friend
+  * }}}
+  *
+  * The LEFT JOIN invariant is: every context row produces at least one output row.
+  * If the inner pattern has matches, those are emitted directly. If it has none,
+  * a "null-padded" row is emitted instead, where every binding introduced only by
+  * the inner pattern (the `nullBindings` set) is set to `Null`.
+  *
+  * For example, with `nullBindings = Set('friend)`:
+  *   - Inner matches:    `{p: 42, friend: 99}`  (real result)
+  *   - No inner matches: `{p: 42, friend: null}` (null-padded default)
+  *
+  * ==Eager mode==
+  *
+  * Wait for inner to complete, then emit context + results or context + nulls.
+  *
+  * ==Lazy mode (retraction model)==
+  *
+  * Detects zero-crossings by checking `innerResult.isEmpty` before and after
+  * applying each delta:
+  *
+  *   - '''Context arrives (no inner matches yet):''' emit the null-padded default
+  *     immediately, preserving the LEFT JOIN invariant from the start.
+  *
+  *   - '''empty → non-empty (first inner match):''' retract the null-padded
+  *     default and assert real results, combined into a single atomic delta
+  *     (one `notify` in → one `emit` out).
+  *
+  *   - '''non-empty → empty (last inner match retracts):''' retract real results
+  *     and re-emit the null-padded default, again as a single atomic delta.
+  *
+  *   - '''non-empty → non-empty (inner results change but don't hit zero):'''
+  *     pass through the delta as-is.
+  *
+  * @param nullBindings the set of binding names introduced exclusively by the
+  *                     inner (OPTIONAL MATCH) side, to be padded with `Null`
+  *                     when there are no inner matches
+  * @param contextBridgeId optional bridge state that forwards context from the
+  *                        preceding clause into the inner pattern
+  */
+class OptionalState(
+  val id: StandingQueryId,
+  val publishTo: StandingQueryId,
+  val mode: RuntimeMode,
+  val innerId: StandingQueryId,
+  val nullBindings: Set[Symbol],
+  val contextBridgeId: StandingQueryId,
+) extends QueryState
+    with PublishingState {
+
+  import com.thatdot.quine.graph.behavior.QuinePatternCommand
+  import com.thatdot.quine.language.ast.Value
+
+  private var receivedContext: Delta.T = Delta.empty
+
+  // Eager mode: context and inner can arrive in either order, so we buffer both
+  // and emit once we have both pieces.
+  private var contextReceived: Boolean = false
+  private var innerResult: Delta.T = Delta.empty
+  private var innerNotified: Boolean = false
+
+  // Lazy mode: tracks whether we've emitted the null-padded default.
+  // Zero-crossing detection uses innerResult.isEmpty instead of a separate counter.
+  private var defaultEmitted: Boolean = false
+
+  // Produces the LEFT JOIN fallback: each context row extended with Null for every inner-only binding
+  private def buildNullPaddedDelta(): Delta.T = {
+    val nullValues = nullBindings.map(sym => sym -> Value.Null).toMap
+    receivedContext.map { case (ctx, mult) =>
+      (ctx ++ nullValues, mult)
+    }
+  }
+
+  private def tryEmitEager(actor: ActorRef): Unit =
+    if (contextReceived && innerNotified) {
+      if (innerResult.isEmpty) {
+        // Inner completed with no results - emit null-padded
+        val nullPadded = buildNullPaddedDelta()
+        QPTrace.log(s"Optional $id: eager mode - emitting null-padded (inner had no results)")
+        emit(nullPadded, actor)
+      } else {
+        // Inner has results - inner received context via bridge, so results already include it
+        val outputDelta = innerResult
+        QPTrace.log(s"Optional $id: eager mode - emitting ${outputDelta.size} combined results")
+        emit(outputDelta, actor)
+      }
+    }
+
+  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
+    QPTrace.log(
+      s"Optional $id: notify from=$from deltaSize=${delta.size} " +
+      s"innerNotified=$innerNotified contextReceived=$contextReceived mode=$mode",
+    )
+
+    val isContextInjection = from != innerId
+
+    if (isContextInjection) {
+      // Receiving context from parent (preceding clause)
+      receivedContext = Delta.add(receivedContext, delta)
+      contextReceived = true
+
+      // Forward context to inner via ContextBridge
+      QPTrace.log(s"Optional $id: forwarding context to bridge $contextBridgeId")
+      actor ! QuinePatternCommand.QueryUpdate(contextBridgeId, id, delta)
+
+      mode match {
+        case RuntimeMode.Eager =>
+          // Try to emit if we now have both pieces
+          tryEmitEager(actor)
+        case RuntimeMode.Lazy if !defaultEmitted =>
+          val nullPadded = buildNullPaddedDelta()
+          if (nullPadded.nonEmpty) {
+            QPTrace.log(s"Optional $id: emitting null-padded default on context receipt")
+            emit(nullPadded, actor)
+            defaultEmitted = true
+          }
+        case _ => ()
+      }
+    } else {
+      innerNotified = true
+      val hadMatches = innerResult.nonEmpty
+      innerResult = Delta.add(innerResult, delta)
+      val hasMatches = innerResult.nonEmpty
+
+      mode match {
+        case RuntimeMode.Eager =>
+          tryEmitEager(actor)
+
+        case RuntimeMode.Lazy =>
+          QPTrace.log(
+            s"Optional $id: lazy mode - hadMatches=$hadMatches hasMatches=$hasMatches",
+          )
+
+          (hadMatches, hasMatches) match {
+            case (false, true) if defaultEmitted =>
+              // Transitioning from no matches to having matches:
+              // Retract the null-padded default and assert real results in a single atomic delta.
+              QPTrace.log(s"Optional $id: retracting null-padded default, emitting real results")
+              defaultEmitted = false
+              val nullPaddedRetraction = buildNullPaddedDelta().view.mapValues(-_).toMap
+              emit(Delta.add(nullPaddedRetraction, delta), actor)
+            case (true, false) =>
+              // Transitioning from having matches to no matches:
+              // Retract the final real results and re-emit the null-padded default in a single atomic delta.
+              QPTrace.log(s"Optional $id: retracting final real results, re-emitting null-padded default")
+              defaultEmitted = true
+              emit(Delta.add(delta, buildNullPaddedDelta()), actor)
+            case (true, true) =>
+              emit(delta, actor)
+            case _ => ()
+          }
+      }
+    }
+  }
+
+  // Optional is NOT a leaf - it waits for context from parent
+  override def kickstart(context: NodeContext, actor: ActorRef): Unit = ()
+}
+
 class SequenceState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
@@ -2396,6 +2562,20 @@ class AnchorState(
               dispatchToTarget(nodeId)
             }
         }
+
+      case AnchorTarget.FreshNode(binding) =>
+        // Generate a fresh node ID and dispatch to that node
+        // The node will be created on-demand when it receives the first message
+        val freshId = graph.idProvider.newQid()
+        QPTrace.log(
+          s"ANCHOR-FRESH-NODE id=$id binding=${binding.name} freshId=${graph.idProvider.qidToPrettyString(freshId)}",
+        )
+        // Add the binding to injectedContext so the dispatched plan can reference the new node
+        val contextWithBinding = injectedContext + (binding -> Value.NodeId(freshId))
+        dispatchToTarget(freshId, contextWithBinding)
+
+      // In Eager mode, we always dispatch exactly one target for FreshNode
+      // No need to emit empty delta - we always have one result
     }
   }
 
@@ -2510,6 +2690,16 @@ class AnchorState(
               dispatchToTarget(nodeId, ctx.bindings)
             }
         }
+
+      case AnchorTarget.FreshNode(binding) =>
+        // Generate a fresh node ID and dispatch to that node with context
+        val freshId = graph.idProvider.newQid()
+        QPTrace.log(
+          s"Anchor $id: FreshNode with context binding=${binding.name} freshId=${graph.idProvider.qidToPrettyString(freshId)}",
+        )
+        // Combine the incoming context with the new binding
+        val contextWithBinding = ctx.bindings + (binding -> Value.NodeId(freshId))
+        dispatchToTarget(freshId, contextWithBinding)
     }
   }
 
@@ -2530,6 +2720,7 @@ class AnchorState(
     val targetType = target match {
       case AnchorTarget.Computed(_) => "Computed"
       case AnchorTarget.AllNodes => "AllNodes"
+      case AnchorTarget.FreshNode(binding) => s"FreshNode(${binding.name})"
     }
     QPTrace.dispatchToNode(originNodeId, qid, sqid, s"Anchor($targetType)")
     QPTrace.log(s"Anchor dispatch: injectedContext keys=[${injectedContext.keys.map(_.name).mkString(",")}]")

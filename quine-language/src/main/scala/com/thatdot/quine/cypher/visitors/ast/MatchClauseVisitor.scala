@@ -9,6 +9,7 @@ import com.thatdot.quine.language.ast.Source
 object MatchClauseVisitor extends CypherBaseVisitor[Option[ReadingClause]] {
   override def visitOC_Match(ctx: OC_MatchContext): Option[ReadingClause] = {
     val src = Source.TextSource(start = ctx.start.getStartIndex, end = ctx.stop.getStopIndex)
+    val isOptional = ctx.OPTIONAL() != null
 
     val maybeWhere = Option(ctx.oC_Where()).map(_.accept(WhereClauseVisitor))
 
@@ -18,6 +19,7 @@ object MatchClauseVisitor extends CypherBaseVisitor[Option[ReadingClause]] {
       source = src,
       patterns = patterns,
       maybePredicate = maybeWhere,
+      isOptional = isOptional,
     )
   }
 }

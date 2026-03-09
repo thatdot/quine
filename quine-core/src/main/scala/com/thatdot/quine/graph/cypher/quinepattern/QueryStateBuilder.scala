@@ -141,6 +141,17 @@ object StateDescriptor {
     rhsId: StandingQueryId,
   ) extends StateDescriptor
 
+  /** State for Optional operator (OPTIONAL MATCH semantics) */
+  case class Optional(
+    id: StandingQueryId,
+    parentId: StandingQueryId,
+    mode: RuntimeMode,
+    plan: QueryPlan.Optional,
+    innerId: StandingQueryId,
+    nullBindings: Set[Symbol],
+    contextBridgeId: StandingQueryId, // Bridge that forwards context to inner's entry point
+  ) extends StateDescriptor
+
   /** State for Sequence operator */
   case class Sequence(
     id: StandingQueryId,
@@ -545,6 +556,31 @@ object QueryStateBuilder {
         val desc = StateDescriptor.Union(id, parentId, mode, p, lhsId, rhsId)
         (ctxAfterRhs.addState(desc, isLeaf = false), id)
 
+      case p @ QueryPlan.Optional(inner, nullBindings) =>
+        val id = StandingQueryId.fresh()
+        // Create a bridge ID for forwarding context to inner's entry point
+        val bridgeId = StandingQueryId.fresh()
+        // Use buildPlanWithContextInjection to find inner's entry point
+        val (ctxAfterInner, innerId, maybeEntryPointId) =
+          buildPlanWithContextInjection(inner, id, mode, ctx, fallbackOutput, bridgeId)
+
+        // Inner plan always comes from planMatch which produces Anchor/Expand plans,
+        // so there is always an entry point. Assert this invariant.
+        val entryPointId = maybeEntryPointId.getOrElse(
+          throw new IllegalStateException(
+            s"Optional inner plan must have an entry point for context injection, but none was found for plan: $inner",
+          ),
+        )
+        // Bridge receives from Optional and forwards to inner's entry point
+        val bridgeDesc = StateDescriptor.ContextBridge(bridgeId, entryPointId, mode, id)
+        val ctxWithBridge = ctxAfterInner
+          .addState(bridgeDesc, isLeaf = false)
+          .markNotLeaf(entryPointId) // Entry point is no longer a leaf - it receives from bridge
+
+        val desc =
+          StateDescriptor.Optional(id, parentId, mode, p, innerId, nullBindings, bridgeId)
+        (ctxWithBridge.addState(desc, isLeaf = false), id)
+
       case p @ QueryPlan.Sequence(first, andThen, contextFlow) =>
         val id = StandingQueryId.fresh()
         // Build first child
@@ -928,6 +964,40 @@ object QueryStateBuilder {
       case _: QueryPlan.Union =>
         val (ctxAfter, rootId) = buildPlan(plan, parentId, mode, ctx, fallbackOutput)
         (ctxAfter, rootId, None)
+
+      // For Optional, it IS the entry point - it receives context from parent and forwards to inner
+      case p @ QueryPlan.Optional(inner, nullBindings) =>
+        val id = StandingQueryId.fresh()
+        // Create Optional's own bridge for forwarding context to inner
+        val optionalBridgeId = StandingQueryId.fresh()
+        // Find inner's entry point
+        val (ctxAfterInner, innerId, maybeInnerEntry) =
+          buildPlanWithContextInjection(inner, id, mode, ctx, fallbackOutput, optionalBridgeId)
+
+        // Inner plan always comes from planMatch which produces Anchor/Expand plans,
+        // so there is always an entry point. Assert this invariant.
+        val innerEntryId = maybeInnerEntry.getOrElse(
+          throw new IllegalStateException(
+            s"Optional inner plan must have an entry point for context injection, but none was found for plan: $inner",
+          ),
+        )
+        // Bridge receives from Optional and forwards to inner's entry point
+        val bridgeDesc = StateDescriptor.ContextBridge(optionalBridgeId, innerEntryId, mode, id)
+        val ctxWithBridge = ctxAfterInner
+          .addState(bridgeDesc, isLeaf = false)
+          .markNotLeaf(innerEntryId)
+
+        val desc = StateDescriptor.Optional(
+          id,
+          parentId,
+          mode,
+          p,
+          innerId,
+          nullBindings,
+          optionalBridgeId,
+        )
+        // Optional IS the entry point - it receives context from parent and combines with inner results
+        (ctxWithBridge.addState(desc, isLeaf = false), id, Some(id))
 
       // For other leaf operators that generate their own context (LocalId, LocalProperty, etc.),
       // there's no entry point to inject - they don't need context from first

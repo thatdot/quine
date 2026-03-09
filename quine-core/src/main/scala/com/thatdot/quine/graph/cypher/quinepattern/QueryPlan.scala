@@ -173,6 +173,27 @@ object QueryPlan {
     def children: Seq[QueryPlan] = Seq(lhs, rhs)
   }
 
+  /** Optional match wrapper (implements OPTIONAL MATCH semantics).
+    *
+    * Wraps an inner match plan. If inner produces results, those are emitted.
+    * If inner produces no results, a null-padded result is emitted instead.
+    *
+    * EAGER MODE: Wait for inner to complete. If no results, emit null-padded.
+    * LAZY MODE (Retraction model):
+    *   - On kickstart: emit null-padded default immediately
+    *   - When inner matches arrive: retract null-padded, emit real results
+    *   - When inner retracts back to zero: re-emit null-padded default
+    *
+    * @param inner The inner match plan (what would normally be required to match)
+    * @param nullBindings Bindings from inner that should be null when no match
+    */
+  case class Optional(
+    inner: QueryPlan,
+    nullBindings: Set[Symbol],
+  ) extends QueryPlan {
+    def children: Seq[QueryPlan] = Seq(inner)
+  }
+
   // ============================================================
   // SEQUENCE (Imperative extension for WITH clauses)
   // ============================================================
@@ -463,6 +484,16 @@ object AnchorTarget {
 
   /** All nodes in namespace (scan in eager mode, hook in lazy mode) */
   case object AllNodes extends AnchorTarget
+
+  /** Generate a fresh node ID at runtime and bind it to the given symbol.
+    *
+    * Used for unanchored CREATE operations that introduce new nodes.
+    * The fresh ID is generated via idProvider.newQid() and the binding
+    * is added to the context so subsequent operations can reference the node.
+    *
+    * @param binding Symbol to bind the new node ID to
+    */
+  case class FreshNode(binding: Symbol) extends AnchorTarget
 }
 
 // ============================================================

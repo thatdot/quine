@@ -61,6 +61,7 @@ object QuinePatternExpressionInterpreter {
           case Value.NodeId(qid) => pure(Value.NodeId(qid))
           case Value.Bytes(bytes) => pure(Value.NodeId(QuineId(bytes)))
           case Value.Node(id, _, _) => pure(Value.NodeId(id))
+          case Value.Null => pure(Value.Null)
           case other =>
             liftF(CypherAndQuineHelpers.getNode(other).map(n => Value.NodeId(n.id)))
         }

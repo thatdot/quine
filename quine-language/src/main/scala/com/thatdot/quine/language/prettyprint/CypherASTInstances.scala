@@ -146,14 +146,15 @@ trait CypherASTInstances extends ASTInstances {
 
   implicit lazy val readingClausePrettyPrint: PrettyPrint[ReadingClause] =
     PrettyPrint.instance {
-      case ReadingClause.FromPatterns(source, patterns, maybePredicate) =>
+      case ReadingClause.FromPatterns(source, patterns, maybePredicate, isOptional) =>
         val patternDocs = patterns.map(graphPatternPrettyPrint.doc)
         val predDoc = maybePredicate match {
           case Some(pred) => concat(line, text("WHERE "), expressionPrettyPrint.doc(pred))
           case None => empty
         }
+        val matchKeyword = if (isOptional) "OPTIONAL MATCH [" else "MATCH ["
         concat(
-          text("MATCH ["),
+          text(matchKeyword),
           nest(1, concat(line, intercalate(concat(text(","), line), patternDocs))),
           line,
           text("]"),

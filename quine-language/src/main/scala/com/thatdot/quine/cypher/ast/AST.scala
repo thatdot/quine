@@ -67,8 +67,12 @@ sealed trait ReadingClause {
 case class YieldItem(resultField: Symbol, boundAs: Either[CypherIdentifier, QuineIdentifier])
 
 object ReadingClause {
-  case class FromPatterns(source: Source, patterns: List[GraphPattern], maybePredicate: Option[Expression])
-      extends ReadingClause
+  case class FromPatterns(
+    source: Source,
+    patterns: List[GraphPattern],
+    maybePredicate: Option[Expression],
+    isOptional: Boolean = false,
+  ) extends ReadingClause
   case class FromUnwind(source: Source, list: Expression, as: Either[CypherIdentifier, QuineIdentifier])
       extends ReadingClause
   case class FromProcedure(source: Source, name: Symbol, args: List[Expression], yields: List[YieldItem])
