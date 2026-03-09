@@ -6,7 +6,7 @@ import scala.concurrent.Promise
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
-import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig}
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.cypher.quinepattern.CypherAndQuineHelpers.quineValueToPatternValue
@@ -24,6 +24,7 @@ import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.QuinePatternQuery
 import com.thatdot.quine.serialization.ProtobufSchemaCache
+import com.thatdot.quine.util.Log.implicits._
 
 class QuinePatternOutput(
   config: QuinePatternQuery,
@@ -72,10 +73,10 @@ class QuinePatternOutput(
             .map { case (meta: StandingQueryResult.Meta, qc: QueryContext) =>
               val newData = qc.environment.map { case (keySym, cypherVal) =>
                 keySym.name -> Expr.toQuineValue(cypherVal).getOrElse {
-//                  logger.warn(
-//                    log"""Cypher Value: ${cypherVal} could not be represented as a Quine value in Standing
-//                         |Query output: ${Safe(name)}. Using `null` instead.""".cleanLines,
-//                  )
+                  logger.warn(
+                    log"""Cypher Value: ${cypherVal} could not be represented as a Quine value in Standing
+                         |Query output: ${Safe(name)}. Using `null` instead.""".cleanLines,
+                  )
                   QuineValue.Null
                 }
               }
@@ -120,6 +121,8 @@ class QuinePatternOutput(
             planned.returnColumns,
             planned.outputNameMapping,
             queryName = Some(name),
+            // `atTime` is `None` by default (current time)—this is where we would
+            // pass in `atTime` for historically aware output queries (if we chose to do that)
           )
 
           Source

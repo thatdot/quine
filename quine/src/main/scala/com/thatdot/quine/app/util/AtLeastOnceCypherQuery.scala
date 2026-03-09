@@ -58,6 +58,8 @@ final case class AtLeastOnceCypherQuery(
           .query(
             query,
             namespace = intoNamespace,
+            // `atTime` is `None` because we only want current time here—this is where we would
+            // pass in `atTime` for historically aware queries (if we chose to do support that here)
             atTime = None,
             parameters = Map(cypherParameterName -> value),
           )

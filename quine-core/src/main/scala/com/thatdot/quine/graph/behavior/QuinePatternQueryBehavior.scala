@@ -19,7 +19,7 @@ import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineMessage, QuineRefOps}
 import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
 import com.thatdot.quine.graph.{BaseNodeActor, NamespaceId, StandingQueryId, StandingQueryOpsGraph}
 import com.thatdot.quine.language.{ast => Pattern}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds}
 
 /** `QuinePatternCommand` represents commands or instructions used within the Quine graph processing system.
   * This sealed trait defines a hierarchy of messages that are utilized for managing and interacting
@@ -63,6 +63,7 @@ object QuinePatternCommand {
     injectedContext: Map[Symbol, Pattern.Value] = Map.empty, // Query context bindings to seed into state graph
     returnColumns: Option[Set[Symbol]] = None, // Columns to include in output (from RETURN clause)
     outputNameMapping: Map[Symbol, Symbol] = Map.empty, // Maps internal binding IDs to human-readable output names
+    atTime: Option[Milliseconds] = None,
   ) extends QuinePatternCommand
 
   case class QueryUpdate(
@@ -118,8 +119,20 @@ trait QuinePatternQueryBehavior
           injectedContext,
           returnColumns,
           outputNameMapping,
+          atTime,
         ) =>
-      loadQueryPlan(sqid, plan, mode, params, namespace, output, injectedContext, returnColumns, outputNameMapping)
+      loadQueryPlan(
+        sqid,
+        plan,
+        mode,
+        params,
+        namespace,
+        output,
+        injectedContext,
+        returnColumns,
+        outputNameMapping,
+        atTime,
+      )
     case QuinePatternCommand.QueryUpdate(stateToUpdate, from, delta) =>
       routeNotification(stateToUpdate, from, delta)
     case QuinePatternCommand.UnregisterState(queryId) =>
@@ -211,19 +224,21 @@ trait QuinePatternQueryBehavior
     injectedContext: Map[Symbol, Pattern.Value],
     returnColumns: Option[Set[Symbol]],
     outputNameMapping: Map[Symbol, Symbol],
+    atTime: Option[Milliseconds],
   ): Unit =
     try {
       // Build the state graph from the plan
       val stateGraph =
         QueryStateBuilder.build(
-          plan,
-          mode,
-          params,
-          namespace,
-          output,
-          injectedContext,
-          returnColumns,
-          outputNameMapping,
+          plan = plan,
+          mode = mode,
+          params = params,
+          namespace = namespace,
+          output = output,
+          injectedContext = injectedContext,
+          returnColumns = returnColumns,
+          outputNameMapping = outputNameMapping,
+          atTime = atTime,
         )
 
       // Create node context with current node state
@@ -246,8 +261,8 @@ trait QuinePatternQueryBehavior
         import com.thatdot.quine.graph.cypher.quinepattern.{Delta, OutputTarget}
         import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
         output match {
-          case OutputTarget.RemoteState(originNode, stateId, ns, dispatchId) =>
-            val stqid = SpaceTimeQuineId(originNode, ns, None)
+          case OutputTarget.RemoteState(originNode, stateId, ns, dispatchId, atTime) =>
+            val stqid = SpaceTimeQuineId(originNode, ns, atTime)
             graph.relayTell(stqid, QuinePatternCommand.QueryUpdate(stateId, dispatchId, Delta.empty))
           case OutputTarget.HostedState(hostActorRef, stateId, dispatchId) =>
             hostActorRef ! QuinePatternCommand.QueryUpdate(stateId, dispatchId, Delta.empty)

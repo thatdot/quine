@@ -396,6 +396,8 @@ final class QuineApp(
                       V2OutputTarget.StandingQuerySink(sq.query.id, inNamespace),
                       returnColumns,
                       outputNameMapping,
+                      // `atTime` is `None` by default (current time)—this is where we would
+                      // pass in `atTime` for historically aware Standing Queries (if we wanted to do that)
                     )
                   case _ => // Non-QuinePattern queries don't need additional loading
                 }

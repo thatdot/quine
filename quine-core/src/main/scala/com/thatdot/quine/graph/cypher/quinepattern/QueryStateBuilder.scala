@@ -2,6 +2,7 @@ package com.thatdot.quine.graph.cypher.quinepattern
 
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId}
 import com.thatdot.quine.language.ast.Value
+import com.thatdot.quine.model.Milliseconds
 
 /** Result of building a query state graph from a QueryPlan.
   *
@@ -9,20 +10,26 @@ import com.thatdot.quine.language.ast.Value
   * with no Actor dependencies. It can be inspected, tested, and then
   * installed into an Actor separately.
   *
-  * @param rootId The output state that receives final results
-  * @param states All states indexed by their ID
-  * @param leaves States that need initial kickstart (no upstream dependencies)
-  * @param edges Parent-child relationships (child -> parent, for notification flow)
+  * @param rootId            The output state that receives final results
+  * @param states            All states indexed by their ID
+  * @param leaves            States that need initial kickstart (no upstream dependencies)
+  * @param edges             Parent-child relationships (child -> parent, for notification flow)
+  * @param params            Query parameters (e.g., $that)
+  * @param injectedContext   Context bindings injected from parent (e.g., from Anchor dispatch)
+  * @param returnColumns     Columns from outermost RETURN/Project clause for output filtering
+  * @param outputNameMapping Maps internal binding IDs to human-readable output names
+  * @param atTime            Historical timestamp to query; None for current state
   */
 case class StateGraph(
   rootId: StandingQueryId,
   states: Map[StandingQueryId, StateDescriptor],
   leaves: Set[StandingQueryId],
-  edges: Map[StandingQueryId, StandingQueryId], // child -> parent
-  params: Map[Symbol, Value], // Query parameters (e.g., $that)
-  injectedContext: Map[Symbol, Value], // Context bindings injected from parent (e.g., from Anchor dispatch)
-  returnColumns: Option[Set[Symbol]], // Columns from outermost RETURN/Project clause for output filtering
-  outputNameMapping: Map[Symbol, Symbol] = Map.empty, // Maps internal binding IDs to human-readable output names
+  edges: Map[StandingQueryId, StandingQueryId],
+  params: Map[Symbol, Value],
+  injectedContext: Map[Symbol, Value],
+  returnColumns: Option[Set[Symbol]],
+  outputNameMapping: Map[Symbol, Symbol] = Map.empty,
+  atTime: Option[Milliseconds],
 )
 
 /** Describes a state to be instantiated.
@@ -358,12 +365,14 @@ object OutputTarget {
     * @param stateId The state on originNode that should receive the results
     * @param namespace The namespace for message routing
     * @param dispatchId The sqid used when dispatching, used as 'from' so the state can identify this as expected results
+    * @param atTime Historical timestamp to query; None for current state
     */
   case class RemoteState(
     originNode: com.thatdot.common.quineid.QuineId,
     stateId: StandingQueryId,
     namespace: com.thatdot.quine.graph.NamespaceId,
     dispatchId: StandingQueryId,
+    atTime: Option[Milliseconds],
   ) extends OutputTarget
 
   /** Deliver to a state on the hosting actor (for NonNodeActor subscriptions).
@@ -412,14 +421,15 @@ object QueryStateBuilder {
 
   /** Build a state graph from a query plan.
     *
-    * @param plan            The query plan to build from
-    * @param mode            Eager or Lazy execution mode
+    * @param plan              The query plan to build from
+    * @param mode              Eager or Lazy execution mode
     * @param params            Query parameters
     * @param namespace         The namespace for this query
     * @param output            Where to deliver results
     * @param injectedContext   Context bindings from parent (e.g., Anchor dispatch), seeded into Unit states
     * @param returnColumns     Columns to include in output (from RETURN clause), extracted before pushIntoAnchors
     * @param outputNameMapping Maps internal binding IDs to human-readable output names
+    * @param atTime            Historical timestamp to query; None for current state
     * @return A StateGraph ready for installation
     */
   def build(
@@ -431,6 +441,7 @@ object QueryStateBuilder {
     injectedContext: Map[Symbol, Value] = Map.empty,
     returnColumns: Option[Set[Symbol]] = None,
     outputNameMapping: Map[Symbol, Symbol] = Map.empty,
+    atTime: Option[Milliseconds] = None,
   ): StateGraph = {
     val rootId = StandingQueryId.fresh()
     val outputDesc = StateDescriptor.Output(rootId, mode, output)
@@ -449,6 +460,7 @@ object QueryStateBuilder {
       injectedContext = injectedContext,
       returnColumns = returnColumns,
       outputNameMapping = outputNameMapping,
+      atTime = atTime,
     )
   }
 

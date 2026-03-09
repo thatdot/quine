@@ -75,7 +75,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     atTime: Option[Milliseconds],
   ): (Source[UiNode[QuineId], NotUsed], Boolean, Boolean) = {
     // QuinePattern branch - early return to keep original code unchanged below
-    if (isQuinePatternEnabled) return quinePatternQueryNodes(query, namespace)
+    if (isQuinePatternEnabled) return quinePatternQueryNodes(query, namespace, atTime)
 
     val res: CypherRunningQuery = cypher.queryCypherValues(
       query.text,
@@ -140,7 +140,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     requestTimeout: Duration = Duration.Inf,
   ): (Source[UiEdge[QuineId], NotUsed], Boolean, Boolean) = {
     // QuinePattern branch - early return to keep original code unchanged below
-    if (isQuinePatternEnabled) return quinePatternQueryEdges(query, namespace)
+    if (isQuinePatternEnabled) return quinePatternQueryEdges(query, namespace, atTime)
 
     val res: CypherRunningQuery = cypher.queryCypherValues(
       query.text,
@@ -190,7 +190,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     atTime: Option[Milliseconds],
   ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) = {
     // QuinePattern branch - early return to keep original code unchanged below
-    if (isQuinePatternEnabled) return quinePatternQueryGeneric(query, namespace)
+    if (isQuinePatternEnabled) return quinePatternQueryGeneric(query, namespace, atTime)
 
     query.text match {
       case Explain(toExplain) =>
@@ -228,6 +228,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
   private def executeQuinePattern(
     query: CypherQuery,
     namespace: NamespaceId,
+    atTime: Option[Milliseconds],
   ): (Source[QPQueryContext, NotUsed], QueryPlanner.PlannedQuery) = {
     import com.thatdot.quine.language.phases.UpgradeModule._
     requireQuinePatternEnabled()
@@ -249,14 +250,15 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
 
     val promise = Promise[Seq[QPQueryContext]]()
     qpGraph.getLoader ! LoadQuery(
-      StandingQueryId.fresh(),
-      planned.plan,
-      RuntimeMode.Eager,
-      parameters,
-      namespace,
-      OutputTarget.EagerCollector(promise),
-      planned.returnColumns,
-      planned.outputNameMapping,
+      standingQueryId = StandingQueryId.fresh(),
+      queryPlan = planned.plan,
+      mode = RuntimeMode.Eager,
+      params = parameters,
+      namespace = namespace,
+      output = OutputTarget.EagerCollector(promise),
+      returnColumns = planned.returnColumns,
+      outputNameMapping = planned.outputNameMapping,
+      atTime = atTime,
     )
 
     val source = Source
@@ -269,9 +271,10 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
   private def quinePatternQueryNodes(
     query: CypherQuery,
     namespace: NamespaceId,
+    atTime: Option[Milliseconds],
   ): (Source[UiNode[QuineId], NotUsed], Boolean, Boolean) = {
     logger.info(safe"Executing node query using QuinePattern interpreter: ${Safe(query.text.take(100))}")
-    val (source, _) = executeQuinePattern(query, namespace)
+    val (source, _) = executeQuinePattern(query, namespace, atTime)
     val results = source
       .mapConcat { qpCtx =>
         qpCtx.bindings.values.flatMap {
@@ -295,9 +298,10 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
   private def quinePatternQueryEdges(
     query: CypherQuery,
     namespace: NamespaceId,
+    atTime: Option[Milliseconds],
   ): (Source[UiEdge[QuineId], NotUsed], Boolean, Boolean) = {
     logger.info(safe"Executing edge query using QuinePattern interpreter: ${Safe(query.text.take(100))}")
-    val (source, _) = executeQuinePattern(query, namespace)
+    val (source, _) = executeQuinePattern(query, namespace, atTime)
     val results = source
       .mapConcat { qpCtx =>
         qpCtx.bindings.values.flatMap { case v =>
@@ -316,9 +320,10 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
   private def quinePatternQueryGeneric(
     query: CypherQuery,
     namespace: NamespaceId,
+    atTime: Option[Milliseconds],
   ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) = {
     logger.info(safe"Executing query using QuinePattern interpreter: ${Safe(query.text.take(100))}")
-    val (source, planned) = executeQuinePattern(query, namespace)
+    val (source, planned) = executeQuinePattern(query, namespace, atTime)
     val columnNames: Seq[String] = planned.outputNameMapping.values.map(_.name).toSeq
     val rowsSource = source.map { qpCtx =>
       columnNames.map { col =>

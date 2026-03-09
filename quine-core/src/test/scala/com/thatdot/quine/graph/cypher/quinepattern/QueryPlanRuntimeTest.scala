@@ -18,7 +18,7 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher.quinepattern.OutputTarget.LazyResultCollector
 import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan._
-import com.thatdot.quine.graph.quinepattern.{LoadQuery, NonNodeActor}
+import com.thatdot.quine.graph.quinepattern.{LoadQuery, NonNodeActor, QuinePatternOpsGraph}
 import com.thatdot.quine.graph.{
   GraphService,
   NamespaceId,
@@ -30,7 +30,7 @@ import com.thatdot.quine.graph.{
   defaultNamespaceId,
 }
 import com.thatdot.quine.language.ast.{Expression, Source, Value}
-import com.thatdot.quine.model.{PropertyValue, QuineValue}
+import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
 /** Runtime tests for QuinePattern interpreter.
@@ -8338,6 +8338,1546 @@ class QueryPlanRuntimeTest
       // handleNodeWake from being called.
       collector.awaitFirstDelta(5.seconds) shouldBe true
       collector.positiveCount shouldBe 1
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  // ============================================================
+  // HISTORICAL QUERY (atTime) TESTS
+  // ============================================================
+
+  "QuinePattern Historical Queries" should "return properties as they existed at the specified time in Eager mode" in {
+    val graph = makeGraph("historical-eager-prop-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      val t1TargetPropValue = 1L
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(t1TargetPropValue)),
+        5.seconds,
+      )
+      // at t1, targetProp is set to `1`
+      val t1 = Milliseconds.currentTime()
+
+      Thread.sleep(3) // now at t2
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(2L)),
+        5.seconds,
+      )
+      // at t2, targetProp is set to `2`
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results.head.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t1TargetPropValue))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return properties as they existed at the specified time in Lazy mode" in {
+    val graph = makeGraph("historical-lazy-prop-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      val t1TargetPropValue = 1L
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(t1TargetPropValue)),
+        5.seconds,
+      )
+      // at t1, targetProp is set to `1`
+      val t1 = Milliseconds.currentTime()
+
+      Thread.sleep(3) // now at t2
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(2L)),
+        5.seconds,
+      )
+      // at t2, targetProp is set to `2`
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val delta = collector.allDeltas.head
+      val ctx = delta.keys.head
+      ctx.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t1TargetPropValue))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return current properties when atTime is None in Eager mode" in {
+    val graph = makeGraph("current-eager-prop-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(1L)),
+        5.seconds,
+      )
+      // at t1, targetProp is set to `1`
+
+      Thread.sleep(3) // now at t2
+
+      val t2TargetPropValue = 2L
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(t2TargetPropValue)),
+        5.seconds,
+      )
+      // at t2, targetProp is set to `2`
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = None,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results.head.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t2TargetPropValue))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return current properties when atTime is None in Lazy mode" in {
+    val graph = makeGraph("current-lazy-prop-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(1L)),
+        5.seconds,
+      )
+      // at t1, targetProp is set to `1`
+
+      Thread.sleep(3) // now at t2
+
+      val t2TargetPropValue = 2L
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(t2TargetPropValue)),
+        5.seconds,
+      )
+      // at t2, targetProp is set to `2`
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = None,
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val delta = collector.allDeltas.head
+      val ctx = delta.keys.head
+      ctx.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t2TargetPropValue))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return deleted properties as they existed at historical time in Eager mode" in {
+    val graph = makeGraph("historical-eager-prop-deletion-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      val t1TargetPropValue = 42L
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(t1TargetPropValue)),
+        5.seconds,
+      )
+      // at t1, targetProp is set
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3) // now at t2
+
+      Await.result(
+        graph.literalOps(namespace).removeProp(nodeId, "targetProp"),
+        5.seconds,
+      )
+      // at t2, targetProp is deleted
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results.head.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t1TargetPropValue))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return deleted properties as they existed at historical time in Lazy mode" in {
+    val graph = makeGraph("historical-lazy-prop-deletion-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      val t1TargetPropValue = 42L
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "targetProp", QuineValue.Integer(t1TargetPropValue)),
+        5.seconds,
+      )
+      // at t1, targetProp is set
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3) // now at t2
+
+      Await.result(
+        graph.literalOps(namespace).removeProp(nodeId, "targetProp"),
+        5.seconds,
+      )
+      // at t2, targetProp is deleted
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val delta = collector.allDeltas.head
+      val ctx = delta.keys.head
+      ctx.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t1TargetPropValue))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical property values when traversing edges in Eager mode" in {
+    import com.thatdot.quine.model.EdgeDirection
+
+    val graph = makeGraph("historical-eager-edge-traversal-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Multi-hop: A → B → C to verify `atTime` propagates through nested Expand chains
+      val nodeA = qidProvider.newQid()
+      val nodeB = qidProvider.newQid()
+      val nodeC = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).addEdge(nodeA, nodeB, "KNOWS"),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).addEdge(nodeB, nodeC, "KNOWS"),
+        5.seconds,
+      )
+      val t1TargetPropValue = 1L
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeC, "targetProp", QuineValue.Integer(t1TargetPropValue)),
+        5.seconds,
+      )
+      // at t1, targetProp is set to `1`
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeC, "targetProp", QuineValue.Integer(2L)),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeAId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("a")),
+            Expand(
+              Some(Symbol("KNOWS")),
+              EdgeDirection.Outgoing,
+              Expand(
+                Some(Symbol("KNOWS")),
+                EdgeDirection.Outgoing,
+                LocalProperty(Symbol("targetProp"), Some(Symbol("target")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeAId") -> Value.NodeId(nodeA)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results.head.bindings.get(Symbol("target")) shouldBe Some(Value.Integer(t1TargetPropValue))
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical property values when traversing edges in Lazy mode" in {
+    import com.thatdot.quine.model.EdgeDirection
+
+    val graph = makeGraph("historical-lazy-edge-traversal-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Multi-hop: A → B → C to verify `atTime` propagates through nested Expand chains
+      val nodeA = qidProvider.newQid()
+      val nodeB = qidProvider.newQid()
+      val nodeC = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).addEdge(nodeA, nodeB, "KNOWS"),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).addEdge(nodeB, nodeC, "KNOWS"),
+        5.seconds,
+      )
+      val t1TargetPropValue = 1L
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeC, "targetProp", QuineValue.Integer(t1TargetPropValue)),
+        5.seconds,
+      )
+      // at t1, targetProp is set to `1`
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeC, "targetProp", QuineValue.Integer(2L)),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeAId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("a")),
+            Expand(
+              Some(Symbol("KNOWS")),
+              EdgeDirection.Outgoing,
+              Expand(
+                Some(Symbol("KNOWS")),
+                EdgeDirection.Outgoing,
+                LocalProperty(Symbol("targetProp"), Some(Symbol("target")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeAId") -> Value.NodeId(nodeA)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val delta = collector.allDeltas.head
+      val ctx = delta.keys.head
+      ctx.bindings.get(Symbol("target")) shouldBe Some(Value.Integer(t1TargetPropValue))
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "not traverse edges that did not exist at the queried historical time in Eager mode" in {
+    import com.thatdot.quine.model.EdgeDirection
+
+    val graph = makeGraph("historical-eager-edge-existence-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeA = qidProvider.newQid()
+      val nodeB = qidProvider.newQid()
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeB, "name", QuineValue.Str("target")),
+        5.seconds,
+      )
+
+      // at t1, no edge between nodes
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).addEdge(nodeA, nodeB, "KNOWS"),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeAId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("a")),
+            Expand(
+              Some(Symbol("KNOWS")),
+              EdgeDirection.Outgoing,
+              LocalProperty(Symbol("name"), Some(Symbol("n")), PropertyConstraint.Any),
+            ),
+          ),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeAId") -> Value.NodeId(nodeA)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results shouldBe empty // Because no edge existed at t1
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "not traverse edges that did not exist at the queried historical time in Lazy mode" in {
+    import com.thatdot.quine.model.EdgeDirection
+
+    val graph = makeGraph("historical-lazy-edge-existence-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeA = qidProvider.newQid()
+      val nodeB = qidProvider.newQid()
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeB, "name", QuineValue.Str("target")),
+        5.seconds,
+      )
+
+      // at t1, no edge between nodes
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).addEdge(nodeA, nodeB, "KNOWS"),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeAId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("a")),
+            Expand(
+              Some(Symbol("KNOWS")),
+              EdgeDirection.Outgoing,
+              LocalProperty(Symbol("name"), Some(Symbol("n")), PropertyConstraint.Any),
+            ),
+          ),
+        ),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeAId") -> Value.NodeId(nodeA)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      // No edge existed at t1, so no deltas should arrive
+      collector.awaitFirstDelta(1.second) shouldBe false
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "traverse deleted edges as they existed at historical time in Eager mode" in {
+    import com.thatdot.quine.model.EdgeDirection
+
+    val graph = makeGraph("historical-eager-edge-deletion-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeA = qidProvider.newQid()
+      val nodeB = qidProvider.newQid()
+
+      Await.result(
+        graph.literalOps(namespace).addEdge(nodeA, nodeB, "KNOWS"),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeB, "name", QuineValue.Str("target")),
+        5.seconds,
+      )
+
+      // at t1, edge exists
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).removeEdge(nodeA, nodeB, "KNOWS"),
+        5.seconds,
+      )
+      // at t2, edge is deleted
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeAId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("a")),
+            Expand(
+              Some(Symbol("KNOWS")),
+              EdgeDirection.Outgoing,
+              LocalProperty(Symbol("name"), Some(Symbol("n")), PropertyConstraint.Any),
+            ),
+          ),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeAId") -> Value.NodeId(nodeA)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results.head.bindings.get(Symbol("n")) shouldBe Some(Value.Text("target"))
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "traverse deleted edges as they existed at historical time in Lazy mode" in {
+    import com.thatdot.quine.model.EdgeDirection
+
+    val graph = makeGraph("historical-lazy-edge-deletion-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeA = qidProvider.newQid()
+      val nodeB = qidProvider.newQid()
+
+      Await.result(
+        graph.literalOps(namespace).addEdge(nodeA, nodeB, "KNOWS"),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeB, "name", QuineValue.Str("target")),
+        5.seconds,
+      )
+
+      // at t1, edge exists
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).removeEdge(nodeA, nodeB, "KNOWS"),
+        5.seconds,
+      )
+      // at t2, edge is deleted
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeAId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("a")),
+            Expand(
+              Some(Symbol("KNOWS")),
+              EdgeDirection.Outgoing,
+              LocalProperty(Symbol("name"), Some(Symbol("n")), PropertyConstraint.Any),
+            ),
+          ),
+        ),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeAId") -> Value.NodeId(nodeA)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val delta = collector.allDeltas.head
+      val ctx = delta.keys.head
+      ctx.bindings.get(Symbol("n")) shouldBe Some(Value.Text("target"))
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical property values with AllNodes anchor in Eager mode" in {
+    val graph = makeGraph("historical-eager-allnodes-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val node1 = qidProvider.newQid()
+      val node2 = qidProvider.newQid()
+      val node3 = qidProvider.newQid()
+      val matchingValue = 100L
+      val nonMatchingValue = 25L
+
+      Await.result(
+        graph.literalOps(namespace).setProp(node1, "counter", QuineValue.Integer(matchingValue)),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(node2, "counter", QuineValue.Integer(matchingValue)),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(node3, "counter", QuineValue.Integer(nonMatchingValue)),
+        5.seconds,
+      )
+      // at t1: node1 matches, node2 matches, node3 does not match
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(node1, "counter", QuineValue.Integer(200L)),
+        5.seconds,
+      )
+      // at t2: node1 does not match, node2 matches, node3 does not match
+
+      val plan = Anchor(
+        AnchorTarget.AllNodes,
+        CrossProduct(
+          List(
+            LocalId(Symbol("n")),
+            LocalProperty(Symbol("counter"), Some(Symbol("c")), PropertyConstraint.Equal(Value.Integer(matchingValue))),
+          ),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      val resultNodeIds = results.flatMap(_.bindings.get(Symbol("n"))).collect { case Value.NodeId(qid) => qid }.toSet
+      resultNodeIds shouldBe Set(node1, node2)
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical property values with AllNodes anchor in Lazy mode" in {
+    val graph = makeGraph("historical-lazy-allnodes-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val node1 = qidProvider.newQid()
+      val node2 = qidProvider.newQid()
+      val node3 = qidProvider.newQid()
+      val matchingValue = 100L
+      val nonMatchingValue = 25L
+
+      Await.result(
+        graph.literalOps(namespace).setProp(node1, "counter", QuineValue.Integer(matchingValue)),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(node2, "counter", QuineValue.Integer(matchingValue)),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(node3, "counter", QuineValue.Integer(nonMatchingValue)),
+        5.seconds,
+      )
+      // at t1: node1 matches, node2 matches, node3 does not match
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(node1, "counter", QuineValue.Integer(200L)),
+        5.seconds,
+      )
+      // at t2: node1 does not match, node2 matches, node3 does not match
+
+      val plan = Anchor(
+        AnchorTarget.AllNodes,
+        CrossProduct(
+          List(
+            LocalId(Symbol("n")),
+            LocalProperty(Symbol("counter"), Some(Symbol("c")), PropertyConstraint.Equal(Value.Integer(matchingValue))),
+          ),
+        ),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      // Wait for results from both matching nodes
+      val deadline = System.currentTimeMillis() + 5000
+      while (collector.positiveCount < 2 && System.currentTimeMillis() < deadline)
+        Thread.sleep(10)
+      collector.positiveCount shouldBe 2
+      val contexts = collector.allDeltas.flatMap(_.keys)
+      val resultNodeIds = contexts.flatMap(_.bindings.get(Symbol("n"))).collect { case Value.NodeId(qid) => qid }.toSet
+      resultNodeIds shouldBe Set(node1, node2)
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "evaluate Filter expressions against historical property values in Eager mode" in {
+    import com.thatdot.quine.language.ast.Operator
+
+    val graph = makeGraph("historical-filter-eager")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "score", QuineValue.Integer(100L)),
+        5.seconds,
+      )
+      // at t1, score passes filter
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "score", QuineValue.Integer(25L)),
+        5.seconds,
+      )
+      // at t2, score fails filter
+
+      val filterExpr = Expression.BinOp(
+        noSource,
+        Operator.GreaterThan,
+        Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("s"))), None),
+        Expression.AtomicLiteral(noSource, Value.Integer(50L), None),
+        None,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        Sequence(
+          LocalProperty(Symbol("score"), Some(Symbol("s")), PropertyConstraint.Any),
+          Filter(filterExpr, Unit),
+          ContextFlow.Extend,
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results should have size 1
+      results.head.bindings.get(Symbol("s")) shouldBe Some(Value.Integer(100L))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "evaluate Filter expressions against historical property values in Lazy mode" in {
+    import com.thatdot.quine.language.ast.Operator
+
+    val graph = makeGraph("historical-filter-lazy")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "score", QuineValue.Integer(100L)),
+        5.seconds,
+      )
+      // at t1, score passes filter
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "score", QuineValue.Integer(25L)),
+        5.seconds,
+      )
+      // at t2, score fails filter
+
+      val filterExpr = Expression.BinOp(
+        noSource,
+        Operator.GreaterThan,
+        Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("s"))), None),
+        Expression.AtomicLiteral(noSource, Value.Integer(50L), None),
+        None,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        Sequence(
+          LocalProperty(Symbol("score"), Some(Symbol("s")), PropertyConstraint.Any),
+          Filter(filterExpr, Unit),
+          ContextFlow.Extend,
+        ),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val ctx = collector.allDeltas.flatMap(_.keys).head
+      ctx.bindings.get(Symbol("s")) shouldBe Some(Value.Integer(100L))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "project historical property values in Eager mode" in {
+    import com.thatdot.quine.language.ast.Operator
+
+    val graph = makeGraph("historical-project-eager")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "value", QuineValue.Integer(42L)),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "value", QuineValue.Integer(99L)),
+        5.seconds,
+      )
+
+      val doubledExpr = Expression.BinOp(
+        noSource,
+        Operator.Asterisk,
+        Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("v"))), None),
+        Expression.AtomicLiteral(noSource, Value.Integer(2L), None),
+        None,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        Sequence(
+          LocalProperty(Symbol("value"), Some(Symbol("v")), PropertyConstraint.Any),
+          Project(
+            List(Projection(doubledExpr, Symbol("doubled"))),
+            dropExisting = false,
+            Unit,
+          ),
+          ContextFlow.Extend,
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results should have size 1
+      results.head.bindings.get(Symbol("doubled")) shouldBe Some(Value.Integer(84L))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "project historical property values in Lazy mode" in {
+    import com.thatdot.quine.language.ast.Operator
+
+    val graph = makeGraph("historical-project-lazy")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "value", QuineValue.Integer(42L)),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "value", QuineValue.Integer(99L)),
+        5.seconds,
+      )
+
+      val doubledExpr = Expression.BinOp(
+        noSource,
+        Operator.Asterisk,
+        Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("v"))), None),
+        Expression.AtomicLiteral(noSource, Value.Integer(2L), None),
+        None,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        Sequence(
+          LocalProperty(Symbol("value"), Some(Symbol("v")), PropertyConstraint.Any),
+          Project(
+            List(Projection(doubledExpr, Symbol("doubled"))),
+            dropExisting = false,
+            Unit,
+          ),
+          ContextFlow.Extend,
+        ),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val ctx = collector.allDeltas.flatMap(_.keys).head
+      ctx.bindings.get(Symbol("doubled")) shouldBe Some(Value.Integer(84L))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "correctly sequence multiple historical property reads in Eager mode" in {
+    val graph = makeGraph("historical-sequence-eager")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "first", QuineValue.Str("alpha")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "second", QuineValue.Integer(100L)),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "first", QuineValue.Str("beta")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "second", QuineValue.Integer(200L)),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        Sequence(
+          LocalProperty(Symbol("first"), Some(Symbol("f")), PropertyConstraint.Any),
+          LocalProperty(Symbol("second"), Some(Symbol("s")), PropertyConstraint.Any),
+          ContextFlow.Extend,
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results should have size 1
+      results.head.bindings.get(Symbol("f")) shouldBe Some(Value.Text("alpha"))
+      results.head.bindings.get(Symbol("s")) shouldBe Some(Value.Integer(100L))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "correctly sequence multiple historical property reads in Lazy mode" in {
+    val graph = makeGraph("historical-sequence-lazy")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "first", QuineValue.Str("alpha")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "second", QuineValue.Integer(100L)),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "first", QuineValue.Str("beta")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "second", QuineValue.Integer(200L)),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        Sequence(
+          LocalProperty(Symbol("first"), Some(Symbol("f")), PropertyConstraint.Any),
+          LocalProperty(Symbol("second"), Some(Symbol("s")), PropertyConstraint.Any),
+          ContextFlow.Extend,
+        ),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val ctx = collector.allDeltas.flatMap(_.keys).head
+      ctx.bindings.get(Symbol("f")) shouldBe Some(Value.Text("alpha"))
+      ctx.bindings.get(Symbol("s")) shouldBe Some(Value.Integer(100L))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical labels with LocalLabels in Eager mode" in {
+    val graph = makeGraph("historical-labels-eager")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setLabels(nodeId, Set("Person", "Employee")),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setLabels(nodeId, Set("Person")),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("n")),
+            LocalLabels(Some(Symbol("labels")), LabelConstraint.Unconditional),
+          ),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results should have size 1
+      val labels = results.head.bindings.get(Symbol("labels")).collect { case Value.List(l) =>
+        l.collect { case Value.Text(s) => s }.toSet
+      }
+      labels shouldBe Some(Set("Person", "Employee"))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical labels with LocalLabels in Lazy mode" in {
+    val graph = makeGraph("historical-labels-lazy")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setLabels(nodeId, Set("Person", "Employee")),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setLabels(nodeId, Set("Person")),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("n")),
+            LocalLabels(Some(Symbol("labels")), LabelConstraint.Unconditional),
+          ),
+        ),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val ctx = collector.allDeltas.flatMap(_.keys).head
+      val labels =
+        ctx.bindings.get(Symbol("labels")).collect { case Value.List(l) => l.collect { case Value.Text(s) => s }.toSet }
+      labels shouldBe Some(Set("Person", "Employee"))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical properties with LocalAllProperties in Eager mode" in {
+    val graph = makeGraph("historical-allprops-eager")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Alice")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "age", QuineValue.Integer(30L)),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Bob")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).removeProp(nodeId, "age"),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("n")),
+            LocalAllProperties(Symbol("props")),
+          ),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results should have size 1
+      val propsOpt = results.head.bindings.get(Symbol("props")).collect { case Value.Map(m) => m }
+      val props = propsOpt.get
+      props.get(Symbol("name")) shouldBe Some(Value.Text("Alice"))
+      props.get(Symbol("age")) shouldBe Some(Value.Integer(30L))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical properties with LocalAllProperties in Lazy mode" in {
+    val graph = makeGraph("historical-allprops-lazy")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Alice")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "age", QuineValue.Integer(30L)),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Bob")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).removeProp(nodeId, "age"),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        CrossProduct(
+          List(
+            LocalId(Symbol("n")),
+            LocalAllProperties(Symbol("props")),
+          ),
+        ),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val ctx = collector.allDeltas.flatMap(_.keys).head
+      val propsOpt = ctx.bindings.get(Symbol("props")).collect { case Value.Map(m) => m }
+      val props = propsOpt.get
+      props.get(Symbol("name")) shouldBe Some(Value.Text("Alice"))
+      props.get(Symbol("age")) shouldBe Some(Value.Integer(30L))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical node with LocalNode in Eager mode" in {
+    val graph = makeGraph("historical-localnode-eager")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Alice")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setLabels(nodeId, Set("Person")),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Bob")),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        LocalNode(Symbol("node")),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1),
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+      results should have size 1
+      val nodeVal = results.head.bindings.get(Symbol("node"))
+      nodeVal.get match {
+        case Value.Node(_, labels, props) =>
+          labels should contain(Symbol("Person"))
+          props.values.get(Symbol("name")) shouldBe Some(Value.Text("Alice"))
+        case other => fail(s"Expected Node but got $other")
+      }
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "return historical node with LocalNode in Lazy mode" in {
+    val graph = makeGraph("historical-localnode-lazy")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val nodeId = qidProvider.newQid()
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Alice")),
+        5.seconds,
+      )
+      Await.result(
+        graph.literalOps(namespace).setLabels(nodeId, Set("Person")),
+        5.seconds,
+      )
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3)
+
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeId, "name", QuineValue.Str("Bob")),
+        5.seconds,
+      )
+
+      val plan = Anchor(
+        AnchorTarget.Computed(param("nodeId")),
+        LocalNode(Symbol("node")),
+      )
+
+      val collector = new LazyResultCollector()
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1),
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val ctx = collector.allDeltas.flatMap(_.keys).head
+      val nodeVal = ctx.bindings.get(Symbol("node"))
+      nodeVal.get match {
+        case Value.Node(_, labels, props) =>
+          labels should contain(Symbol("Person"))
+          props.values.get(Symbol("name")) shouldBe Some(Value.Text("Alice"))
+        case other => fail(s"Expected Node but got $other")
+      }
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "use historical data when a procedure is called with atTime in Eager mode" in {
+    val graph = makeGraph("historical-procedure-getFilteredEdges-eager")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val centralId = qidProvider.newQid()
+      val friendId = qidProvider.newQid()
+
+      Await.result(graph.literalOps(namespace).addEdge(centralId, friendId, "KNOWS"), 5.seconds)
+
+      // at t1, edge exists
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3) // now at t2
+
+      Await.result(graph.literalOps(namespace).removeEdge(centralId, friendId, "KNOWS"), 5.seconds)
+
+      val query = "CALL getFilteredEdges($nodeId, [], [], $all) YIELD edge RETURN edge"
+      val plan = parseAndPlan(query)
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val params = Map(
+        Symbol("nodeId") -> Value.NodeId(centralId),
+        Symbol("all") -> Value.List(List(Value.NodeId(friendId))),
+      )
+
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Eager,
+        params = params,
+        namespace = namespace,
+        output = OutputTarget.EagerCollector(resultPromise),
+        atTime = Some(t1), // Historical query at t1 when edge existed
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // The edge existed at t1, so we should get 1 result
+      //  (this test could be more precise once we have relationship variable support in Quine Pattern)
+      results should have size 1
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "use historical data when a procedure is called with atTime in Lazy mode" in {
+    val graph = makeGraph("historical-procedure-getFilteredEdges-lazy")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      val centralId = qidProvider.newQid()
+      val friendId = qidProvider.newQid()
+
+      Await.result(graph.literalOps(namespace).addEdge(centralId, friendId, "KNOWS"), 5.seconds)
+
+      // at t1, edge exists
+      val t1 = Milliseconds.currentTime()
+      Thread.sleep(3) // now at t2
+
+      Await.result(graph.literalOps(namespace).removeEdge(centralId, friendId, "KNOWS"), 5.seconds)
+
+      val query = "CALL getFilteredEdges($nodeId, [], [], $all) YIELD edge RETURN edge"
+      val plan = parseAndPlan(query)
+
+      val collector = new LazyResultCollector()
+      val params = Map(
+        Symbol("nodeId") -> Value.NodeId(centralId),
+        Symbol("all") -> Value.List(List(Value.NodeId(friendId))),
+      )
+
+      val qpGraph = graph.asInstanceOf[QuinePatternOpsGraph]
+      qpGraph.getLoader ! LoadQuery(
+        standingQueryId = StandingQueryId.fresh(),
+        queryPlan = plan,
+        mode = RuntimeMode.Lazy,
+        params = params,
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        atTime = Some(t1), // Historical query at t1 when edge existed
+      )
+
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      // The edge existed at t1, so we should get 1 result
+      //  (this test could be more precise once we have relationship variable support in Quine Pattern)
+      collector.positiveCount shouldBe 1
+
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
 }

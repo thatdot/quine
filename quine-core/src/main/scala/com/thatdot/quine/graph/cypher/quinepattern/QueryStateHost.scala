@@ -8,7 +8,7 @@ import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLog
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, StandingQueryResult}
-import com.thatdot.quine.model.{HalfEdge, PropertyValue}
+import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue}
 
 /** Logger for QuinePattern warnings and errors */
 private[quinepattern] object QPLog extends LazySafeLogging {
@@ -875,15 +875,16 @@ object DefaultStateInstantiator extends StateInstantiator {
           throw new IllegalStateException("Namespace required for ExpandState but not provided in NodeContext"),
         )
         new ExpandState(
-          id,
-          parentId,
-          d.mode,
-          plan.edgeLabel,
-          plan.direction,
-          onNeighborPlan,
-          graph,
-          namespace,
-          stateGraph.params,
+          id = id,
+          publishTo = parentId,
+          mode = d.mode,
+          edgeLabel = plan.edgeLabel,
+          direction = plan.direction,
+          onNeighborPlan = onNeighborPlan,
+          graph = graph,
+          namespace = namespace,
+          params = stateGraph.params,
+          atTime = stateGraph.atTime,
         )
 
       case d @ StateDescriptor.Anchor(id, parentId, _, _, target, onTargetPlan, fallbackOutput) =>
@@ -894,16 +895,17 @@ object DefaultStateInstantiator extends StateInstantiator {
           throw new IllegalStateException("Namespace required for AnchorState but not provided in NodeContext"),
         )
         new AnchorState(
-          id,
-          parentId,
-          d.mode,
-          target,
-          onTargetPlan,
-          graph,
-          namespace,
-          fallbackOutput,
-          stateGraph.params,
-          stateGraph.injectedContext, // Pass injectedContext for evaluating target expressions
+          id = id,
+          publishTo = parentId,
+          mode = d.mode,
+          target = target,
+          onTargetPlan = onTargetPlan,
+          graph = graph,
+          namespace = namespace,
+          fallbackOutput = fallbackOutput,
+          params = stateGraph.params,
+          injectedContext = stateGraph.injectedContext, // Pass injectedContext for evaluating target expressions
+          atTime = stateGraph.atTime,
         )
 
       case d @ StateDescriptor.Unwind(id, parentId, _, plan, subqueryId, contextBridgeId) =>
@@ -930,17 +932,18 @@ object DefaultStateInstantiator extends StateInstantiator {
           throw new IllegalStateException("Namespace required for ProcedureState but not provided in NodeContext"),
         )
         new ProcedureState(
-          id,
-          parentId,
-          d.mode,
-          plan.procedureName,
-          plan.arguments,
-          plan.yields,
-          subqueryId,
-          contextBridgeId,
-          graph,
-          namespace,
-          stateGraph.params,
+          id = id,
+          publishTo = parentId,
+          mode = d.mode,
+          procedureName = plan.procedureName,
+          arguments = plan.arguments,
+          yields = plan.yields,
+          subqueryId = subqueryId,
+          contextBridgeId = contextBridgeId,
+          graph = graph,
+          namespace = namespace,
+          params = stateGraph.params,
+          atTime = stateGraph.atTime,
         )
 
       case d @ StateDescriptor.Effect(id, parentId, _, plan, inputId) =>
@@ -1010,8 +1013,8 @@ class OutputState(
     case OutputTarget.StandingQuerySink(sqId, _) => s"StandingQuerySink($sqId)"
     case OutputTarget.EagerCollector(_) => "EagerCollector"
     case OutputTarget.LazyCollector(_) => "LazyCollector"
-    case OutputTarget.RemoteState(node, stateId, _, dispatchId) =>
-      s"RemoteState($node, $stateId, dispatchId=$dispatchId)"
+    case OutputTarget.RemoteState(node, stateId, _, dispatchId, atTime) =>
+      s"RemoteState($node, $stateId, dispatchId=$dispatchId, atTime=$atTime)"
     case OutputTarget.HostedState(_, stateId, dispatchId) => s"HostedState($stateId, $dispatchId)"
   }
   QPTrace.log(s"OUTPUT-CREATED id=$id target=$targetType mode=$mode")
@@ -1115,7 +1118,7 @@ class OutputState(
         }
         collector.addDelta(filteredDelta)
 
-      case OutputTarget.RemoteState(originNode, stateId, namespace, dispatchId) =>
+      case OutputTarget.RemoteState(originNode, stateId, namespace, dispatchId, atTime) =>
         // Send results back to the state on the origin node
         // Don't filter here - we need all bindings for proper delta tracking upstream
         import com.thatdot.quine.graph.behavior.QuinePatternCommand
@@ -1126,7 +1129,7 @@ class OutputState(
         // delta means "evaluated but produced no results". Without this, the Anchor waits forever.
         // Use dispatchId as the 'from' so the receiving state can identify this as expected results
         if (delta.nonEmpty || mode == RuntimeMode.Eager) {
-          val stqid = SpaceTimeQuineId(originNode, namespace, None)
+          val stqid = SpaceTimeQuineId(originNode, namespace, atTime)
           graph.relayTell(stqid, QuinePatternCommand.QueryUpdate(stateId, dispatchId, delta))
         }
 
@@ -2057,6 +2060,7 @@ class ExpandState(
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
   val namespace: com.thatdot.quine.graph.NamespaceId,
   val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
+  val atTime: Option[Milliseconds],
 ) extends QueryState
     with PublishingState
     with EdgeSensitiveState {
@@ -2155,8 +2159,8 @@ class ExpandState(
       if (retraction.nonEmpty) {
         emit(retraction, actor)
       }
-      // Send unregister message to the neighbor node
-      val stqid = SpaceTimeQuineId(edge.other, namespace, None)
+      // Node will reject this change if `atTime` != `None`
+      val stqid = SpaceTimeQuineId(edge.other, namespace, atTime)
       graph.relayTell(stqid, QuinePatternCommand.UnregisterState(sqid))
     }
 
@@ -2173,10 +2177,10 @@ class ExpandState(
 
         // Create the output target that will send results back to this state
         // Include sqid as dispatchId so results can be matched to neighborResults
-        val output = OutputTarget.RemoteState(originNode, id, namespace, sqid)
+        val output = OutputTarget.RemoteState(originNode, id, namespace, sqid, atTime)
 
         // Send LoadQueryPlan to load the neighbor plan on the neighbor node
-        val neighborTarget = SpaceTimeQuineId(edge.other, namespace, None)
+        val neighborTarget = SpaceTimeQuineId(edge.other, namespace, atTime)
         graph.relayTell(
           neighborTarget,
           QuinePatternCommand.LoadQueryPlan(
@@ -2186,6 +2190,7 @@ class ExpandState(
             params = params, // Pass params to neighbor nodes for expression evaluation
             namespace = namespace,
             output = output,
+            atTime = atTime,
           ),
         )
 
@@ -2213,6 +2218,7 @@ class AnchorState(
     Symbol,
     com.thatdot.quine.language.ast.Value,
   ], // Context from parent (e.g., Anchor dispatch) for evaluating target expressions
+  val atTime: Option[Milliseconds],
 ) extends QueryState
     with PublishingState
     with com.thatdot.quine.graph.quinepattern.NodeWakeHook {
@@ -2533,7 +2539,7 @@ class AnchorState(
       case Some(originNode) =>
         // Results flow back to this state on the origin node
         // Include sqid as dispatchId so results can be matched to targetResults
-        OutputTarget.RemoteState(originNode, id, namespace, sqid)
+        OutputTarget.RemoteState(originNode, id, namespace, sqid, atTime)
       case None =>
         // No origin node (e.g., NonNodeActor)
         // Use HostedState to route results back to this Anchor state on the host actor
@@ -2558,7 +2564,7 @@ class AnchorState(
 
     // Send LoadQueryPlan to load the target plan on the target node
     // Include injectedContext so LocalEffect states can evaluate expressions
-    val targetStqid = SpaceTimeQuineId(qid, namespace, None)
+    val targetStqid = SpaceTimeQuineId(qid, namespace, atTime)
     graph.relayTell(
       targetStqid,
       QuinePatternCommand.LoadQueryPlan(
@@ -2569,6 +2575,7 @@ class AnchorState(
         namespace = namespace,
         output = output,
         injectedContext = injectedContext, // Pass context bindings for LocalEffect expression evaluation
+        atTime = atTime,
       ),
     )
   }
@@ -2736,6 +2743,7 @@ class ProcedureState(
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
   val namespace: NamespaceId,
   val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
+  val atTime: Option[Milliseconds],
 ) extends QueryState
     with PublishingState {
 
@@ -2829,7 +2837,7 @@ class ProcedureState(
             val procContext = ProcedureContext(
               graph = literalGraph,
               namespace = namespace,
-              atTime = None, // TODO: Support historical queries
+              atTime = atTime,
               timeout = timeout,
             )
 
@@ -3105,6 +3113,7 @@ class EffectState(
                 QPTrace.log(
                   s"SetProperty: remote dispatch to ${idProvider.qidToPrettyString(targetQid)} for property $property",
                 )
+                // Hard-coding `atTime = None` because effects should never apply to node history
                 val stqid = SpaceTimeQuineId(targetQid, namespace, None)
                 graph.relayTell(stqid, QuinePatternCommand.SetProperty(property, value))
               case None =>
@@ -3132,6 +3141,7 @@ class EffectState(
                 actor ! QuinePatternCommand.SetProperties(props)
               case Some(targetQid) =>
                 QPTrace.log(s"SetProperties: remote dispatch to ${idProvider.qidToPrettyString(targetQid)}")
+                // Hard-coding `atTime = None` because effects should never apply to node history
                 val stqid = SpaceTimeQuineId(targetQid, namespace, None)
                 graph.relayTell(stqid, QuinePatternCommand.SetProperties(props))
               case None =>
@@ -3156,6 +3166,7 @@ class EffectState(
             actor ! QuinePatternCommand.SetLabels(labels)
           case Some(targetQid) =>
             QPTrace.log(s"SetLabels: remote dispatch to ${idProvider.qidToPrettyString(targetQid)}")
+            // Hard-coding `atTime = None` because effects should never apply to node history
             val stqid = SpaceTimeQuineId(targetQid, namespace, None)
             graph.relayTell(stqid, QuinePatternCommand.SetLabels(labels))
           case None =>
@@ -3192,6 +3203,7 @@ class EffectState(
             QPTrace.log(
               s"CreateHalfEdge: remote dispatch to ${idProvider.qidToPrettyString(sourceQid)} for edge to ${idProvider.qidToPrettyString(otherQid)}",
             )
+            // Hard-coding `atTime = None` because effects should never apply to node history
             val stqid = SpaceTimeQuineId(sourceQid, namespace, None)
             graph.relayTell(stqid, QuinePatternCommand.CreateEdge(otherQid, direction, label))
 

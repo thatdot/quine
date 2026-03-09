@@ -192,6 +192,8 @@ abstract class QuinePatternImportFormat(query: String, parameter: String) extend
       OutputTarget.EagerCollector(resultPromise),
       planned.returnColumns,
       planned.outputNameMapping,
+      // `atTime` defaults to `None` (current state) because ingest queries process incoming
+      // data against the current graph; historical ingest queries are not currently supported.
     )
 
     // Convert the promise to Done when complete

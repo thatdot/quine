@@ -104,6 +104,8 @@ class CypherQueryOutput(
                 .query(
                   compiledQuery,
                   namespace = inNamespace,
+                  // `atTime` is `None` because we only want current time here—this is where we would
+                  // pass in `atTime` for historically aware output queries (if we chose to do that)
                   atTime = None,
                   parameters = Map(parameter -> value),
                 )

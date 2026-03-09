@@ -25,7 +25,18 @@ class NonNodeActor(graph: QuinePatternOpsGraph with StandingQueryOpsGraph, names
 
   override def receive: Receive = {
     case QuinePatternCommand
-          .LoadQueryPlan(sqid, plan, mode, params, ns, output, injectedContext, returnColumns, outputNameMapping) =>
+          .LoadQueryPlan(
+            sqid,
+            plan,
+            mode,
+            params,
+            ns,
+            output,
+            injectedContext,
+            returnColumns,
+            outputNameMapping,
+            atTime,
+          ) =>
       try {
         com.thatdot.quine.graph.cypher.quinepattern.QPTrace.log(
           s"NonNodeActor LoadQueryPlan sqid=$sqid params=[${params.keys.map(_.name).mkString(",")}]",
@@ -37,7 +48,17 @@ class NonNodeActor(graph: QuinePatternOpsGraph with StandingQueryOpsGraph, names
         }
         // Build the state graph from the plan
         val stateGraph =
-          QueryStateBuilder.build(plan, mode, params, ns, output, injectedContext, returnColumns, outputNameMapping)
+          QueryStateBuilder.build(
+            plan = plan,
+            mode = mode,
+            params = params,
+            namespace = ns,
+            output = output,
+            injectedContext = injectedContext,
+            returnColumns = returnColumns,
+            outputNameMapping = outputNameMapping,
+            atTime = atTime,
+          )
 
         // Create empty node context (no node ID, no properties, no edges)
         // This is a "virtual" context for the root of the query
