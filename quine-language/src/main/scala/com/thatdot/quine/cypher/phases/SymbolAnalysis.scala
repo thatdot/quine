@@ -17,6 +17,7 @@ import com.thatdot.quine.cypher.ast.{
   Query,
   QueryPart,
   ReadingClause,
+  SortItem,
   WithClause,
   YieldItem,
 }
@@ -357,6 +358,11 @@ object SymbolAnalysisModule {
         )
     }
 
+  def analyzeSortItem(sortItem: SortItem): SymbolProgram[SortItem] =
+    for {
+      rewrittenExp <- analyzeExpression(sortItem.expression)
+    } yield sortItem.copy(expression = rewrittenExp)
+
   def analyzeProjection(projection: Projection): SymbolProgram[Projection] =
     for {
       rewrittenExp <- analyzeExpression(projection.expression)
@@ -390,17 +396,41 @@ object SymbolAnalysisModule {
           case Some(value) => analyzeExpression(value).map(e => Some(e))
           case None => pure(Option.empty[Expression])
         }
+        rewrittenOrderBy <- withClause.orderBy.traverse(analyzeSortItem)
+        rewrittenSkip <- withClause.maybeSkip match {
+          case Some(value) => analyzeExpression(value).map(e => Some(e))
+          case None => pure(Option.empty[Expression])
+        }
+        rewrittenLimit <- withClause.maybeLimit match {
+          case Some(value) => analyzeExpression(value).map(e => Some(e))
+          case None => pure(Option.empty[Expression])
+        }
       } yield withClause.copy(
         bindings = rewrittenProjections,
         maybePredicate = rewrittenWhere,
+        orderBy = rewrittenOrderBy,
+        maybeSkip = rewrittenSkip,
+        maybeLimit = rewrittenLimit,
       )
     } else {
       // For non-wildcard WITH: expressions must be analyzed in the OLD scope (to resolve
       // references like `m` from previous MATCH), then a fresh scope is created with only
       // the new alias bindings. This implements Cypher's barrier semantics.
+      // ORDER BY expressions are also analyzed in the OLD scope (they can reference
+      // pre-WITH variables), while SKIP/LIMIT are just numeric expressions.
       for {
         // Step 1: Analyze expressions in the OLD scope (resolve references to prior bindings)
         rewrittenExpressions <- withClause.bindings.traverse(p => analyzeExpression(p.expression))
+        // ORDER BY is analyzed in the OLD scope too (can reference pre-WITH variables)
+        rewrittenOrderBy <- withClause.orderBy.traverse(analyzeSortItem)
+        rewrittenSkip <- withClause.maybeSkip match {
+          case Some(value) => analyzeExpression(value).map(e => Some(e))
+          case None => pure(Option.empty[Expression])
+        }
+        rewrittenLimit <- withClause.maybeLimit match {
+          case Some(value) => analyzeExpression(value).map(e => Some(e))
+          case None => pure(Option.empty[Expression])
+        }
         // Step 2: Clear the scope - only the aliases will be visible after WITH
         _ <- freshScope(Set())
         // Step 3: Introduce aliases into the new scope and combine with analyzed expressions
@@ -420,6 +450,9 @@ object SymbolAnalysisModule {
       } yield withClause.copy(
         bindings = rewrittenProjections,
         maybePredicate = rewrittenWhere,
+        orderBy = rewrittenOrderBy,
+        maybeSkip = rewrittenSkip,
+        maybeLimit = rewrittenLimit,
       )
     }
 
@@ -657,9 +690,21 @@ object SymbolAnalysisModule {
     for {
       rewrittenQueryParts <- query.queryParts.traverse(analyzeQueryPart)
       rewrittenProjection <- query.bindings.traverse(analyzeProjection)
+      rewrittenOrderBy <- query.orderBy.traverse(analyzeSortItem)
+      rewrittenSkip <- query.maybeSkip match {
+        case Some(value) => analyzeExpression(value).map(e => Some(e))
+        case None => pure(Option.empty[Expression])
+      }
+      rewrittenLimit <- query.maybeLimit match {
+        case Some(value) => analyzeExpression(value).map(e => Some(e))
+        case None => pure(Option.empty[Expression])
+      }
     } yield query.copy(
       queryParts = rewrittenQueryParts,
       bindings = rewrittenProjection,
+      orderBy = rewrittenOrderBy,
+      maybeSkip = rewrittenSkip,
+      maybeLimit = rewrittenLimit,
     )
 
   def analyzeSingleQuery(

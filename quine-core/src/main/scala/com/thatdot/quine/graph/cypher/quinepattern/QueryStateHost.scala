@@ -779,6 +779,33 @@ trait StateInstantiator {
 /** Default instantiator that creates production state implementations */
 object DefaultStateInstantiator extends StateInstantiator {
 
+  import com.thatdot.quine.language.ast.Value
+  import QuinePatternExpressionInterpreter.{EvalEnvironment, eval}
+
+  /** Evaluate a SKIP/LIMIT count expression at state construction time.
+    * Per the Cypher spec, these expressions cannot reference query variables —
+    * only literals, parameters, and constant expressions are allowed.
+    */
+  private def evaluateCountExpr(
+    expr: com.thatdot.quine.language.ast.Expression,
+    graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
+    params: Map[Symbol, Value],
+  ): Long = {
+    implicit val idProvider: com.thatdot.quine.model.QuineIdProvider = graph.idProvider
+    val env = EvalEnvironment(QueryContext.empty, params)
+    eval(expr).run(env) match {
+      case Right(Value.Integer(n)) => n
+      case Right(other) =>
+        throw new IllegalArgumentException(
+          s"SKIP/LIMIT expression must evaluate to an integer, got: $other",
+        )
+      case Left(err) =>
+        throw new IllegalArgumentException(
+          s"Failed to evaluate SKIP/LIMIT expression: $err",
+        )
+    }
+  }
+
   override def instantiate(
     descriptor: StateDescriptor,
     stateGraph: StateGraph,
@@ -945,7 +972,18 @@ object DefaultStateInstantiator extends StateInstantiator {
         new SortState(id, parentId, d.mode, plan.orderBy, inputId, graph, stateGraph.params)
 
       case d @ StateDescriptor.Limit(id, parentId, _, plan, inputId) =>
-        new LimitState(id, parentId, d.mode, plan.count, inputId)
+        val graph = nodeContext.graph.getOrElse(
+          throw new IllegalStateException("Graph required for LimitState but not provided in NodeContext"),
+        )
+        val count = evaluateCountExpr(plan.countExpr, graph, stateGraph.params)
+        new LimitState(id, parentId, d.mode, count, inputId)
+
+      case d @ StateDescriptor.Skip(id, parentId, _, plan, inputId) =>
+        val graph = nodeContext.graph.getOrElse(
+          throw new IllegalStateException("Graph required for SkipState but not provided in NodeContext"),
+        )
+        val count = evaluateCountExpr(plan.countExpr, graph, stateGraph.params)
+        new SkipState(id, parentId, d.mode, count, inputId)
 
       case d @ StateDescriptor.SubscribeToQueryPart(id, parentId, _, plan, queryPartId) =>
         new SubscribeToQueryPartState(id, parentId, d.mode, queryPartId, plan.projection)
@@ -3391,8 +3429,10 @@ class LimitState(
     val outputDelta = mutable.Map.empty[QueryContext, Int]
     var remaining = count - emittedCount
 
-    // Process assertions first (positive multiplicities)
-    delta.toList.sortBy(-_._2).foreach { case (ctx, mult) =>
+    // Note: This implementation only supports Eager mode (single-batch) semantics.
+    // Retractions (negative multiplicities) are not handled. The correct behavior for
+    // Lazy mode has not been determined.
+    delta.foreach { case (ctx, mult) =>
       if (remaining > 0 && mult > 0) {
         val toEmit = math.min(mult.toLong, remaining).toInt
         if (toEmit > 0) {
@@ -3406,6 +3446,44 @@ class LimitState(
     // Emit if we have results
     val nonZero = outputDelta.filter(_._2 != 0).toMap
     // In Eager mode, emit even if empty - this signals "processed input, no output"
+    if (nonZero.nonEmpty || mode == RuntimeMode.Eager) {
+      emit(nonZero, actor)
+    }
+  }
+
+  override def kickstart(context: NodeContext, actor: ActorRef): Unit = ()
+}
+
+class SkipState(
+  val id: StandingQueryId,
+  val publishTo: StandingQueryId,
+  val mode: RuntimeMode,
+  val count: Long,
+  val inputId: StandingQueryId,
+) extends QueryState
+    with PublishingState {
+
+  // Track how many results we've skipped
+  private var skippedCount: Long = 0
+
+  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
+    val outputDelta = mutable.Map.empty[QueryContext, Int]
+
+    // Note: This implementation only supports Eager mode (single-batch) semantics.
+    // Retractions (negative multiplicities) are not handled. The correct behavior for
+    // Lazy mode has not been determined.
+    delta.foreach { case (ctx, mult) =>
+      if (mult > 0) {
+        val toSkip = math.min(mult.toLong, count - skippedCount).toInt
+        skippedCount += toSkip
+        val toEmit = mult - toSkip
+        if (toEmit > 0) {
+          outputDelta(ctx) = outputDelta.getOrElse(ctx, 0) + toEmit
+        }
+      }
+    }
+
+    val nonZero = outputDelta.filter(_._2 != 0).toMap
     if (nonZero.nonEmpty || mode == RuntimeMode.Eager) {
       emit(nonZero, actor)
     }

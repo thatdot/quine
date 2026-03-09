@@ -427,9 +427,22 @@ object QueryPlan {
   /** Limit result count.
     *
     * Emits up to `count` results, then stops.
+    * The count expression is evaluated at runtime, supporting parameters and computed values.
     */
   case class Limit(
-    count: Long,
+    countExpr: Expression,
+    input: QueryPlan,
+  ) extends QueryPlan {
+    def children: Seq[QueryPlan] = Seq(input)
+  }
+
+  /** Skip the first `count` results.
+    *
+    * Discards the first `count` results, then emits the rest.
+    * The count expression is evaluated at runtime, supporting parameters and computed values.
+    */
+  case class Skip(
+    countExpr: Expression,
     input: QueryPlan,
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq(input)

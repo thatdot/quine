@@ -72,6 +72,9 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
         case QueryPlan.Unwind(_, _, subquery) => containsOperator(subquery, check)
         case QueryPlan.Aggregate(_, _, input) => containsOperator(input, check)
         case QueryPlan.Expand(_, _, onNeighbor) => containsOperator(onNeighbor, check)
+        case QueryPlan.Sort(_, input) => containsOperator(input, check)
+        case QueryPlan.Limit(_, input) => containsOperator(input, check)
+        case QueryPlan.Skip(_, input) => containsOperator(input, check)
         case _ => false
       }
 
@@ -2144,5 +2147,133 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
 
     val localProps = findLocalProperties(plan)
     localProps.exists(_.property.name == "x") shouldBe true
+  }
+
+  // ============================================================
+  // WITH CLAUSE MATERIALIZATION TESTS
+  // ============================================================
+
+  "WITH + aggregation" should "produce an Aggregate plan node" in {
+    val query = """
+      MATCH (n:Person)
+      WITH n.name AS name, count(n) AS cnt
+      RETURN name, cnt
+    """
+    val plan = planQuery(query)
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Aggregate]) shouldBe true
+  }
+
+  "WITH + DISTINCT" should "produce a Distinct plan node" in {
+    val query = """
+      MATCH (n:Person)
+      WITH DISTINCT n.name AS name
+      RETURN name
+    """
+    val plan = planQuery(query)
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Distinct]) shouldBe true
+  }
+
+  "WITH + ORDER BY" should "produce a Sort plan node" in {
+    val query = """
+      MATCH (n:Person)
+      WITH n.name AS name ORDER BY name
+      RETURN name
+    """
+    val plan = planQuery(query)
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Sort]) shouldBe true
+  }
+
+  "WITH + LIMIT" should "produce a Limit plan node" in {
+    val query = """
+      MATCH (n:Person)
+      WITH n AS n LIMIT 10
+      RETURN n
+    """
+    val plan = planQuery(query)
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Limit]) shouldBe true
+  }
+
+  "WITH + SKIP" should "produce a Skip plan node" in {
+    val query = """
+      MATCH (n:Person)
+      WITH n AS n SKIP 5
+      RETURN n
+    """
+    val plan = planQuery(query)
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Skip]) shouldBe true
+  }
+
+  "RETURN + ORDER BY + LIMIT" should "produce Sort and Limit plan nodes" in {
+    val query = """
+      MATCH (n:Person)
+      RETURN n.name AS name ORDER BY name LIMIT 5
+    """
+    val plan = planQuery(query)
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Sort]) shouldBe true
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Limit]) shouldBe true
+  }
+
+  "Variable shadowing across WITH boundary" should "use distinct binding IDs" in {
+    val query = """
+      MATCH (n:Person)
+      WITH n.name AS x
+      MATCH (m:Movie)
+      WITH m.title AS x
+      RETURN x
+    """
+    val (ast, symbolTable) = parseCypher(query)
+
+    // Collect all bindings named 'x' from WITH clauses
+    def collectWithBindings(parts: List[Cypher.QueryPart]): List[Int] =
+      parts.collect { case Cypher.QueryPart.WithClausePart(wc) =>
+        wc.bindings.collect {
+          case p if p.as.isRight => p.as.toOption.get.name
+        }
+      }.flatten
+
+    val allParts = ast match {
+      case spq: Cypher.Query.SingleQuery.SinglepartQuery => spq.queryParts
+      case mpq: Cypher.Query.SingleQuery.MultipartQuery => mpq.queryParts ++ mpq.into.queryParts
+    }
+
+    val bindingIds = collectWithBindings(allParts)
+    // There should be at least 2 different bindings for 'x' with distinct IDs
+    bindingIds.toSet.size should be >= 2
+  }
+
+  "extractWithAliases" should "not track property-access aliases" in {
+    val query = """
+      MATCH (a:Person)
+      WITH a.name AS x
+      RETURN x
+    """
+    val (ast, symbolTable) = parseCypher(query)
+    val aliases = QueryPlanner.extractWithAliases(ast, symbolTable)
+    // `a.name` is rewritten to a synthId by symbol analysis. The alias (synthId -> x)
+    // should NOT be tracked because synthId is a PropertyAccessEntry, not a graph element.
+    // All alias sources should be graph element bindings only.
+    aliases.values.foreach { sourceId =>
+      symbolTable.references.exists { entry =>
+        entry.identifier == sourceId && (
+          entry.isInstanceOf[SymbolAnalysisModule.SymbolTableEntry.NodeEntry] ||
+          entry.isInstanceOf[SymbolAnalysisModule.SymbolTableEntry.EdgeEntry]
+        )
+      } shouldBe true
+    }
+  }
+
+  "Simple WITH passthrough" should "not create materializing operators" in {
+    val query = """
+      MATCH (n:Person)
+      WITH n AS n
+      RETURN n
+    """
+    val plan = planQuery(query)
+    // Simple passthrough WITH should NOT create Aggregate, Sort, Limit, Skip, or Distinct
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Aggregate]) shouldBe false
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Sort]) shouldBe false
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Limit]) shouldBe false
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Skip]) shouldBe false
+    containsOperator(plan, _.isInstanceOf[QueryPlan.Distinct]) shouldBe false
   }
 }

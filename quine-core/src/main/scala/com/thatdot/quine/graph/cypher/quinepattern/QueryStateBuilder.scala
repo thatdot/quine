@@ -266,6 +266,15 @@ object StateDescriptor {
     inputId: StandingQueryId,
   ) extends StateDescriptor
 
+  /** State for Skip operator */
+  case class Skip(
+    id: StandingQueryId,
+    parentId: StandingQueryId,
+    mode: RuntimeMode,
+    plan: QueryPlan.Skip,
+    inputId: StandingQueryId,
+  ) extends StateDescriptor
+
   /** State for SubscribeToQueryPart operator */
   case class SubscribeToQueryPart(
     id: StandingQueryId,
@@ -680,6 +689,12 @@ object QueryStateBuilder {
         val (ctxAfterInput, inputId) = buildPlan(input, id, mode, ctx, fallbackOutput)
         val desc = StateDescriptor.Limit(id, parentId, mode, p, inputId)
         (ctxAfterInput.addState(desc, isLeaf = false), id)
+
+      case p @ QueryPlan.Skip(_, input) =>
+        val id = StandingQueryId.fresh()
+        val (ctxAfterInput, inputId) = buildPlan(input, id, mode, ctx, fallbackOutput)
+        val desc = StateDescriptor.Skip(id, parentId, mode, p, inputId)
+        (ctxAfterInput.addState(desc, isLeaf = false), id)
     }
   }
 
@@ -768,6 +783,13 @@ object QueryStateBuilder {
         val (ctxAfterInput, inputId, maybeEntryPoint) =
           buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
         val desc = StateDescriptor.Limit(id, parentId, mode, p, inputId)
+        (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
+
+      case p @ QueryPlan.Skip(_, input) =>
+        val id = StandingQueryId.fresh()
+        val (ctxAfterInput, inputId, maybeEntryPoint) =
+          buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
+        val desc = StateDescriptor.Skip(id, parentId, mode, p, inputId)
         (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
 
       // For nested Sequence, the entry point is in first's subtree

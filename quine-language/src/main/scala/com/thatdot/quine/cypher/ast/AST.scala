@@ -4,6 +4,13 @@ import com.thatdot.quine.language.ast.{CypherIdentifier, Direction, Expression, 
 
 case class Projection(source: Source, expression: Expression, as: Either[CypherIdentifier, QuineIdentifier])
 
+/** A single item in an ORDER BY clause.
+  * @param source Source location in the query text
+  * @param expression The expression to sort by
+  * @param ascending True for ASC (default), false for DESC
+  */
+case class SortItem(source: Source, expression: Expression, ascending: Boolean)
+
 sealed trait Effect {
   val source: Source
 }
@@ -79,6 +86,9 @@ case class WithClause(
   isDistinct: Boolean,
   bindings: List[Projection],
   maybePredicate: Option[Expression],
+  orderBy: List[SortItem] = Nil,
+  maybeSkip: Option[Expression] = None,
+  maybeLimit: Option[Expression] = None,
 )
 
 sealed trait QueryPart
@@ -106,6 +116,9 @@ object Query {
       hasWildcard: Boolean,
       isDistinct: Boolean,
       bindings: List[Projection],
+      orderBy: List[SortItem] = Nil,
+      maybeSkip: Option[Expression] = None,
+      maybeLimit: Option[Expression] = None,
     ) extends SingleQuery
   }
 }

@@ -528,7 +528,30 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
   def annotateSinglepartQuery(query: SingleQuery.SinglepartQuery): TCEffect[SingleQuery.SinglepartQuery] = for {
     annotatedParts <- query.queryParts.traverse(annotateQueryPart)
     annotatedBindings <- query.bindings.traverse(annotateProjection)
-  } yield query.copy(queryParts = annotatedParts, bindings = annotatedBindings)
+    annotatedOrderBy <- query.orderBy.traverse { si =>
+      annotateAndCheckExpression(si.expression).map(e => si.copy(expression = e))
+    }
+    annotatedSkip <- query.maybeSkip.traverse { skip =>
+      for {
+        annotated <- annotateAndCheckExpression(skip)
+        skipType <- getType(annotated)
+        _ <- unify(skipType, PrimitiveType.Integer)
+      } yield annotated
+    }
+    annotatedLimit <- query.maybeLimit.traverse { limit =>
+      for {
+        annotated <- annotateAndCheckExpression(limit)
+        limitType <- getType(annotated)
+        _ <- unify(limitType, PrimitiveType.Integer)
+      } yield annotated
+    }
+  } yield query.copy(
+    queryParts = annotatedParts,
+    bindings = annotatedBindings,
+    orderBy = annotatedOrderBy,
+    maybeSkip = annotatedSkip,
+    maybeLimit = annotatedLimit,
+  )
 
   def annotateQueryPart(queryPart: QueryPart): TCEffect[QueryPart] = queryPart match {
     case rcp: QueryPart.ReadingClausePart =>
@@ -592,7 +615,30 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
         _ <- unify(predType, PrimitiveType.Boolean)
       } yield annotated
     }
-  } yield withClause.copy(bindings = annotatedBindings, maybePredicate = annotatedPredicate)
+    annotatedOrderBy <- withClause.orderBy.traverse { si =>
+      annotateAndCheckExpression(si.expression).map(e => si.copy(expression = e))
+    }
+    annotatedSkip <- withClause.maybeSkip.traverse { skip =>
+      for {
+        annotated <- annotateAndCheckExpression(skip)
+        skipType <- getType(annotated)
+        _ <- unify(skipType, PrimitiveType.Integer)
+      } yield annotated
+    }
+    annotatedLimit <- withClause.maybeLimit.traverse { limit =>
+      for {
+        annotated <- annotateAndCheckExpression(limit)
+        limitType <- getType(annotated)
+        _ <- unify(limitType, PrimitiveType.Integer)
+      } yield annotated
+    }
+  } yield withClause.copy(
+    bindings = annotatedBindings,
+    maybePredicate = annotatedPredicate,
+    orderBy = annotatedOrderBy,
+    maybeSkip = annotatedSkip,
+    maybeLimit = annotatedLimit,
+  )
 
   def annotateEffect(effect: Effect): TCEffect[Effect] = effect match {
     case foreach: Effect.Foreach =>

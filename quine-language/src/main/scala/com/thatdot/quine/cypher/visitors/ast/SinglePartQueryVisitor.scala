@@ -50,16 +50,19 @@ object SinglePartQueryVisitor extends CypherBaseVisitor[Option[SinglepartQuery]]
           }
       }
 
-      val (hasWildcard, isDistinct, projs) =
+      val body =
         maybeMatch(ctx.oC_Return(), ReturnVisitor)
-          .getOrElse((false, false, Nil))
+          .getOrElse(ProjectionBody(false, false, Nil, Nil, None, None))
 
       SinglepartQuery(
         source = src,
         queryParts = orderedQueryParts,
-        hasWildcard = hasWildcard,
-        isDistinct = isDistinct,
-        bindings = projs,
+        hasWildcard = body.hasWildcard,
+        isDistinct = body.isDistinct,
+        bindings = body.projections,
+        orderBy = body.orderBy,
+        maybeSkip = body.maybeSkip,
+        maybeLimit = body.maybeLimit,
       )
     }
   }

@@ -200,6 +200,12 @@ trait CypherASTInstances extends ASTInstances {
         )
     }
 
+  implicit lazy val sortItemPrettyPrint: PrettyPrint[SortItem] =
+    PrettyPrint.instance { si =>
+      val dirDoc = if (si.ascending) text(" ASC") else text(" DESC")
+      concat(expressionPrettyPrint.doc(si.expression), dirDoc)
+    }
+
   implicit lazy val withClausePrettyPrint: PrettyPrint[WithClause] =
     PrettyPrint.instance { wc =>
       val distinctDoc = if (wc.isDistinct) text("DISTINCT ") else empty
@@ -209,12 +215,27 @@ trait CypherASTInstances extends ASTInstances {
         case Some(pred) => concat(text(" WHERE "), expressionPrettyPrint.doc(pred))
         case None => empty
       }
+      val orderByDoc = if (wc.orderBy.nonEmpty) {
+        val sortDocs = wc.orderBy.map(sortItemPrettyPrint.doc)
+        concat(text(" ORDER BY "), intercalate(text(", "), sortDocs))
+      } else empty
+      val skipDoc = wc.maybeSkip match {
+        case Some(skip) => concat(text(" SKIP "), expressionPrettyPrint.doc(skip))
+        case None => empty
+      }
+      val limitDoc = wc.maybeLimit match {
+        case Some(limit) => concat(text(" LIMIT "), expressionPrettyPrint.doc(limit))
+        case None => empty
+      }
       concat(
         text("WITH "),
         distinctDoc,
         wildcardDoc,
         intercalate(text(", "), bindingDocs),
         predDoc,
+        orderByDoc,
+        skipDoc,
+        limitDoc,
         text(" "),
         sourcePrettyPrint.doc(wc.source),
       )
@@ -263,11 +284,23 @@ trait CypherASTInstances extends ASTInstances {
           sourcePrettyPrint.doc(source),
         )
 
-      case Query.SingleQuery.SinglepartQuery(source, queryParts, hasWildcard, isDistinct, bindings) =>
-        val partDocs = queryParts.map(queryPartPrettyPrint.doc)
-        val bindingDocs = bindings.map(projectionCypherPrettyPrint.doc)
-        val wildcardDoc = if (hasWildcard) text("*, ") else empty
-        val distinctDoc = if (isDistinct) text("DISTINCT ") else empty
+      case spq: Query.SingleQuery.SinglepartQuery =>
+        val partDocs = spq.queryParts.map(queryPartPrettyPrint.doc)
+        val bindingDocs = spq.bindings.map(projectionCypherPrettyPrint.doc)
+        val wildcardDoc = if (spq.hasWildcard) text("*, ") else empty
+        val distinctDoc = if (spq.isDistinct) text("DISTINCT ") else empty
+        val orderByDoc = if (spq.orderBy.nonEmpty) {
+          val sortDocs = spq.orderBy.map(sortItemPrettyPrint.doc)
+          concat(line, text("ORDER BY "), intercalate(text(", "), sortDocs))
+        } else empty
+        val skipDoc = spq.maybeSkip match {
+          case Some(skip) => concat(line, text("SKIP "), expressionPrettyPrint.doc(skip))
+          case None => empty
+        }
+        val limitDoc = spq.maybeLimit match {
+          case Some(limit) => concat(line, text("LIMIT "), expressionPrettyPrint.doc(limit))
+          case None => empty
+        }
         concat(
           text("SinglepartQuery("),
           nest(
@@ -285,12 +318,15 @@ trait CypherASTInstances extends ASTInstances {
               nest(1, concat(line, intercalate(concat(text(","), line), bindingDocs))),
               line,
               text("]"),
+              orderByDoc,
+              skipDoc,
+              limitDoc,
             ),
           ),
           line,
           text(")"),
           text(" "),
-          sourcePrettyPrint.doc(source),
+          sourcePrettyPrint.doc(spq.source),
         )
     }
   implicit lazy val yieldItemPrettyPrint: PrettyPrint[YieldItem] =

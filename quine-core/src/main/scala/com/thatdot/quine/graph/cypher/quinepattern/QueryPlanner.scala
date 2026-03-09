@@ -469,7 +469,11 @@ object QueryPlanner {
           .foldLeft(NodeDeps.empty)(NodeDeps.combine)
         // Also extract from WHERE predicate if present
         val predicateDeps = withClause.maybePredicate.map(extractDepsFromExpr(_, symbolTable)).getOrElse(NodeDeps.empty)
-        NodeDeps.combine(bindingDeps, predicateDeps)
+        // Extract from ORDER BY expressions
+        val orderByDeps = withClause.orderBy
+          .map(si => extractDepsFromExpr(si.expression, symbolTable))
+          .foldLeft(NodeDeps.empty)(NodeDeps.combine)
+        NodeDeps.combine(NodeDeps.combine(bindingDeps, predicateDeps), orderByDeps)
       case Cypher.QueryPart.EffectPart(effect) =>
         // Extract dependencies from effect expressions (e.g., SET n.prop = expr)
         extractDepsFromEffect(effect, symbolTable)
@@ -550,8 +554,13 @@ object QueryPlanner {
 
   /** Extract alias mappings from WITH clauses: destination binding ID -> source binding ID.
     * This tracks when a WITH clause renames/aliases a binding, e.g., WITH m AS movie.
+    *
+    * Only tracks aliases where the source is a graph element (node or edge).
+    * Property access synthIds (e.g., `a.x` rewritten to `Ident(synthId)`) are NOT
+    * tracked as aliases because propagating NodeDep.Id through property-access
+    * synthetic IDs is incorrect.
     */
-  def extractWithAliases(query: Cypher.Query): Map[Int, Int] = {
+  def extractWithAliases(query: Cypher.Query, symbolTable: SymbolAnalysisModule.SymbolTable): Map[Int, Int] = {
     def fromProjection(proj: Cypher.Projection): Option[(Int, Int)] =
       // If the expression is just an identifier, this is an alias
       proj.expression match {
@@ -560,7 +569,11 @@ object QueryPlanner {
             case Right(sourceId) =>
               proj.as match {
                 case Right(destId) if destId.name != sourceId.name =>
-                  Some(destId.name -> sourceId.name)
+                  // Only track as alias if the source is a graph element binding
+                  if (isGraphElementBinding(sourceId.name, symbolTable))
+                    Some(destId.name -> sourceId.name)
+                  else
+                    None
                 case _ => None
               }
             case _ => None
@@ -584,7 +597,7 @@ object QueryPlanner {
             allParts.flatMap(p => fromQueryPart(p).toList).toMap
         }
       case union: Cypher.Query.Union =>
-        extractWithAliases(union.lhs) ++ extractWithAliases(union.rhs)
+        extractWithAliases(union.lhs, symbolTable) ++ extractWithAliases(union.rhs, symbolTable)
     }
   }
 
@@ -1673,6 +1686,7 @@ object QueryPlanner {
     isDistinct: Boolean,
     input: QueryPlan,
     symbolTable: SymbolAnalysisModule.SymbolTable,
+    dropExisting: Boolean = true,
     targetBindings: Option[List[Symbol]] = None,
   ): QueryPlan = {
     // Check if any projection contains an aggregation function
@@ -1729,18 +1743,18 @@ object QueryPlanner {
         }
 
         if (allColumns.isEmpty) aggregate
-        else QueryPlan.Project(allColumns, dropExisting = true, aggregate)
+        else QueryPlan.Project(allColumns, dropExisting, aggregate)
       } else {
         // Fallback to regular projection
         val columns = convertProjections(projections, symbolTable, targetBindings)
         if (columns.isEmpty) input
-        else QueryPlan.Project(columns, dropExisting = true, input)
+        else QueryPlan.Project(columns, dropExisting, input)
       }
     } else {
       // No aggregation - regular projection
       val columns = convertProjections(projections, symbolTable, targetBindings)
       if (columns.isEmpty) input
-      else QueryPlan.Project(columns, dropExisting = true, input)
+      else QueryPlan.Project(columns, dropExisting, input)
     }
 
     if (isDistinct) QueryPlan.Distinct(projected)
@@ -1954,6 +1968,72 @@ object QueryPlanner {
     effects.toList
   }
 
+  /** Check if a WITH clause requires materializing (needs to buffer all input rows).
+    * This is true if the WITH has aggregation, DISTINCT, ORDER BY, SKIP, or LIMIT.
+    * Simple pass-through/rename WITH clauses return false.
+    */
+  private def isMaterializingWith(withClause: Cypher.WithClause): Boolean =
+    withClause.isDistinct ||
+    withClause.orderBy.nonEmpty ||
+    withClause.maybeSkip.isDefined ||
+    withClause.maybeLimit.isDefined ||
+    withClause.bindings.exists(p => containsAggregation(p.expression))
+
+  /** Plan a materializing WITH clause by wrapping the input plan with
+    * aggregation, DISTINCT, WHERE, ORDER BY, SKIP, and LIMIT operators.
+    *
+    * Operator nesting order (innermost to outermost):
+    *   inputPlan → Project/Aggregate → Filter(WHERE) → DISTINCT → Sort → Skip → Limit
+    */
+  def planWithClauseProjection(
+    withClause: Cypher.WithClause,
+    inputPlan: QueryPlan,
+    symbolTable: SymbolAnalysisModule.SymbolTable,
+    nodeDeps: NodeDeps,
+    propertyBindings: List[PropertyBinding],
+  ): QueryPlan = {
+    // Step 1: Apply projection (with aggregation support)
+    val projected = planProjection(
+      withClause.bindings,
+      isDistinct = false, // DISTINCT is handled below, after WHERE
+      inputPlan,
+      symbolTable,
+      dropExisting = !withClause.hasWildCard,
+    )
+
+    // Step 2: Apply WHERE filter
+    val filtered = withClause.maybePredicate
+      .flatMap(filterOutRedundantPredicates(_, nodeDeps, Nil, propertyBindings)) match {
+      case Some(pred) => QueryPlan.Filter(pred, projected)
+      case None => projected
+    }
+
+    // Step 3: Apply DISTINCT
+    val distincted = if (withClause.isDistinct) QueryPlan.Distinct(filtered) else filtered
+
+    // Step 4: Apply ORDER BY
+    val sorted = if (withClause.orderBy.nonEmpty) {
+      val sortKeys = withClause.orderBy.map { si =>
+        SortKey(si.expression, si.ascending)
+      }
+      QueryPlan.Sort(sortKeys, distincted)
+    } else distincted
+
+    // Step 5: Apply SKIP
+    val skipped = withClause.maybeSkip match {
+      case Some(expr) => QueryPlan.Skip(expr, sorted)
+      case None => sorted
+    }
+
+    // Step 6: Apply LIMIT
+    val limited = withClause.maybeLimit match {
+      case Some(expr) => QueryPlan.Limit(expr, skipped)
+      case None => skipped
+    }
+
+    limited
+  }
+
   /** Extract bindings defined by a query part.
     * Used to track which bindings exist when processing subsequent parts.
     * Returns Symbols (for QueryPlan output compatibility).
@@ -2042,32 +2122,28 @@ object QueryPlanner {
       else QueryPlan.LocalEffect(effects, QueryPlan.Unit)
   }
 
-  /** Combine query parts into a sequence */
-  def planQueryParts(
+  /** Plan a group of non-materializing parts using the existing Sequence/CrossProduct logic. */
+  private def planPartGroup(
     parts: List[Cypher.QueryPart],
     idLookups: List[IdLookup],
     nodeDeps: NodeDeps,
     symbolTable: SymbolAnalysisModule.SymbolTable,
-    propertyBindings: List[PropertyBinding] = Nil,
-    existingBindings: Set[Symbol] = Set.empty,
+    propertyBindings: List[PropertyBinding],
+    existingBindings: Set[Symbol],
   ): QueryPlan = parts match {
     case Nil => QueryPlan.Unit
     case single :: Nil => planQueryPart(single, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
     case first :: rest =>
-      // Track bindings established by this part for subsequent parts
       val bindingsFromFirst = extractBindingsFromPart(first)
       val accumulatedBindings = existingBindings ++ bindingsFromFirst
 
-      // Special handling for UNWIND and PROCEDURE: the rest of the query becomes the subquery
-      // These are like flatMap - for each element/result, evaluate the subquery
       first match {
         case Cypher.QueryPart.ReadingClausePart(unwind: Cypher.ReadingClause.FromUnwind) =>
-          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
+          val restPlan = planPartGroup(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
           QueryPlan.Unwind(unwind.list, bindingSymbol(identInt(unwind.as)), restPlan)
 
         case Cypher.QueryPart.ReadingClausePart(proc: Cypher.ReadingClause.FromProcedure) =>
-          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
-          // Convert YieldItems to (resultField, boundAs) pairs
+          val restPlan = planPartGroup(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
           val yieldPairs = proc.yields.map { yi =>
             (yi.resultField, bindingSymbol(identInt(yi.boundAs)))
           }
@@ -2080,24 +2156,80 @@ object QueryPlanner {
 
         case _ =>
           val firstPlan = planQueryPart(first, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
-          val restPlan = planQueryParts(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
-          // Determine if we need sequential binding flow between parts:
-          // - Effects depend on prior match results
-          // - WITH clauses create sequence points (receive bindings and establish new ones)
-          // - Parts following WITH need the bindings it established
+          val restPlan = planPartGroup(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
           val needsSequence = (first, rest.headOption) match {
-            case (_, Some(_: Cypher.QueryPart.EffectPart)) => true // Effects need prior bindings
-            case (_, Some(_: Cypher.QueryPart.WithClausePart)) => true // WITH needs prior bindings
-            case (_: Cypher.QueryPart.WithClausePart, _) => true // Parts after WITH need its bindings
+            case (_, Some(_: Cypher.QueryPart.EffectPart)) => true
+            case (_, Some(_: Cypher.QueryPart.WithClausePart)) => true
+            case (_: Cypher.QueryPart.WithClausePart, _) => true
             case _ => false
           }
           if (needsSequence) {
             QueryPlan.Sequence(firstPlan, restPlan, ContextFlow.Extend)
           } else {
-            // Truly independent reading clauses (rare - usually just multiple MATCHes without WITH)
             QueryPlan.CrossProduct(List(firstPlan, restPlan))
           }
       }
+  }
+
+  /** Combine query parts into a plan, splitting at materializing WITH boundaries.
+    *
+    * Materializing WITH clauses (those with aggregation, DISTINCT, ORDER BY, SKIP, or LIMIT)
+    * require ALL input rows before they can produce output. They can't be composed with
+    * per-row Sequence. Instead, we:
+    * 1. Plan all parts before the materializing WITH as a group
+    * 2. Wrap that group with the WITH's projection/aggregation/sort/limit
+    * 3. Recurse on the remaining parts after the WITH
+    *
+    * Non-materializing WITH clauses (simple pass-through/rename) continue using Sequence.
+    */
+  def planQueryParts(
+    parts: List[Cypher.QueryPart],
+    idLookups: List[IdLookup],
+    nodeDeps: NodeDeps,
+    symbolTable: SymbolAnalysisModule.SymbolTable,
+    propertyBindings: List[PropertyBinding] = Nil,
+    existingBindings: Set[Symbol] = Set.empty,
+  ): QueryPlan = {
+    // Find the first materializing WITH clause
+    val materializingIdx = parts.indexWhere {
+      case Cypher.QueryPart.WithClausePart(wc) => isMaterializingWith(wc)
+      case _ => false
+    }
+
+    if (materializingIdx < 0) {
+      // No materializing WITH - plan all parts as a group using existing logic
+      planPartGroup(parts, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
+    } else {
+      val (beforeWith, withAndAfter) = parts.splitAt(materializingIdx)
+      val withPart = withAndAfter.head.asInstanceOf[Cypher.QueryPart.WithClausePart]
+      val afterWith = withAndAfter.tail
+
+      // Plan everything before the WITH as a group
+      val inputPlan = planPartGroup(beforeWith, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
+
+      // Wrap with the WITH's materializing operations
+      val withPlan = planWithClauseProjection(
+        withPart.withClause,
+        inputPlan,
+        symbolTable,
+        nodeDeps,
+        propertyBindings,
+      )
+
+      // Track accumulated bindings through the WITH
+      val bindingsThroughWith = beforeWith.flatMap(extractBindingsFromPart).toSet ++
+        existingBindings ++
+        withPart.withClause.bindings.map(p => bindingSymbol(identInt(p.as))).toSet
+
+      if (afterWith.isEmpty) {
+        withPlan
+      } else {
+        // Recurse on the remaining parts
+        val restPlan =
+          planQueryParts(afterWith, idLookups, nodeDeps, symbolTable, propertyBindings, bindingsThroughWith)
+        QueryPlan.Sequence(withPlan, restPlan, ContextFlow.Extend)
+      }
+    }
   }
 
   // ============================================================
@@ -2280,6 +2412,19 @@ object QueryPlanner {
           case other =>
             QueryPlan.Distinct(other)
         }
+
+      // Handle Aggregate, Sort, Skip, Limit - recurse into their children
+      case QueryPlan.Aggregate(aggOps, groupBy, child) =>
+        QueryPlan.Aggregate(aggOps, groupBy, push(child, anchorContext))
+
+      case QueryPlan.Sort(orderBy, child) =>
+        QueryPlan.Sort(orderBy, push(child, anchorContext))
+
+      case QueryPlan.Skip(countExpr, child) =>
+        QueryPlan.Skip(countExpr, push(child, anchorContext))
+
+      case QueryPlan.Limit(countExpr, child) =>
+        QueryPlan.Limit(countExpr, push(child, anchorContext))
 
       // Special case: CrossProduct followed by effects - push effects into anchor children
       // BUT only if the effect doesn't depend on bindings from other anchors
@@ -2594,6 +2739,34 @@ object QueryPlanner {
     outputNameMapping: Map[Symbol, Symbol],
   )
 
+  /** Wrap a plan with ORDER BY, SKIP, and LIMIT operators from the RETURN clause. */
+  private def wrapWithSortSkipLimit(
+    plan: QueryPlan,
+    orderBy: List[Cypher.SortItem],
+    maybeSkip: Option[Pattern.Expression],
+    maybeLimit: Option[Pattern.Expression],
+  ): QueryPlan = {
+    val sorted = if (orderBy.nonEmpty) {
+      val sortKeys = orderBy.map(si => SortKey(si.expression, si.ascending))
+      QueryPlan.Sort(sortKeys, plan)
+    } else plan
+
+    val skipped = maybeSkip match {
+      case Some(expr) => QueryPlan.Skip(expr, sorted)
+      case None => sorted
+    }
+
+    val limited = maybeLimit match {
+      case Some(expr) => QueryPlan.Limit(expr, skipped)
+      case None => skipped
+    }
+
+    limited
+  }
+
+  def plan(cypherAst: Cypher.Query, symbolTable: SymbolAnalysisModule.SymbolTable): QueryPlan =
+    planWithMetadata(cypherAst, symbolTable).plan
+
   /** Plan a SingleQuery (either SinglepartQuery or MultipartQuery) into a QueryPlan.
     *
     * @param targetBindings Optional target binding symbols for RETURN projections.
@@ -2610,11 +2783,25 @@ object QueryPlanner {
   ): QueryPlan = single match {
     case spq: Cypher.Query.SingleQuery.SinglepartQuery =>
       val bodyPlan = planQueryParts(spq.queryParts, idLookups, nodeDeps, symbolTable, propertyBindings)
-      planProjection(spq.bindings, isDistinct = spq.isDistinct, bodyPlan, symbolTable, targetBindings)
+      val projected = planProjection(
+        spq.bindings,
+        isDistinct = spq.isDistinct,
+        bodyPlan,
+        symbolTable,
+        targetBindings = targetBindings,
+      )
+      wrapWithSortSkipLimit(projected, spq.orderBy, spq.maybeSkip, spq.maybeLimit)
     case mpq: Cypher.Query.SingleQuery.MultipartQuery =>
       val allParts = mpq.queryParts ++ mpq.into.queryParts
       val bodyPlan = planQueryParts(allParts, idLookups, nodeDeps, symbolTable, propertyBindings)
-      planProjection(mpq.into.bindings, isDistinct = mpq.into.isDistinct, bodyPlan, symbolTable, targetBindings)
+      val projected = planProjection(
+        mpq.into.bindings,
+        isDistinct = mpq.into.isDistinct,
+        bodyPlan,
+        symbolTable,
+        targetBindings = targetBindings,
+      )
+      wrapWithSortSkipLimit(projected, mpq.into.orderBy, mpq.into.maybeSkip, mpq.into.maybeLimit)
   }
 
   /** Plan a Query (either Union or SingleQuery) into a QueryPlan.
@@ -2679,7 +2866,7 @@ object QueryPlanner {
     // Propagate NodeDep.Id back through WITH alias chains
     // This ensures that if CREATE needs id(m) where m was renamed through WITH clauses,
     // the original binding also gets NodeDep.Id
-    val aliases = extractWithAliases(cypherAst)
+    val aliases = extractWithAliases(cypherAst, symbolTable)
     val nodeDepsWithoutProps = propagateIdDepsBackward(rawNodeDeps, aliases)
 
     // Extract property bindings from the symbol table (created during symbol analysis)

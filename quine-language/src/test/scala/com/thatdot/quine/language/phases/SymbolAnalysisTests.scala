@@ -654,4 +654,63 @@ class SymbolAnalysisTests extends munit.FunSuite {
     assert(maybeQuery.isDefined, s"Should parse and analyze CALL YIELD query, got: ${state.diagnostics}")
     assert(getErrors(state.diagnostics).isEmpty, s"Should have no errors, got: ${state.diagnostics}")
   }
+
+  test("ORDER BY in WITH is analyzed in correct scope") {
+    val testQuery = "MATCH (n:Person) WITH n.name AS name ORDER BY n.name RETURN name"
+
+    val (state, maybeQuery) = parseQueryWithSymbolTable(testQuery)
+
+    assert(maybeQuery.isDefined, s"Should parse WITH ORDER BY, got: ${state.diagnostics}")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no errors, got: ${getErrors(state.diagnostics)}")
+
+    // The WITH clause should have ORDER BY items
+    val query = maybeQuery.get
+    val withClauses = query match {
+      case Query.SingleQuery.MultipartQuery(_, parts, _) =>
+        parts.collect { case com.thatdot.quine.cypher.ast.QueryPart.WithClausePart(wc) => wc }
+      case _ => Nil
+    }
+    assert(withClauses.nonEmpty, "Should have a WITH clause")
+    assert(withClauses.head.orderBy.nonEmpty, "WITH clause should have ORDER BY items")
+    assert(withClauses.head.orderBy.head.ascending, "Default sort order should be ascending")
+  }
+
+  test("SKIP and LIMIT in WITH are analyzed") {
+    val testQuery = "MATCH (n:Person) WITH n AS n SKIP 5 LIMIT 10 RETURN n"
+
+    val (state, maybeQuery) = parseQueryWithSymbolTable(testQuery)
+
+    assert(maybeQuery.isDefined, s"Should parse WITH SKIP LIMIT, got: ${state.diagnostics}")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no errors, got: ${getErrors(state.diagnostics)}")
+
+    val query = maybeQuery.get
+    val withClauses = query match {
+      case Query.SingleQuery.MultipartQuery(_, parts, _) =>
+        parts.collect { case com.thatdot.quine.cypher.ast.QueryPart.WithClausePart(wc) => wc }
+      case _ => Nil
+    }
+    assert(withClauses.nonEmpty, "Should have a WITH clause")
+    assert(withClauses.head.maybeSkip.isDefined, "WITH clause should have SKIP")
+    assert(withClauses.head.maybeLimit.isDefined, "WITH clause should have LIMIT")
+  }
+
+  test("ORDER BY in RETURN is analyzed") {
+    val testQuery = "MATCH (n:Person) RETURN n.name AS name ORDER BY name DESC LIMIT 3"
+
+    val (state, maybeQuery) = parseQueryWithSymbolTable(testQuery)
+
+    assert(maybeQuery.isDefined, s"Should parse RETURN ORDER BY, got: ${state.diagnostics}")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no errors, got: ${getErrors(state.diagnostics)}")
+
+    val query = maybeQuery.get
+    val spq = query match {
+      case s: Query.SingleQuery.SinglepartQuery => Some(s)
+      case m: Query.SingleQuery.MultipartQuery => Some(m.into)
+      case _ => None
+    }
+    assert(spq.isDefined, "Should have a SinglepartQuery")
+    assert(spq.get.orderBy.nonEmpty, "RETURN should have ORDER BY items")
+    assert(!spq.get.orderBy.head.ascending, "DESC should be parsed as ascending=false")
+    assert(spq.get.maybeLimit.isDefined, "RETURN should have LIMIT")
+  }
 }

@@ -11,9 +11,17 @@ object WithVisitor extends CypherBaseVisitor[WithClause] {
     val maybePred =
       Option.apply(ctx.oC_Where()).map(_.accept(WhereClauseVisitor))
 
-    val (hasWildcard, isDistinct, projs) =
-      ctx.oC_ProjectionBody().accept(ProjectionBodyVisitor)
+    val body = ctx.oC_ProjectionBody().accept(ProjectionBodyVisitor)
 
-    WithClause(src, hasWildcard, isDistinct, projs, maybePred)
+    WithClause(
+      src,
+      body.hasWildcard,
+      body.isDistinct,
+      body.projections,
+      maybePred,
+      body.orderBy,
+      body.maybeSkip,
+      body.maybeLimit,
+    )
   }
 }
