@@ -528,6 +528,9 @@ object V2IngestEntities {
     /** Error occurred during processing */
     final case class Error(message: String, index: Option[Long], record: Option[String]) extends FeedbackMessage
 
+    /** Upload complete with guaranteed final record count */
+    final case class Complete(finalCount: Long) extends FeedbackMessage
+
     object FeedbackMessage {
       import io.circe.generic.extras.semiauto
 
