@@ -357,12 +357,14 @@ lazy val `quine-browser`: Project = project
     // Force patched dependency versions via yarn resolutions
     // - lodash: CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
     // - react-router: CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
+    // - minimatch: CVE-2026-27903 & CVE-2026-27904
     Compile / additionalNpmConfig := Map(
       "resolutions" -> obj(
         "lodash" -> str(lodashV),
         "react-router" -> str(reactRouterV),
         "react-router-dom" -> str(reactRouterV),
         "@remix-run/router" -> str(remixRunRouterV),
+        "minimatch" -> str(minimatchV),
       ),
     ),
     webpackNodeArgs := nodeLegacySslIfAvailable,
