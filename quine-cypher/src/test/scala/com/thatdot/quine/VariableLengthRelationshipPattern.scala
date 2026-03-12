@@ -223,6 +223,44 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
       expectedRows = Seq(),
       expectedCanContainAllNodeScan = true,
     )
+
+    testQuery(
+      "MATCH (n)-[:parent*0..0]->(m) RETURN n.first AS n, m.first AS m ORDER BY n, m",
+      expectedColumns = Vector("n", "m"),
+      // 0-hop: every node matches itself (edge label is irrelevant for 0-hop traversal)
+      expectedRows = Seq(
+        Vector(Expr.Str("0"), Expr.Str("0")),
+        Vector(Expr.Str("1"), Expr.Str("1")),
+        Vector(Expr.Str("2"), Expr.Str("2")),
+        Vector(Expr.Str("3"), Expr.Str("3")),
+        Vector(Expr.Str("loop-a"), Expr.Str("loop-a")),
+        Vector(Expr.Str("loop-b"), Expr.Str("loop-b")),
+        Vector(Expr.Str("loop-c"), Expr.Str("loop-c")),
+      ),
+      expectedCanContainAllNodeScan = true,
+    )
+
+    testQuery(
+      "MATCH (n)-[:parent*0..1]->(m) RETURN n.first AS n, m.first AS m ORDER BY n, m",
+      expectedColumns = Vector("n", "m"),
+      // 0-hop self-matches (7) + 1-hop edges (6)
+      expectedRows = Seq(
+        Vector(Expr.Str("0"), Expr.Str("0")),
+        Vector(Expr.Str("1"), Expr.Str("0")),
+        Vector(Expr.Str("1"), Expr.Str("1")),
+        Vector(Expr.Str("2"), Expr.Str("1")),
+        Vector(Expr.Str("2"), Expr.Str("2")),
+        Vector(Expr.Str("3"), Expr.Str("2")),
+        Vector(Expr.Str("3"), Expr.Str("3")),
+        Vector(Expr.Str("loop-a"), Expr.Str("loop-a")),
+        Vector(Expr.Str("loop-a"), Expr.Str("loop-c")),
+        Vector(Expr.Str("loop-b"), Expr.Str("loop-a")),
+        Vector(Expr.Str("loop-b"), Expr.Str("loop-b")),
+        Vector(Expr.Str("loop-c"), Expr.Str("loop-b")),
+        Vector(Expr.Str("loop-c"), Expr.Str("loop-c")),
+      ),
+      expectedCanContainAllNodeScan = true,
+    )
   }
 
 }

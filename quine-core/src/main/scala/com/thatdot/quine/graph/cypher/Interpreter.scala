@@ -416,7 +416,20 @@ trait OnNodeInterpreter
       InterpM(filteredHalfEdgesIterator.toVector)
     }
 
-    halfEdgesSource.flatMap {
+    // For *0..N patterns, the start node itself is a valid 0-hop match (before any edge traversal)
+    val zeroHopMatch: InterpM[CypherException, QueryContext] = range match {
+      case Some((Some(lower), _)) if lower == 0L && visited.isEmpty =>
+        if (literalFarNodeId.forall(_ == myQid)) {
+          val zeroHopContext = bindRelation match {
+            case None => context
+            case Some(asName) => context + (asName -> Expr.List(Vector.empty))
+          }
+          interpret(andThen, zeroHopContext)
+        } else InterpM.empty[CypherException, QueryContext]
+      case _ => InterpM.empty[CypherException, QueryContext]
+    }
+
+    zeroHopMatch ++ halfEdgesSource.flatMap {
       // Undirected edges don't exist for Cypher :)
       case HalfEdge(_, EdgeDirection.Undirected, _) => InterpM.empty[CypherException, QueryContext]
 
