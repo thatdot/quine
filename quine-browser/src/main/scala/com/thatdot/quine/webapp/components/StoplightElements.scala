@@ -1,32 +1,49 @@
 package com.thatdot.quine.webapp.components
 
 import scala.scalajs.js
+import scala.scalajs.js.annotation._
 
-import slinky.core.ExternalComponent
-import slinky.core.annotations.react
+import com.raquo.laminar.api.L._
+import com.raquo.laminar.codecs.Codec
 
-import js.annotation._
+/** Laminar wrapper for the Stoplight Elements API documentation viewer.
+  *
+  * Uses the `<elements-api>` web component from `@stoplight/elements/web-components.min.js`,
+  * which bundles React internally. No external React dependencies needed.
+  *
+  * @see [[https://github.com/stoplightio/elements/blob/main/docs/getting-started/elements/elements-options.md]]
+  */
+object StoplightElements {
 
-@react object StoplightElements extends ExternalComponent {
-
-  /** See [[https://github.com/stoplightio/elements/blob/main/docs/getting-started/elements/elements-options.md]] */
-  case class Props(
-    apiDescriptionUrl: String,
-    layout: String = "sidebar",
-    basePath: String = "/docs",
-    router: String = "memory", // TODO switching this to history or hash would allow deep-linking
-    logo: String = "/favicon.ico",
-    tryItCredentialsPolicy: String = "same-origin", // alternatives: "include" (for cross-origin REST API access), "omit"
-  )
+  // Side-effect import: registers the <elements-api> custom element
+  @js.native
+  @JSImport("@stoplight/elements/web-components.min.js", JSImport.Namespace)
+  private object WebComponents extends js.Object
+  locally(WebComponents)
 
   @js.native
   @JSImport("NodeModules/@stoplight/elements/styles.min.css", "css")
-  object Css extends js.Object
-  locally(Css) // something has to use this for it to actually load
+  private object Css extends js.Object
+  locally(Css) // force CSS side-effect import
 
-  @js.native
-  @JSImport("@stoplight/elements", "API")
-  object API extends js.Object
+  private val elementsApi = htmlTag("elements-api")
+  private def attr(name: String): HtmlAttr[String] = htmlAttr(name, Codec.stringAsIs)
 
-  override val component = API
+  def apply(
+    apiDescriptionUrl: String,
+    layout: String = "sidebar",
+    basePath: String = "/docs",
+    router: String = "memory",
+    logo: String = "/favicon.ico",
+    tryItCredentialsPolicy: String = "same-origin",
+  ): HtmlElement =
+    elementsApi(
+      attr("apiDescriptionUrl") := apiDescriptionUrl,
+      attr("layout") := layout,
+      attr("basePath") := basePath,
+      attr("router") := router,
+      attr("logo") := logo,
+      attr("tryItCredentialsPolicy") := tryItCredentialsPolicy,
+      height := "100%",
+    )
 }

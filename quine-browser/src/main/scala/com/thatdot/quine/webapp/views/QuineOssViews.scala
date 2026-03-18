@@ -1,15 +1,15 @@
-package com.thatdot.quine.webapp2.views
+package com.thatdot.quine.webapp.views
 
 import com.raquo.laminar.api.L._
 import com.raquo.waypoint.{Router, SplitRender}
 
 import com.thatdot.quine.routes.ClientRoutes
 import com.thatdot.quine.webapp.QuineUiOptions
+import com.thatdot.quine.webapp.components.HybridViewsRenderer
+import com.thatdot.quine.webapp.components.RenderStrategy.{RenderAlwaysMountedPage, RenderRegularlyMountedPages}
 import com.thatdot.quine.webapp.queryui.QueryMethod
-import com.thatdot.quine.webapp2.components.HybridViewsRenderer
-import com.thatdot.quine.webapp2.components.RenderStrategy.{RenderAlwaysMountedPage, RenderRegularlyMountedPages}
-import com.thatdot.quine.webapp2.router.QuineOssPage
-import com.thatdot.quine.webapp2.router.QuineOssPage._
+import com.thatdot.quine.webapp.router.QuineOssPage
+import com.thatdot.quine.webapp.router.QuineOssPage._
 
 class QuineOssViews(
   router: Router[QuineOssPage],

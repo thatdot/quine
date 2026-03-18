@@ -1,10 +1,7 @@
 package com.thatdot.quine.webapp.queryui
 
-import scala.scalajs.js.Dynamic.{literal => jsObj}
-
-import slinky.core._
-import slinky.core.annotations.react
-import slinky.web.html._
+import com.raquo.laminar.api.L._
+import com.raquo.laminar.codecs.Codec
 
 import com.thatdot.quine.routes.SampleQuery
 import com.thatdot.quine.webapp.Styles
@@ -12,72 +9,68 @@ import com.thatdot.quine.webapp.Styles
 /** Blue bar at the top of the page which contains the logo, query input,
   * navigation buttons, and counters
   */
-@react object TopBar {
+object TopBar {
 
-  case class Props(
-    query: String,
-    runningTextQuery: Boolean,
-    queryBarColor: Option[String],
-    sampleQueries: Seq[SampleQuery],
-    foundNodesCount: Option[Int],
-    foundEdgesCount: Option[Int],
+  private val listAttr: HtmlAttr[String] = htmlAttr("list", Codec.stringAsIs)
+
+  def apply(
+    query: Signal[String],
     updateQuery: String => Unit,
+    runningTextQuery: Signal[Boolean],
+    queryBarColor: Signal[Option[String]],
+    sampleQueries: Signal[Seq[SampleQuery]],
+    foundNodesCount: Signal[Option[Int]],
+    foundEdgesCount: Signal[Option[Int]],
     submitButton: Boolean => Unit,
     cancelButton: () => Unit,
-    navButtons: HistoryNavigationButtons.Props,
-  )
-
-  val component: FunctionalComponent[TopBar.Props] = FunctionalComponent[Props] { props =>
-    val queryInputStyle = if (props.runningTextQuery) {
-      jsObj(animation = "activequery 1.5s ease infinite")
-    } else {
-      jsObj(backgroundColor = props.queryBarColor.getOrElse[String]("white"))
+    navButtons: HtmlElement,
+    permissions: Option[Set[String]] = None,
+  ): HtmlElement = {
+    val canRead = permissions match {
+      case Some(perms) => Set("GraphRead").subsetOf(perms)
+      case None => true
     }
-
-    val buttonTitle: String =
-      if (props.runningTextQuery) "Cancel query"
-      else "Hold \"Shift\" to return results as a table"
-
-    div(className := Styles.navBar)(
-      div(className := Styles.queryInput)(
+    div(
+      cls := Styles.navBar,
+      div(
+        cls := Styles.queryInput,
         input(
-          `type` := "text",
-          list := "starting-queries",
-          placeholder := "Query returning nodes",
-          className := Styles.queryInputInput,
-          style := queryInputStyle,
-          value := props.query,
-          onChange := (e => props.updateQuery(e.target.value)),
-          onKeyUp := (e => if (e.key == "Enter") props.submitButton(e.shiftKey)),
-          disabled := props.runningTextQuery,
+          typ := "text",
+          listAttr := "starting-queries",
+          placeholder := (if (canRead) "Query returning nodes" else "Not Authorized to READ from graph"),
+          cls := Styles.queryInputInput,
+          cls <-- queryBarColor.map(_.getOrElse("")),
+          styleAttr <-- runningTextQuery.map { running =>
+            if (running) "animation: activequery 1.5s ease infinite" else ""
+          },
+          controlled(
+            value <-- query,
+            onInput.mapToValue --> (v => updateQuery(v)),
+          ),
+          onKeyUp --> (e => if (e.key == "Enter") submitButton(e.shiftKey)),
+          disabled <-- runningTextQuery.map(_ || !canRead),
         ),
-        datalist(id := "starting-queries")(
-          props.sampleQueries.map(q => option(value := q.query)(q.name)): _*,
+        htmlTag("datalist")(
+          idAttr := "starting-queries",
+          children <-- sampleQueries.map(_.map(q => option(value := q.query, q.name))),
         ),
-        button(
-          className := s"${Styles.grayClickable} ${Styles.queryInputButton}",
-          onClick := (e => if (props.runningTextQuery) props.cancelButton() else props.submitButton(e.shiftKey)),
-          title := buttonTitle,
-        )(if (props.runningTextQuery) "Cancel" else "Query"),
+        child <-- runningTextQuery.map { running =>
+          button(
+            cls := s"${Styles.grayClickable} ${Styles.queryInputButton}",
+            onClick --> { e =>
+              if (running) cancelButton()
+              else submitButton(e.shiftKey)
+            },
+            title := (if (running) "Cancel query" else "Hold \"Shift\" to return results as a table"),
+            disabled := !canRead,
+            if (running) "Cancel" else "Query",
+          )
+        },
       ),
-      HistoryNavigationButtons(
-        props.navButtons.undoMany,
-        props.navButtons.undo,
-        props.navButtons.isAnimating,
-        props.navButtons.animate,
-        props.navButtons.redo,
-        props.navButtons.redoMany,
-        props.navButtons.makeCheckpoint,
-        props.navButtons.checkpointContextMenu,
-        props.navButtons.downloadHistory,
-        props.navButtons.downloadGraphJsonLd,
-        props.navButtons.uploadHistory,
-        props.navButtons.atTime,
-        props.navButtons.setTime,
-        props.navButtons.toggleLayout,
-        props.navButtons.recenterViewport,
-      ),
-      Counters.nodeEdgeCounters(props.foundNodesCount -> props.foundEdgesCount),
+      navButtons,
+      child <-- foundNodesCount.combineWith(foundEdgesCount).map { case (n, e) =>
+        Counters.nodeEdgeCounters(n, e)
+      },
     )
   }
 }

@@ -3,13 +3,10 @@ package com.thatdot.quine.webapp.components.dashboard
 import scala.scalajs.js
 import scala.util.matching.Regex
 
-import slinky.core.StatelessComponent
-import slinky.core.annotations.react
-import slinky.core.facade.ReactElement
+import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.routes.Counter
 import com.thatdot.quine.webapp.components.ManualHistogramPlot
-import com.thatdot.quine.webapp.components.dashboard.CounterSummaryCard.{BucketLabel, bucketLabelOrdering}
 
 object CounterSummaryCard {
 
@@ -35,32 +32,31 @@ object CounterSummaryCard {
       org.scalajs.dom.console.warn(s"Got an unexpected bucket label: $unexpectedLabel")
       None
   }
-}
-@react class CounterSummaryCard extends StatelessComponent {
-  case class Props(
+
+  def apply(
     name: String,
     counters: Seq[Counter],
-  )
+  ): HtmlElement = {
+    val countersMap: Map[String, Double] =
+      counters.collect { case Counter(BucketLabel(_, _, x, y), count) =>
+        s"$x-$y" -> count.toDouble
+      }.toMap
 
-  private def countersMap: Map[String, Double] =
-    props.counters.collect { case Counter(BucketLabel(_, _, x, y), count) =>
-      s"$x-$y" -> count.toDouble
-    }.toMap
-
-  override def render(): ReactElement = Card(
-    title = props.name,
-    body = ManualHistogramPlot(
-      buckets = countersMap,
-      layout = js.Dynamic.literal(
-        height = 300,
-        margin = js.Dynamic.literal(
-          t = 32,
-          b = 32,
-          l = 32,
-          r = 64,
+    Card(
+      title = name,
+      body = ManualHistogramPlot(
+        buckets = countersMap,
+        layout = js.Dynamic.literal(
+          height = 300,
+          margin = js.Dynamic.literal(
+            t = 32,
+            b = 32,
+            l = 32,
+            r = 64,
+          ),
         ),
+        sortBucketsBy = bucketLabelOrdering,
       ),
-      sortBucketsBy = bucketLabelOrdering,
-    ),
-  )
+    )
+  }
 }

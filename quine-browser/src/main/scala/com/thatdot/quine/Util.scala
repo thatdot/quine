@@ -2,11 +2,7 @@ package com.thatdot.quine
 
 import scala.scalajs.js
 
-import io.circe.Json
-import io.circe.Printer.{noSpaces, spaces2}
 import org.scalajs.dom.intl.NumberFormat
-import slinky.core.facade.ReactElement
-import slinky.web.html.pre
 
 object Util {
 
@@ -25,19 +21,6 @@ object Util {
     List("&" -> "&amp;", "<" -> "&lt;", ">" -> "&gt;", "\"" -> "&quot;", "'" -> "&#039;")
       .filter { case (raw, _) => !exclusions.contains(raw) }
       .foldLeft(unsafeString) { case (acc, (raw, entity)) => acc.replace(raw, entity) }
-
-  /** "gently" pretty-print a JSON value: prints in compact form unless an object is close enough to the root of the
-    * provided value
-    * @param value
-    * @return
-    */
-  def renderJsonResultValue(value: Json): ReactElement = {
-    // use pretty printing when there is an object within the top 2 levels
-    val indent = value.isObject || // root entity is an object
-      value.asArray.exists(_.exists(_.isObject)) //root entity is an array containing an object
-    if (indent) pre(spaces2.print(value))
-    else noSpaces.print(value)
-  }
 
   val UploadIcon = "ion-android-upload"
   val ExplorerIcon = "ion-search"

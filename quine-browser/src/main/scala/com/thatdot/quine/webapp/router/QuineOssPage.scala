@@ -1,4 +1,4 @@
-package com.thatdot.quine.webapp2.router
+package com.thatdot.quine.webapp.router
 
 import cats.syntax.functor._
 import io.circe._
@@ -25,7 +25,12 @@ object QuineOssPage {
   implicit val metricsPageEncoder: Encoder[Metrics.type] = deriveEncoder
 
   implicit val PageDecoder: Decoder[QuineOssPage] =
-    List[Decoder[QuineOssPage]](Decoder[ExplorerUi.type].widen, Decoder[DocsV1.type].widen).reduceLeft(_ or _)
+    List[Decoder[QuineOssPage]](
+      Decoder[ExplorerUi.type].widen,
+      Decoder[DocsV1.type].widen,
+      Decoder[DocsV2.type].widen,
+      Decoder[Metrics.type].widen,
+    ).reduceLeft(_ or _)
 
   implicit val PageEncoder: Encoder[QuineOssPage] = Encoder.instance {
     case ExplorerUi => ExplorerUi.asJson

@@ -1,7 +1,7 @@
-package com.thatdot.quine.webapp2.components
+package com.thatdot.quine.webapp.components
 import com.raquo.laminar.api.L._
 
-import com.thatdot.quine.webapp2.components.RenderStrategy.{RenderAlwaysMountedPage, RenderRegularlyMountedPages}
+import com.thatdot.quine.webapp.components.RenderStrategy.{RenderAlwaysMountedPage, RenderRegularlyMountedPages}
 
 object HybridViewsRenderer {
   def apply(

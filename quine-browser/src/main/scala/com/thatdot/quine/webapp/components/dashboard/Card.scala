@@ -1,34 +1,16 @@
 package com.thatdot.quine.webapp.components.dashboard
 
-import slinky.core.StatelessComponent
-import slinky.core.annotations.react
-import slinky.core.facade.ReactElement
-import slinky.web.html.{className, div, key}
+import com.raquo.laminar.api.L._
 
-/** A react component rendering as a bootstrap-compatible Card
-  */
-@react class Card extends StatelessComponent {
-
-  case class Props(
-    title: ReactElement,
-    body: ReactElement,
-  )
-
-  override def render(): ReactElement =
+/** A Laminar component rendering as a bootstrap-compatible Card */
+object Card {
+  def apply(title: Modifier[HtmlElement], body: Modifier[HtmlElement]): HtmlElement =
     div(
-      className := "card",
-    )(
+      cls := "card",
       div(
-        className := "card-body",
-      )(
-        div(
-          className := "card-title",
-          key := "card-title",
-        )(props.title),
-        div(
-          className := "card-text",
-          key := "card-text",
-        )(props.body),
+        cls := "card-body",
+        div(cls := "card-title", title),
+        div(cls := "card-text", body),
       ),
     )
 }

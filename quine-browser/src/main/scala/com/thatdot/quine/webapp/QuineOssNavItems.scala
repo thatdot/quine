@@ -1,8 +1,8 @@
-package com.thatdot.quine.webapp2
+package com.thatdot.quine.webapp
 
-import com.thatdot.quine.webapp2.LaminarRoot.NavItemData
-import com.thatdot.quine.webapp2.router.QuineOssPage
-import com.thatdot.quine.webapp2.router.QuineOssPage._
+import com.thatdot.quine.webapp.LaminarRoot.NavItemData
+import com.thatdot.quine.webapp.router.QuineOssPage
+import com.thatdot.quine.webapp.router.QuineOssPage._
 
 class QuineOssNavItems(apiV1: Boolean) {
   private val docsNavItem =

@@ -2,10 +2,7 @@ package com.thatdot.quine.webapp.components.dashboard
 
 import scala.util.matching.Regex
 
-import slinky.core.Component
-import slinky.core.annotations.react
-import slinky.core.facade.ReactElement
-import slinky.web.html._
+import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.routes.{Counter, ShardInMemoryLimit}
 
@@ -48,7 +45,6 @@ object ShardInfoCard {
           (alertName -> count)
       }.toMap
 
-      // flatmap a ton of Options together for input validation. This should succeed any time after initialization.
       (for {
         nodesWoken <- countsForThisShard.get("sleep-counters.woken")
         nodesSleepFailure <- countsForThisShard.get("sleep-counters.slept-failure")
@@ -67,69 +63,63 @@ object ShardInfoCard {
       )).orElse {
         org.scalajs.dom.console.warn(
           s"Unable to find all necessary information to populate card for shard: $shardId. Logging sourceCounters and shard limit",
-          sourceCounters,
-          limits,
+          sourceCounters.toString,
+          limits.toString,
         )
         None
       }
     }
   }
 
-}
-@react class ShardInfoCard extends Component {
-
-  /** @param silencedAlerts counter values at or below which alerts for named counters should be suppressed
-    */
-  case class State(silencedAlerts: Map[String, Long])
-  case class Props(
-    info: ShardInfoCard.ShardInfo,
+  def apply(
+    info: ShardInfo,
     displayAlerts: Boolean,
-  )
-  // The initial state sets a silencing threshold for all known alerts to 0, where "known" means "name was provided as part of props"
-  override def initialState: State = {
-    val silencedAlerts = props.info.alertCounters.map { case (alertName, _) =>
-      alertName -> ShardInfoCard.DefaultAlertThreshold
-    }
-    State(silencedAlerts = silencedAlerts)
-  }
-
-  private def setAlertThreshold(alert: String, newThreshold: Long): Unit =
-    setState(s => s.copy(silencedAlerts = s.silencedAlerts.updated(alert, newThreshold)))
-
-  /** Calculate alerts that are above their silence threshold and register previously-unseen alerts with a threshold of 0
-    * @return
-    */
-  def alerts(): ReactElement =
-    div(className := "alerts", key := "alerts")(
-      for {
-        (alert, count) <- props.info.alertCounters: Map[String, Long]
-        threshold = state.silencedAlerts
-          .getOrElse[Long](
-            alert, { // if the alert is a new one, register it with a threshold of 0
-              setAlertThreshold(alert, ShardInfoCard.DefaultAlertThreshold)
-              0
-            },
-          )
-        if count > threshold // filter to only alerts above their silencing threshold
-      } yield div(className := "alert alert-warning", key := alert)(
-        s"$alert is $count, exceeding threshold ($threshold)",
-        button(className := "close", onClick := (() => setAlertThreshold(alert, count)))(
-          span("\u00D7"), // HTML entity &times;
-        ),
-      ),
+  ): HtmlElement = {
+    val silencedAlertsVar = Var(
+      info.alertCounters.map { case (alertName, _) =>
+        alertName -> DefaultAlertThreshold
+      },
     )
 
-  def progressBar(): ReactElement =
-    ProgressBarMeter(
-      name = "Nodes awake",
-      value = props.info.nodesAwake.toDouble,
-      softMax = props.info.nodeSoftMax.toDouble,
-      hardMax = props.info.nodeHardMax.toDouble,
-    )
+    def setAlertThreshold(alert: String, newThreshold: Long): Unit =
+      silencedAlertsVar.update(_.updated(alert, newThreshold))
 
-  override def render(): ReactElement =
+    def alerts(): HtmlElement =
+      div(
+        cls := "alerts",
+        children <-- silencedAlertsVar.signal.map { silencedAlerts =>
+          (for {
+            (alert, count) <- info.alertCounters.toSeq
+            threshold = silencedAlerts.getOrElse[Long](
+              alert, {
+                setAlertThreshold(alert, DefaultAlertThreshold)
+                0
+              },
+            )
+            if count > threshold
+          } yield div(
+            cls := "alert alert-warning",
+            s"$alert is $count, exceeding threshold ($threshold)",
+            button(
+              cls := "close",
+              onClick --> { _ => setAlertThreshold(alert, count) },
+              span("\u00D7"),
+            ),
+          )): Seq[HtmlElement]
+        },
+      )
+
+    def progressBar(): HtmlElement =
+      ProgressBarMeter(
+        name = "Nodes awake",
+        value = info.nodesAwake.toDouble,
+        softMax = info.nodeSoftMax.toDouble,
+        hardMax = info.nodeHardMax.toDouble,
+      )
+
     Card(
-      title = s"Shard ${props.info.shardId}",
-      body = if (props.displayAlerts) div(alerts(), progressBar()) else progressBar(),
+      title = s"Shard ${info.shardId}",
+      body = if (displayAlerts) div(alerts(), progressBar()) else progressBar(),
     )
+  }
 }

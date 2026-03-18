@@ -1,4 +1,4 @@
-package com.thatdot.quine.webapp2.components
+package com.thatdot.quine.webapp.components
 
 sealed trait RenderStrategy
 

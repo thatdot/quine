@@ -1,4 +1,4 @@
-package com.thatdot.quine.webapp2
+package com.thatdot.quine.webapp
 
 import scala.scalajs.js
 
@@ -6,8 +6,8 @@ import com.raquo.laminar.api.L._
 import com.raquo.waypoint.Router
 import org.scalajs.dom
 
-import com.thatdot.quine.webapp2.components.sidebar.SidebarState.{Expanded, Narrow}
-import com.thatdot.quine.webapp2.components.sidebar.{CoreUISidebar, SidebarState}
+import com.thatdot.quine.webapp.components.sidebar.SidebarState.{Expanded, Narrow}
+import com.thatdot.quine.webapp.components.sidebar.{CoreUISidebar, SidebarState}
 
 object LaminarRoot {
   // CoreUI's mobile breakpoint media query (lg breakpoint = 992px, so max-width is 991.98px)

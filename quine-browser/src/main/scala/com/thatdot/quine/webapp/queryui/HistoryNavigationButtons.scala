@@ -1,107 +1,53 @@
 package com.thatdot.quine.webapp.queryui
 
+import scala.scalajs.js
 import scala.scalajs.js.Date
-import scala.scalajs.js.Dynamic.{literal => jsObj}
 import scala.util.Try
 import scala.util.matching.Regex
 
-import org.scalajs.dom.{Event, HTMLElement, MouseEvent, Node, console, document, html, window}
-import slinky.core._
-import slinky.core.annotations.react
-import slinky.core.facade.{React, ReactElement, ReactRef}
-import slinky.web.SyntheticMouseEvent
-import slinky.web.html._
+import com.raquo.laminar.api.L._
+import org.scalajs.dom
+import org.scalajs.dom.{console, window}
 
 import com.thatdot.quine.webapp.{Styles, Sugar}
 
-/** Bar of buttons for adjusting history */
-@react
-class HistoryNavigationButtons extends Component {
+/** Button on the history navigation bar */
+object HistoryNavButton {
 
-  /** @param undoMany action to take when clicking on the rewind button
-    * @param undo action to take when clicking on the skip backward button
-    * @param isAnimating are we animating? (decides whether the button is play/pause)
-    * @param toggleAnimation action to take when clicking on the play/pause button
-    * @param redo action to take when clicking on the fast-forward button
-    * @param redoMany action to take when clicking on the skip forward button
-    * @param makeCheckpoint action to take when clicking on the checkpoint button
-    * @param checkpointContextMenu action to take when right-clicking on the checkpoint button
-    * @param downloadHistory action to take when clicking on the download button, depending on shift
-    * @param uploadHistory action to take when clicking on the upload button
-    * @param atTime current time
-    * @param setTime action to take when trying to set the time
-    * @param toggleLayout action to take when toggling network layout
-    * @param recenterViewport tell the UI to return to the center of the canvas
-    */
-  case class Props(
-    undoMany: Option[() => Unit],
-    undo: Option[() => Unit],
-    isAnimating: Boolean,
-    animate: () => Unit,
-    redo: Option[() => Unit],
-    redoMany: Option[() => Unit],
-    makeCheckpoint: () => Unit,
-    checkpointContextMenu: SyntheticMouseEvent[HTMLElement] => Unit,
-    downloadHistory: Boolean => Unit,
-    downloadGraphJsonLd: () => Unit,
-    uploadHistory: SyntheticEvent[html.Input, Event] => Unit,
-    atTime: Option[Long],
-    setTime: Option[Option[Long] => Unit],
-    toggleLayout: () => Unit,
-    recenterViewport: () => Unit,
-  )
-
-  // These buttons flash with different icons to indicate the successful action
-  case class State(
-    madeCheckpointConfirmation: Boolean,
-    downloadConfirmation: Boolean,
-    downloadMenuOpen: Boolean,
-  )
-
-  def initialState: com.thatdot.quine.webapp.queryui.HistoryNavigationButtons.State =
-    State(
-      madeCheckpointConfirmation = false,
-      downloadConfirmation = false,
-      downloadMenuOpen = false,
+  /** Standard button with a reactively-toggled enabled state */
+  def apply(
+    ionClass: String,
+    tooltipTitle: String,
+    enabled: Signal[Boolean] = Val(true),
+    onClickAction: dom.MouseEvent => Unit = _ => (),
+    onContextMenuAction: Option[dom.MouseEvent => Unit] = None,
+  ): HtmlElement =
+    htmlTag("i")(
+      cls <-- enabled.map { e =>
+        s"$ionClass ${Styles.navBarButton} ${if (e) Styles.clickable else Styles.disabled}"
+      },
+      title := tooltipTitle,
+      onClick.compose(_.withCurrentValueOf(enabled).collect { case (e, true) => e }) --> onClickAction,
+      onContextMenu --> (e => onContextMenuAction.foreach(_(e))),
     )
 
-  val downloadWrapperRef: ReactRef[html.Element] = React.createRef[html.Element]
+  /** Button with a dynamically changing icon (for play/pause) */
+  def dynamic(
+    ionClass: Signal[String],
+    tooltipTitle: Signal[String],
+    onClickAction: dom.MouseEvent => Unit,
+  ): HtmlElement =
+    htmlTag("i")(
+      cls <-- ionClass.map(icon => s"$icon ${Styles.navBarButton} ${Styles.clickable}"),
+      title <-- tooltipTitle,
+      onClick --> onClickAction,
+    )
+}
 
-  private val handleDocumentClick: (MouseEvent) => Unit = { (event: MouseEvent) =>
-    if (state.downloadMenuOpen) {
-      val target = event.target.asInstanceOf[Node]
-      val clickedInside = downloadWrapperRef.current != null && downloadWrapperRef.current.contains(target)
-      if (!clickedInside) {
-        setState(_.copy(downloadMenuOpen = false))
-      }
-    }
-  }
+/** Bar of buttons for adjusting history */
+object HistoryNavigationButtons {
 
-  override def componentDidMount(): Unit =
-    document.addEventListener("click", handleDocumentClick)
-
-  override def componentWillUnmount(): Unit =
-    document.removeEventListener("click", handleDocumentClick)
-
-  private def downloadMenuItem(label: String, action: () => Unit) = {
-    def handler(): Unit = {
-      setState(
-        _.copy(downloadConfirmation = true, downloadMenuOpen = false),
-        () => {
-          window.setTimeout(() => setState(_.copy(downloadConfirmation = false)), 2000)
-          ()
-        },
-      )
-      action()
-    }
-    li(onClick := (_ => handler()))(label)
-  }
-
-  // Human readable time
-  def currentTime: String = props.atTime match {
-    case None => "now"
-    case Some(millis) => new Date(millis.toDouble).toISOString()
-  }
+  // Time parsing helpers
 
   object ShorthandRelativeTime {
     val SecondsShorthand: Regex = """([\-+])\s*(\d+\.?\d*)\s*s(?:ec|ecs|econd|econds)?\s*$""".r
@@ -133,159 +79,201 @@ class HistoryNavigationButtons extends Component {
     }
   }
 
-  // Hidden input that drives the upload button
-  val uploadInputRef: ReactRef[html.Input] = React.createRef[html.Input]
+  private def currentTime(atTimeOpt: Option[Long]): String = atTimeOpt match {
+    case None => "now"
+    case Some(millis) => new Date(millis.toDouble).toISOString()
+  }
 
-  def render(): ReactElement =
-    div(style := jsObj(flexGrow = "1", display = "flex"))(
+  def apply(
+    canStepBackward: Signal[Boolean],
+    canStepForward: Signal[Boolean],
+    isAnimating: Signal[Boolean],
+    undoMany: () => Unit,
+    undo: () => Unit,
+    animate: () => Unit,
+    redo: () => Unit,
+    redoMany: () => Unit,
+    makeCheckpoint: () => Unit,
+    checkpointContextMenu: dom.MouseEvent => Unit,
+    downloadHistory: Boolean => Unit,
+    downloadGraphJsonLd: () => Unit,
+    uploadHistory: dom.FileList => Unit,
+    atTime: Signal[Option[Long]],
+    canSetTime: Signal[Boolean],
+    setTime: Option[Long] => Unit,
+    toggleLayout: () => Unit,
+    recenterViewport: () => Unit,
+  ): HtmlElement = {
+    val confirmCheckpointVar = Var(false)
+    val confirmDownloadVar = Var(false)
+    val downloadMenuOpenVar = Var(false)
+
+    var downloadWrapperEl: Option[dom.html.Element] = None
+    var uploadInputEl: Option[dom.html.Input] = None
+
+    val handleDocumentClick: js.Function1[dom.MouseEvent, Unit] = { (event: dom.MouseEvent) =>
+      if (downloadMenuOpenVar.now()) {
+        val target = event.target.asInstanceOf[dom.Node]
+        val clickedInside = downloadWrapperEl.exists(_.contains(target))
+        if (!clickedInside) downloadMenuOpenVar.set(false)
+      }
+    }
+
+    def downloadMenuItem(label: String, action: () => Unit): HtmlElement =
+      li(
+        onClick --> { _ =>
+          confirmDownloadVar.set(true)
+          downloadMenuOpenVar.set(false)
+          window.setTimeout(() => confirmDownloadVar.set(false), 2000)
+          action()
+        },
+        label,
+      )
+
+    div(
+      flexGrow := "1",
+      display := "flex",
+      onMountCallback(_ => dom.document.addEventListener("click", handleDocumentClick)),
+      onUnmountCallback(_ => dom.document.removeEventListener("click", handleDocumentClick)),
       HistoryNavButton(
         "ion-ios-rewind",
         "Undo until previous checkpoint",
-        onClick = props.undoMany.map(func => (_ => func())),
+        enabled = canStepBackward,
+        onClickAction = _ => undoMany(),
       ),
       HistoryNavButton(
         "ion-ios-skipbackward",
         "Undo previous change",
-        onClick = props.undo.map(func => (_ => func())),
+        enabled = canStepBackward,
+        onClickAction = _ => undo(),
       ),
-      HistoryNavButton(
-        if (props.isAnimating) "ion-ios-pause" else "ion-ios-play",
-        if (props.isAnimating) "Stop animating graph" else "Animate graph",
-        onClick = Some(_ => props.animate()),
+      HistoryNavButton.dynamic(
+        ionClass = isAnimating.map(a => if (a) "ion-ios-pause" else "ion-ios-play"),
+        tooltipTitle = isAnimating.map(a => if (a) "Stop animating graph" else "Animate graph"),
+        onClickAction = _ => animate(),
       ),
       HistoryNavButton(
         "ion-ios-skipforward",
         "Redo or apply next change",
-        onClick = props.redo.map(func => (_ => func())),
+        enabled = canStepForward,
+        onClickAction = _ => redo(),
       ),
       HistoryNavButton(
         "ion-ios-fastforward",
         "Redo until next checkpoint",
-        onClick = props.redoMany.map(func => (_ => func())),
+        enabled = canStepForward,
+        onClickAction = _ => redoMany(),
       ),
-      HistoryNavButton(
-        s"ion-ios-location${if (state.madeCheckpointConfirmation) "" else "-outline"}",
-        "Create a checkpoint",
-        onClick = Some { _ =>
-          setState(
-            _.copy(madeCheckpointConfirmation = true),
-            () => {
-              window.setTimeout(() => setState(_.copy(madeCheckpointConfirmation = false)), 2000)
-              ()
-            },
-          )
-          props.makeCheckpoint()
+      // Checkpoint button
+      htmlTag("i")(
+        cls <-- confirmCheckpointVar.signal.map { confirmed =>
+          s"ion-ios-location${if (confirmed) "" else "-outline"} ${Styles.navBarButton} ${Styles.clickable}"
         },
-        onContextMenu = Some(props.checkpointContextMenu),
+        title := "Create a checkpoint",
+        onClick --> { _ =>
+          confirmCheckpointVar.set(true)
+          window.setTimeout(() => confirmCheckpointVar.set(false), 2000)
+          makeCheckpoint()
+        },
+        onContextMenu --> (e => checkpointContextMenu(e)),
       ),
-      div(style := jsObj(position = "relative", display = "flex", alignItems = "center"), ref := downloadWrapperRef)(
-        HistoryNavButton(
-          if (state.downloadConfirmation) "ion-checkmark-round" else "ion-ios-cloud-download-outline",
-          "Download options",
-          onClick = Some { _ =>
-            setState(s => s.copy(downloadMenuOpen = !s.downloadMenuOpen))
+      // Download wrapper
+      div(
+        position := "relative",
+        display := "flex",
+        alignItems := "center",
+        onMountCallback(ctx => downloadWrapperEl = Some(ctx.thisNode.ref)),
+        htmlTag("i")(
+          cls <-- confirmDownloadVar.signal.map { confirmed =>
+            val icon = if (confirmed) "ion-checkmark-round" else "ion-ios-cloud-download-outline"
+            s"$icon ${Styles.navBarButton} ${Styles.clickable}"
           },
+          title := "Download options",
+          onClick --> { _ => downloadMenuOpenVar.update(!_) },
         ),
         ul(
-          className := s"download-dropdown-menu${if (state.downloadMenuOpen) " open" else ""}",
-        )(
-          downloadMenuItem("History Log", () => props.downloadHistory(false)),
-          downloadMenuItem("History Snapshot", () => props.downloadHistory(true)),
-          downloadMenuItem("Current Graph", () => props.downloadGraphJsonLd()),
+          cls <-- downloadMenuOpenVar.signal.map { open =>
+            s"download-dropdown-menu${if (open) " open" else ""}"
+          },
+          downloadMenuItem("History Log", () => downloadHistory(false)),
+          downloadMenuItem("History Snapshot", () => downloadHistory(true)),
+          downloadMenuItem("Current Graph", () => downloadGraphJsonLd()),
         ),
       ),
+      // Upload button
       HistoryNavButton(
         "ion-ios-cloud-upload-outline",
         "Upload a history log.",
-        onClick = Some(_ => uploadInputRef.current.click()),
+        onClickAction = _ => uploadInputEl.foreach(_.click()),
       ),
       input(
-        `type` := "file",
-        ref := uploadInputRef,
-        name := "file",
-        style := jsObj(display = "none"),
-        onChange := (e => props.uploadHistory(e)),
-      ),
-      HistoryNavButton(
-        "ion-ios-time-outline",
-        s"Querying for time: $currentTime",
-        onClick = props.setTime.map { (func: Option[Long] => Unit) => _ =>
-          {
-            val enteredDate = window.prompt(
-              s"""Enter the moment in time the UI should track and use for all queries. The moment entered must be one of:
-               |
-               |  \u2022 "now"
-               |  \u2022 A number (milliseconds elapsed since Unix epoch)
-               |  \u2022 A relative time (eg, "six seconds ago" or "-15s")
-               |  \u2022 An absolute time (eg, "6:47 PM December 21, 2043" or "2021-05-29T10:02:00.004Z")
-               |
-               |The moment currently being tracked is: $currentTime.
-               |
-               |WARNING: this will reset the query history and clear all currently rendered nodes from the browser window (the actual data is unaffected)
-               |""".stripMargin,
-              currentTime,
-            )
-            enteredDate match {
-              case null => // this indicates that the user clicked "cancel", so do nothing
-              case "now" =>
-                console.log("Query time set to the present moment")
-                func(None)
-              case UnixLikeTime(ms) =>
-                console.log("Historical query time set to UNIX timestamp", enteredDate)
-                func(Some(ms))
-              case ShorthandRelativeTime(timestampMs) =>
-                console.log(
-                  "Historical query time set from offset timestamp",
-                  enteredDate,
-                  "to UNIX timestamp",
-                  timestampMs,
-                )
-                func(Some(timestampMs))
-              case SugaredDate(ms) =>
-                console.log("Historical query time set from date-like string", enteredDate)
-                func(Some(ms))
-              case _ => window.alert(s"Invalid time provided: $enteredDate")
-            }
-          }
+        typ := "file",
+        nameAttr := "file",
+        display := "none",
+        onMountCallback(ctx => uploadInputEl = Some(ctx.thisNode.ref)),
+        onChange --> { e =>
+          val files = e.target.asInstanceOf[dom.html.Input].files
+          uploadHistory(files)
         },
       ),
+      // Time button
+      child <-- atTime.combineWith(canSetTime).map { case (atTimeOpt, canSet) =>
+        val timeStr = currentTime(atTimeOpt)
+        HistoryNavButton(
+          "ion-ios-time-outline",
+          s"Querying for time: $timeStr",
+          enabled = Val(canSet),
+          onClickAction = { _ =>
+            if (canSet) {
+              val enteredDate = window.prompt(
+                s"""Enter the moment in time the UI should track and use for all queries. The moment entered must be one of:
+                   |
+                   |  \u2022 "now"
+                   |  \u2022 A number (milliseconds elapsed since Unix epoch)
+                   |  \u2022 A relative time (eg, "six seconds ago" or "-15s")
+                   |  \u2022 An absolute time (eg, "6:47 PM December 21, 2043" or "2021-05-29T10:02:00.004Z")
+                   |
+                   |The moment currently being tracked is: $timeStr.
+                   |
+                   |WARNING: this will reset the query history and clear all currently rendered nodes from the browser window (the actual data is unaffected)
+                   |""".stripMargin,
+                timeStr,
+              )
+              enteredDate match {
+                case null => // user clicked cancel
+                case "now" =>
+                  console.log("Query time set to the present moment")
+                  setTime(None)
+                case UnixLikeTime(ms) =>
+                  console.log("Historical query time set to UNIX timestamp", enteredDate)
+                  setTime(Some(ms))
+                case ShorthandRelativeTime(timestampMs) =>
+                  console.log(
+                    "Historical query time set from offset timestamp",
+                    enteredDate,
+                    "to UNIX timestamp",
+                    timestampMs,
+                  )
+                  setTime(Some(timestampMs))
+                case SugaredDate(ms) =>
+                  console.log("Historical query time set from date-like string", enteredDate)
+                  setTime(Some(ms))
+                case _ => window.alert(s"Invalid time provided: $enteredDate")
+              }
+            }
+          },
+        )
+      },
       HistoryNavButton(
         "ion-android-share-alt",
         "Toggle between a tree and graph layout of nodes",
-        onClick = Some(_ => props.toggleLayout()),
+        onClickAction = _ => toggleLayout(),
       ),
       HistoryNavButton(
         "ion-pinpoint",
         "Recenter the viewport to the initial location",
-        onClick = Some(_ => props.recenterViewport()),
+        onClickAction = _ => recenterViewport(),
       ),
     )
-}
-
-/** Button on the history navigation bar */
-@react
-object HistoryNavButton {
-
-  /** `ionicons`-driven button */
-  case class Props(
-    ionClass: String,
-    tooltipTitle: String,
-    onClick: Option[SyntheticMouseEvent[HTMLElement] => Unit] = None,
-    onContextMenu: Option[SyntheticMouseEvent[HTMLElement] => Unit] = None,
-  )
-
-  val component: FunctionalComponent[HistoryNavButton.Props] = FunctionalComponent[Props] {
-    case Props(ionClass, tooltipTitle, onClickAct, onContextMenuAct) =>
-      val classes = List(
-        ionClass,
-        Styles.navBarButton,
-        if (onClickAct.isEmpty) Styles.disabled else Styles.clickable,
-      )
-      i(
-        className := classes.mkString(" "),
-        title := tooltipTitle,
-        onClick := (e => onClickAct.foreach(_.apply(e))),
-        onContextMenu := (e => onContextMenuAct.foreach(_.apply(e))),
-      )()
   }
 }

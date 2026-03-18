@@ -63,9 +63,8 @@ object Dependencies {
   val memeid4sV = "0.8.0"
   val munitV = "1.2.4"
   val quineCommonV = "0.0.4"
-  val reactPlotlyV = "2.5.1"
-  val reactV = "17.0.2"
   val lodashV = "4.17.23" // Patched for CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
+  val reactV = "17.0.2" // Required as peer dependency by @stoplight/elements
   val reactRouterV = "6.30.3" // Patched for CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
   val remixRunRouterV = "1.23.2" // Patched for CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
   val minimatchV = "3.1.5" // Patched for CVE-2026-27903 & CVE-2026-27904
@@ -81,7 +80,6 @@ object Dependencies {
   val scalajsMacroTaskExecutorV = "1.1.1"
   val scoptV = "4.1.0"
   val shapelessV = "2.3.13"
-  val slinkyV = "0.7.5"
   val ayzaV = "10.0.3"
   val stoplightElementsV = "9.0.1"
   val sugarV = "2.0.6"

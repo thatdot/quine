@@ -5,16 +5,12 @@ import scala.scalajs.js.annotation.{JSExportTopLevel, JSImport}
 
 import com.raquo.laminar.api.L._
 import org.scalajs.dom
-import slinky.core.KeyAndRefAddingStage
-import slinky.core.facade.ReactElement
 
 import com.thatdot.quine.routes.ClientRoutes
-import com.thatdot.quine.webapp.components.VisData
-import com.thatdot.quine.webapp.queryui.{NetworkLayout, QueryMethod, QueryUi}
-import com.thatdot.quine.webapp2.LaminarRoot.LaminarRootProps
-import com.thatdot.quine.webapp2.router.QuineOssRouter
-import com.thatdot.quine.webapp2.views.QuineOssViews
-import com.thatdot.quine.webapp2.{LaminarRoot, QuineOssNavItems}
+import com.thatdot.quine.webapp.LaminarRoot.LaminarRootProps
+import com.thatdot.quine.webapp.queryui.QueryMethod
+import com.thatdot.quine.webapp.router.QuineOssRouter
+import com.thatdot.quine.webapp.views.QuineOssViews
 import com.thatdot.{visnetwork => vis}
 
 package object webapp {
@@ -38,44 +34,6 @@ package object webapp {
   @js.native
   object IndexCss extends js.Object
   locally(IndexCss) // something has to use this for it to actually load
-
-  @js.native
-  @JSImport("QuineInteractiveTS", "InteractiveClient")
-  def InteractiveClient(): ReactElement = js.native
-
-  /** Make a Query UI
-    *
-    * @param options configuration for the UI
-    * @param routes API client
-    * @return react instance of the Query UI
-    */
-  def makeQueryUi(options: QueryUiOptions, routes: ClientRoutes): KeyAndRefAddingStage[QueryUi.Def] = {
-    val nodeSet = options.visNodeSet.getOrElse(new vis.DataSet(js.Array[vis.Node]()))
-    val edgeSet = options.visEdgeSet.getOrElse(new vis.DataSet(js.Array[vis.Edge]()))
-    val visData = new vis.Data {
-      override val nodes = nodeSet
-      override val edges = edgeSet
-    }
-
-    val queryMethod = QueryMethod.parseQueryMethod(options)
-
-    QueryUi(
-      routes = routes,
-      graphData = VisData(visData, nodeSet, edgeSet),
-      initialQuery = options.initialQuery.getOrElse(""),
-      nodeResultSizeLimit = options.nodeResultSizeLimit.getOrElse(100).toLong,
-      onNetworkCreate = options.onNetworkCreate.toOption,
-      isQueryBarVisible = options.isQueryBarVisible.getOrElse(true),
-      showEdgeLabels = options.showEdgeLabels.getOrElse(true),
-      showHostInTooltip = options.showHostInTooltip.getOrElse(true),
-      initialAtTime = options.queryHistoricalTime.toOption.map(_.toLong),
-      initialLayout = options.layout.getOrElse("graph").toLowerCase match {
-        case "tree" => NetworkLayout.Tree
-        case "graph" | _ => NetworkLayout.Graph
-      },
-      queryMethod = queryMethod,
-    )
-  }
 
   /** Mount the Quine web app onto the DOM
     *

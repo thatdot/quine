@@ -1,17 +1,14 @@
 package com.thatdot.quine.webapp.components
 
 import scala.scalajs.js
+import scala.scalajs.js.JSConverters._
 
+import com.raquo.laminar.api.L._
 import org.scalajs.dom
-import org.scalajs.dom.html
-import slinky.core._
-import slinky.core.annotations.react
-import slinky.core.facade.{React, ReactElement, ReactRef}
-import slinky.web.html._
-import slinky.web.{SyntheticKeyboardEvent, SyntheticMouseEvent}
 
 import com.thatdot.{visnetwork => vis}
 
+/** Data types for the vis.js network graph */
 final case class Node(id: Int, label: String) { self =>
   def asVis: js.Object with vis.Node = new vis.Node {
     override val id = self.id
@@ -35,8 +32,6 @@ final case class VisData(
 )
 object VisData {
   def apply(nodes: Seq[Node], edges: Seq[Edge]): VisData = {
-    import js.JSConverters._
-
     val nodeSet = new vis.DataSet(nodes.map(_.asVis).toJSArray)
     val edgeSet = new vis.DataSet(edges.map(_.asVis).toJSArray)
 
@@ -48,62 +43,55 @@ object VisData {
   }
 }
 
-/** Navigation bar that sits on the LHS of the window */
-@react class VisNetwork extends StatelessComponent {
+/** Several `vis` underlying events have this structure */
+trait VisIndirectMouseEvent extends js.Object {
+  val srcEvent: dom.MouseEvent
+}
+
+/** Laminar wrapper around the vis.js network visualization.
+  *
+  * On mount, creates a `vis.Network` instance attached to the container div.
+  * On unmount, stores positions and destroys the network.
+  */
+object VisNetwork {
 
   /** @param data mutable data store backing the network
     * @param afterNetworkInit called with the network object once it is initialized
     * @param options options with which to initialize the network
     */
-  case class Props(
+  def apply(
     data: VisData,
     afterNetworkInit: vis.Network => Unit = _ => (),
-    onClick: SyntheticMouseEvent[dom.HTMLDivElement] => Unit = _ => (),
-    onContextMenu: SyntheticMouseEvent[dom.HTMLDivElement] => Unit = _ => (),
-    onMouseMove: SyntheticMouseEvent[dom.HTMLDivElement] => Unit = _ => (),
-    onKeyDown: SyntheticKeyboardEvent[dom.HTMLDivElement] => Unit = _ => (),
+    clickHandler: dom.MouseEvent => Unit = _ => (),
+    contextMenuHandler: dom.MouseEvent => Unit = _ => (),
+    mouseMoveHandler: dom.MouseEvent => Unit = _ => (),
+    keyDownHandler: dom.KeyboardEvent => Unit = _ => (),
     options: vis.Network.Options = new vis.Network.Options {},
-  )
+  ): HtmlElement = {
+    var networkOpt: Option[vis.Network] = None
 
-  // Prepare a reference (to which the vis.js network will be attached)
-  val networkRef: ReactRef[html.Div] = React.createRef[html.Div]
-  var networkOpt: Option[vis.Network] = None
-
-  override def componentWillUnmount(): Unit = {
-    for (network <- networkOpt) {
-      network.storePositions()
-      network.destroy()
-    }
-    networkOpt = None
+    div(
+      position := "absolute",
+      top := "0",
+      height := "100%",
+      width := "100%",
+      tabIndex := 0,
+      onClick --> (e => clickHandler(e)),
+      onMouseMove --> (e => mouseMoveHandler(e)),
+      onContextMenu --> (e => contextMenuHandler(e)),
+      onKeyDown --> (e => keyDownHandler(e)),
+      onMountCallback { ctx =>
+        val network = new vis.Network(ctx.thisNode.ref, data.raw, options)
+        networkOpt = Some(network)
+        afterNetworkInit(network)
+      },
+      onUnmountCallback { _ =>
+        for (network <- networkOpt) {
+          network.storePositions()
+          network.destroy()
+        }
+        networkOpt = None
+      },
+    )
   }
-
-  /* Only _after_ the component has been attached to the DOM can we make the
-   * vis.js network (since `this.networkRef.current` now refers to an actual
-   * DOM element).
-   */
-  override def componentDidMount(): Unit = {
-    val network = new vis.Network(networkRef.current, props.data.raw, props.options)
-    networkOpt = Some(network)
-    props.afterNetworkInit(network)
-  }
-
-  private val divStyle = js.Dynamic.literal(
-    height = "100%",
-    width = "100%",
-    position = "absolute",
-    top = "0",
-  )
-  def render(): ReactElement = div(
-    style := divStyle,
-    ref := networkRef,
-    onClick := (e => props.onClick(e)),
-    onMouseMove := (e => props.onMouseMove(e)),
-    onContextMenu := (e => props.onContextMenu(e)),
-    onKeyDown := (e => props.onKeyDown(e)),
-  )
-}
-
-/* Several `vis` underlying events have this structure */
-trait VisIndirectMouseEvent extends js.Object {
-  val srcEvent: dom.MouseEvent
 }

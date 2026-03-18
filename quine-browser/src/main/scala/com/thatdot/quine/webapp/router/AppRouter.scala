@@ -1,4 +1,4 @@
-package com.thatdot.quine.webapp2.router
+package com.thatdot.quine.webapp.router
 
 import com.raquo.waypoint._
 

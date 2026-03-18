@@ -18,6 +18,7 @@ object Styles {
   val rightIcon = "right-icon"
   val navBarButton = "nav-bar-button"
   val messageBar = "message-bar"
+  val messageBarResizeHandle = "message-bar-resize-handle"
   val messageBarButton = "message-bar-button"
   val navBar = "nav-bar"
   val navBarLogo = "nav-bar-logo"
@@ -26,6 +27,11 @@ object Styles {
   val queryInput = "query-input"
   val queryInputInput = "query-input-input"
   val queryInputButton = "query-input-button"
+
+  // Query result sentiment
+  val queryResultError = "query-result-error"
+  val queryResultSuccess = "query-result-success"
+  val queryResultEmpty = "query-result-empty"
 
   val cypherResultsTable = "cypher-results"
 

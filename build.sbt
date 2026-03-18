@@ -322,7 +322,7 @@ lazy val `model-converters`: Project = project
 
 // Quine web application
 lazy val `quine-browser`: Project = project
-  .settings(commonSettings, slinkySettings, visNetworkSettings)
+  .settings(commonSettings, visNetworkSettings)
   .dependsOn(`quine-endpoints`.js, `visnetwork-facade`)
   .enablePlugins(ScalaJSBundlerPlugin)
   .settings(
@@ -338,17 +338,21 @@ lazy val `quine-browser`: Project = project
     Compile / npmDevDependencies ++= Seq(
       "ts-loader" -> "8.0.0",
       "typescript" -> "4.9.5",
-      "@types/react" -> "17.0.0",
-      "@types/react-dom" -> "17.0.0",
       "@types/node" -> "16.7.13",
+      // Webpack 5 loaders and polyfills (required by common.webpack.config.js)
+      "style-loader" -> "3.3.4",
+      "css-loader" -> "6.11.0",
+      "buffer" -> "6.0.3",
+      "stream-browserify" -> "3.0.0",
+      "path-browserify" -> "1.0.1",
+      "process" -> "0.11.10",
     ),
     Compile / npmDependencies ++= Seq(
-      "react" -> reactV,
-      "react-dom" -> reactV,
       "es6-shim" -> "0.35.7",
-      "react-plotly.js" -> reactPlotlyV,
       "plotly.js" -> s"npm:plotly.js-strict-dist-min@${plotlyV}", // CSP-compliant strict bundle
       "@stoplight/elements" -> stoplightElementsV,
+      "react" -> reactV, // Peer dependency of @stoplight/elements
+      "react-dom" -> reactV,
       "mkdirp" -> "1.0.0",
       "@coreui/coreui" -> coreuiV,
       "@coreui/icons" -> coreuiIconsV,

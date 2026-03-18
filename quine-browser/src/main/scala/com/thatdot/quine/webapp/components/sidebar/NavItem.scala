@@ -1,4 +1,4 @@
-package com.thatdot.quine.webapp2.components.sidebar
+package com.thatdot.quine.webapp.components.sidebar
 
 import com.raquo.laminar.api.L._
 import com.raquo.waypoint.Router

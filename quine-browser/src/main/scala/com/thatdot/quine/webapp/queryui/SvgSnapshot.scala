@@ -1,33 +1,36 @@
 package com.thatdot.quine.webapp.queryui
 
-import scala.concurrent._
+import scala.concurrent.{Future, Promise}
 import scala.scalajs.js
-import scala.scalajs.js.Dynamic.{literal => jsObj}
 import scala.util.{Failure, Success, Try}
 
 import org.scalajs.dom
-import slinky.core.CustomAttribute
-import slinky.core.facade.ReactElement
-import slinky.web.svg._
 
 import com.thatdot.quine.webapp.components.VisData
+import com.thatdot.quine.webapp.queryui.QueryUiVisNodeExt
 import com.thatdot.{visnetwork => vis}
 
+/** Produces an SVG DOM element that is a snapshot of the current vis.js graph state.
+  *
+  * Builds raw DOM SVG elements directly, since the SVG is only used for
+  * download (not displayed in the UI tree).
+  */
 object SvgSnapshot {
 
-  /** Given a `vis` graph, produce an SVG of that is a snapshot its current
-    * state
-    *
-    *   - node's icon color, size, and shape are preserved, with the shape being
-    *     inlined (so the SVG is lean and dependency free)
-    *
-    *   - the SVG produced will be sized to include all nodes on the canvas and
-    *     to match the default on-screen sizes (before a user zooms)
-    *
-    * TODO: handle clusters
+  private val SvgNs = "http://www.w3.org/2000/svg"
+
+  private def svgEl(tag: String, attrs: (String, Any)*): dom.Element = {
+    val el = dom.document.createElementNS(SvgNs, tag)
+    attrs.foreach { case (k, v) => el.setAttribute(k, v.toString) }
+    el
+  }
+
+  private def textNode(text: String): dom.Text = dom.document.createTextNode(text)
+
+  /** Given a `vis` graph, produce an SVG element that is a snapshot of its current state
     *
     * @param graphData data from the `vis` graph
-    * @param positions location of nodes in the graph (from [[getPositions]])
+    * @param positions location of nodes in the graph
     * @param edgeColor the color for edges
     * @param svgFont name of the SVG font to use
     */
@@ -36,8 +39,8 @@ object SvgSnapshot {
     positions: js.Dictionary[vis.Position],
     edgeColor: String = "#2b7ce9",
     svgFont: String = "ionicons.svg",
-  ): Future[ReactElement] = {
-    val promise = Promise[ReactElement]()
+  ): Future[dom.Element] = {
+    val promise = Promise[dom.Element]()
 
     val request = new dom.XMLHttpRequest()
     request.open("GET", svgFont, async = true)
@@ -58,7 +61,7 @@ object SvgSnapshot {
   }
 
   /** Hacked up representation of the parts of `<glyph>` we care about */
-  final private case class Glyph(
+  private case class Glyph(
     name: String,
     d: String,
     width: Double,
@@ -85,58 +88,58 @@ object SvgSnapshot {
       .toMap
   }
 
-  private val href = CustomAttribute[String]("href")
-  private val xmlns = CustomAttribute[String]("xmlns")
-
-  /** Given the graph data, positions, and SVG icon paths, construct and SVG */
+  /** Given the graph data, positions, and SVG icon paths, construct an SVG element */
   private def makeSnapshot(
     graphData: VisData,
     positions: js.Dictionary[vis.Position],
     edgeColor: String,
     iconGlyphs: Map[String, Glyph],
-  ): ReactElement = {
-    val elements = Seq.newBuilder[ReactElement]
+  ): dom.Element = {
+    val elements = Seq.newBuilder[dom.Element]
 
     // Map from `(icon, color, size)` to name of the `def`
     val iconsUsed = collection.mutable.Map.empty[(Option[Glyph], String, Double), String]
-    val definitions = Seq.newBuilder[ReactElement]
+    val definitions = Seq.newBuilder[dom.Element]
 
     // Define what arrow heads look like
-    definitions += marker(
-      id := "arrowhead",
-      markerWidth := "14",
-      markerHeight := "10",
-      refX := "40",
-      refY := "5",
-      orient := "auto",
-    )(
-      polygon(
-        fill := edgeColor,
-        points := "0 0, 14 5, 0 10, 2 5",
-      ),
+    val arrowMarker = svgEl(
+      "marker",
+      "id" -> "arrowhead",
+      "markerWidth" -> "14",
+      "markerHeight" -> "10",
+      "refX" -> "40",
+      "refY" -> "5",
+      "orient" -> "auto",
     )
+    val arrowPolygon = svgEl("polygon", "fill" -> edgeColor, "points" -> "0 0, 14 5, 0 10, 2 5")
+    arrowMarker.appendChild(arrowPolygon)
+    definitions += arrowMarker
 
     // Define outline for text
-    definitions += filter(id := "outlined")(
-      feMorphology(in := "SourceAlpha", result := "DILATED", operator := "dilate", radius := "1"),
-      feFlood(floodColor := "white", floodOpacity := "1", result := "FLOODED"),
-      feComposite(in := "FLOODED", in2 := "DILATED", operator := "in", result := "OUTLINE"),
-      feMerge()(feMergeNode(in := "OUTLINE"), feMergeNode(in := "SourceGraphic")),
+    val outlineFilter = svgEl("filter", "id" -> "outlined")
+    outlineFilter.appendChild(
+      svgEl("feMorphology", "in" -> "SourceAlpha", "result" -> "DILATED", "operator" -> "dilate", "radius" -> "1"),
     )
+    outlineFilter.appendChild(
+      svgEl("feFlood", "flood-color" -> "white", "flood-opacity" -> "1", "result" -> "FLOODED"),
+    )
+    outlineFilter.appendChild(
+      svgEl("feComposite", "in" -> "FLOODED", "in2" -> "DILATED", "operator" -> "in", "result" -> "OUTLINE"),
+    )
+    val feMerge = svgEl("feMerge")
+    feMerge.appendChild(svgEl("feMergeNode", "in" -> "OUTLINE"))
+    feMerge.appendChild(svgEl("feMergeNode", "in" -> "SourceGraphic"))
+    outlineFilter.appendChild(feMerge)
+    definitions += outlineFilter
 
-    /* Construct a text label where the text is centered and has a whiet outline */
-    def makeLabel(cX: Double, cY: Double, lbl: String) =
-      text(x := cX, y := cY, style := jsObj(filter = "url(#outlined)"), textAnchor := "middle")(lbl)
+    /** Construct a text label where the text is centered and has a white outline */
+    def makeLabel(cX: Double, cY: Double, lbl: String): dom.Element = {
+      val t = svgEl("text", "x" -> cX, "y" -> cY, "style" -> "filter: url(#outlined)", "text-anchor" -> "middle")
+      t.appendChild(textNode(lbl))
+      t
+    }
 
-    /* Construct an icon for a node, by creating or re-using a definition
-     *
-     * @param cx x-position of the center of the node
-     * @param cy y-position of the center of the node
-     * @param nodeSize size of the node
-     * @param iconGlyph glyph of the node
-     * @param iconColor color of the node
-     * @param tooltip text to show when hovering over the node
-     */
+    /** Construct an icon for a node, by creating or re-using a definition */
     def makeNodeIcon(
       cx: Double,
       cy: Double,
@@ -144,7 +147,7 @@ object SvgSnapshot {
       nodeGlyph: Option[Glyph],
       nodeColor: Option[String],
       tooltip: String,
-    ): ReactElement = {
+    ): dom.Element = {
       val color = nodeColor.getOrElse("#97c2fc")
       val size = nodeSize.getOrElse(30.0)
 
@@ -154,32 +157,38 @@ object SvgSnapshot {
           case Some(Glyph(name, dPath, width, height)) =>
             val defId = s"icon-${(size, color).hashCode.abs}-$name"
             val scale = size / height
-            definitions += g(id := defId)(
-              path(
-                d := dPath,
-                fill := color,
-                transform := s"scale($scale -$scale) translate(-${width / 2} -${height / 2})",
+            val gDef = svgEl("g", "id" -> defId)
+            gDef.appendChild(
+              svgEl(
+                "path",
+                "d" -> dPath,
+                "fill" -> color,
+                "transform" -> s"scale($scale -$scale) translate(-${width / 2} -${height / 2})",
               ),
             )
+            definitions += gDef
             "#" + defId
 
           case None =>
             val defId = s"circle-${(size, color).hashCode.abs}"
-            definitions += circle(
-              id := defId,
-              fill := "rgba(0,0,0,0)", // unlike `none`, this still brings up the tooltip
-              strokeWidth := (size / 10),
-              stroke := color,
-              r := (size / 2.6),
-            )()
+            definitions += svgEl(
+              "circle",
+              "id" -> defId,
+              "fill" -> "rgba(0,0,0,0)",
+              "stroke-width" -> (size / 10),
+              "stroke" -> color,
+              "r" -> (size / 2.6),
+            )
             "#" + defId
         },
       )
 
-      g(transform := s"translate($cx $cy)")(
-        use(href := refSvgId),
-        title(tooltip),
-      )
+      val g = svgEl("g", "transform" -> s"translate($cx $cy)")
+      g.appendChild(svgEl("use", "href" -> refSvgId))
+      val titleEl = svgEl("title")
+      titleEl.appendChild(textNode(tooltip))
+      g.appendChild(titleEl)
+      g
     }
 
     // Draw edges first
@@ -188,13 +197,14 @@ object SvgSnapshot {
       from <- positions.get(edge.from.asInstanceOf[String])
       to <- positions.get(edge.to.asInstanceOf[String])
     } {
-      elements += line(
-        x1 := from.x,
-        y1 := from.y,
-        x2 := to.x,
-        y2 := to.y,
-        markerEnd := "url(#arrowhead)",
-        stroke := edgeColor,
+      elements += svgEl(
+        "line",
+        "x1" -> from.x,
+        "y1" -> from.y,
+        "x2" -> to.x,
+        "y2" -> to.y,
+        "marker-end" -> "url(#arrowhead)",
+        "stroke" -> edgeColor,
       )
       for (lbl <- edge.label)
         elements += makeLabel((from.x + to.x) / 2, (from.y + to.y) / 2, lbl)
@@ -230,17 +240,23 @@ object SvgSnapshot {
 
     val svgHeight = maxY - minY
     val svgWidth = maxX - minX
-    val definitionElement: ReactElement = defs(definitions.result())
 
-    svg(
-      width := s"${svgWidth}px",
-      height := s"${svgHeight}px",
-      viewBox := s"$minX $minY $svgWidth $svgHeight",
-      version := "1.1",
-      fontFamily := "Arial",
-      xmlns := "http://www.w3.org/2000/svg",
-    )(
-      (definitionElement +: elements.result()): _*,
+    val svgRoot = svgEl(
+      "svg",
+      "width" -> s"${svgWidth}px",
+      "height" -> s"${svgHeight}px",
+      "viewBox" -> s"$minX $minY $svgWidth $svgHeight",
+      "version" -> "1.1",
+      "font-family" -> "Arial",
+      "xmlns" -> SvgNs,
     )
+
+    val defsEl = svgEl("defs")
+    definitions.result().foreach(defsEl.appendChild)
+    svgRoot.appendChild(defsEl)
+
+    elements.result().foreach(svgRoot.appendChild)
+
+    svgRoot
   }
 }

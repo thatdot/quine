@@ -1,8 +1,8 @@
-package com.thatdot.quine.webapp2.router
+package com.thatdot.quine.webapp.router
 
 import com.raquo.waypoint._
 
-import com.thatdot.quine.webapp2.router.QuineOssPage._
+import com.thatdot.quine.webapp.router.QuineOssPage._
 
 class QuineOssRoutes(apiV1: Boolean) {
   private val explorationUiRoute: Route.Total[ExplorerUi.type, Unit] =

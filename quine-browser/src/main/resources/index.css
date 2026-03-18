@@ -84,6 +84,21 @@ pre.wrap {
   width: 100%;
   box-sizing: content-box;
 }
+.message-bar-resize-handle {
+  background-color: var(--cui-emphasis-color);
+}
+
+/* Query result sentiment colors */
+.query-result-error {
+  background-color: var(--cui-danger-bg-subtle);
+}
+.query-result-success {
+  background-color: var(--cui-success-bg-subtle);
+}
+.query-result-empty {
+  background-color: var(--cui-secondary-bg-subtle);
+}
+
 .message-bar-button {
   cursor: pointer;
   font-size: 2em;
@@ -103,6 +118,7 @@ pre.wrap {
   border: none;
   float: left;
   color: black;
+  background-color: white;
   border-radius: .2em 0 0 .2em;
 }
 .query-input-button {

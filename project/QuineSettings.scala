@@ -87,40 +87,6 @@ object QuineSettings {
     LicenseTest / fork := true,
   ) ++ inConfig(LicenseTest)(Defaults.testTasks)
 
-  /* Settings for building a Scala.js/React webapp using Slinky
-   *
-   * See the docs at <https://slinky.dev/docs/installation/>
-   */
-  val slinkySettings: Seq[Setting[_]] = Seq(
-    libraryDependencies ++= Seq(
-      "me.shadaj" %%% "slinky-core" % Dependencies.slinkyV,
-      "me.shadaj" %%% "slinky-web" % Dependencies.slinkyV,
-    ),
-    /* This is disabled by default because it slows down the build. However, it
-     * can be very useful to re-enable when debugging a JS error (stack traces
-     * will have informative errors, it will be possible to set breakpoints in
-     * the Scala code viewed from the browser)
-     */
-    webpackEmitSourceMaps := false,
-    Test / requireJsDomEnv := true,
-    Compile / npmDevDependencies ++= Seq(
-      "buffer" -> "6.0.3",
-      "path-browserify" -> "1.0.1",
-      "stream-browserify" -> "3.0.0",
-      "process" -> "0.11.10",
-      "css-loader" -> "6.5.1",
-      "style-loader" -> "3.3.1",
-      "webpack-merge" -> "5.8.0",
-    ),
-    Compile / npmDependencies ++= Seq(
-      "react" -> Dependencies.reactV,
-      "react-dom" -> Dependencies.reactV,
-    ),
-    scalacOptions ++= Seq("-Ymacro-annotations"),
-    doc := file("phony-no-doc-file"), // Avoid <https://github.com/shadaj/slinky/issues/380>
-    packageDoc / publishArtifact := false, // Avoid <https://github.com/shadaj/slinky/issues/380>
-  )
-
   val startupMessage = settingKey[String]("If non-empty, print this message on startup")
     .withRank(KeyRanks.Invisible)
 
