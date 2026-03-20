@@ -80,7 +80,7 @@ object Dependencies {
   val scalajsMacroTaskExecutorV = "1.1.1"
   val scoptV = "4.1.0"
   val shapelessV = "2.3.13"
-  val ayzaV = "10.0.3"
+  val ayzaV = "10.0.4"
   val stoplightElementsV = "9.0.1"
   val sugarV = "2.0.6"
   val tapirV = "1.13.12"
