@@ -15,7 +15,8 @@ class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfi
     extends TapirRoutes
     with V2OssEndpointProvider {
 
-  override val apiEndpoints: List[ServerEndpoint[Any, Future]] = V2ApiInfo.endpointSequences(this)
+  override val apiEndpoints: List[ServerEndpoint[TapirRoutes.Requirements, Future]] =
+    V2ApiInfo.endpointSequences(this)
 
   def memberIdxParameter: EndpointInput[Option[Int]] =
     query[Option[Int]]("memberIdx").schema(_.hidden(true))

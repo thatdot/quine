@@ -3,6 +3,8 @@ package com.thatdot.quine.app.v2api
 import scala.concurrent.Future
 
 import sttp.apispec.openapi.Info
+import sttp.capabilities.WebSockets
+import sttp.capabilities.pekko.PekkoStreams
 import sttp.tapir.{EndpointInput, server}
 
 import com.thatdot.quine.app.BuildInfo
@@ -20,14 +22,17 @@ object V2ApiInfo {
     ),
   )
 
-  def endpointSequences(provider: V2OssEndpointProvider): List[server.ServerEndpoint[Any, Future]] =
+  def endpointSequences(
+    provider: V2OssEndpointProvider,
+  ): List[server.ServerEndpoint[PekkoStreams with WebSockets, Future]] =
     provider.uiEndpoints ++
     provider.adminEndpoints ++
     provider.debugEndpoints ++
     provider.ingestEndpoints ++
     provider.algorithmEndpoints ++
     provider.standingQueryEndpoints ++
-    provider.cypherEndpoints
+    provider.cypherEndpoints ++
+    provider.queryWebSocketEndpoints
 }
 
 trait V2OssEndpointProvider
@@ -37,7 +42,8 @@ trait V2OssEndpointProvider
     with V2CypherEndpoints
     with V2AlgorithmEndpoints
     with V2DebugEndpoints
-    with V2IngestEndpoints {
+    with V2IngestEndpoints
+    with V2QueryWebSocketEndpoints {
   def memberIdxParameter: EndpointInput[Option[Int]]
   def namespaceParameter: EndpointInput[Option[String]]
 }

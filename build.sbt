@@ -246,11 +246,23 @@ lazy val `data`: Project = project
     ),
   )
 
-lazy val `api`: Project = project
+/** V2 API type definitions shared between server (JVM) and browser (ScalaJS). */
+lazy val `quine-endpoints2` = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("quine-endpoints2"))
   .settings(commonSettings)
-  .dependsOn(
-    `quine-serialization`,
+  .settings(
+    libraryDependencies ++= Seq(
+      "com.softwaremill.sttp.tapir" %%% "tapir-core" % tapirV,
+      "io.circe" %%% "circe-core" % circeV,
+      "io.circe" %%% "circe-generic-extras" % circeGenericExtrasV,
+    ),
   )
+
+lazy val `api`: Project = project
+  .in(file("api"))
+  .settings(commonSettings)
+  .dependsOn(`quine-serialization`, `quine-endpoints2`.jvm)
   .settings(
     libraryDependencies ++= Seq(
       "com.thatdot" %% "quine-security" % quineCommonV,
@@ -323,7 +335,7 @@ lazy val `model-converters`: Project = project
 // Quine web application
 lazy val `quine-browser`: Project = project
   .settings(commonSettings, visNetworkSettings)
-  .dependsOn(`quine-endpoints`.js, `visnetwork-facade`)
+  .dependsOn(`quine-endpoints`.js, `visnetwork-facade`, `quine-endpoints2`.js)
   .enablePlugins(ScalaJSBundlerPlugin)
   .settings(
     libraryDependencies ++= Seq(

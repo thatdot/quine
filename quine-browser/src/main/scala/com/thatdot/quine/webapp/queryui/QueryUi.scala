@@ -16,6 +16,7 @@ import org.scalajs.dom
 import org.scalajs.dom.{document, window}
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
+import com.thatdot.api.v2.QueryWebSocketProtocol.QueryInterpreter
 import com.thatdot.quine.Util.escapeHtml
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
@@ -116,6 +117,10 @@ object QueryUi {
     var layout: NetworkLayout = props.initialLayout
     var webSocketClientFut: Future[WebSocketQueryClient] =
       Future.failed(new Exception("Client not initialized"))
+    var webSocketClientV2Fut: Future[V2WebSocketQueryClient] =
+      Future.failed(new Exception("V2 client not initialized"))
+
+    def selectedInterpreter: QueryInterpreter = QueryInterpreter.Cypher
 
     // --- WebSocket client management ---
 
@@ -144,6 +149,38 @@ object QueryUi {
           webSocketClientFut = clientReady.future
       }
       webSocketClientFut
+    }
+
+    /** Get a V2 websocket client
+      *
+      * Same reconnection logic as [[getWebSocketClient]] but creates a [[V2WebSocketQueryClient]]
+      * connected to `/api/v2/query/ws`. Unlike V1, the V2 endpoint supports a namespace parameter.
+      */
+    def getWebSocketClientV2(): Future[V2WebSocketQueryClient] = {
+      webSocketClientV2Fut.value match {
+        case Some(Success(client)) if client.webSocket.readyState == dom.WebSocket.OPEN => ()
+        case None => ()
+        case Some(_) =>
+          val ns = Option(stateVar.now().namespace.namespaceId).filterNot(_ == "default")
+          val client = props.routes.queryProtocolClientV2(ns)
+          val clientReady = Promise[V2WebSocketQueryClient]()
+          val webSocket = client.webSocket
+
+          webSocket.addEventListener[dom.Event]("open", (_: dom.Event) => clientReady.trySuccess(client))
+          webSocket.addEventListener[dom.Event](
+            "error",
+            (_: dom.Event) =>
+              clientReady.tryFailure(new Exception(s"WebSocket connection to `${webSocket.url}` failed")),
+          )
+          webSocket.addEventListener[dom.CloseEvent](
+            "close",
+            (_: dom.CloseEvent) =>
+              clientReady.tryFailure(new Exception(s"WebSocket connection to `${webSocket.url}` was closed")),
+          )
+
+          webSocketClientV2Fut = clientReady.future
+      }
+      webSocketClientV2Fut
     }
 
     // --- Node appearance and quick queries ---
@@ -485,6 +522,17 @@ object QueryUi {
             _ <- Future.fromTry(client.query(streamingQuery, nodeCallback).toTry)
             results <- nodeCallback.future
           } yield results
+
+        case QueryMethod.WebSocketV2 =>
+          val cb = new V2QueryCallbacks.CollectNodesToFuture()
+          val interpreter = selectedInterpreter
+          val sq =
+            V2StreamingQuery(query, parameters, interpreter = interpreter, atTime = atTime, maxResultBatch = Some(100))
+          for {
+            client <- getWebSocketClientV2()
+            _ <- Future.fromTry(client.query(sq, cb).toTry)
+            results <- cb.future
+          } yield results.map(_.map(n => UiNode(n.id, n.hostIndex, n.label, n.properties)))
       }
 
     def edgeQuery(
@@ -519,6 +567,17 @@ object QueryUi {
             _ <- Future.fromTry(client.query(streamingQuery, edgeCallback).toTry)
             results <- edgeCallback.future
           } yield results
+
+        case QueryMethod.WebSocketV2 =>
+          val cb = new V2QueryCallbacks.CollectEdgesToFuture()
+          val interpreter = selectedInterpreter
+          val sq =
+            V2StreamingQuery(query, parameters, interpreter = interpreter, atTime = atTime, maxResultBatch = Some(100))
+          for {
+            client <- getWebSocketClientV2()
+            _ <- Future.fromTry(client.query(sq, cb).toTry)
+            results <- cb.future
+          } yield results.map(_.map(e => UiEdge(e.from, e.edgeType, e.to, e.isDirected)))
       }
 
     def textQuery(
@@ -623,6 +682,58 @@ object QueryUi {
           for {
             client <- getWebSocketClient()
             queryId <- Future.fromTry(client.query(streamingQuery, textCallback).toTry)
+            _ = {
+              stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries + queryId))
+              result.future.onComplete { _ =>
+                stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries - queryId))
+              }
+            }
+            results <- result.future
+          } yield results
+
+        case (QueryMethod.WebSocketV2, _) =>
+          val result = Promise[Option[Unit]]()
+
+          val textCallback = new V2QueryCallbacks.TextCallbacks {
+            private var buffered = Seq.empty[Seq[Json]]
+            private var cancelled = false
+
+            override def onTabularResults(columns: Seq[String], batch: Seq[Seq[Json]]): Unit = {
+              buffered ++= batch
+              updateResults(Right(CypherQueryResult(columns, buffered)))
+            }
+            def onError(message: String): Unit = {
+              result.tryFailure(new Exception(message))
+              ()
+            }
+            def onComplete(): Unit = {
+              result.trySuccess(if (cancelled) None else Some(()))
+              ()
+            }
+
+            def onQueryStart(
+              isReadOnly: Boolean,
+              canContainAllNodeScan: Boolean,
+              columns: Option[Seq[String]],
+            ): Unit =
+              for (cols <- columns)
+                updateResults(Right(CypherQueryResult(cols, buffered)))
+
+            def onQueryCancelOk(): Unit = cancelled = true
+            def onQueryCancelError(message: String): Unit = ()
+          }
+          val interpreter = selectedInterpreter
+          val sq = V2StreamingQuery(
+            query,
+            parameters,
+            interpreter = interpreter,
+            atTime = atTime,
+            maxResultBatch = Some(1000),
+            resultsWithinMillis = Some(100),
+          )
+          for {
+            client <- getWebSocketClientV2()
+            queryId <- Future.fromTry(client.query(sq, textCallback).toTry)
             _ = {
               stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries + queryId))
               result.future.onComplete { _ =>
@@ -1263,10 +1374,15 @@ object QueryUi {
             }
           }
 
-        case QueryMethod.Restful =>
-          window.alert("You cannot cancel queries when issuing queries through the REST api")
+        case QueryMethod.WebSocketV2 =>
+          getWebSocketClientV2().value.flatMap(_.toOption).foreach { (client: V2WebSocketQueryClient) =>
+            val queries = queryIds.getOrElse(client.activeQueries.keys).toList
+            if (queries.nonEmpty && window.confirm(s"Cancel ${queries.size} running query execution(s)?")) {
+              queries.foreach(queryId => client.cancelQuery(queryId))
+            }
+          }
 
-        case QueryMethod.RestfulV2 =>
+        case QueryMethod.Restful | QueryMethod.RestfulV2 =>
           window.alert("You cannot cancel queries when issuing queries through the REST api")
       }
 
@@ -1282,7 +1398,11 @@ object QueryUi {
       position := "relative",
       onMountCallback { _ =>
         // componentDidMount equivalent
-        if (props.queryMethod == QueryMethod.WebSocket) getWebSocketClient()
+        props.queryMethod match {
+          case QueryMethod.WebSocket => getWebSocketClient()
+          case QueryMethod.WebSocketV2 => getWebSocketClientV2()
+          case _ => ()
+        }
 
         val canView = props.permissions match {
           case Some(perms) => Set("StoredQueryRead", "NodeAppearanceRead").subsetOf(perms)
@@ -1308,7 +1428,7 @@ object QueryUi {
                 .future
                 .foreach(qqs => stateVar.update(_.copy(uiNodeQuickQueries = qqs)))
 
-            case QueryMethod.RestfulV2 =>
+            case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 =>
               props.routes
                 .queryUiAppearanceV2(())
                 .future
@@ -1377,7 +1497,9 @@ object QueryUi {
       child <-- stateVar.signal.map { s =>
         Loader(
           s.runningQueryCount,
-          if (props.queryMethod == QueryMethod.WebSocket) Some(() => cancelQueries()) else None,
+          if (props.queryMethod == QueryMethod.WebSocket || props.queryMethod == QueryMethod.WebSocketV2)
+            Some(() => cancelQueries())
+          else None,
         )
       },
       // VisNetwork

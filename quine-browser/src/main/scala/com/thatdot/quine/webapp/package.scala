@@ -42,9 +42,12 @@ package object webapp {
     */
   @JSExportTopLevel("quineAppMount")
   def quineAppMount(target: dom.Element, options: QuineUiOptions): RootNode = {
-    val apiV1 = !options.queriesOverV2Api.getOrElse(false)
     val clientRoutes = new ClientRoutes(options.serverUrl)
     val queryMethod = QueryMethod.parseQueryMethod(options)
+    val apiV1 = queryMethod match {
+      case QueryMethod.Restful | QueryMethod.WebSocket => true
+      case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 => false
+    }
 
     val router = QuineOssRouter(apiV1)
     val laminarRoot = LaminarRoot(

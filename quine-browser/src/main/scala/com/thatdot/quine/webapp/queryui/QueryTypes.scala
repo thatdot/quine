@@ -38,17 +38,17 @@ object QueryMethod {
   case object Restful extends QueryMethod
   case object RestfulV2 extends QueryMethod
   case object WebSocket extends QueryMethod
+  case object WebSocketV2 extends QueryMethod
 
   def parseQueryMethod(options: QueryUiOptions): QueryMethod = {
     val useWs = options.queriesOverWs.getOrElse(false)
     val useV2Api = options.queriesOverV2Api.getOrElse(true)
 
-    if (useV2Api) {
-      QueryMethod.RestfulV2
-    } else if (useWs) {
-      QueryMethod.WebSocket
-    } else {
-      QueryMethod.Restful
+    (useV2Api, useWs) match {
+      case (true, true) => QueryMethod.WebSocketV2
+      case (true, false) => QueryMethod.RestfulV2
+      case (false, true) => QueryMethod.WebSocket
+      case (false, false) => QueryMethod.Restful
     }
   }
 }

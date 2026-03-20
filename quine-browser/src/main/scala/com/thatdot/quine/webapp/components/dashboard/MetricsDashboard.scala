@@ -15,7 +15,7 @@ object MetricsDashboard {
   def apply(routes: ClientRoutes, queryMethod: QueryMethod): HtmlElement = {
     val metricsStream: EventStream[MetricsResult] = PollingStream(2.seconds.toMillis.toInt) {
       val (metricsF, shardSizesF) = queryMethod match {
-        case QueryMethod.RestfulV2 =>
+        case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 =>
           val metricsF = routes.metricsV2(()).future.map {
             case Right(Some(metrics)) => metrics
             case Right(None) => MetricsReport.empty
