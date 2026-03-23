@@ -302,6 +302,98 @@ class TypeCheckerTests extends munit.FunSuite {
     )
   }
 
+  test("UNWIND infers element type from list literal") {
+    val (state, maybeQuery) = parseAndCheck("UNWIND [1, 2, 3] AS x RETURN x")
+
+    assert(maybeQuery.isDefined, "Should parse UNWIND query")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+
+    // Resolve a type through the type environment, following type variable bindings
+    def resolve(ty: Type): Type = ty match {
+      case Type.TypeVariable(id, _) => state.typeEnv.get(id).map(resolve).getOrElse(ty)
+      case other => other
+    }
+
+    val quineTypeEntries = state.symbolTable.typeVars.filter(_.identifier.startsWith("_q"))
+    assert(quineTypeEntries.nonEmpty, "Should have type entry for UNWIND binding")
+
+    val resolvedType = resolve(quineTypeEntries.head.ty)
+    assert(
+      resolvedType == PrimitiveType.Integer,
+      s"UNWIND element type should resolve to Integer, got $resolvedType",
+    )
+  }
+
+  test("UNWIND constrains unresolved type variable to List") {
+    val (state, maybeQuery) = parseAndCheck("MATCH (n) WITH n.items AS items UNWIND items AS x RETURN x")
+
+    assert(maybeQuery.isDefined, "Should parse UNWIND with type-variable list")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+
+    // Resolve a type through the type environment, following type variable bindings
+    def resolve(ty: Type): Type = ty match {
+      case Type.TypeVariable(id, _) => state.typeEnv.get(id).map(resolve).getOrElse(ty)
+      case other => other
+    }
+
+    // The UNWIND element variable `x` should have a type entry
+    // When the list is an unresolved type variable, UNWIND constrains it to List(elementType)
+    val quineTypeEntries = state.symbolTable.typeVars.filter(_.identifier.startsWith("_q"))
+    assert(quineTypeEntries.nonEmpty, "Should have type entry for UNWIND binding")
+
+    // Find the type entry whose resolved type is List(...) — this is the `items` variable
+    // that got constrained by UNWIND to be a List
+    val allResolved = state.symbolTable.typeVars.map(e => (e.identifier, resolve(e.ty)))
+    val listEntries = allResolved.filter { case (_, ty) =>
+      ty match {
+        case Type.TypeConstructor(id, _) => id == Symbol("List")
+        case _ => false
+      }
+    }
+    assert(listEntries.nonEmpty, s"Some variable should be constrained to List, got: $allResolved")
+
+    // The element type (x) should remain a TypeVariable since the list source is fully unresolved
+    val resolvedElementType = resolve(quineTypeEntries.head.ty)
+    resolvedElementType match {
+      case _: Type.TypeVariable => () // Expected: element type is unconstrained
+      case other => fail(s"Expected element type to be an unresolved TypeVariable, got $other")
+    }
+  }
+
+  test("UNWIND with non-list type produces a type error") {
+    val (state, maybeQuery) = parseAndCheck("UNWIND 'hello' AS x RETURN x")
+
+    assert(maybeQuery.isDefined, "Should parse UNWIND with non-list expression")
+
+    val errors = getErrors(state.diagnostics)
+    assert(errors.nonEmpty, "UNWIND on a String should produce a type error")
+    assert(
+      errors.exists(_.toString.contains("UNWIND requires a list")),
+      s"Expected 'UNWIND requires a list' diagnostic, got: $errors",
+    )
+  }
+
+  test("UNWIND infers element type from string list") {
+    val (state, maybeQuery) = parseAndCheck("UNWIND ['a', 'b', 'c'] AS x RETURN x")
+
+    assert(maybeQuery.isDefined, "Should parse UNWIND query")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+
+    def resolve(ty: Type): Type = ty match {
+      case Type.TypeVariable(id, _) => state.typeEnv.get(id).map(resolve).getOrElse(ty)
+      case other => other
+    }
+
+    val quineTypeEntries = state.symbolTable.typeVars.filter(_.identifier.startsWith("_q"))
+    assert(quineTypeEntries.nonEmpty, "Should have type entry for UNWIND binding")
+
+    val resolvedType = resolve(quineTypeEntries.head.ty)
+    assert(
+      resolvedType == PrimitiveType.String,
+      s"UNWIND element type should resolve to String, got $resolvedType",
+    )
+  }
+
   test("null literal gets Null type") {
     val (state, maybeQuery) = parseAndCheck("RETURN null")
 

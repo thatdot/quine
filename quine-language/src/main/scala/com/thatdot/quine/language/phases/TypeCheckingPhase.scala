@@ -578,12 +578,22 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
     case fu: ReadingClause.FromUnwind =>
       for {
         annotatedList <- annotateAndCheckExpression(fu.list)
+        listType <- getType(annotatedList)
         idName = fu.as match {
           case Left(cypher) => cypher.name.name
           case Right(quine) => s"_q${quine.name}"
         }
         freshName <- freshen(Some(idName))
         elementType = TypeVariable(freshName, Constraint.None)
+        resolvedListType <- deref(listType)
+        _ <- resolvedListType match {
+          case TypeConstructor(id, NonEmptyList(elemType, Nil)) if id == Symbol("List") =>
+            unify(elementType, elemType)
+          case _: TypeVariable =>
+            unify(resolvedListType, TypeConstructor(Symbol("List"), NonEmptyList.of(elementType)))
+          case other =>
+            addDiagnostic(s"UNWIND requires a list, but got type: $other")
+        }
         _ <- addTableEntryForId(fu.as, elementType)
       } yield fu.copy(list = annotatedList)
 
