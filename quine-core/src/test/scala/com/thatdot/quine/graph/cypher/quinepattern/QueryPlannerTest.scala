@@ -8,7 +8,8 @@ import com.thatdot.quine.cypher.phases.SymbolAnalysisModule
 import com.thatdot.quine.cypher.{ast => Cypher}
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.{GraphQueryPattern, QuineIdRandomLongProvider}
-import com.thatdot.quine.language.ast.Expression
+import com.thatdot.quine.language.ast.{Expression, Operator, QuineIdentifier, Source, SpecificCase, Value}
+import com.thatdot.quine.model.EdgeDirection
 
 /** Tests for QueryPlanner.
   *
@@ -2275,5 +2276,863 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     containsOperator(plan, _.isInstanceOf[QueryPlan.Limit]) shouldBe false
     containsOperator(plan, _.isInstanceOf[QueryPlan.Skip]) shouldBe false
     containsOperator(plan, _.isInstanceOf[QueryPlan.Distinct]) shouldBe false
+  }
+
+  // ============================================================
+  // CROSS-MATCH VARIABLE DEPENDENCY TESTS
+  // ============================================================
+
+  "Cross-MATCH property dependency" should "produce Sequence, not CrossProduct" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("foo")
+      MATCH (b) WHERE id(b) = a.bar
+      RETURN b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 43), List(Expression.AtomicLiteral(ts(38, 42), Value.Text("foo"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(Projection(Expression.Ident(ts(94, 94), Right(QuineIdentifier(2)), None), Symbol("2"))),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.LocalProperty(Symbol("bar"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(Expression.Ident(ts(76, 79), Right(QuineIdentifier(3)), None)),
+            QueryPlan.LocalNode(Symbol("2")),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Cross-MATCH idFrom on property" should "produce Sequence, not CrossProduct" in {
+    val query = """
+      MATCH (a) WHERE id(a) = $aId
+      MATCH (b) WHERE id(b) = idFrom(a.x)
+      RETURN b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(Expression.Parameter(ts(31, 34), Symbol("$aId"), None)),
+      QueryPlan.Project(
+        List(Projection(Expression.Ident(ts(91, 91), Right(QuineIdentifier(2)), None), Symbol("2"))),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(
+              Expression.SynthesizeId(
+                ts(66, 76),
+                List(Expression.Ident(ts(74, 75), Right(QuineIdentifier(3)), None)),
+                None,
+              ),
+            ),
+            QueryPlan.LocalNode(Symbol("2")),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Three-hop cross-MATCH chain" should "produce Sequences, not CrossProduct" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      MATCH (b) WHERE id(b) = a.nextId
+      MATCH (c) WHERE id(c) = b.nextId
+      RETURN c
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(Projection(Expression.Ident(ts(137, 137), Right(QuineIdentifier(4)), None), Symbol("4"))),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(Expression.Ident(ts(77, 83), Right(QuineIdentifier(3)), None)),
+            QueryPlan.Sequence(
+              QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("5")), PropertyConstraint.Unconditional),
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Ident(ts(116, 122), Right(QuineIdentifier(5)), None)),
+                QueryPlan.LocalNode(Symbol("4")),
+              ),
+              ContextFlow.Extend,
+            ),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Independent MATCH clauses" should "produce CrossProduct, not Sequence" in {
+    val query = """
+      MATCH (a) WHERE id(a) = $aId
+      MATCH (b) WHERE id(b) = $bId
+      RETURN a, b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Project(
+      List(
+        Projection(Expression.Ident(ts(84, 84), Right(QuineIdentifier(1)), None), Symbol("1")),
+        Projection(Expression.Ident(ts(87, 87), Right(QuineIdentifier(2)), None), Symbol("2")),
+      ),
+      true,
+      QueryPlan.CrossProduct(
+        List(
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(Expression.Parameter(ts(31, 34), Symbol("$aId"), None)),
+            QueryPlan.LocalNode(Symbol("1")),
+          ),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(Expression.Parameter(ts(66, 69), Symbol("$bId"), None)),
+            QueryPlan.LocalNode(Symbol("2")),
+          ),
+        ),
+        false,
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Mixed dependent and independent MATCH clauses" should "produce both Sequence and CrossProduct" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      MATCH (b) WHERE id(b) = a.nextId
+      MATCH (c) WHERE id(c) = $cId
+      RETURN a, b, c
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(133, 133), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(136, 136), Right(QuineIdentifier(2)), None), Symbol("2")),
+          Projection(Expression.Ident(ts(139, 139), Right(QuineIdentifier(4)), None), Symbol("4")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.LocalNode(Symbol("1")),
+              QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+            ),
+            false,
+          ),
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Ident(ts(77, 83), Right(QuineIdentifier(3)), None)),
+                QueryPlan.LocalNode(Symbol("2")),
+              ),
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Parameter(ts(115, 118), Symbol("$cId"), None)),
+                QueryPlan.LocalNode(Symbol("4")),
+              ),
+            ),
+            false,
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Deferred dependency: first part used by third part" should "produce Sequence(a, CrossProduct(b, c))" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      MATCH (b) WHERE id(b) = $bId
+      MATCH (c) WHERE id(c) = a.nextId
+      RETURN a, b, c
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(133, 133), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(136, 136), Right(QuineIdentifier(2)), None), Symbol("2")),
+          Projection(Expression.Ident(ts(139, 139), Right(QuineIdentifier(3)), None), Symbol("3")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.LocalNode(Symbol("1")),
+              QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("4")), PropertyConstraint.Unconditional),
+            ),
+            false,
+          ),
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Parameter(ts(76, 79), Symbol("$bId"), None)),
+                QueryPlan.LocalNode(Symbol("2")),
+              ),
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Ident(ts(112, 118), Right(QuineIdentifier(4)), None)),
+                QueryPlan.LocalNode(Symbol("3")),
+              ),
+            ),
+            false,
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "WHERE predicate dependency (b.y = a.x)" should "produce Sequence" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      MATCH (b) WHERE id(b) = $bId AND b.y = a.x
+      RETURN a, b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(108, 108), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(111, 111), Right(QuineIdentifier(2)), None), Symbol("2")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.LocalNode(Symbol("1")),
+              QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("4")), PropertyConstraint.Unconditional),
+            ),
+            false,
+          ),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(Expression.Parameter(ts(76, 79), Symbol("$bId"), None)),
+            QueryPlan.Filter(
+              Expression.BinOp(
+                ts(85, 93),
+                Operator.Equals,
+                Expression.Ident(ts(86, 87), Right(QuineIdentifier(3)), None),
+                Expression.Ident(ts(92, 93), Right(QuineIdentifier(4)), None),
+                None,
+              ),
+              QueryPlan.CrossProduct(
+                List(
+                  QueryPlan.LocalNode(Symbol("2")),
+                  QueryPlan.LocalProperty(Symbol("y"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+                ),
+                false,
+              ),
+            ),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Inline property dependency (b {foo: a.x})" should "produce Sequence" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      MATCH (b {foo: a.x}) WHERE id(b) = $bId
+      RETURN a, b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(105, 105), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(108, 108), Right(QuineIdentifier(2)), None), Symbol("2")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.LocalNode(Symbol("1")),
+              QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+            ),
+            false,
+          ),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(Expression.Parameter(ts(87, 90), Symbol("$bId"), None)),
+            QueryPlan.LocalNode(Symbol("2")),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "WITH referencing prior binding" should "produce Sequence" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      WITH a AS b
+      MATCH (c) WHERE id(c) = $cId
+      RETURN b, c
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(112, 112), Right(QuineIdentifier(2)), None), Symbol("2")),
+          Projection(Expression.Ident(ts(115, 115), Right(QuineIdentifier(3)), None), Symbol("3")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.LocalNode(Symbol("1")),
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.Project(
+                List(Projection(Expression.Ident(ts(57, 57), Right(QuineIdentifier(1)), None), Symbol("2"))),
+                true,
+                QueryPlan.Unit,
+              ),
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Parameter(ts(94, 97), Symbol("$cId"), None)),
+                QueryPlan.LocalNode(Symbol("3")),
+              ),
+            ),
+            false,
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "WITH not referencing prior binding" should "produce CrossProduct" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      WITH 1 AS x
+      MATCH (c) WHERE id(c) = $cId
+      RETURN x, c
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Project(
+      List(
+        Projection(Expression.Ident(ts(112, 112), Right(QuineIdentifier(2)), None), Symbol("2")),
+        Projection(Expression.Ident(ts(115, 115), Right(QuineIdentifier(3)), None), Symbol("3")),
+      ),
+      true,
+      QueryPlan.CrossProduct(
+        List(
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(
+              Expression
+                .SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+            ),
+            QueryPlan.Unit,
+          ),
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.Project(
+                List(Projection(Expression.AtomicLiteral(ts(57, 57), Value.Integer(1), None), Symbol("2"))),
+                true,
+                QueryPlan.Unit,
+              ),
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Parameter(ts(94, 97), Symbol("$cId"), None)),
+                QueryPlan.LocalNode(Symbol("3")),
+              ),
+            ),
+            false,
+          ),
+        ),
+        false,
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "OPTIONAL MATCH with dependency" should "produce Sequence" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      OPTIONAL MATCH (b) WHERE id(b) = a.friendId
+      RETURN a, b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(109, 109), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(112, 112), Right(QuineIdentifier(2)), None), Symbol("2")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.LocalNode(Symbol("1")),
+              QueryPlan.LocalProperty(Symbol("friendId"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+            ),
+            false,
+          ),
+          QueryPlan.Optional(
+            QueryPlan.Anchor(
+              AnchorTarget.Computed(Expression.Ident(ts(86, 94), Right(QuineIdentifier(3)), None)),
+              QueryPlan.LocalNode(Symbol("2")),
+            ),
+            Set(Symbol("2")),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "OPTIONAL MATCH without dependency" should "produce CrossProduct" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      OPTIONAL MATCH (b) WHERE id(b) = $bId
+      RETURN a, b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Project(
+      List(
+        Projection(Expression.Ident(ts(103, 103), Right(QuineIdentifier(1)), None), Symbol("1")),
+        Projection(Expression.Ident(ts(106, 106), Right(QuineIdentifier(2)), None), Symbol("2")),
+      ),
+      true,
+      QueryPlan.CrossProduct(
+        List(
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(
+              Expression
+                .SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+            ),
+            QueryPlan.LocalNode(Symbol("1")),
+          ),
+          QueryPlan.Optional(
+            QueryPlan.Anchor(
+              AnchorTarget.Computed(Expression.Parameter(ts(85, 88), Symbol("$bId"), None)),
+              QueryPlan.LocalNode(Symbol("2")),
+            ),
+            Set(Symbol("2")),
+          ),
+        ),
+        false,
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Deferred WHERE predicate dependency (3 parts)" should "produce Sequence when third part references first via predicate" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      MATCH (b) WHERE id(b) = $bId
+      MATCH (c) WHERE id(c) = $cId AND c.y = a.x
+      RETURN a, b, c
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(143, 143), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(146, 146), Right(QuineIdentifier(2)), None), Symbol("2")),
+          Projection(Expression.Ident(ts(149, 149), Right(QuineIdentifier(3)), None), Symbol("3")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.LocalNode(Symbol("1")),
+              QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("5")), PropertyConstraint.Unconditional),
+            ),
+            false,
+          ),
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Parameter(ts(76, 79), Symbol("$bId"), None)),
+                QueryPlan.LocalNode(Symbol("2")),
+              ),
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Parameter(ts(111, 114), Symbol("$cId"), None)),
+                QueryPlan.Filter(
+                  Expression.BinOp(
+                    ts(120, 128),
+                    Operator.Equals,
+                    Expression.Ident(ts(121, 122), Right(QuineIdentifier(4)), None),
+                    Expression.Ident(ts(127, 128), Right(QuineIdentifier(5)), None),
+                    None,
+                  ),
+                  QueryPlan.CrossProduct(
+                    List(
+                      QueryPlan.LocalNode(Symbol("3")),
+                      QueryPlan.LocalProperty(Symbol("y"), Some(Symbol("4")), PropertyConstraint.Unconditional),
+                    ),
+                    false,
+                  ),
+                ),
+              ),
+            ),
+            false,
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Shared node in OPTIONAL MATCH pattern" should "produce Sequence" in {
+    val query = """
+      MATCH (n) WHERE id(n) = idFrom("root")
+      OPTIONAL MATCH (n)-[:KNOWS]->(friend)
+      RETURN n, friend
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val idFromRoot =
+      Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None)
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(idFromRoot),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(103, 103), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(106, 111), Right(QuineIdentifier(2)), None), Symbol("2")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.LocalNode(Symbol("1")),
+          QueryPlan.Optional(
+            QueryPlan.Anchor(
+              AnchorTarget.Computed(idFromRoot),
+              QueryPlan.CrossProduct(
+                List(
+                  QueryPlan.LocalNode(Symbol("1")),
+                  QueryPlan.Expand(Some(Symbol("KNOWS")), EdgeDirection.Outgoing, QueryPlan.LocalNode(Symbol("2"))),
+                ),
+                false,
+              ),
+            ),
+            Set(Symbol("2")),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "CASE WHEN in WHERE referencing prior binding" should "produce Sequence" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      MATCH (b) WHERE id(b) = idFrom(CASE WHEN a.x IS NULL THEN "default" ELSE a.x END)
+      RETURN a, b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(147, 147), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(150, 150), Right(QuineIdentifier(2)), None), Symbol("2")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.LocalNode(Symbol("1")),
+              QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+            ),
+            false,
+          ),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(
+              Expression.SynthesizeId(
+                ts(76, 132),
+                List(
+                  Expression.CaseBlock(
+                    ts(83, 131),
+                    List(
+                      SpecificCase(
+                        Expression
+                          .IsNull(ts(93, 103), Expression.Ident(ts(94, 95), Right(QuineIdentifier(3)), None), None),
+                        Expression.AtomicLiteral(ts(110, 118), Value.Text("default"), None),
+                      ),
+                    ),
+                    Expression.Ident(ts(126, 127), Right(QuineIdentifier(3)), None),
+                    None,
+                  ),
+                ),
+                None,
+              ),
+            ),
+            QueryPlan.LocalNode(Symbol("2")),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "WITH computed expression referencing prior binding" should "produce Sequence" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      WITH a.x AS y
+      MATCH (b) WHERE id(b) = $bId
+      RETURN y, b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(114, 114), Right(QuineIdentifier(3)), None), Symbol("3")),
+          Projection(Expression.Ident(ts(117, 117), Right(QuineIdentifier(4)), None), Symbol("4")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("2")), PropertyConstraint.Unconditional),
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.Project(
+                List(Projection(Expression.Ident(ts(58, 59), Right(QuineIdentifier(2)), None), Symbol("3"))),
+                true,
+                QueryPlan.Unit,
+              ),
+              QueryPlan.Anchor(
+                AnchorTarget.Computed(Expression.Parameter(ts(96, 99), Symbol("$bId"), None)),
+                QueryPlan.LocalNode(Symbol("4")),
+              ),
+            ),
+            false,
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Shared edge binding across MATCHes" should "produce Sequence" in {
+    val query = """
+      MATCH (a)-[e:KNOWS]->(b) WHERE id(a) = idFrom("root")
+      MATCH (c)-[e:KNOWS]->(d) WHERE id(c) = $cId
+      RETURN a, b, c, d
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(46, 59), List(Expression.AtomicLiteral(ts(53, 58), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(124, 124), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(127, 127), Right(QuineIdentifier(3)), None), Symbol("3")),
+          Projection(Expression.Ident(ts(130, 130), Right(QuineIdentifier(4)), None), Symbol("4")),
+          Projection(Expression.Ident(ts(133, 133), Right(QuineIdentifier(5)), None), Symbol("5")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.LocalNode(Symbol("1")),
+              QueryPlan.Expand(Some(Symbol("KNOWS")), EdgeDirection.Outgoing, QueryPlan.LocalNode(Symbol("3"))),
+            ),
+            false,
+          ),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(Expression.Parameter(ts(106, 109), Symbol("$cId"), None)),
+            QueryPlan.CrossProduct(
+              List(
+                QueryPlan.LocalNode(Symbol("4")),
+                QueryPlan.Expand(Some(Symbol("KNOWS")), EdgeDirection.Outgoing, QueryPlan.LocalNode(Symbol("5"))),
+              ),
+              false,
+            ),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "CALL procedure with arg referencing prior binding" should "produce Sequence" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      CALL getFilteredEdges(id(a), [], [], true) YIELD edge
+      RETURN edge
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(Projection(Expression.Ident(ts(119, 122), Right(QuineIdentifier(2)), None), Symbol("2"))),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.Unit,
+          QueryPlan.Procedure(
+            Symbol("getFilteredEdges"),
+            List(
+              Expression.IdLookup(ts(74, 78), Right(QuineIdentifier(1)), None),
+              Expression.ListLiteral(ts(81, 82), List(), None),
+              Expression.ListLiteral(ts(85, 86), List(), None),
+              Expression.AtomicLiteral(ts(89, 92), Value.True, None),
+            ),
+            List((Symbol("edge"), Symbol("2"))),
+            QueryPlan.Unit,
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Deferred effect referencing first binding" should "produce Sequence" in {
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      MATCH (b) WHERE id(b) = $bId
+      SET b.x = a.y
+      RETURN a, b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.Computed(
+        Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+      ),
+      QueryPlan.Project(
+        List(
+          Projection(Expression.Ident(ts(114, 114), Right(QuineIdentifier(1)), None), Symbol("1")),
+          Projection(Expression.Ident(ts(117, 117), Right(QuineIdentifier(2)), None), Symbol("2")),
+        ),
+        true,
+        QueryPlan.Sequence(
+          QueryPlan.CrossProduct(
+            List(
+              QueryPlan.LocalNode(Symbol("1")),
+              QueryPlan.LocalProperty(Symbol("y"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+            ),
+            false,
+          ),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(Expression.Parameter(ts(76, 79), Symbol("$bId"), None)),
+            QueryPlan.Sequence(
+              QueryPlan.LocalNode(Symbol("2")),
+              QueryPlan.LocalEffect(
+                List(
+                  LocalQueryEffect
+                    .SetProperty(None, Symbol("x"), Expression.Ident(ts(98, 99), Right(QuineIdentifier(3)), None)),
+                ),
+                QueryPlan.Unit,
+              ),
+              ContextFlow.Extend,
+            ),
+          ),
+          ContextFlow.Extend,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  "Deferred effect with no reference to first binding" should "produce CrossProduct with inner Sequence" in {
+    // The CREATE doesn't reference a's bindings, so a can be CrossProducted.
+    // The recursion handles CREATE as an immediate effect of MATCH(b) via inner Sequence.
+    // Using SET with a literal value — no reference to a's bindings.
+    // CrossProduct is correct: SET runs per b row via inner Sequence.
+    val query = """
+      MATCH (a) WHERE id(a) = idFrom("root")
+      MATCH (b) WHERE id(b) = $bId
+      SET b.x = "literal"
+      RETURN a, b
+    """
+    val plan = planQuery(query)
+    val ts = Source.TextSource
+    val expected = QueryPlan.Project(
+      List(
+        Projection(Expression.Ident(ts(120, 120), Right(QuineIdentifier(1)), None), Symbol("1")),
+        Projection(Expression.Ident(ts(123, 123), Right(QuineIdentifier(2)), None), Symbol("2")),
+      ),
+      true,
+      QueryPlan.CrossProduct(
+        List(
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(
+              Expression
+                .SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
+            ),
+            QueryPlan.LocalNode(Symbol("1")),
+          ),
+          QueryPlan.Anchor(
+            AnchorTarget.Computed(Expression.Parameter(ts(76, 79), Symbol("$bId"), None)),
+            QueryPlan.Sequence(
+              QueryPlan.LocalNode(Symbol("2")),
+              QueryPlan.LocalEffect(
+                List(
+                  LocalQueryEffect
+                    .SetProperty(None, Symbol("x"), Expression.AtomicLiteral(ts(97, 105), Value.Text("literal"), None)),
+                ),
+                QueryPlan.Unit,
+              ),
+              ContextFlow.Extend,
+            ),
+          ),
+        ),
+        false,
+      ),
+    )
+    plan shouldBe expected
   }
 }

@@ -281,10 +281,86 @@ object QueryPlanner {
     case Pattern.Expression.MapLiteral(_, entries, _) =>
       entries.values.flatMap(extractVariableRefs).toSet
 
-    case _: Pattern.Expression.Parameter => Set.empty // Parameters are not variable refs
+    case Pattern.Expression.IndexIntoArray(_, of, idx, _) =>
+      extractVariableRefs(of) ++ extractVariableRefs(idx)
+
+    case Pattern.Expression.CaseBlock(_, cases, alt, _) =>
+      cases.flatMap(c => extractVariableRefs(c.condition) ++ extractVariableRefs(c.value)).toSet ++
+        extractVariableRefs(alt)
+
+    case _: Pattern.Expression.Parameter => Set.empty
     case _: Pattern.Expression.AtomicLiteral => Set.empty
-    case _: Pattern.Expression.IdLookup => Set.empty // id(n) is handled separately
-    case _ => Set.empty
+    case Pattern.Expression.IdLookup(_, Right(quineId), _) => Set(quineId.name)
+    case Pattern.Expression.IdLookup(_, Left(cypherIdent), _) =>
+      throw new IllegalStateException(s"IdLookup for ${cypherIdent.name} was not rewritten by symbol analysis")
+  }
+
+  /** Extract all variable references (reads) from a QueryPart's expressions.
+    *
+    * Used by [[planPartGroup]] to detect dependencies that determine whether
+    * consecutive parts are joined with Sequence (dependent) or CrossProduct (independent).
+    *
+    * Unlike [[extractBindingsFromPart]] which returns the Symbols a part *defines*,
+    * this returns the synthetic integer IDs that a part's expressions *read*.
+    * This complements `idLookups` (which only track `id(n)` anchoring) by capturing
+    * expression-level references such as `a.x` in `WHERE b.y = a.x` or `MATCH (b {foo: a.x})`.
+    *
+    * @param part the query part to inspect
+    * @return synthetic integer IDs referenced by the part's expressions
+    */
+  def extractRefsFromPart(part: Cypher.QueryPart): Set[Int] = part match {
+    case Cypher.QueryPart.ReadingClausePart(readingClause) =>
+      readingClause match {
+        case patterns: Cypher.ReadingClause.FromPatterns =>
+          val predicateRefs = patterns.maybePredicate.toSet.flatMap(extractVariableRefs)
+          val inlinePropertyRefs = patterns.patterns.flatMap { gp =>
+            val initProps = gp.initial.maybeProperties.toSet.flatMap(extractVariableRefs)
+            val pathProps = gp.path.flatMap(c => c.dest.maybeProperties.toSet.flatMap(extractVariableRefs))
+            initProps ++ pathProps
+          }.toSet
+          predicateRefs ++ inlinePropertyRefs
+        case unwind: Cypher.ReadingClause.FromUnwind =>
+          extractVariableRefs(unwind.list)
+        case proc: Cypher.ReadingClause.FromProcedure =>
+          proc.args.flatMap(extractVariableRefs).toSet
+        case subq: Cypher.ReadingClause.FromSubquery =>
+          subq.bindings.flatMap {
+            case Right(quineId) => Set(quineId.name)
+            case Left(cypherIdent) =>
+              throw new IllegalStateException(
+                s"FromSubquery binding ${cypherIdent.name} was not rewritten by symbol analysis",
+              )
+          }.toSet
+      }
+    case Cypher.QueryPart.WithClausePart(withClause) =>
+      val bindingRefs = withClause.bindings.flatMap(p => extractVariableRefs(p.expression)).toSet
+      val predicateRefs = withClause.maybePredicate.toSet.flatMap(extractVariableRefs)
+      bindingRefs ++ predicateRefs
+    case Cypher.QueryPart.EffectPart(effect) =>
+      extractRefsFromEffect(effect)
+  }
+
+  /** Extract variable references from an Effect's expressions. */
+  private def extractRefsFromEffect(effect: Cypher.Effect): Set[Int] = effect match {
+    case Cypher.Effect.SetProperty(_, prop, value) =>
+      extractVariableRefs(prop) ++ extractVariableRefs(value)
+    case Cypher.Effect.SetProperties(_, _, props) =>
+      extractVariableRefs(props)
+    case Cypher.Effect.SetLabel(_, on, _) =>
+      on.toOption.map(_.name).toSet
+    case Cypher.Effect.Create(_, patterns) =>
+      patterns.flatMap { gp =>
+        val initRef = gp.initial.maybeBinding.flatMap(_.toOption).map(_.name)
+        val initProps = gp.initial.maybeProperties.toSet.flatMap(extractVariableRefs)
+        val pathRefs = gp.path.flatMap { conn =>
+          val destRef = conn.dest.maybeBinding.flatMap(_.toOption).map(_.name)
+          val destProps = conn.dest.maybeProperties.toSet.flatMap(extractVariableRefs)
+          destRef.toSet ++ destProps
+        }
+        initRef.toSet ++ initProps ++ pathRefs
+      }.toSet
+    case Cypher.Effect.Foreach(_, _, listExpr, nestedEffects) =>
+      extractVariableRefs(listExpr) ++ nestedEffects.flatMap(extractRefsFromEffect).toSet
   }
 
   /** Extract ID lookups from WHERE predicates.
@@ -2042,11 +2118,15 @@ object QueryPlanner {
     case Cypher.QueryPart.ReadingClausePart(readingClause) =>
       readingClause match {
         case patterns: Cypher.ReadingClause.FromPatterns =>
-          // Extract bindings from all graph patterns
+          // Extract bindings from all graph patterns (nodes and edges)
           patterns.patterns.flatMap { pattern =>
-            val initBinding = bindingSymbol(nodeBindingInt(pattern.initial))
-            val pathBindings = pattern.path.map(conn => bindingSymbol(nodeBindingInt(conn.dest)))
-            initBinding :: pathBindings
+            val initBinding = Set(bindingSymbol(nodeBindingInt(pattern.initial)))
+            val pathBindings = pattern.path.flatMap { conn =>
+              val destBinding = Set(bindingSymbol(nodeBindingInt(conn.dest)))
+              val edgeBinding = conn.edge.maybeBinding.map(id => bindingSymbol(identInt(id))).toSet
+              destBinding ++ edgeBinding
+            }
+            initBinding ++ pathBindings
           }.toSet
 
         case unwind: Cypher.ReadingClause.FromUnwind =>
@@ -2199,7 +2279,9 @@ object QueryPlanner {
       }
   }
 
-  /** Plan a group of non-materializing parts using the existing Sequence/CrossProduct logic. */
+  /** Plan a group of non-materializing parts using the existing Sequence/CrossProduct logic.
+    * Precomputes bindings and refs for all parts to avoid repeated extraction during recursion.
+    */
   private def planPartGroup(
     parts: List[Cypher.QueryPart],
     idLookups: List[IdLookup],
@@ -2207,20 +2289,68 @@ object QueryPlanner {
     symbolTable: SymbolAnalysisModule.SymbolTable,
     propertyBindings: List[PropertyBinding],
     existingBindings: Set[Symbol],
-  ): QueryPlan = parts match {
+  ): QueryPlan = {
+    val propertyAccessByBinding: Map[Int, Set[Int]] = symbolTable.references
+      .collect { case SymbolAnalysisModule.SymbolTableEntry.PropertyAccessEntry(_, id, onBinding, _) =>
+        (onBinding, id)
+      }
+      .groupMap(_._1)(_._2)
+      .map { case (k, v) => (k, v.toSet) }
+
+    val partsWithData = parts.map { p =>
+      (p, extractBindingsFromPart(p), extractRefsFromPart(p))
+    }
+    planPartGroupImpl(
+      partsWithData,
+      idLookups,
+      nodeDeps,
+      symbolTable,
+      propertyBindings,
+      existingBindings,
+      propertyAccessByBinding,
+    )
+  }
+
+  private def planPartGroupImpl(
+    partsWithData: List[(Cypher.QueryPart, Set[Symbol], Set[Int])],
+    idLookups: List[IdLookup],
+    nodeDeps: NodeDeps,
+    symbolTable: SymbolAnalysisModule.SymbolTable,
+    propertyBindings: List[PropertyBinding],
+    existingBindings: Set[Symbol],
+    propertyAccessByBinding: Map[Int, Set[Int]],
+  ): QueryPlan = partsWithData match {
     case Nil => QueryPlan.Unit
-    case single :: Nil => planQueryPart(single, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
-    case first :: rest =>
-      val bindingsFromFirst = extractBindingsFromPart(first)
+    case (single, _, _) :: Nil =>
+      planQueryPart(single, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
+    case (first, bindingsFromFirst, _) :: rest =>
       val accumulatedBindings = existingBindings ++ bindingsFromFirst
 
       first match {
         case Cypher.QueryPart.ReadingClausePart(unwind: Cypher.ReadingClause.FromUnwind) =>
-          val restPlan = planPartGroup(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
+          val restPlan =
+            planPartGroupImpl(
+              rest,
+              idLookups,
+              nodeDeps,
+              symbolTable,
+              propertyBindings,
+              accumulatedBindings,
+              propertyAccessByBinding,
+            )
           QueryPlan.Unwind(unwind.list, bindingSymbol(identInt(unwind.as)), restPlan)
 
         case Cypher.QueryPart.ReadingClausePart(proc: Cypher.ReadingClause.FromProcedure) =>
-          val restPlan = planPartGroup(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
+          val restPlan =
+            planPartGroupImpl(
+              rest,
+              idLookups,
+              nodeDeps,
+              symbolTable,
+              propertyBindings,
+              accumulatedBindings,
+              propertyAccessByBinding,
+            )
           val yieldPairs = proc.yields.map { yi =>
             (yi.resultField, bindingSymbol(identInt(yi.boundAs)))
           }
@@ -2233,16 +2363,35 @@ object QueryPlanner {
 
         case _ =>
           val firstPlan = planQueryPart(first, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
-          val restPlan = planPartGroup(rest, idLookups, nodeDeps, symbolTable, propertyBindings, accumulatedBindings)
-          val needsSequence = (first, rest.headOption) match {
-            case (_, Some(_: Cypher.QueryPart.EffectPart)) => true
-            case (_, Some(_: Cypher.QueryPart.WithClausePart)) => true
-            case (_: Cypher.QueryPart.WithClausePart, _) => true
-            case (_, Some(Cypher.QueryPart.ReadingClausePart(p: Cypher.ReadingClause.FromPatterns))) if p.isOptional =>
-              true
+          val restPlan =
+            planPartGroupImpl(
+              rest,
+              idLookups,
+              nodeDeps,
+              symbolTable,
+              propertyBindings,
+              accumulatedBindings,
+              propertyAccessByBinding,
+            )
+
+          // Does ANY later part depend on bindings from the first part?
+          // Symbol analysis rewrites a.x to Ident(synthId), so we use the pre-computed
+          // propertyAccessByBinding map to include synthetic IDs whose onBinding is from first.
+          val nodeBindingIds = bindingsFromFirst.map(_.name.toInt)
+          val propertyAccessIds = nodeBindingIds.flatMap(id => propertyAccessByBinding.getOrElse(id, Set.empty))
+          val allIdsFromFirst = nodeBindingIds ++ propertyAccessIds
+
+          val anyRestDependsOnFirst = rest.exists { case (_, partBindings, partRefs) =>
+            partBindings.exists(s => allIdsFromFirst.contains(s.name.toInt)) ||
+              partRefs.exists(allIdsFromFirst.contains)
+          }
+
+          val nextIsEffect = rest.headOption match {
+            case Some((_: Cypher.QueryPart.EffectPart, _, _)) => true
             case _ => false
           }
-          if (needsSequence) {
+
+          if (anyRestDependsOnFirst || nextIsEffect) {
             QueryPlan.Sequence(firstPlan, restPlan, ContextFlow.Extend)
           } else {
             QueryPlan.CrossProduct(List(firstPlan, restPlan))
