@@ -14,6 +14,7 @@ object SidebarState {
 object CoreUISidebar {
   def apply[Page](
     productName: String,
+    logo: Option[HtmlElement],
     navItems: Seq[NavItemData[Page]],
     router: Router[Page],
     userAvatar: Option[HtmlElement],
@@ -27,7 +28,7 @@ object CoreUISidebar {
         cls := "sidebar-header border-bottom",
         div(
           cls := "sidebar-brand d-flex justify-content-between align-items-center",
-          span(cls := "sidebar-brand-full", productName),
+          logo.getOrElse(span(cls := "sidebar-brand-full", productName)),
         ),
         button(
           cls := "sidebar-toggler",

@@ -16,6 +16,7 @@ object LaminarRoot {
   case class NavItemData[Page](name: String, icon: String, page: Page, hidden: Boolean = false)
   case class LaminarRootProps[Page](
     productName: String,
+    logo: Option[HtmlElement],
     navItems: Seq[NavItemData[Page]],
     router: Router[Page],
     views: HtmlElement,
@@ -58,6 +59,7 @@ object LaminarRoot {
       },
       CoreUISidebar(
         productName = props.productName,
+        logo = props.logo,
         navItems = props.navItems,
         router = props.router,
         userAvatar = props.userAvatar,
