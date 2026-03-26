@@ -150,29 +150,6 @@ object SymbolAnalysisModule {
   def entryExists(identifier: Int): SymbolProgram[Boolean] =
     inspect(_.table.references.exists(_.identifier == identifier))
 
-  /** Checks if an identifier refers to a graph element (node or edge).
-    * Property access on graph elements gets rewritten to synthetic identifiers.
-    */
-  def isGraphElementBinding(identifier: Int): SymbolProgram[Boolean] =
-    inspect { st =>
-      st.table.references.exists { entry =>
-        entry.identifier == identifier && (entry.isInstanceOf[SymbolTableEntry.NodeEntry] ||
-        entry.isInstanceOf[SymbolTableEntry.EdgeEntry])
-      }
-    }
-
-  /** Find an existing PropertyAccessEntry for a (binding, property) pair.
-    * Returns the synthId if found, None otherwise.
-    * This allows reusing synthIds when the same property is accessed multiple times.
-    */
-  def findPropertyAccessEntry(onBinding: Int, property: Symbol): SymbolProgram[Option[Int]] =
-    inspect { st =>
-      st.table.references.collectFirst {
-        case SymbolTableEntry.PropertyAccessEntry(_, synthId, b, p) if b == onBinding && p == property =>
-          synthId
-      }
-    }
-
   /** Adds an error to the current state of a SymbolProgram
     *
     * @param msg Diagnostic message
@@ -255,44 +232,16 @@ object SymbolAnalysisModule {
     } yield fa.copy(of = rewrittenOf)
 
   /** Analyzes a field access expression that is a read (e.g., RETURN n.name).
-    * If the target is a graph element (node/edge), rewrites to an identifier
-    * and records a PropertyAccessEntry in the symbol table.
-    * Reuses existing synthIds when the same (node, property) pair is accessed multiple times.
+    * Recursively analyzes the target expression. Field access rewriting (converting
+    * graph element property access to synthetic identifiers) is handled by the
+    * canonicalization phase.
     */
   def analyzeFieldAccess(
     fa: Expression.FieldAccess,
   ): SymbolProgram[Expression] =
     for {
       rewrittenOf <- analyzeExpression(fa.of)
-      result <- rewrittenOf match {
-        case Expression.Ident(_, Right(quineId), _) =>
-          // Check if this identifier refers to a graph element
-          isGraphElementBinding(quineId.name).flatMap { isGraphElement =>
-            if (isGraphElement) {
-              // Check if we already have a PropertyAccessEntry for this (node, property) pair
-              findPropertyAccessEntry(quineId.name, fa.fieldName).flatMap {
-                case Some(existingSynthId) =>
-                  // Reuse the existing synthId
-                  pure(Expression.Ident(fa.source, Right(QuineIdentifier(existingSynthId)), fa.ty): Expression)
-                case None =>
-                  // Create a new synthetic identifier
-                  for {
-                    synthId <- freshId
-                    _ <- addEntry(
-                      SymbolTableEntry.PropertyAccessEntry(fa.source, synthId, quineId.name, fa.fieldName),
-                    )
-                  } yield Expression.Ident(fa.source, Right(QuineIdentifier(synthId)), fa.ty): Expression
-              }
-            } else {
-              // Not a graph element - keep as FieldAccess
-              pure(fa.copy(of = rewrittenOf): Expression)
-            }
-          }
-        case _ =>
-          // Target is not a simple identifier - keep as FieldAccess
-          pure(fa.copy(of = rewrittenOf): Expression)
-      }
-    } yield result
+    } yield fa.copy(of = rewrittenOf)
 
   def analyzeExpression(expression: Expression): SymbolProgram[Expression] =
     expression match {
@@ -733,8 +682,12 @@ object SymbolAnalysisModule {
     }
 }
 
-case class SymbolAnalysisState(diagnostics: List[Diagnostic], symbolTable: SymbolTable, cypherText: String)
-    extends CompilerState
+case class SymbolAnalysisState(
+  diagnostics: List[Diagnostic],
+  symbolTable: SymbolTable,
+  cypherText: String,
+  nextFreshId: Int,
+) extends CompilerState
 
 /** This compiler phase does two things.
   * <ol>
@@ -762,6 +715,7 @@ object SymbolAnalysisPhase extends SimpleCompilerPhase[SymbolAnalysisState, Quer
       val resultState = symbolAnalysisState.copy(
         diagnostics = errorDiagnostics ::: warningDiagnostics ::: symbolAnalysisState.diagnostics,
         symbolTable = finalState.table,
+        nextFreshId = finalState.currentFreshId,
       )
 
       (resultState, Some(rewrittenQuery))

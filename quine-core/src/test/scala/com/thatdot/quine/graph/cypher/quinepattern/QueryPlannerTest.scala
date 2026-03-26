@@ -2351,22 +2351,23 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     """
     val plan = planQuery(query)
     val ts = Source.TextSource
+    // After SA + canonicalization: a=1, b=2, c=3, a.nextId→4, b.nextId→5
     val expected = QueryPlan.Anchor(
       AnchorTarget.Computed(
         Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
       ),
       QueryPlan.Project(
-        List(Projection(Expression.Ident(ts(137, 137), Right(QuineIdentifier(4)), None), Symbol("4"))),
+        List(Projection(Expression.Ident(ts(137, 137), Right(QuineIdentifier(3)), None), Symbol("3"))),
         true,
         QueryPlan.Sequence(
-          QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+          QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("4")), PropertyConstraint.Unconditional),
           QueryPlan.Anchor(
-            AnchorTarget.Computed(Expression.Ident(ts(77, 83), Right(QuineIdentifier(3)), None)),
+            AnchorTarget.Computed(Expression.Ident(ts(77, 83), Right(QuineIdentifier(4)), None)),
             QueryPlan.Sequence(
               QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("5")), PropertyConstraint.Unconditional),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Ident(ts(116, 122), Right(QuineIdentifier(5)), None)),
-                QueryPlan.LocalNode(Symbol("4")),
+                QueryPlan.LocalNode(Symbol("3")),
               ),
               ContextFlow.Extend,
             ),
@@ -2418,6 +2419,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     """
     val plan = planQuery(query)
     val ts = Source.TextSource
+    // After SA + canonicalization: a=1, b=2, c=3, a.nextId→4
     val expected = QueryPlan.Anchor(
       AnchorTarget.Computed(
         Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
@@ -2426,26 +2428,26 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
         List(
           Projection(Expression.Ident(ts(133, 133), Right(QuineIdentifier(1)), None), Symbol("1")),
           Projection(Expression.Ident(ts(136, 136), Right(QuineIdentifier(2)), None), Symbol("2")),
-          Projection(Expression.Ident(ts(139, 139), Right(QuineIdentifier(4)), None), Symbol("4")),
+          Projection(Expression.Ident(ts(139, 139), Right(QuineIdentifier(3)), None), Symbol("3")),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
               QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("4")), PropertyConstraint.Unconditional),
             ),
             false,
           ),
           QueryPlan.CrossProduct(
             List(
               QueryPlan.Anchor(
-                AnchorTarget.Computed(Expression.Ident(ts(77, 83), Right(QuineIdentifier(3)), None)),
+                AnchorTarget.Computed(Expression.Ident(ts(77, 83), Right(QuineIdentifier(4)), None)),
                 QueryPlan.LocalNode(Symbol("2")),
               ),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Parameter(ts(115, 118), Symbol("$cId"), None)),
-                QueryPlan.LocalNode(Symbol("4")),
+                QueryPlan.LocalNode(Symbol("3")),
               ),
             ),
             false,
@@ -2926,28 +2928,29 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     """
     val plan = planQuery(query)
     val ts = Source.TextSource
+    // After SA + canonicalization: a=1, y=2, b=3, a.x→4
     val expected = QueryPlan.Anchor(
       AnchorTarget.Computed(
         Expression.SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), None)), None),
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(114, 114), Right(QuineIdentifier(3)), None), Symbol("3")),
-          Projection(Expression.Ident(ts(117, 117), Right(QuineIdentifier(4)), None), Symbol("4")),
+          Projection(Expression.Ident(ts(114, 114), Right(QuineIdentifier(2)), None), Symbol("2")),
+          Projection(Expression.Ident(ts(117, 117), Right(QuineIdentifier(3)), None), Symbol("3")),
         ),
         true,
         QueryPlan.Sequence(
-          QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("2")), PropertyConstraint.Unconditional),
+          QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("4")), PropertyConstraint.Unconditional),
           QueryPlan.CrossProduct(
             List(
               QueryPlan.Project(
-                List(Projection(Expression.Ident(ts(58, 59), Right(QuineIdentifier(2)), None), Symbol("3"))),
+                List(Projection(Expression.Ident(ts(58, 59), Right(QuineIdentifier(4)), None), Symbol("2"))),
                 true,
                 QueryPlan.Unit,
               ),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Parameter(ts(96, 99), Symbol("$bId"), None)),
-                QueryPlan.LocalNode(Symbol("4")),
+                QueryPlan.LocalNode(Symbol("3")),
               ),
             ),
             false,

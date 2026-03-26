@@ -3,13 +3,20 @@ package com.thatdot.quine.language.prettyprint
 import munit.FunSuite
 
 import com.thatdot.quine.cypher.ast.Query
-import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase, SymbolAnalysisState}
+import com.thatdot.quine.cypher.phases.{
+  CanonicalizationPhase,
+  LexerPhase,
+  LexerState,
+  ParserPhase,
+  SymbolAnalysisPhase,
+  SymbolAnalysisState,
+}
 import com.thatdot.quine.language.phases.Phase
 import com.thatdot.quine.language.phases.UpgradeModule._
 
 class PrettyPrintTest extends FunSuite {
   val pipeline: Phase[LexerState, SymbolAnalysisState, String, Query] =
-    LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
+    LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase andThen CanonicalizationPhase
 
   def parseQuery(query: String): (com.thatdot.quine.cypher.phases.SymbolAnalysisState, Option[Query]) =
     pipeline.process(query).value.run(LexerState(Nil)).value
@@ -18,8 +25,7 @@ class PrettyPrintTest extends FunSuite {
     val (state, maybeAst) = parseQuery("MATCH (n:Person) RETURN n.name")
 
     assert(maybeAst.isDefined, "Should parse successfully")
-    // After symbol analysis, n.name is rewritten to Ident(#2) with PropertyAccessEntry
-    // The expression entry gets id=3, which references the property synthId=2
+    // After SA + canonicalization: n.name → Ident(#3), RETURN projection = #2
     assertEquals(
       maybeAst.get.pretty,
       """|SinglepartQuery(
@@ -29,7 +35,7 @@ class PrettyPrintTest extends FunSuite {
          |    ] @[0-15]
          |  ],
          |  bindings = [
-         |    Ident(#2) @[25-29] AS #3 @[24-29]
+         |    Ident(#3) @[25-29] AS #2 @[24-29]
          |  ]
          |) @[0-29]""".stripMargin,
     )
@@ -38,27 +44,29 @@ class PrettyPrintTest extends FunSuite {
   test("pretty print symbol table") {
     val (state, _) = parseQuery("MATCH (n:Person) RETURN n.name")
 
-    // After symbol analysis, n.name is rewritten to Ident(#2) with PropertyAccessEntry(id=2)
-    // The RETURN expression entry gets id=3
+    // After SA + canonicalization: PropertyAccessEntry(id=3) at front, ExpressionEntry(id=2)
     assertEquals(
       state.symbolTable.pretty,
       s"""|SymbolTable(
           |  references = [
-          |    ExpressionEntry(
-          |      id = 3,
-          |      exp = Ident(#2) @[25-29],
-          |      source = @[24-29]
-          |    ),
-          |    QuineToCypherIdEntry(
-          |      id = 3,
-          |      cypherName = 'n.name,
-          |      source = @[24-29]
-          |    ),
           |    PropertyAccessEntry(
-          |      id = 2,
+          |      id = 3,
           |      onBinding = 1,
           |      property = 'name,
           |      source = @[25-29]
+          |    ),
+          |    ExpressionEntry(
+          |      id = 2,
+          |      exp = FieldAccess(
+          |        of = Ident(#1) @[24-24],
+          |        field = 'name
+          |      ) @[25-29],
+          |      source = @[24-29]
+          |    ),
+          |    QuineToCypherIdEntry(
+          |      id = 2,
+          |      cypherName = 'n.name,
+          |      source = @[24-29]
           |    ),
           |    NodeEntry(
           |      id = 1,
@@ -107,11 +115,17 @@ class PrettyPrintTest extends FunSuite {
          |) @[0-69]""".stripMargin,
     )
 
-    // Symbol table now includes PropertyAccessEntry for n.age
+    // PropertyAccessEntry now appears at the front (added by canonicalization)
     assertEquals(
       state.symbolTable.pretty,
       s"""|SymbolTable(
           |  references = [
+          |    PropertyAccessEntry(
+          |      id = 4,
+          |      onBinding = 1,
+          |      property = 'age,
+          |      source = @[46-49]
+          |    ),
           |    ExpressionEntry(
           |      id = 2,
           |      exp = Ident(#2) @[69-69],
@@ -126,12 +140,6 @@ class PrettyPrintTest extends FunSuite {
           |      id = 1,
           |      exp = Ident(#1) @[63-63],
           |      source = @[63-63]
-          |    ),
-          |    PropertyAccessEntry(
-          |      id = 4,
-          |      onBinding = 1,
-          |      property = 'age,
-          |      source = @[46-49]
           |    ),
           |    NodeEntry(
           |      id = 3,
@@ -267,7 +275,8 @@ class PrettyPrintTest extends FunSuite {
           |      ${""}
           |    ]
           |  ),
-          |  cypherText = "MATCH (n) RETURN undefined_var"
+          |  cypherText = "MATCH (n) RETURN undefined_var",
+          |  nextFreshId = 3
           |)""".stripMargin,
     )
   }

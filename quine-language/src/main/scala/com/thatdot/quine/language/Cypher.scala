@@ -2,7 +2,7 @@ package com.thatdot.quine.language
 
 import com.thatdot.quine.cypher.ast.Query
 import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{SymbolTable, TableMonoid}
-import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
+import com.thatdot.quine.cypher.phases.{CanonicalizationPhase, LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.language.diagnostic.Diagnostic
 import com.thatdot.quine.language.phases.{TypeCheckingPhase, UpgradeModule}
 import com.thatdot.quine.language.types.Type
@@ -66,7 +66,7 @@ object Cypher {
   type CompileResult = TypeCheckResult
 
   private val parsePipeline = LexerPhase andThen ParserPhase
-  private val analyzePipeline = parsePipeline andThen SymbolAnalysisPhase
+  private val analyzePipeline = parsePipeline andThen SymbolAnalysisPhase andThen CanonicalizationPhase
   private val typeCheckPipeline = analyzePipeline andThen TypeCheckingPhase()
 
   def parse(query: String): ParseResult = {

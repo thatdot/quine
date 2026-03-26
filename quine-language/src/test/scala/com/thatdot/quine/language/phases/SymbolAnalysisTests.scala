@@ -5,7 +5,13 @@ import com.thatdot.quine.cypher.ast.QueryPart.ReadingClausePart
 import com.thatdot.quine.cypher.ast.ReadingClause.{FromPatterns, FromSubquery, FromUnwind}
 import com.thatdot.quine.cypher.ast.{Connection, EdgePattern, GraphPattern, NodePattern, Projection, Query}
 import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{SymbolTable, SymbolTableEntry}
-import com.thatdot.quine.cypher.phases.{LexerPhase, ParserPhase, SymbolAnalysisPhase, SymbolAnalysisState}
+import com.thatdot.quine.cypher.phases.{
+  CanonicalizationPhase,
+  LexerPhase,
+  ParserPhase,
+  SymbolAnalysisPhase,
+  SymbolAnalysisState,
+}
 import com.thatdot.quine.language.ast.{Direction, Expression, Operator, QuineIdentifier, Source, Value}
 import com.thatdot.quine.language.diagnostic.Diagnostic
 import com.thatdot.quine.language.diagnostic.Diagnostic.{ParseError, TypeCheckError}
@@ -20,7 +26,7 @@ class SymbolAnalysisTests extends munit.FunSuite {
   ): (SymbolAnalysisState, Option[Query]) = {
     import com.thatdot.quine.language.phases.UpgradeModule._
 
-    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
+    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase andThen CanonicalizationPhase
 
     parser
       .process(queryString)
@@ -90,21 +96,41 @@ class SymbolAnalysisTests extends munit.FunSuite {
     // - a.value in RETURN reuses synthId=3
     // - b.value in RETURN gets rewritten to Ident(4), creates PropertyAccessEntry(4, 2, "value")
     // - RETURN expression gets ExpressionEntry with id=5
+    // After symbol analysis + canonicalization:
+    // - a gets id 1, b gets id 2 (SA)
+    // - RETURN projection gets id 3 (SA)
+    // - a.value gets synthId 4, b.value gets synthId 5 (canonicalization)
+    // PropertyAccessEntry records are prepended by canonicalization.
+    // ExpressionEntry.exp captures the pre-canonicalization expression (FieldAccess nodes).
     val expectedTable: List[SymbolTableEntry] = List(
+      PropertyAccessEntry(
+        source = TextSource(71, 76),
+        identifier = 5,
+        onBinding = 2,
+        property = Symbol("value"),
+      ),
+      PropertyAccessEntry(
+        source = TextSource(38, 43),
+        identifier = 4,
+        onBinding = 1,
+        property = Symbol("value"),
+      ),
       ExpressionEntry(
         source = TextSource(60, 76),
-        identifier = 5,
+        identifier = 3,
         exp = BinOp(
           source = TextSource(60, 76),
           op = Operator.Plus,
-          lhs = Ident(
+          lhs = Expression.FieldAccess(
             source = TextSource(61, 66),
-            identifier = Right(QuineIdentifier(3)),
+            of = Ident(TextSource(60, 60), Right(QuineIdentifier(1)), None),
+            fieldName = Symbol("value"),
             ty = None,
           ),
-          rhs = Ident(
+          rhs = Expression.FieldAccess(
             source = TextSource(71, 76),
-            identifier = Right(QuineIdentifier(4)),
+            of = Ident(TextSource(70, 70), Right(QuineIdentifier(2)), None),
+            fieldName = Symbol("value"),
             ty = None,
           ),
           ty = None,
@@ -112,20 +138,8 @@ class SymbolAnalysisTests extends munit.FunSuite {
       ),
       QuineToCypherIdEntry(
         source = TextSource(60, 76),
-        identifier = 5,
-        cypherIdentifier = Symbol("a.value + b.value"),
-      ),
-      PropertyAccessEntry(
-        source = TextSource(71, 76),
-        identifier = 4,
-        onBinding = 2,
-        property = Symbol("value"),
-      ),
-      PropertyAccessEntry(
-        source = TextSource(38, 43),
         identifier = 3,
-        onBinding = 1,
-        property = Symbol("value"),
+        cypherIdentifier = Symbol("a.value + b.value"),
       ),
       NodeEntry(
         source = TextSource(23, 29),
@@ -151,6 +165,9 @@ class SymbolAnalysisTests extends munit.FunSuite {
       ),
     )
 
+    // In the AST, canonicalization rewrites FieldAccess on graph elements to Ident with synthIds.
+    // WHERE: a.value → Ident(4), RETURN: a.value → Ident(4), b.value → Ident(5)
+    // RETURN projection as = id 3
     val expectedJoin: Query = SinglepartQuery(
       source = TextSource(0, 76),
       queryParts = List(
@@ -193,7 +210,7 @@ class SymbolAnalysisTests extends munit.FunSuite {
                   op = Operator.Percent,
                   lhs = Ident(
                     source = TextSource(38, 43),
-                    identifier = Right(QuineIdentifier(3)),
+                    identifier = Right(QuineIdentifier(4)),
                     ty = None,
                   ),
                   rhs = AtomicLiteral(
@@ -224,17 +241,17 @@ class SymbolAnalysisTests extends munit.FunSuite {
             op = Operator.Plus,
             lhs = Ident(
               source = TextSource(61, 66),
-              identifier = Right(QuineIdentifier(3)),
+              identifier = Right(QuineIdentifier(4)),
               ty = None,
             ),
             rhs = Ident(
               source = TextSource(71, 76),
-              identifier = Right(QuineIdentifier(4)),
+              identifier = Right(QuineIdentifier(5)),
               ty = None,
             ),
             ty = None,
           ),
-          as = Right(QuineIdentifier(5)),
+          as = Right(QuineIdentifier(3)),
         ),
       ),
     )
@@ -303,39 +320,39 @@ class SymbolAnalysisTests extends munit.FunSuite {
     val actual: (SymbolAnalysisState, Option[Query]) =
       parseQueryWithSymbolTable(tq)
 
-    // With proper imports flow, x inside the subquery uses the same id (1) as the outer x.
-    // After property access rewriting:
-    // - x gets id 1
-    // - a gets id 2
-    // - a.foo gets rewritten to Ident(3), creates PropertyAccessEntry(3, 2, "foo")
-    // - foo binding gets id 4
+    // After SA + canonicalization:
+    // - x gets id 1 (SA)
+    // - a gets id 2 (SA)
+    // - foo binding gets id 3 (SA)
+    // - a.foo gets synthId 4 (canonicalization)
     val expectedTable: SymbolTable =
       SymbolTable(
         List(
+          PropertyAccessEntry(
+            source = TextSource(82, 85),
+            identifier = 4,
+            onBinding = 2,
+            property = Symbol("foo"),
+          ),
           ExpressionEntry(
             source = TextSource(103, 105),
-            identifier = 4,
-            exp = Ident(TextSource(103, 105), Right(QuineIdentifier(4)), None),
+            identifier = 3,
+            exp = Ident(TextSource(103, 105), Right(QuineIdentifier(3)), None),
           ),
           ExpressionEntry(
             source = TextSource(81, 92),
-            identifier = 4,
-            exp = Ident(
+            identifier = 3,
+            exp = Expression.FieldAccess(
               TextSource(82, 85),
-              Right(QuineIdentifier(3)),
+              Ident(TextSource(81, 81), Right(QuineIdentifier(2)), None),
+              Symbol("foo"),
               None,
             ),
           ),
           QuineToCypherIdEntry(
             source = TextSource(81, 92),
-            identifier = 4,
-            cypherIdentifier = Symbol("foo"),
-          ),
-          PropertyAccessEntry(
-            source = TextSource(82, 85),
             identifier = 3,
-            onBinding = 2,
-            property = Symbol("foo"),
+            cypherIdentifier = Symbol("foo"),
           ),
           NodeEntry(
             TextSource(42, 44),
@@ -370,6 +387,7 @@ class SymbolAnalysisTests extends munit.FunSuite {
         List(),
       )
 
+    // AST after canonicalization: a.foo → Ident(4), foo binding = id 3
     val expectedQuery: Query =
       SinglepartQuery(
         source = TextSource(0, 105),
@@ -429,7 +447,7 @@ class SymbolAnalysisTests extends munit.FunSuite {
                             List(
                               Ident(
                                 TextSource(69, 69),
-                                Right(QuineIdentifier(1)), // x uses imported id
+                                Right(QuineIdentifier(1)),
                                 None,
                               ),
                             ),
@@ -448,10 +466,10 @@ class SymbolAnalysisTests extends munit.FunSuite {
                     TextSource(81, 92),
                     Ident(
                       TextSource(82, 85),
-                      Right(QuineIdentifier(3)), // a.foo rewritten to Ident(3)
+                      Right(QuineIdentifier(4)), // a.foo rewritten to Ident(4) by canonicalization
                       None,
                     ),
-                    Right(QuineIdentifier(4)), // foo gets id=4 now
+                    Right(QuineIdentifier(3)), // foo gets id=3
                   ),
                 ),
               ),
@@ -465,10 +483,10 @@ class SymbolAnalysisTests extends munit.FunSuite {
             TextSource(103, 105),
             Ident(
               TextSource(103, 105),
-              Right(QuineIdentifier(4)), // foo reference
+              Right(QuineIdentifier(3)), // foo reference
               None,
             ),
-            Right(QuineIdentifier(4)), // foo
+            Right(QuineIdentifier(3)), // foo
           ),
         ),
       )
@@ -517,29 +535,28 @@ class SymbolAnalysisTests extends munit.FunSuite {
 
     val actual = parseQueryWithSymbolTable(testQuery)._1
 
-    // With proper imports flow, 'a' inside the subquery uses the imported id=1.
-    // After property access rewriting:
-    // - a gets id 1, b gets id 2
-    // - x gets id 3
-    // - x.foo in WHERE gets rewritten to Ident(4), creates PropertyAccessEntry(4, 3, "foo")
-    // - bleh gets id 5
+    // After SA + canonicalization:
+    // - a gets id 1, b gets id 2 (SA)
+    // - x gets id 3 (SA)
+    // - bleh gets id 4 (SA)
+    // - x.foo gets synthId 5 (canonicalization)
     val expected: List[SymbolTableEntry] = List(
+      PropertyAccessEntry(
+        source = TextSource(55, 58),
+        identifier = 5,
+        onBinding = 3,
+        property = Symbol("foo"),
+      ),
       NodeEntry(
         source = TextSource(93, 98),
-        identifier = 5,
+        identifier = 4,
         labels = Set(),
         maybeProperties = None,
       ),
       QuineToCypherIdEntry(
         source = TextSource(93, 98),
-        identifier = 5,
-        cypherIdentifier = Symbol("bleh"),
-      ),
-      PropertyAccessEntry(
-        source = TextSource(55, 58),
         identifier = 4,
-        onBinding = 3,
-        property = Symbol("foo"),
+        cypherIdentifier = Symbol("bleh"),
       ),
       NodeEntry(
         source = TextSource(42, 44),
