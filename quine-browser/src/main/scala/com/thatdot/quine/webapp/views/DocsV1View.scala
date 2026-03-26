@@ -9,6 +9,5 @@ object DocsV1View {
   def apply(options: QuineUiOptions): HtmlElement = StoplightElements(
     apiDescriptionUrl = options.documentationUrl,
     basePath = "/docs",
-    logo = options.baseURI + "favicon.ico",
   )
 }

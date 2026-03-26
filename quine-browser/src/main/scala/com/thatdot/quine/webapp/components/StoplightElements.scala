@@ -31,18 +31,17 @@ object StoplightElements {
 
   def apply(
     apiDescriptionUrl: String,
-    layout: String = "sidebar",
+    layout: String = "stacked",
     basePath: String = "/docs",
     router: String = "memory",
-    logo: String = "/favicon.ico",
     tryItCredentialsPolicy: String = "same-origin",
   ): HtmlElement =
     elementsApi(
+      cls := "sl-elements-wrapper",
       attr("apiDescriptionUrl") := apiDescriptionUrl,
       attr("layout") := layout,
       attr("basePath") := basePath,
       attr("router") := router,
-      attr("logo") := logo,
       attr("tryItCredentialsPolicy") := tryItCredentialsPolicy,
       height := "100%",
     )

@@ -379,4 +379,16 @@ div.vis-tooltip {
   }
 }
 
+/* ==========================================================================
+   Stoplight Elements overrides
+   ========================================================================== */
 
+/* Add padding to the Stoplight Elements content */
+.sl-elements-wrapper > div {
+  padding: 8px;
+}
+
+/* Hide "powered by Stoplight" branding link */
+.HttpService a[href*="stoplight.io"][href*="utm_source=elements"][href*="utm_campaign=powered_by"] {
+  display: none;
+}
