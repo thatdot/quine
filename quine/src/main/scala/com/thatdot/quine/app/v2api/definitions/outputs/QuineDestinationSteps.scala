@@ -52,6 +52,9 @@ object QuineDestinationSteps {
     url: String,
     @default(DestinationSteps.HttpEndpoint.propertyDefaultValueForParallelism)
     parallelism: Int = DestinationSteps.HttpEndpoint.propertyDefaultValueForParallelism,
+    @description(DestinationSteps.HttpEndpoint.propertyDescriptionForHeaders)
+    @default(DestinationSteps.HttpEndpoint.propertyDefaultValueForHeaders)
+    headers: Map[String, Secret] = DestinationSteps.HttpEndpoint.propertyDefaultValueForHeaders,
   ) extends QuineDestinationSteps
       with MirrorOfCore
 
@@ -204,6 +207,7 @@ object QuineDestinationSteps {
     implicit val awsCredentialsEncoder: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
     implicit val saslJaasConfigEncoder: Encoder[SaslJaasConfig] = SaslJaasConfig.preservingEncoder
     // Derive encoders for subtypes that contain secrets
+    implicit val httpEndpointEncoder: Encoder[HttpEndpoint] = deriveConfiguredEncoder
     implicit val kafkaEncoder: Encoder[Kafka] = deriveConfiguredEncoder
     implicit val kinesisEncoder: Encoder[Kinesis] = deriveConfiguredEncoder
     implicit val snsEncoder: Encoder[SNS] = deriveConfiguredEncoder

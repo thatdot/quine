@@ -128,10 +128,11 @@ object Recipe {
       def subs: ValidatedNel[UnboundVariableError, StandingQueryResultOutputUserDef] = soo match {
         case Drop => Validated.valid(Drop)
         case q: InternalQueue => Validated.valid(q)
-        case PostToEndpoint(url, parallelism, onlyPositiveMatchData, structure) =>
+        case PostToEndpoint(url, parallelism, onlyPositiveMatchData, headers, structure) =>
           (
-            url.subs
-          ).map(PostToEndpoint(_, parallelism, onlyPositiveMatchData, structure))
+            url.subs,
+            headers.toList.traverse { case (k, v) => v.subs.map(k -> _) }.map(_.toMap),
+          ).mapN(PostToEndpoint(_, parallelism, onlyPositiveMatchData, _, structure))
         case WriteToKafka(
               topic,
               bootstrapServers,

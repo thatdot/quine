@@ -6,11 +6,13 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
+import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.Flow
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
@@ -28,7 +30,7 @@ class PostToEndpointOutput(val config: PostToEndpoint)(implicit private val logC
     output: StandingQueryResultOutputUserDef,
     graph: CypherOpsGraph,
   ): Flow[StandingQueryResult, MasterStream.SqResultsExecToken, NotUsed] = {
-    val PostToEndpoint(url, parallelism, onlyPositiveMatchData, structure) = config
+    val PostToEndpoint(url, parallelism, onlyPositiveMatchData, headers, structure) = config
     val token = execToken(name, inNamespace)
 
     // TODO: use a host connection pool
@@ -37,11 +39,16 @@ class PostToEndpointOutput(val config: PostToEndpoint)(implicit private val logC
     implicit val idProvider: QuineIdProvider = graph.idProvider
     val http = Http()
 
+    import Secret.Unsafe._
+    val customHeaders: List[RawHeader] =
+      headers.map { case (k, v) => RawHeader(k, v.unsafeValue) }.toList
+
     Flow[StandingQueryResult]
       .mapAsync(parallelism) { (result: StandingQueryResult) =>
         val request = HttpRequest(
           method = HttpMethods.POST,
           uri = url,
+          headers = customHeaders,
           entity = HttpEntity(
             contentType = `application/json`,
             if (onlyPositiveMatchData) QuineValue.toJson(QuineValue.Map(result.data)).noSpaces

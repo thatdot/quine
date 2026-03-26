@@ -4,6 +4,7 @@ import cats.data.NonEmptyList
 import org.scalacheck.{Arbitrary, Gen}
 
 import com.thatdot.api.v2.{AwsGenerators, SaslJaasConfigGenerators}
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.ScalaPrimitiveGenerators
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.{
@@ -21,6 +22,12 @@ object StandingQueryOutputGenerators {
 
   object Gens {
     import SaslJaasConfigGenerators.Gens.{optSaslJaasConfig, optSecret}
+
+    val secretHeaders: Gen[Map[String, Secret]] = for {
+      size <- smallNonNegNum
+      keys <- Gen.listOfN(size, nonEmptyAlphaNumStr)
+      values <- Gen.listOfN(size, nonEmptyAlphaNumStr.map(Secret(_)))
+    } yield keys.zip(values).toMap
 
     val predicate: Gen[Predicate] = Gen.const(Predicate.OnlyPositiveMatch)
 
@@ -41,7 +48,8 @@ object StandingQueryOutputGenerators {
     val httpEndpoint: Gen[QuineDestinationSteps.HttpEndpoint] = for {
       url <- nonEmptyAlphaNumStr.map(s => s"http://localhost:8080/$s")
       parallelism <- numWithinBits(4)
-    } yield QuineDestinationSteps.HttpEndpoint(url, parallelism)
+      headers <- secretHeaders
+    } yield QuineDestinationSteps.HttpEndpoint(url, parallelism, headers)
 
     val kafka: Gen[QuineDestinationSteps.Kafka] = for {
       topic <- nonEmptyAlphaNumStr

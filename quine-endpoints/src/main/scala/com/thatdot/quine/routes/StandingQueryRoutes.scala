@@ -172,6 +172,9 @@ object StandingQueryResultOutputUserDef {
     url: String,
     parallelism: Int = 8,
     onlyPositiveMatchData: Boolean = false,
+    @docs("Additional HTTP headers to include in the request. Header values are redacted in API responses.")
+    @description("Additional HTTP headers to include in the request. Header values are redacted in API responses.")
+    headers: Map[String, Secret] = Map.empty,
     @docs(StandingQueryOutputStructure.docString)
     structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
   ) extends StandingQueryResultOutputUserDef {

@@ -59,12 +59,13 @@ object Api2ToOutputs2 {
             ),
           ),
         )
-      case api.v2.outputs.DestinationSteps.HttpEndpoint(url, parallelism) =>
+      case api.v2.outputs.DestinationSteps.HttpEndpoint(url, parallelism, headers) =>
         Future.successful(
           outputs2.FoldableDestinationSteps.WithDataFoldable(
             destination = outputs2.destination.HttpEndpoint(
               url = url,
               parallelism = parallelism,
+              headers = headers,
             ),
           ),
         )

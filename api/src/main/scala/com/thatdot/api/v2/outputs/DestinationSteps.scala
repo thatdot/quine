@@ -40,11 +40,15 @@ object DestinationSteps {
   final case class HttpEndpoint(
     url: String,
     parallelism: Int = HttpEndpoint.propertyDefaultValueForParallelism,
+    headers: Map[String, Secret] = Map.empty,
   ) extends DestinationSteps
 
   object HttpEndpoint {
     val propertyEncodedExampleForUrl = "https://results.example.com/result-type"
     val propertyDefaultValueForParallelism = 8
+    val propertyDefaultValueForHeaders: Map[String, Secret] = Map.empty
+    val propertyDescriptionForHeaders =
+      "Additional HTTP headers to include in the request. Header values are redacted in API responses."
     val description =
       "Makes an HTTP[S] POST for each result. For the format of the result, see \"Standing Query Result Output\"."
     val title = "POST to HTTP[S] Webhook"

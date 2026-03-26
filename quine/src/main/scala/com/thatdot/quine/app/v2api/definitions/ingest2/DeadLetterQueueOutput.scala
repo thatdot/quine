@@ -24,6 +24,9 @@ object DeadLetterQueueOutput {
     url: String,
     @default(8)
     parallelism: Int = 8,
+    @description(DestinationSteps.HttpEndpoint.propertyDescriptionForHeaders)
+    @default(DestinationSteps.HttpEndpoint.propertyDefaultValueForHeaders)
+    headers: Map[String, Secret] = DestinationSteps.HttpEndpoint.propertyDefaultValueForHeaders,
     @default(JSON())
     outputFormat: JSON = JSON(),
   ) extends DeadLetterQueueOutput
@@ -121,8 +124,8 @@ object DeadLetterQueueOutput {
     case DestinationSteps.File(path) =>
       DeadLetterQueueOutput.File(path)
 
-    case DestinationSteps.HttpEndpoint(url, parallelism) =>
-      DeadLetterQueueOutput.HttpEndpoint(url, parallelism)
+    case DestinationSteps.HttpEndpoint(url, parallelism, headers) =>
+      DeadLetterQueueOutput.HttpEndpoint(url, parallelism, headers)
 
     case DestinationSteps.ReactiveStream(address, port, format) =>
       DeadLetterQueueOutput.ReactiveStream(address, port, formatMatchesOutput(format))
@@ -190,6 +193,7 @@ object DeadLetterQueueOutput {
     implicit val awsCredentialsEncoder: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
     implicit val saslJaasConfigEncoder: Encoder[SaslJaasConfig] = SaslJaasConfig.preservingEncoder
     // Derive encoders for subtypes that contain secrets
+    implicit val httpEndpointEncoder: Encoder[HttpEndpoint] = deriveConfiguredEncoder
     implicit val kafkaEncoder: Encoder[Kafka] = deriveConfiguredEncoder
     implicit val kinesisEncoder: Encoder[Kinesis] = deriveConfiguredEncoder
     implicit val snsEncoder: Encoder[SNS] = deriveConfiguredEncoder

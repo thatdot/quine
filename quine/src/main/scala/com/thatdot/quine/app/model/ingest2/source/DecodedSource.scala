@@ -257,8 +257,8 @@ abstract class DecodedSource(val meter: IngestMeter) {
   )(implicit protobufSchemaCache: ProtobufSchemaCache, system: ActorSystem): List[(DestinationSteps, Boolean)] =
     dlq.destinations.map {
 
-      case DeadLetterQueueOutput.HttpEndpoint(url, parallelism, OutputFormat.JSON(withMetaData)) =>
-        (WithDataFoldable(HttpEndpoint(url, parallelism)), withMetaData)
+      case DeadLetterQueueOutput.HttpEndpoint(url, parallelism, headers, OutputFormat.JSON(withMetaData)) =>
+        (WithDataFoldable(HttpEndpoint(url, parallelism, headers)), withMetaData)
 
       case DeadLetterQueueOutput.File(path) =>
         // Update this when non-JSON outputs are supported for File (or to support including the info envelope)

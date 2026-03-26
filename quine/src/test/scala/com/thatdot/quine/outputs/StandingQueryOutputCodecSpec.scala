@@ -164,9 +164,10 @@ class StandingQueryOutputCodecSpec
       decoded.foreach(d => assert(d == dest))
       assert(decoded.isRight)
 
-      // kafkaProperties is allowed to be empty (it's a Map)
+      // kafkaProperties and headers are allowed to be empty (they're Maps with empty defaults)
       val allowedEmpty: Vector[String] => Boolean = {
         case path if path.lastOption.contains("kafkaProperties") => true
+        case path if path.lastOption.contains("headers") => true
         case _ => false
       }
       val ugly = checkForUglyJson(json, allowedEmpty)
@@ -229,6 +230,7 @@ class StandingQueryOutputCodecSpec
 
       val allowedEmpty: Vector[String] => Boolean = {
         case path if path.lastOption.contains("kafkaProperties") => true
+        case path if path.lastOption.contains("headers") => true
         case _ => false
       }
       val ugly = checkForUglyJson(json, allowedEmpty)

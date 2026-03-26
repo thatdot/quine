@@ -7,6 +7,7 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
+import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.{Flow, Sink}
@@ -14,6 +15,7 @@ import org.apache.pekko.stream.scaladsl.{Flow, Sink}
 import io.circe.Json
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.security.Secret
 import com.thatdot.data.DataFoldableFrom
 import com.thatdot.outputs2.OutputsLoggables.LogStatusCode
 import com.thatdot.outputs2.ResultDestination
@@ -22,6 +24,7 @@ import com.thatdot.quine.graph.NamespaceId
 final case class HttpEndpoint(
   url: String,
   parallelism: Int = 8,
+  headers: Map[String, Secret] = Map.empty,
 )(implicit system: ActorSystem)
     extends ResultDestination.FoldableData.HttpEndpoint
     with LazySafeLogging {
@@ -33,12 +36,17 @@ final case class HttpEndpoint(
     val http = Http()
     val toJson = DataFoldableFrom[A].to[Json]
 
+    import Secret.Unsafe._
+    val customHeaders: List[RawHeader] =
+      headers.map { case (k, v) => RawHeader(k, v.unsafeValue) }.toList
+
     Flow[A]
       .mapAsync(parallelism) { (a: A) =>
         val json = toJson(a)
         val request = HttpRequest(
           method = HttpMethods.POST,
           uri = url,
+          headers = customHeaders,
           entity = HttpEntity(
             contentType = `application/json`,
             json.noSpaces.getBytes,
