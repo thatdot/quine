@@ -374,6 +374,7 @@ lazy val `quine-browser`: Project = project
     // - lodash: CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
     // - react-router: CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
     // - minimatch: CVE-2026-27903 & CVE-2026-27904
+    // - yaml: CVE-2026-33532 (GHSA-48c2-rrv3-qjmp)
     Compile / additionalNpmConfig := Map(
       "resolutions" -> obj(
         "lodash" -> str(lodashV),
@@ -381,6 +382,7 @@ lazy val `quine-browser`: Project = project
         "react-router-dom" -> str(reactRouterV),
         "@remix-run/router" -> str(remixRunRouterV),
         "minimatch" -> str(minimatchV),
+        "yaml" -> str(yamlV),
       ),
     ),
     webpackNodeArgs := nodeLegacySslIfAvailable,
