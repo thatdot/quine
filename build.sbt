@@ -110,6 +110,10 @@ lazy val `quine-serialization`: Project = project
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
       // Glue->AWS Netty Client->Netty, which has some CVEs. Glue 1.1.27 has vulnerable Netty; override to safe AWS SDK.
       "software.amazon.awssdk" % "netty-nio-client" % awsSdkV,
+      // Netty overrides for CVE-2026-33871, required for AWS Glue SDK
+      "io.netty" % "netty-handler" % nettyOverrideV,
+      "io.netty" % "netty-codec-http" % nettyOverrideV,
+      "io.netty" % "netty-codec-http2" % nettyOverrideV,
       "org.apache.avro" % "avro" % avroV,
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
       "org.endpoints4s" %%% "json-schema-circe" % endpoints4sCirceV,
@@ -157,6 +161,10 @@ lazy val `quine-cassandra-persistor`: Project = project
       // at the sbt-assembly step (because they both have the same package names internally).
       "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % "4.0.9" exclude ("com.datastax.oss", "java-driver-core"),
       "software.amazon.awssdk" % "sts" % awsSdkV,
+      // Netty overrides for CVE-2026-33871, required for AWS SDK
+      "io.netty" % "netty-handler" % nettyOverrideV,
+      "io.netty" % "netty-codec-http" % nettyOverrideV,
+      "io.netty" % "netty-codec-http2" % nettyOverrideV,
       "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test,
     ),
   )
@@ -290,6 +298,10 @@ lazy val `outputs2`: Project = project
       "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-sns" % pekkoConnectorsV,
       "software.amazon.awssdk" % "netty-nio-client" % awsSdkV,
+      // Netty overrides for CVE-2026-33871, required for AWS SDK
+      "io.netty" % "netty-handler" % nettyOverrideV,
+      "io.netty" % "netty-codec-http" % nettyOverrideV,
+      "io.netty" % "netty-codec-http2" % nettyOverrideV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test,
@@ -470,6 +482,10 @@ lazy val `quine`: Project = project
       "org.webjars" % "webjars-locator" % webjarsLocatorV,
       "org.webjars.npm" % "sugar-date" % sugarV,
       "org.apache.avro" % "avro" % avroV,
+      // Netty overrides for CVE-2026-33871, required for AWS SDK
+      "io.netty" % "netty-handler" % nettyOverrideV,
+      "io.netty" % "netty-codec-http" % nettyOverrideV,
+      "io.netty" % "netty-codec-http2" % nettyOverrideV,
       // AWS SDK deps (next 4) effectively bundle sibling JARs needed for certain features, despite no code references
       "software.amazon.awssdk" % "sso" % awsSdkV,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV,
