@@ -69,6 +69,7 @@ object Dependencies {
   val reactRouterV = "6.30.3" // Patched for CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
   val remixRunRouterV = "1.23.2" // Patched for CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
   val minimatchV = "3.1.5" // Patched for CVE-2026-27903 & CVE-2026-27904
+  val braceExpansionV = "1.1.13" // Patched for CVE-2026-33750 (GHSA-f886-m6hf-6m8v)
   val yamlV = "1.10.3" // Patched for CVE-2026-33532 (GHSA-48c2-rrv3-qjmp)
   val rocksdbV = "10.5.1"
   val scaffeineV = "5.3.0"
