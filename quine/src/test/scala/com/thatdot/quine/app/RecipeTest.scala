@@ -12,11 +12,11 @@ import com.thatdot.quine.routes.FileIngestFormat.CypherJson
 import com.thatdot.quine.routes._
 
 class RecipeTest extends AnyFunSuite with EitherValues {
-  def loadYamlString(s: String): Either[NonEmptyList[io.circe.Error], Recipe] =
-    io.circe.yaml.v12.parser.parse(s).toEitherNel.flatMap(Recipe.fromJson)
+  def loadYamlString(s: String): Either[NonEmptyList[io.circe.Error], RecipeV1] =
+    io.circe.yaml.v12.parser.parse(s).toEitherNel.flatMap(RecipeV1.fromJson)
 
-  def loadRecipeFromClasspath(filename: String): Either[Seq[String], Recipe] =
-    Recipe.get(getClass.getResource(filename).toString)
+  def loadRecipeFromClasspath(filename: String): Either[Seq[String], RecipeV1] =
+    RecipeV1.get(getClass.getResource(filename).toString)
 
   test("invalid syntax") {
     val expectedParseError =
@@ -44,7 +44,20 @@ class RecipeTest extends AnyFunSuite with EitherValues {
   test("empty object") {
     assert(
       loadYamlString("{}") == Right(
-        Recipe(Recipe.currentVersion, "RECIPE", None, None, None, None, List(), List(), List(), List(), List(), None),
+        RecipeV1(
+          RecipeV1.currentVersion,
+          "RECIPE",
+          None,
+          None,
+          None,
+          None,
+          List(),
+          List(),
+          List(),
+          List(),
+          List(),
+          None,
+        ),
       ),
     )
   }
@@ -78,7 +91,9 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       """.stripMargin).value
 
     assert(
-      Recipe.validateRecipeCurrentVersion(recipe).left.value == Seq("The only supported Recipe version number is 1"),
+      RecipeV1.validateRecipeCurrentVersion(recipe).left.value == Seq(
+        "Recipe version 2 is not supported by this method. Use Recipe.get() for V2 recipes.",
+      ),
     )
 
   }
@@ -102,7 +117,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           | sampleQueries: []
           | statusQuery: null # need to verify this works
           |""".stripMargin).value ==
-        Recipe(
+        RecipeV1(
           version = 1,
           title = "bar",
           contributor = None,
@@ -121,7 +136,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
   test("full recipe") {
     assert(
       loadRecipeFromClasspath("/recipes/full.yaml").value ==
-        Recipe(
+        RecipeV1(
           version = 1,
           title = "bar",
           contributor = Some("abc"),
@@ -165,19 +180,21 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       "c" -> "d",
       "$x" -> "y",
     )
-    assert(Recipe.applySubstitution("a", values) == Validated.valid("a"))
-    assert(Recipe.applySubstitution("$a", values) == Validated.valid("b"))
-    assert(Recipe.applySubstitution("$c", values) == Validated.valid("d"))
-    assert(Recipe.applySubstitution("$$a", values) == Validated.valid("$a"))
+    assert(RecipeV1.applySubstitution("a", values) == Validated.valid("a"))
+    assert(RecipeV1.applySubstitution("$a", values) == Validated.valid("b"))
+    assert(RecipeV1.applySubstitution("$c", values) == Validated.valid("d"))
+    assert(RecipeV1.applySubstitution("$$a", values) == Validated.valid("$a"))
 
     // internal substitutions not supported
-    assert(Recipe.applySubstitution("foo $a bar", values) == Validated.valid("foo $a bar"))
+    assert(RecipeV1.applySubstitution("foo $a bar", values) == Validated.valid("foo $a bar"))
 
     // x is not defined
-    assert(Recipe.applySubstitution("$x", values) == Validated.invalid(Recipe.UnboundVariableError("x")).toValidatedNel)
+    assert(
+      RecipeV1.applySubstitution("$x", values) == Validated.invalid(RecipeV1.UnboundVariableError("x")).toValidatedNel,
+    )
 
     // $$x is not parsed as a token because $$ is a literal $
-    assert(Recipe.applySubstitution("$$x", values) == Validated.valid("$x"))
+    assert(RecipeV1.applySubstitution("$$x", values) == Validated.valid("$x"))
   }
 
   test("recipe substitution") {
@@ -206,8 +223,8 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       "path" -> "/foo/bar",
     )
     assert(
-      Recipe.applySubstitutions(recipe.value, values) == Validated.valid(
-        Recipe(
+      RecipeV1.applySubstitutions(recipe.value, values) == Validated.valid(
+        RecipeV1(
           version = 1,
           title = "bar",
           contributor = Some("abc"),
@@ -276,11 +293,11 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       "path2" -> "/foo/bar",
     )
     assert(
-      Recipe.applySubstitutions(recipe.value, values) == Validated.invalid(
+      RecipeV1.applySubstitutions(recipe.value, values) == Validated.invalid(
         NonEmptyList.of(
-          Recipe.UnboundVariableError("path1"),
-          Recipe.UnboundVariableError("path4"),
-          Recipe.UnboundVariableError("path3"),
+          RecipeV1.UnboundVariableError("path1"),
+          RecipeV1.UnboundVariableError("path4"),
+          RecipeV1.UnboundVariableError("path3"),
         ),
       ),
     )
@@ -313,7 +330,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       "secretKey" -> "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     )
 
-    val substituted = Recipe.applySubstitutions(recipe.value, values)
+    val substituted = RecipeV1.applySubstitutions(recipe.value, values)
     assert(substituted.isValid, s"Substitution failed: $substituted")
 
     val resultRecipe = substituted.toOption.get
@@ -333,13 +350,13 @@ class RecipeTest extends AnyFunSuite with EitherValues {
     // Currently, the getCanonicalName function does not distinguish between a "valid" or "invalid" canonical name.
     // For telemetry, the value will only be sent if the recipe was successfully loaded, so only "valid" recipe names
     // actually appear in telemetry. Therefore, this "invalid" name should still return a Some().
-    assert(Recipe.getCanonicalName(invalidShortName).contains(invalidShortName))
+    assert(RecipeV1.getCanonicalName(invalidShortName).contains(invalidShortName))
     // Valid canonical name should return a Some()
-    assert(Recipe.getCanonicalName(validShortName).contains(validShortName))
+    assert(RecipeV1.getCanonicalName(validShortName).contains(validShortName))
     // any url should return None
-    assert(Recipe.getCanonicalName(url).isEmpty)
+    assert(RecipeV1.getCanonicalName(url).isEmpty)
     // any file name should return None
-    assert(Recipe.getCanonicalName(fileName).isEmpty)
+    assert(RecipeV1.getCanonicalName(fileName).isEmpty)
   }
 
 }

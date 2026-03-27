@@ -23,9 +23,167 @@ import com.thatdot.quine.routes.StandingQueryResultOutputUserDef._
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.CirceJsonAnySchema
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Recipe: Unified type for V1 and V2 recipes
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Represents either a V1 or V2 recipe */
+sealed trait Recipe {
+  def version: Int
+  def title: String
+  def contributor: Option[String]
+  def summary: Option[String]
+  def description: Option[String]
+  def iconImage: Option[String]
+}
+
+object Recipe {
+
+  /** V1 recipe wrapper */
+  final case class V1(recipe: RecipeV1) extends Recipe {
+    def version: Int = recipe.version
+    def title: String = recipe.title
+    def contributor: Option[String] = recipe.contributor
+    def summary: Option[String] = recipe.summary
+    def description: Option[String] = recipe.description
+    def iconImage: Option[String] = recipe.iconImage
+  }
+
+  /** V2 recipe wrapper */
+  final case class V2(recipe: RecipeV2.Recipe) extends Recipe {
+    def version: Int = recipe.version
+    def title: String = recipe.title
+    def contributor: Option[String] = recipe.contributor
+    def summary: Option[String] = recipe.summary
+    def description: Option[String] = recipe.description
+    def iconImage: Option[String] = recipe.iconImage
+  }
+
+  /** Get a recipe (V1 or V2) by URL, file path, or canonical name */
+  def get(recipeIdentifyingString: String): Either[Seq[String], Recipe] =
+    RecipeLoader.getAny(recipeIdentifyingString)
+
+  /** Get a recipe and apply variable substitutions */
+  def getAndSubstitute(recipeIdentifyingString: String, values: Map[String, String]): Either[Seq[String], Recipe] =
+    RecipeLoader.getAndSubstituteAny(recipeIdentifyingString, values)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RecipeLoader: Handles version detection and loading
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Handles loading recipes with version detection */
+object RecipeLoader {
+  import io.circe.Error.showError
+
+  val recipeFileExtensions: List[String] = List(".json", ".yaml", ".yml")
+  private val recipeRedirectServiceUrlPrefix = "https://recipes.quine.io/"
+  private val requiredRecipeContentUrlPrefix = "https://raw.githubusercontent.com/thatdot/quine/main/"
+
+  /** Detect the version from a parsed JSON document */
+  def detectVersion(json: Json): Either[String, Int] =
+    json.hcursor.downField("version").as[Int].leftMap(_ => "Missing or invalid 'version' field in recipe")
+
+  /** Parse JSON as V1 recipe */
+  def parseV1(json: Json): Either[Seq[String], RecipeV1] =
+    RecipeV1.fromJson(json).leftMap(_.toList.map(showError.show))
+
+  /** Parse JSON as V2 recipe */
+  def parseV2(json: Json): Either[Seq[String], RecipeV2.Recipe] =
+    RecipeV2.Recipe.decoder.decodeAccumulating(json.hcursor).toEither.leftMap(_.toList.map(showError.show))
+
+  /** Resolve a recipe identifying string to a URL */
+  def resolveToUrl(recipeIdentifyingString: String): Either[Seq[String], URL] =
+    catching(classOf[MalformedURLException]).opt(new URL(recipeIdentifyingString)) match {
+      case Some(url: URL) =>
+        Right(url)
+      case None if recipeFileExtensions.exists(recipeIdentifyingString.toLowerCase.endsWith(_)) =>
+        Right(new File(recipeIdentifyingString).toURI.toURL)
+      case None =>
+        val recipeIdentifyingStringUrlEncoded: String =
+          URLEncoder.encode(recipeIdentifyingString, "UTF-8")
+        val urlToRedirectService = new URL(recipeRedirectServiceUrlPrefix + recipeIdentifyingStringUrlEncoded)
+        implicit val releaseableHttpURLConnection: Using.Releasable[HttpURLConnection] =
+          (resource: HttpURLConnection) => resource.disconnect()
+        Using(urlToRedirectService.openConnection.asInstanceOf[HttpURLConnection]) { http: HttpURLConnection =>
+          http.setInstanceFollowRedirects(false)
+          http.getResponseCode match {
+            case HTTP_MOVED_PERM =>
+              val location = http.getHeaderField("Location")
+              if (!location.startsWith(requiredRecipeContentUrlPrefix))
+                Left(Seq(s"Unexpected redirect URL $location"))
+              else
+                Right(new URL(location))
+            case HTTP_MOVED_TEMP =>
+              Left(Seq(s"Recipe $recipeIdentifyingString does not exist; please visit https://quine.io/recipes"))
+            case c @ _ => Left(Seq(s"Unexpected response code $c from URL $urlToRedirectService"))
+          }
+        }.toEither.left.map(e => Seq(e.toString)).joinRight
+    }
+
+  /** Load JSON from a URL */
+  def loadJson(url: URL): Either[Seq[String], Json] =
+    Either
+      .catchNonFatal(
+        Using.resource(url.openStream)(inStream =>
+          circe.yaml.v12.Parser.default.parse(new YamlUnicodeReader(inStream)).leftMap(e => Seq(showError.show(e))),
+        ),
+      )
+      .leftMap {
+        case _: FileNotFoundException => Seq(s"Cannot find recipe file at ${url.getFile}")
+        case e => Seq(e.toString)
+      }
+      .flatten
+
+  /** Get a recipe (V1 or V2) with automatic version detection */
+  def getAny(recipeIdentifyingString: String): Either[Seq[String], Recipe] =
+    for {
+      url <- resolveToUrl(recipeIdentifyingString)
+      json <- loadJson(url)
+      version <- detectVersion(json).leftMap(Seq(_))
+      recipe <- version match {
+        case 1 =>
+          for {
+            r <- parseV1(json)
+            _ <- RecipeV1.validateRecipeCurrentVersion(r)
+          } yield Recipe.V1(r)
+        case 2 =>
+          parseV2(json).map(Recipe.V2(_))
+        case other =>
+          Left(Seq(s"Unsupported recipe version: $other. Supported versions are 1 and 2."))
+      }
+    } yield recipe
+
+  /** Get a recipe and apply variable substitutions */
+  def getAndSubstituteAny(recipeIdentifyingString: String, values: Map[String, String]): Either[Seq[String], Recipe] =
+    for {
+      recipe <- getAny(recipeIdentifyingString)
+      substituted <- recipe match {
+        case Recipe.V1(r) =>
+          RecipeV1
+            .validatedNelToEitherStrings[RecipeV1, RecipeV1.UnboundVariableError](
+              RecipeV1.applySubstitutions(r, values),
+              e => s"Missing required parameter ${e.name}; use --recipe-value ${e.name}=",
+            )
+            .map(Recipe.V1(_))
+        case Recipe.V2(r) =>
+          RecipeV1
+            .validatedNelToEitherStrings[RecipeV2.Recipe, RecipeV2.UnboundVariableError](
+              RecipeV2.applySubstitutions(r, values),
+              e => s"Missing required parameter ${e.name}; use --recipe-value ${e.name}=",
+            )
+            .map(Recipe.V2(_))
+      }
+    } yield substituted
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RecipeV1 (original V1 implementation)
+// ─────────────────────────────────────────────────────────────────────────────
+
 @docs("A specification of a Quine Recipe")
-final case class Recipe(
-  @docs("Schema version (only supported value is 1)") version: Int = Recipe.currentVersion,
+final case class RecipeV1(
+  @docs("Schema version (only supported value is 1)") version: Int = RecipeV1.currentVersion,
   @docs("Identifies the Recipe but is not necessarily unique") title: String = "RECIPE",
   @docs(
     "URL to social profile of the person or organization responsible for this Recipe",
@@ -66,7 +224,7 @@ private object RecipeSchema
 
 }
 
-object Recipe {
+object RecipeV1 {
 
   import RecipeSchema._
   implicit def endpointRecordToDecoder[A](implicit record: Record[A]): Decoder[A] = record.decoder
@@ -76,11 +234,11 @@ object Recipe {
   implicit protected val errorOnExtraFieldsJsonConfig: Configuration =
     Configuration.default.withDefaults // To make case class params with default values optional in the JSON
       .withStrictDecoding // To error on unrecognized fields present in the JSON
-  implicit val recipeDecoder: Decoder[Recipe] = deriveConfiguredDecoder
-  //implicit val recipeEncoder: Encoder[Recipe] = deriveConfiguredEncoder
+  implicit val recipeDecoder: Decoder[RecipeV1] = deriveConfiguredDecoder
+  //implicit val recipeEncoder: Encoder[RecipeV1] = deriveConfiguredEncoder
 
   import cats.syntax.option._
-  def fromJson(json: Json): EitherNel[circe.Error, Recipe] = for {
+  def fromJson(json: Json): EitherNel[circe.Error, RecipeV1] = for {
     _ <- json.asObject toRightNel DecodingFailure(WrongTypeExpectation("object", json), List())
     recipe <- recipeDecoder.decodeAccumulating(json.hcursor).toEither
   } yield recipe
@@ -102,7 +260,10 @@ object Recipe {
     * @param values variables that may be substituted
     * @return substituted recipe or all of the substitution errors
     */
-  def applySubstitutions(recipe: Recipe, values: Map[String, String]): ValidatedNel[UnboundVariableError, Recipe] = {
+  def applySubstitutions(
+    recipe: RecipeV1,
+    values: Map[String, String],
+  ): ValidatedNel[UnboundVariableError, RecipeV1] = {
     // Implicit classes so that .subs can be used below.
     implicit class Subs(s: String) {
       def subs: ValidatedNel[UnboundVariableError, String] = applySubstitution(s, values)
@@ -473,7 +634,7 @@ object Recipe {
     * Any errors are converted to a sequence of user-facing messages.
     */
 
-  def get(recipeIdentifyingString: String): Either[Seq[String], Recipe] = {
+  def get(recipeIdentifyingString: String): Either[Seq[String], RecipeV1] = {
     val recipeRedirectServiceUrlPrefix = "https://recipes.quine.io/"
     val requiredRecipeContentUrlPrefix = "https://raw.githubusercontent.com/thatdot/quine/main/"
     for {
@@ -531,10 +692,10 @@ object Recipe {
       case None => Some(recipeIdentifyingString)
     }
 
-  def validateRecipeCurrentVersion(recipe: Recipe): Either[Seq[String], Recipe] = Either.cond(
+  def validateRecipeCurrentVersion(recipe: RecipeV1): Either[Seq[String], RecipeV1] = Either.cond(
     recipe.isVersion(currentVersion),
     recipe,
-    Seq(s"The only supported Recipe version number is $currentVersion"),
+    Seq(s"Recipe version ${recipe.version} is not supported by this method. Use Recipe.get() for V2 recipes."),
   )
 
   def validatedNelToEitherStrings[A, E](
@@ -548,10 +709,10 @@ object Recipe {
     * @param values variables for substitution
     * @return either all of the errors, or the parsed and substituted recipe
     */
-  def getAndSubstitute(recipeIdentifyingString: String, values: Map[String, String]): Either[Seq[String], Recipe] =
+  def getAndSubstitute(recipeIdentifyingString: String, values: Map[String, String]): Either[Seq[String], RecipeV1] =
     for {
       recipe <- get(recipeIdentifyingString)
-      substitutedRecipe <- validatedNelToEitherStrings[Recipe, UnboundVariableError](
+      substitutedRecipe <- validatedNelToEitherStrings[RecipeV1, UnboundVariableError](
         applySubstitutions(recipe, values),
         e => s"Missing required parameter ${e.name}; use --recipe-value ${e.name}=",
       )

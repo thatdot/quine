@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 import scala.collection.immutable
 import scala.jdk.StreamConverters._
 
-import com.thatdot.quine.app.{Recipe, RecipePackage}
+import com.thatdot.quine.app.{RecipePackage, RecipeV1}
 
 object GenerateRecipeDirectory extends App {
 
@@ -111,7 +111,7 @@ object GenerateRecipeDirectory extends App {
       |""".stripMargin
     }
 
-    val cliParameters = Recipe
+    val cliParameters = RecipeV1
       .applySubstitutions(recipe, Map.empty)
       .fold(_.map(_.name).toList, _ => Nil)
       .distinct

@@ -1,12 +1,10 @@
 package com.thatdot.quine.app
 
-import java.lang.System.lineSeparator
 import java.net.URL
 import java.util.concurrent.TimeoutException
-import java.util.concurrent.atomic.AtomicReference
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
@@ -16,30 +14,34 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.app.RecipeInterpreter.RecipeState
-import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStoreV1}
-import com.thatdot.quine.app.util.QuineLoggables._
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities
+import com.thatdot.quine.app.model.ingest2.V2IngestEntities.QuineIngestConfiguration
+import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryInterfaceV2}
+import com.thatdot.quine.app.v2api.converters.{ApiToIngest, ApiToUiStyling}
+import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
 import com.thatdot.quine.graph.cypher.{RunningCypherQuery, Value}
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.Log.implicits._
-object RecipeInterpreter {
 
-  type RecipeState = QueryUiConfigurationState with IngestStreamState with StandingQueryStoreV1
+object RecipeInterpreterV2 {
+  type RecipeStateV2 = QueryUiConfigurationState with IngestStreamState with StandingQueryInterfaceV2
 }
 
-/** Runs a Recipe by making a series of blocking graph method calls as determined
+/** Runs a V2 Recipe by making a series of blocking graph method calls as determined
   * by the recipe content.
   *
   * Also starts fixed rate scheduled tasks to poll for and report status updates. These
   * should be cancelled using the returned Cancellable.
   */
-case class RecipeInterpreter(
+case class RecipeInterpreterV2(
   statusLines: StatusLines,
-  recipe: RecipeV1,
-  appState: RecipeState,
+  recipe: RecipeV2.Recipe,
+  appState: RecipeInterpreterV2.RecipeStateV2,
   graphService: CypherOpsGraph,
   quineWebserverUri: Option[URL],
+  protobufSchemaCache: ProtobufSchemaCache,
 )(implicit idProvider: QuineIdProvider)
     extends Cancellable {
 
@@ -47,6 +49,8 @@ case class RecipeInterpreter(
 
   // Recipes always use the default namespace.
   val namespace: NamespaceId = None
+
+  implicit val ec: ExecutionContext = graphService.system.dispatcher
 
   /** Cancel all the tasks, returning true if any task cancel returns true. */
   override def cancel(): Boolean = tasks.foldLeft(false)((a, b) => b.cancel() || a)
@@ -56,103 +60,151 @@ case class RecipeInterpreter(
 
   def run(memberIdx: MemberIdx)(implicit logConfig: LogConfig): Unit = {
 
+    // Set UI appearances using V2 -> V1 converters
     if (recipe.nodeAppearances.nonEmpty) {
       statusLines.info(log"Using ${Safe(recipe.nodeAppearances.length)} node appearances")
-      appState.setNodeAppearances(recipe.nodeAppearances.toVector)
+      val v1Appearances = recipe.nodeAppearances.map(ApiToUiStyling.apply).toVector
+      appState.setNodeAppearances(v1Appearances)
     }
     if (recipe.quickQueries.nonEmpty) {
       statusLines.info(log"Using ${Safe(recipe.quickQueries.length)} quick queries")
-      appState.setQuickQueries(recipe.quickQueries.toVector)
+      val v1QuickQueries = recipe.quickQueries.map(ApiToUiStyling.apply).toVector
+      appState.setQuickQueries(v1QuickQueries)
     }
     if (recipe.sampleQueries.nonEmpty) {
       statusLines.info(log"Using ${Safe(recipe.sampleQueries.length)} sample queries")
-      appState.setSampleQueries(recipe.sampleQueries.toVector)
+      val v1SampleQueries = recipe.sampleQueries.map(ApiToUiStyling.apply).toVector
+      appState.setSampleQueries(v1SampleQueries)
     }
 
-    // Create Standing Queries
+    // Create Standing Queries using V2 API
     for {
-      (standingQueryDefinition, i) <- recipe.standingQueries.zipWithIndex
+      (standingQueryDef, sqIndex) <- recipe.standingQueries.zipWithIndex
     } {
-      val standingQueryName = s"STANDING-${i + 1}"
-      val addStandingQueryResult: Future[Boolean] = appState.addStandingQuery(
-        standingQueryName,
-        namespace,
-        standingQueryDefinition,
+      val standingQueryName = standingQueryDef.name.getOrElse(s"standing-query-$sqIndex")
+
+      // Convert recipe SQ definition to API format
+      val apiSqDef = ApiStanding.StandingQuery.StandingQueryDefinition(
+        name = standingQueryName,
+        pattern = standingQueryDef.pattern,
+        outputs = standingQueryDef.outputs.zipWithIndex.map { case (workflow, wfIndex) =>
+          ApiStanding.StandingQueryResultWorkflow(
+            name = workflow.name.getOrElse(s"output-$wfIndex"),
+            filter = workflow.filter,
+            preEnrichmentTransformation = workflow.preEnrichmentTransformation,
+            resultEnrichment = workflow.resultEnrichment.map(e =>
+              com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.CypherQuery(
+                query = e.query,
+                parameter = e.parameter,
+              ),
+            ),
+            destinations = workflow.destinations,
+          )
+        },
+        includeCancellations = standingQueryDef.includeCancellations,
+        inputBufferSize = standingQueryDef.inputBufferSize,
       )
-      try if (!Await.result(addStandingQueryResult, 5 seconds)) {
-        statusLines.error(log"Standing Query ${Safe(standingQueryName)} already exists")
-      } else {
-        statusLines.info(log"Running Standing Query ${Safe(standingQueryName)}")
-        tasks +:= standingQueryProgressReporter(statusLines, appState, graphService, standingQueryName)
+
+      val addResult: Future[StandingQueryInterfaceV2.Result] =
+        appState.addStandingQueryV2(standingQueryName, namespace, apiSqDef)
+
+      try Await.result(addResult, 5.seconds) match {
+        case StandingQueryInterfaceV2.Result.Success =>
+          statusLines.info(log"Running Standing Query ${Safe(standingQueryName)}")
+          tasks +:= standingQueryProgressReporter(statusLines, appState, graphService, standingQueryName)
+        case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
+          statusLines.error(log"Standing Query ${Safe(standingQueryName)} already exists")
+        case StandingQueryInterfaceV2.Result.NotFound(msg) =>
+          statusLines.error(log"Namespace not found: ${Safe(msg)}")
       } catch {
         case NonFatal(ex) =>
           statusLines.error(
-            log"Failed creating Standing Query ${Safe(standingQueryName)}: ${standingQueryDefinition}",
+            log"Failed creating Standing Query ${Safe(standingQueryName)}",
             ex,
           )
       }
-      ()
     }
 
-    // Create Ingest Streams
+    // Create Ingest Streams using V2 API
     for {
-      (ingestStream, i) <- recipe.ingestStreams.zipWithIndex
+      (ingestStream, ingestIndex) <- recipe.ingestStreams.zipWithIndex
     } {
-      val ingestStreamName = s"INGEST-${i + 1}"
-      appState.addIngestStream(
-        ingestStreamName,
-        ingestStream,
-        namespace,
-        previousStatus = None,
-        shouldResumeRestoredIngests = false,
-        timeout = 5 seconds,
-        memberIdx = Some(memberIdx),
-      ) match {
-        case Failure(ex) =>
+      val ingestStreamName = ingestStream.name.getOrElse(s"ingest-stream-$ingestIndex")
+
+      // Convert recipe ingest to V2 internal model
+      val v2IngestSource = ApiToIngest(ingestStream.source)
+      val onStreamError = ingestStream.onStreamError
+        .map(ApiToIngest.apply)
+        .getOrElse(V2IngestEntities.LogStreamError)
+
+      val v2IngestConfig = QuineIngestConfiguration(
+        name = ingestStreamName,
+        source = v2IngestSource,
+        query = ingestStream.query,
+        parameter = ingestStream.parameter,
+        transformation = None, // TODO: handle transformation conversion
+        parallelism = ingestStream.parallelism,
+        maxPerSecond = ingestStream.maxPerSecond,
+        onRecordError = ingestStream.onRecordError,
+        onStreamError = onStreamError,
+      )
+
+      val result: Future[Either[Seq[String], Unit]] = appState.addV2IngestStream(
+        name = ingestStreamName,
+        settings = v2IngestConfig,
+        intoNamespace = namespace,
+        timeout = 5.seconds,
+        memberIdx = memberIdx,
+      )
+
+      try Await.result(result, 10.seconds) match {
+        case Left(errors) =>
           statusLines.error(
-            log"Failed creating Ingest Stream ${Safe(ingestStreamName)}\n${ingestStream}",
-            ex,
+            log"Failed creating Ingest Stream ${Safe(ingestStreamName)}: ${Safe(errors.mkString(", "))}",
           )
-        case Success(false) =>
-          statusLines.error(log"Ingest Stream ${Safe(ingestStreamName)} already exists")
-        case Success(true) =>
+        case Right(_) =>
           statusLines.info(log"Running Ingest Stream ${Safe(ingestStreamName)}")
           tasks +:= ingestStreamProgressReporter(statusLines, appState, graphService, ingestStreamName)
-      }
-
-      // If status query is defined, print a URL with the query and schedule the query to be executed and printed
-      for {
-        statusQuery @ StatusQuery(cypherQuery) <- recipe.statusQuery
-      } {
-        for {
-          url <- quineWebserverUri
-        } statusLines.info(
-          log"Status query URL is ${Safe(
-            Uri
-              .from(
-                scheme = url.getProtocol,
-                userinfo = Option(url.getUserInfo).getOrElse(""),
-                host = url.getHost,
-                port = url.getPort,
-                path = url.getPath,
-                queryString = None,
-                fragment = Some(cypherQuery),
-              )
-              .toString,
-          )}",
-        )
-        tasks +:= statusQueryProgressReporter(statusLines, graphService, statusQuery)
+      } catch {
+        case NonFatal(ex) =>
+          statusLines.error(
+            log"Failed creating Ingest Stream ${Safe(ingestStreamName)}",
+            ex,
+          )
       }
     }
 
+    // Handle status query
+    for {
+      statusQuery <- recipe.statusQuery
+    } {
+      for {
+        url <- quineWebserverUri
+      } statusLines.info(
+        log"Status query URL is ${Safe(
+          Uri
+            .from(
+              scheme = url.getProtocol,
+              userinfo = Option(url.getUserInfo).getOrElse(""),
+              host = url.getHost,
+              port = url.getPort,
+              path = url.getPath,
+              queryString = None,
+              fragment = Some(statusQuery.cypherQuery),
+            )
+            .toString,
+        )}",
+      )
+      tasks +:= statusQueryProgressReporter(statusLines, graphService, statusQuery)
+    }
   }
 
   private def ingestStreamProgressReporter(
     statusLines: StatusLines,
-    appState: RecipeState,
+    appState: RecipeInterpreterV2.RecipeStateV2,
     graphService: BaseGraph,
     ingestStreamName: String,
-    interval: FiniteDuration = 1 second,
+    interval: FiniteDuration = 1.second,
   )(implicit logConfig: LogConfig): Cancellable = {
     val actorSystem = graphService.system
     val statusLine = statusLines.create()
@@ -191,10 +243,10 @@ case class RecipeInterpreter(
 
   private def standingQueryProgressReporter(
     statusLines: StatusLines,
-    appState: RecipeState,
+    appState: RecipeInterpreterV2.RecipeStateV2,
     graph: BaseGraph,
     standingQueryName: String,
-    interval: FiniteDuration = 1 second,
+    interval: FiniteDuration = 1.second,
   )(implicit logConfig: LogConfig): Cancellable = {
     val actorSystem = graph.system
     val statusLine = statusLines.create()
@@ -203,7 +255,7 @@ case class RecipeInterpreter(
       interval = interval,
     ) { () =>
       appState
-        .getStandingQuery(standingQueryName, namespace)
+        .getStandingQueryV2(standingQueryName, namespace)
         .onComplete {
           case Failure(ex) =>
             statusLines.error(log"Failed getting Standing Query ${Safe(standingQueryName)}" withException ex)
@@ -229,8 +281,8 @@ case class RecipeInterpreter(
   private def statusQueryProgressReporter(
     statusLines: StatusLines,
     graphService: CypherOpsGraph,
-    statusQuery: StatusQuery,
-    interval: FiniteDuration = 5 second,
+    statusQuery: RecipeV2.StatusQueryV2,
+    interval: FiniteDuration = 5.second,
   )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Cancellable = {
     val actorSystem = graphService.system
     val changed = new OnChanged[String]
@@ -250,13 +302,9 @@ case class RecipeInterpreter(
               .toMat(Sink.seq)(Keep.right)
               .named("recipe-status-query")
               .run()(graphService.materializer),
-            5 seconds,
+            5.seconds,
           )
-        changed(queryResultToString(queryResults, resultContent))(s =>
-          // s is a query result, and therefore PII, but the entire point of a status query is to repeatedly log
-          // this value, so we'll treat that as implied consent to log.
-          statusLines.info(log"${Safe(s)}"),
-        )
+        changed(queryResultToString(queryResults, resultContent))(s => statusLines.info(log"${Safe(s)}"))
       } catch {
         case _: TimeoutException => statusLines.warn(log"Status query timed out")
       }
@@ -269,12 +317,11 @@ case class RecipeInterpreter(
     idProvider: QuineIdProvider,
     logConfig: LogConfig,
   ): String = {
+    import java.lang.System.lineSeparator
 
-    /** Builds a repeated string by concatenation. */
     def repeated(s: String, times: Int): String =
       Seq.fill(times)(s).mkString
 
-    /** Sets the string length, by adding padding or truncating. */
     def fixedLength(s: String, length: Int, padding: Char): String =
       if (s.length < length) {
         s + repeated(padding.toString, length - s.length)
@@ -316,25 +363,5 @@ case class RecipeInterpreter(
         } mkString lineSeparator
       } + lineSeparator + footer
     }) mkString lineSeparator
-  }
-}
-
-/** Simple utility to call a parameterized function only when the input value has changed.
-  * E.g. for periodically printing logged status updates only when the log message contains a changed string.
-  * Intended for use from multiple concurrent threads.
-  * Callback IS called on first invocation.
-  *
-  * @tparam T The input value that is compared for change using `equals` equality.
-  */
-class OnChanged[T] {
-  private val lastValue: AtomicReference[Option[T]] = new AtomicReference(None)
-
-  def apply(value: T)(callback: T => Unit): Unit = {
-    val newValue = Some(value)
-    val prevValue = lastValue.getAndSet(newValue)
-    if (prevValue != newValue) {
-      callback(value)
-    }
-    ()
   }
 }

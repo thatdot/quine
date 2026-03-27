@@ -13,7 +13,7 @@ import io.circe
   */
 final case class RecipePackage(
   name: String,
-  recipe: Recipe,
+  recipe: RecipeV1,
   source: String,
 )
 object RecipePackage {
@@ -39,7 +39,7 @@ object RecipePackage {
     val source = Files.readString(file)
 
     // Parse the recipe
-    val recipe = circe.yaml.v12.parser.decodeAccumulating[Recipe](source) valueOr { errs =>
+    val recipe = circe.yaml.v12.parser.decodeAccumulating[RecipeV1](source) valueOr { errs =>
       throw new IllegalArgumentException("Malformed recipe: \n" + errs.toList.mkString("\n"))
     }
 

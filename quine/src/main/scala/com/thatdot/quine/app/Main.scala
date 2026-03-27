@@ -73,12 +73,16 @@ object Main extends App with LazySafeLogging {
   }
 
   // If there's a recipe URL or file path, block and read it, apply substitutions, and fail fast.
+  // Uses RecipeLoader to support both V1 and V2 recipes.
   val recipe: Option[Recipe] = cmdArgs.recipe.map { (recipeIdentifyingString: String) =>
-    Recipe.getAndSubstitute(recipeIdentifyingString, cmdArgs.recipeValues) valueOr { messages =>
+    RecipeLoader.getAndSubstituteAny(recipeIdentifyingString, cmdArgs.recipeValues) valueOr { messages =>
       messages foreach Console.err.println
       sys.exit(1)
     }
   }
+
+  // Extract V1 recipe for backward compatibility (QuineApp, file paths, etc.)
+  val recipeV1: Option[RecipeV1] = recipe.collect { case Recipe.V1(r) => r }
 
   // Parse config for Quine and apply command line overrides.
   val config: QuineConfig = {
@@ -95,6 +99,7 @@ object Main extends App with LazySafeLogging {
       if (cmdArgs.disableWebservice) withPortOverride else webserverEnabledLens.set(withPortOverride)(true)
 
     // Recipe overrides (unless --force-config command line flag is used)
+    // Apply temp data file for both V1 and V2 recipes
     if (recipe.isDefined && !cmdArgs.forceConfig) {
       val tempDataFile: File = File.createTempFile("quine-", ".db")
       tempDataFile.delete()
@@ -183,7 +188,15 @@ object Main extends App with LazySafeLogging {
 
   // Create FileAccessPolicy once at startup (especially important for static mode which enumerates files)
   // Extract file paths from recipe to automatically allow them
-  val recipeFilePaths: List[String] = recipe.toList.flatMap(_.extractFileIngestPaths)
+  val recipeFilePaths: List[String] = recipe.toList.flatMap {
+    case Recipe.V1(r) => r.extractFileIngestPaths
+    case Recipe.V2(r) =>
+      r.ingestStreams.collect {
+        case is
+            if is.source.isInstanceOf[com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.File] =>
+          is.source.asInstanceOf[com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.File].path
+      }
+  }
   val fileAccessPolicy: FileAccessPolicy =
     FileAccessPolicy.fromConfigWithRecipePaths(
       config.fileIngest.allowedDirectories.getOrElse(List(".")),
@@ -203,7 +216,7 @@ object Main extends App with LazySafeLogging {
     helpMakeQuineBetter = config.helpMakeQuineBetter,
     fileAccessPolicy = fileAccessPolicy,
     recipe = recipe,
-    recipeCanonicalName = recipe.flatMap(_ => cmdArgs.recipe.flatMap(Recipe.getCanonicalName)),
+    recipeCanonicalName = recipe.flatMap(_ => cmdArgs.recipe.flatMap(RecipeV1.getCanonicalName)),
   )
 
   // Initialize the namespaces and apply migrations
@@ -278,13 +291,24 @@ object Main extends App with LazySafeLogging {
     )
   }
 
-  var recipeInterpreterTask: Option[Cancellable] = recipe.map { r =>
-
-    val interpreter = RecipeInterpreter(statusLines, r, quineApp, graph, bindAndResolvableAddresses.map(_._2))(
-      graph.idProvider,
-    )
-    interpreter.run(quineApp.thisMemberIdx)
-    interpreter
+  var recipeInterpreterTask: Option[Cancellable] = recipe.map {
+    case Recipe.V1(r) =>
+      val interpreter = RecipeInterpreter(statusLines, r, quineApp, graph, bindAndResolvableAddresses.map(_._2))(
+        graph.idProvider,
+      )
+      interpreter.run(quineApp.thisMemberIdx)
+      interpreter
+    case Recipe.V2(r) =>
+      val interpreter = RecipeInterpreterV2(
+        statusLines,
+        r,
+        quineApp,
+        graph,
+        bindAndResolvableAddresses.map(_._2),
+        quineApp.protobufSchemaCache,
+      )(graph.idProvider)
+      interpreter.run(quineApp.thisMemberIdx)
+      interpreter
   }
 
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>

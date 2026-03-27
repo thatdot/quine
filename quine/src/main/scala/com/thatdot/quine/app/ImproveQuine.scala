@@ -48,7 +48,7 @@ class ImproveQuine(
   private def hasherInstance(): MessageDigest = MessageDigest.getInstance("SHA-256")
   private val base64: Encoder = Base64.getEncoder
 
-  private def recipeContentsHash(recipe: Recipe): Array[Byte] = {
+  private def recipeContentsHashV1(recipe: RecipeV1): Array[Byte] = {
     val sha256: MessageDigest = hasherInstance()
     // Since this is not mission-critical, letting the JVM object hash function do the heavy lifting
     sha256.update(recipe.ingestStreams.hashCode().toByte)
@@ -60,15 +60,32 @@ class ImproveQuine(
     sha256.digest()
   }
 
+  private def recipeContentsHashV2(recipe: RecipeV2.Recipe): Array[Byte] = {
+    val sha256: MessageDigest = hasherInstance()
+    sha256.update(recipe.ingestStreams.hashCode().toByte)
+    sha256.update(recipe.standingQueries.hashCode().toByte)
+    sha256.update(recipe.nodeAppearances.hashCode().toByte)
+    sha256.update(recipe.quickQueries.hashCode().toByte)
+    sha256.update(recipe.sampleQueries.hashCode().toByte)
+    sha256.update(recipe.statusQuery.hashCode().toByte)
+    sha256.digest()
+  }
+
   private val recipeUsed: Boolean = recipe.isDefined
-  private val recipeInfo: Option[RecipeInfo] = recipe
-    .map { r =>
+  private val recipeInfo: Option[RecipeInfo] = recipe.map {
+    case Recipe.V1(r) =>
       val sha256: MessageDigest = hasherInstance()
       RecipeInfo(
         base64.encodeToString(sha256.digest(r.title.getBytes(StandardCharsets.UTF_8))),
-        base64.encodeToString(recipeContentsHash(r)),
+        base64.encodeToString(recipeContentsHashV1(r)),
       )
-    }
+    case Recipe.V2(r) =>
+      val sha256: MessageDigest = hasherInstance()
+      RecipeInfo(
+        base64.encodeToString(sha256.digest(r.title.getBytes(StandardCharsets.UTF_8))),
+        base64.encodeToString(recipeContentsHashV2(r)),
+      )
+  }
 
   private val invalidMacAddresses: Set[ByteBuffer] = Set(
     Array.fill[Byte](6)(0x00),
