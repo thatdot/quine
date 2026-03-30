@@ -9,8 +9,9 @@ import org.apache.pekko.http.scaladsl.server.directives.DebuggingDirectives
 
 import com.github.pjfanning.pekkohttpcirce.FailFastCirceSupport
 import io.circe.syntax._
+import sttp.apispec.Tag
 import sttp.apispec.openapi.circe._
-import sttp.apispec.openapi.{Info, OpenAPI}
+import sttp.apispec.openapi.{Info, OpenAPI, Server}
 import sttp.capabilities.WebSockets
 import sttp.capabilities.pekko.PekkoStreams
 import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
@@ -31,6 +32,8 @@ abstract class TapirRoutes extends FailFastCirceSupport with TypeDiscriminatorCo
 
   val apiInfo: Info
 
+  val globalTags: List[Tag]
+
   protected def openApiSpec(ingestOnly: Boolean): OpenAPI = OpenAPIDocsInterpreter()
     .toOpenAPI(
       (if (ingestOnly) ingestEndpoints else apiEndpoints)
@@ -38,6 +41,7 @@ abstract class TapirRoutes extends FailFastCirceSupport with TypeDiscriminatorCo
         .map(_.endpoint),
       apiInfo,
     )
+    .copy(tags = globalTags, servers = List(Server("/")))
 
   protected def v2DocsRoute(ingestOnly: Boolean): Route =
     pathPrefix("api" / "v2" / "openapi.json") {

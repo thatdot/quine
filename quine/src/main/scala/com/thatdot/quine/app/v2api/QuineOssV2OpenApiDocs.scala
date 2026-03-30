@@ -2,7 +2,7 @@ package com.thatdot.quine.app.v2api
 
 import scala.annotation.nowarn
 
-import sttp.apispec.openapi.OpenAPI
+import sttp.apispec.openapi.{OpenAPI, Server}
 import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
 import sttp.tapir.{EndpointInput, query}
 
@@ -45,6 +45,8 @@ trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
       .filterNot(_.attribute(Visibility.attributeKey).contains(Visibility.Hidden))
       .map(_.endpoint)
 
-    OpenAPIDocsInterpreter().toOpenAPI(visibleEndpoints, V2ApiInfo.info)
+    OpenAPIDocsInterpreter()
+      .toOpenAPI(visibleEndpoints, V2ApiInfo.info)
+      .copy(tags = V2ApiInfo.globalTags, servers = List(Server("/")))
   }
 }

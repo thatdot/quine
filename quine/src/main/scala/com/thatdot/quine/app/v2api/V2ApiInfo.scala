@@ -2,7 +2,8 @@ package com.thatdot.quine.app.v2api
 
 import scala.concurrent.Future
 
-import sttp.apispec.openapi.Info
+import sttp.apispec.Tag
+import sttp.apispec.openapi.{Contact, Info}
 import sttp.capabilities.WebSockets
 import sttp.capabilities.pekko.PekkoStreams
 import sttp.tapir.{EndpointInput, server}
@@ -20,7 +21,33 @@ object V2ApiInfo {
         |API calls directly from the embedded documentation pages.""".stripMargin.replace('\n', ' ') + "\n\n" +
       "For docs, guides, and tutorials, please visit <https://quine.io>",
     ),
+    contact = Some(
+      Contact(
+        name = Some("thatDot Support"),
+        url = Some("https://thatdot.com"),
+        email = Some("support@thatdot.com"),
+      ),
+    ),
   )
+
+  /** Canonical tag definitions for Quine OSS V2 API.
+    *
+    * This list is the source of truth for operation tags. Spectral's operation-tag-defined
+    * rule enforces that every operation tag matches one of these. Adding a new tag here is
+    * an intentional act; a typo in an endpoint's .tag() call will fail linting rather than
+    * silently creating a new group.
+    *
+    * The order here (sorted alphabetically) controls sidebar group ordering in Stoplight Elements.
+    */
+  val globalTags: List[Tag] = List(
+    "Administration",
+    "Ingest Streams",
+    "Standing Queries",
+    "Graph Algorithms",
+    "UI Styling",
+    "Cypher Query Language",
+    "Debug Node Operations",
+  ).sorted.map(Tag(_))
 
   def endpointSequences(
     provider: V2OssEndpointProvider,

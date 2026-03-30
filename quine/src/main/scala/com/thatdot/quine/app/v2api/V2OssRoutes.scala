@@ -2,6 +2,7 @@ package com.thatdot.quine.app.v2api
 
 import scala.concurrent.Future
 
+import sttp.apispec.Tag
 import sttp.apispec.openapi.Info
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{EndpointInput, query}
@@ -25,4 +26,5 @@ class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfi
 
   val apiInfo: Info = V2ApiInfo.info
 
+  val globalTags: List[Tag] = V2ApiInfo.globalTags
 }
