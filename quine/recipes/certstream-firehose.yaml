@@ -1,0 +1,32 @@
+version: 1
+title: Certstream Firehose
+contributor: https://github.com/emanb29
+summary: Log new SSL certificate registrations
+description: |-
+  Reproduces the behavior of the certstream website (https://certstream.calidog.io/) by
+  connecting to the certstream firehose via SSL-encrypted websocket and printing to
+  standard out each time a new certificate is detected
+ingestStreams:
+  - type: WebsocketSimpleStartupIngest
+    url: wss://certstream.calidog.io/
+    format:
+      type: CypherJson
+      query: |-
+        CREATE ($that)
+standingQueries:
+  - pattern:
+      type: Cypher
+      query: MATCH (n) RETURN DISTINCT id(n) AS id
+    outputs:
+      log-new-certs:
+        type: CypherQuery
+        query: |-
+          MATCH (n)
+          WHERE id(n) = $that.data.id
+          RETURN n.data
+        andThen:
+          type: PrintToStandardOut
+          logMode: FastSampling
+nodeAppearances: []
+quickQueries: []
+sampleQueries: []

@@ -1,0 +1,349 @@
+version: 1
+title: Entity Resolution Example
+contributor: https://github.com/rrwright
+summary: Entity Resolution
+description: Ingest address records from a public dataset and form each record into a subgraph built from its properties. The records are initially resolved according to the same use of the "addressee". Records are further resolved as their subgraphs overlap and a rule is applied with a standing query to resolve all entities with the same `poBox` and `postcode`.
+iconImage: 🤷
+
+ingestStreams:
+  - type: FileIngest
+    path: public-record-addresses-2021.ndjson
+    format:
+      type: CypherJson
+      query: >-
+        WITH $that.parts AS parts
+        MATCH (record), (entity), (cityDistrict), (unit), (country), (state), (level), (suburb), (city), (road), (house), (houseNumber), (poBox), (category), (near), (stateDistrict), (staircase), (postcode)
+        WHERE id(record) = idFrom($that)
+          AND id(entity) = idFrom($that.addressee, parts)
+          AND id(cityDistrict) = idFrom("cityDistrict", CASE WHEN parts.cityDistrict IS NULL THEN -1 ELSE parts.cityDistrict END)
+          AND id(unit) = idFrom("unit", CASE WHEN parts.unit IS NULL THEN -1 ELSE parts.unit END)
+          AND id(country) = idFrom("country", CASE WHEN parts.country IS NULL THEN -1 ELSE parts.country END)
+          AND id(state) = idFrom("state", CASE WHEN parts.state IS NULL THEN -1 ELSE parts.state END)
+          AND id(level) = idFrom("level", CASE WHEN parts.level IS NULL THEN -1 ELSE parts.level END)
+          AND id(suburb) = idFrom("suburb", CASE WHEN parts.suburb IS NULL THEN -1 ELSE parts.suburb END)
+          AND id(city) = idFrom("city", CASE WHEN parts.city IS NULL THEN -1 ELSE parts.city END)
+          AND id(road) = idFrom("road", CASE WHEN parts.road IS NULL THEN -1 ELSE parts.road END)
+          AND id(house) = idFrom("house", CASE WHEN parts.house IS NULL THEN -1 ELSE parts.house END)
+          AND id(houseNumber) = idFrom("houseNumber", CASE WHEN parts.houseNumber IS NULL THEN -1 ELSE parts.houseNumber END)
+          AND id(poBox) = idFrom("poBox", CASE WHEN parts.poBox IS NULL THEN -1 ELSE parts.poBox END)
+          AND id(category) = idFrom("category", CASE WHEN parts.category IS NULL THEN -1 ELSE parts.category END)
+          AND id(near) = idFrom("near", CASE WHEN parts.near IS NULL THEN -1 ELSE parts.near END)
+          AND id(stateDistrict) = idFrom("stateDistrict", CASE WHEN parts.stateDistrict IS NULL THEN -1 ELSE parts.stateDistrict END)
+          AND id(staircase) = idFrom("staircase", CASE WHEN parts.staircase IS NULL THEN -1 ELSE parts.staircase END)
+          AND id(postcode) = idFrom("postcode", CASE WHEN parts.postcode IS NULL THEN -1 ELSE parts.postcode END)
+        FOREACH (p IN CASE WHEN parts.cityDistrict IS NULL THEN [] ELSE [parts.cityDistrict] END | SET cityDistrict.cityDistrict = p CREATE (entity)-[:cityDistrict]->(cityDistrict) )
+        FOREACH (p IN CASE WHEN parts.unit IS NULL THEN [] ELSE [parts.unit] END | SET unit.unit = p CREATE (entity)-[:unit]->(unit) )
+        FOREACH (p IN CASE WHEN parts.country IS NULL THEN [] ELSE [parts.country] END | SET country.country = p CREATE (entity)-[:country]->(country) )
+        FOREACH (p IN CASE WHEN parts.state IS NULL THEN [] ELSE [parts.state] END | SET state.state = p CREATE (entity)-[:state]->(state) )
+        FOREACH (p IN CASE WHEN parts.level IS NULL THEN [] ELSE [parts.level] END | SET level.level = p CREATE (entity)-[:level]->(level) )
+        FOREACH (p IN CASE WHEN parts.suburb IS NULL THEN [] ELSE [parts.suburb] END | SET suburb.suburb = p CREATE (entity)-[:suburb]->(suburb) )
+        FOREACH (p IN CASE WHEN parts.city IS NULL THEN [] ELSE [parts.city] END | SET city.city = p CREATE (entity)-[:city]->(city) )
+        FOREACH (p IN CASE WHEN parts.road IS NULL THEN [] ELSE [parts.road] END | SET road.road = p CREATE (entity)-[:road]->(road) )
+        FOREACH (p IN CASE WHEN parts.house IS NULL THEN [] ELSE [parts.house] END | SET house.house = p CREATE (entity)-[:house]->(house) )
+        FOREACH (p IN CASE WHEN parts.houseNumber IS NULL THEN [] ELSE [parts.houseNumber] END | SET houseNumber.houseNumber = p CREATE (entity)-[:houseNumber]->(houseNumber) )
+        FOREACH (p IN CASE WHEN parts.poBox IS NULL THEN [] ELSE [parts.poBox] END | SET poBox.poBox = p CREATE (entity)-[:poBox]->(poBox) )
+        FOREACH (p IN CASE WHEN parts.category IS NULL THEN [] ELSE [parts.category] END | SET category.category = p CREATE (entity)-[:category]->(category) )
+        FOREACH (p IN CASE WHEN parts.near IS NULL THEN [] ELSE [parts.near] END | SET near.near = p CREATE (entity)-[:near]->(near) )
+        FOREACH (p IN CASE WHEN parts.stateDistrict IS NULL THEN [] ELSE [parts.stateDistrict] END | SET stateDistrict.stateDistrict = p CREATE (entity)-[:stateDistrict]->(stateDistrict) )
+        FOREACH (p IN CASE WHEN parts.staircase IS NULL THEN [] ELSE [parts.staircase] END | SET staircase.staircase = p CREATE (entity)-[:staircase]->(staircase) )
+        FOREACH (p IN CASE WHEN parts.postcode IS NULL THEN [] ELSE [parts.postcode] END | SET postcode.postcode = p CREATE (entity)-[:postcode]->(postcode) )
+        SET entity = parts,
+            entity.addressee = $that.addressee,
+            entity: Entity,
+            record = $that,
+            record: Record
+        CREATE (record)-[:record_for_entity]->(entity)
+
+standingQueries:
+  - pattern: # This creates the `canoncial` record based on postcode and poBox and connects it.
+      type: Cypher
+      mode: MultipleValues
+      query: >-
+        MATCH (pb)<-[:poBox]-(e)-[:postcode]->(pc)
+        RETURN id(e) AS entity, pb.poBox AS poBox, pc.postcode AS postcode
+    outputs:
+      resolved:
+        type: CypherQuery
+        query: >-
+          MATCH (e), (canonical)
+          WHERE id(e) = $that.data.entity
+            AND id(canonical) = idFrom($that.data.poBox, $that.data.postcode)
+          SET canonical.canonical = {poBox: $that.data.poBox, postcode: $that.data.postcode},
+              canonical: Canonical
+          CREATE (e)-[:resolved]->(canonical)
+
+  - pattern: # This re-emits the original record with a field showing its resolution.
+      type: Cypher
+      mode: MultipleValues
+      query: >-
+        MATCH (record)-[:record_for_entity]->(entity)-[:resolved]->(resolved)
+        WHERE resolved.canonical IS NOT NULL
+        RETURN id(record) AS record, id(resolved) AS resolved
+    outputs:
+      resolved-record:
+        type: CypherQuery
+        query: >-
+          MATCH (record)
+          WHERE id(record) = $that.data.record
+          WITH properties(record) as props 
+          RETURN props {.*, resolved: $that.data.resolved} AS resolved_entity
+        andThen:
+          type: WriteToFile
+          path: "entities-resolved.ndjson"
+
+nodeAppearances:
+  - predicate:
+      propertyKeys:
+        - parts
+      knownValues: {}
+    label:
+      prefix: ""
+      key: id
+      type: Property
+    icon: "📝"
+  - predicate:
+      propertyKeys:
+        - addressee
+      knownValues: {}
+    label:
+      prefix: ""
+      key: addressee
+      type: Property
+    icon: "🤷"
+  - predicate:
+      propertyKeys:
+        - cityDistrict
+      knownValues: {}
+    label:
+      prefix: "cityDistrict: "
+      key: cityDistrict
+      type: Property
+    icon: "🏙️"
+  - predicate:
+      propertyKeys:
+        - unit
+      knownValues: {}
+    label:
+      prefix: "unit: "
+      key: unit
+      type: Property
+    icon: "#"
+  - predicate:
+      propertyKeys:
+        - country
+      knownValues: {}
+    label:
+      prefix: "country: "
+      key: country
+      type: Property
+    icon: "🇺🇳"
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues: {}
+    label:
+      prefix: "state: "
+      key: state
+      type: Property
+    icon: "🇺🇸"
+  - predicate:
+      propertyKeys:
+        - level
+      knownValues: {}
+    label:
+      prefix: "level: "
+      key: level
+      type: Property
+    icon: "🎚️"
+  - predicate:
+      propertyKeys:
+        - suburb
+      knownValues: {}
+    label:
+      prefix: "suburb: "
+      key: suburb
+      type: Property
+    icon: "🏘️"
+  - predicate:
+      propertyKeys:
+        - city
+      knownValues: {}
+    label:
+      prefix: "city: "
+      key: city
+      type: Property
+    icon: "🌃"
+  - predicate:
+      propertyKeys:
+        - road
+      knownValues: {}
+    label:
+      prefix: "road: "
+      key: road
+      type: Property
+    icon: "🛣️"
+  - predicate:
+      propertyKeys:
+        - house
+      knownValues: {}
+    label:
+      prefix: "house: "
+      key: house
+      type: Property
+    icon: "🏡"
+  - predicate:
+      propertyKeys:
+        - houseNumber
+      knownValues: {}
+    label:
+      prefix: "houseNumber: "
+      key: houseNumber
+      type: Property
+    icon: "💯"
+  - predicate:
+      propertyKeys:
+        - poBox
+      knownValues: {}
+    label:
+      prefix: "poBox: "
+      key: poBox
+      type: Property
+    icon: "🔢"
+  - predicate:
+      propertyKeys:
+        - category
+      knownValues: {}
+    label:
+      prefix: "category: "
+      key: category
+      type: Property
+    icon: "🐈"
+  - predicate:
+      propertyKeys:
+        - near
+      knownValues: {}
+    label:
+      prefix: "near: "
+      key: near
+      type: Property
+    icon: "⤵️"
+  - predicate:
+      propertyKeys:
+        - stateDistrict
+      knownValues: {}
+    label:
+      prefix: "stateDistrict: "
+      key: stateDistrict
+      type: Property
+    icon: "🌁"
+  - predicate:
+      propertyKeys:
+        - staircase
+      knownValues: {}
+    label:
+      prefix: "staircase: "
+      key: staircase
+      type: Property
+    icon: "🪜"
+  - predicate:
+      propertyKeys:
+        - postcode
+      knownValues: {}
+    label:
+      prefix: "postcode: "
+      key: postcode
+      type: Property
+    icon: "✉️"
+  - predicate:
+      propertyKeys:
+        - canonical
+      knownValues: {}
+    label:
+      value: "Canonical Entity"
+      type: Constant
+    icon: "🧑‍⚖️"
+
+quickQueries:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Adjacent Nodes
+      querySuffix: MATCH (n)--(m) RETURN DISTINCT m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Refresh
+      querySuffix: RETURN n
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Local Properties
+      querySuffix: RETURN id(n), properties(n)
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: [addressee]
+      knownValues: {}
+    quickQuery:
+      name: Property Subgraph
+      queryLanguage: Cypher
+      sort: Node
+      querySuffix: MATCH (n)-->(m) WHERE m.parsed IS NULL AND m.canonical IS NULL RETURN m
+  - predicate:
+      propertyKeys: [addressee]
+      knownValues: {}
+    quickQuery:
+      name: Records
+      querySuffix: MATCH (n)<-[:record_for_entity]-(r) RETURN r
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: [addressee]
+      knownValues: {}
+    quickQuery:
+      name: Resolved Entities
+      querySuffix: MATCH (n)-[:resolved]->(r)<-[:resolved]-(e) RETURN e
+      queryLanguage: Cypher
+      sort: Node
+      edgeLabel: Resolved
+  - predicate:
+      propertyKeys: [addressee]
+      knownValues: {}
+    quickQuery:
+      name: Canonical Entity
+      querySuffix: MATCH (n)-[:resolved]->(r) RETURN r
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: [addressee]
+      knownValues: {}
+    quickQuery:
+      name: A.K.A.
+      querySuffix: MATCH (n)-[:resolved]->(c)<-[:resolved]-(o) RETURN DISTINCT replace(o.addressee, "\n", "  ") AS AKA
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: [canonical]
+      knownValues: {}
+    quickQuery:
+      name: A.K.A.
+      querySuffix: MATCH (n)<-[:resolved]-(o) RETURN replace(o.addressee, "\n", "  ") AS AKA
+      queryLanguage: Cypher
+      sort: Text
+
+sampleQueries:
+  - name: Recent node
+    query: CALL recentNodes(1)
+  - name: Show one record
+    query: MATCH (a) WHERE id(a) = "00145c03-428c-3051-9d9c-c09c5f4eace4" RETURN a
+  - name: Missing PO Box
+    query: MATCH (n) WHERE strId(n) = "c2e78a44-05de-3fbf-98d1-c5bdad2790a0" RETURN n
+  - name: Create missing PO BOX
+    query: WITH "hand-created box 12345" as box MATCH (entity), (poBox) WHERE strId(entity) = "c2e78a44-05de-3fbf-98d1-c5bdad2790a0" AND id(poBox) = idFrom("poBox", box) SET poBox.poBox = box CREATE (entity)-[:poBox]->(poBox) RETURN poBox

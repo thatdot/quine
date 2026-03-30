@@ -1,0 +1,354 @@
+version: 1
+title: Financial Risk Recipe
+description: |-
+  The financial industry’s current approach to managing mandated operational risk capital 
+  requirements, batch processing, often leads to over- or under-allocation of certain 
+  classes of funds, operating with tight time constraints, and slow reactions to changing 
+  market conditions.
+
+  By responding to market changes in real time, organizations can provide adequate coverage 
+  for risk exposure while ensuring their compliance minimally affects their asset allocation.
+
+  The intent of this recipe is to show an example of conditionally adjusting data (investment 
+  value) based on a property (investment class) of the manifested nodes prior to aggregating the 
+  value at multiple levels.  Further, the adjusted aggregates are used to alert on threshold 
+  crossing (percentage of value of specific classes).
+
+  This is accomplished via three technical strategies:
+
+  1. Use of `NumberIteratorIngest` to generate sample transactions
+  2. Conditional handling of data
+  3. Real-time graph-based data (from #2) aggregated across multiple levels
+
+ingestStreams:
+  - type: NumberIteratorIngest
+    ingestLimit: 1
+    format:
+      type: CypherLine
+      query: |-
+        WITH 0 AS institutionId
+        // Generate 10 desks - change the range bound to alter the number of generated desks
+        UNWIND range(1, 10) AS deskId
+        MATCH (institution), (desk)
+        WHERE id(institution) = idFrom('institution', institutionId)
+            AND id(desk) = idFrom('desk', institutionId, deskId)
+
+        SET institution:institution
+
+        SET desk:desk,
+            desk.deskNumber = deskId
+
+        CREATE (institution)-[:HAS]->(desk)
+
+        WITH *
+        // Generate 1000 investments per desk- change the range bound to alter the number of investments generated per desk
+        UNWIND range(1, 1000) AS investmentId
+        MATCH (investment)
+        WHERE id(investment) = idFrom('investment', institutionId, deskId, investmentId)
+
+        SET investment:investment,
+            investment.investmentId = toInteger(toString(deskId) + toString(investmentId)),
+            investment.type = toInteger(rand() * 10) + 1,
+            investment.code = gen.string.from(strId(investment), 25),
+            investment.value = gen.float.from(strId(investment)) * 100
+
+        WITH id(investment) AS invId, desk, investment
+        CALL { 
+              WITH invId
+              MATCH (investment:investment) 
+              WHERE id(investment) = invId
+              SET investment.class = CASE
+                WHEN investment.type <= 5 THEN '1'
+                WHEN investment.type >= 6 AND investment.type <= 8 THEN '2a'
+                WHEN investment.type >= 9 THEN '2b'
+              END
+
+              RETURN investment.type AS type
+            }
+
+        CREATE (desk)-[:HOLDS]->(investment)
+
+standingQueries:
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (investment:investment)<-[:HOLDS]-(desk:desk)<-[:HAS]-(institution:institution)
+        RETURN DISTINCT id(investment) AS id
+      mode: DistinctId
+    outputs:
+      adjustValues:
+        type: CypherQuery
+        query: |-
+          MATCH (investment:investment)<-[:HOLDS]-(desk:desk)<-[:HAS]-(institution:institution)
+          WHERE id(investment) = $that.data.id
+
+          SET investment.adjustedValue = CASE
+                WHEN investment.class = '1' THEN investment.value
+                WHEN investment.class = '2a' THEN investment.value * .85
+                WHEN investment.class = '2b' AND investment.type = 9 THEN investment.value * .75
+                WHEN investment.class = '2b' AND investment.type = 10 THEN investment.value * .5
+              END
+
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (investment:investment)<-[:HOLDS]-(desk:desk)<-[:HAS]-(institution:institution)
+        WHERE investment.adjustedValue IS NOT NULL
+        RETURN DISTINCT id(investment) AS id
+      mode: DistinctId
+    outputs:
+      rollUps:
+        type: CypherQuery
+        query: |-
+          MATCH (investment)<-[:HOLDS]-(desk:desk)<-[:HAS]-(institution:institution)
+          WHERE id(investment) = $that.data.id
+            AND investment.adjustedValue IS NOT NULL
+
+          UNWIND [["1","adjustedValue1"], ["2a","adjustedValue2a"], ["2b","adjustedValue2b"]] AS stuff
+
+          WITH institution,investment,desk,stuff
+          WHERE investment.class = stuff[0]
+
+          CALL float.add(institution,stuff[1],investment.adjustedValue) YIELD result AS institutionAdjustedValueRollupByClass
+          CALL float.add(institution,"totalAdjustedValue",investment.adjustedValue) YIELD result AS institutionAdjustedValueRollup
+
+          CALL float.add(desk,stuff[1],investment.adjustedValue) YIELD result AS deskAdjustedValueRollupByClass
+          CALL float.add(desk,"totalAdjustedValue",investment.adjustedValue) YIELD result AS deskAdjustedValueRollup
+
+          SET institution.percentAdjustedValue2 = ((institution.adjustedValue2a + institution.adjustedValue2b)/institution.totalAdjustedValue) * 100,
+              institution.percentAdjustedValue2b = (institution.adjustedValue2b/institution.totalAdjustedValue) * 100
+
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (investment:investment)<-[:HOLDS]-(desk:desk)<-[:HAS]-(institution:institution)
+        RETURN DISTINCT id(investment) AS id
+      mode: DistinctId
+    outputs:
+      class2CompositionAlert:
+        type: CypherQuery
+        query: |-
+          MATCH (investment:investment)<-[:HOLDS]-(desk:desk)<-[:HAS]-(institution:institution)
+          WHERE id(investment) = $that.data.id
+            AND (institution.investments = 2500 OR institution.investments = 5000 OR institution.investments = 10000)
+            AND institution.percentAdjustedValue2 > 40
+
+          RETURN institution.percentAdjustedValue2 AS Class_2_Composition
+        andThen:
+          type: PrintToStandardOut
+      class2bCompositionAlert:
+        type: CypherQuery
+        query: |-
+          MATCH (investment:investment)<-[:HOLDS]-(desk:desk)<-[:HAS]-(institution:institution)
+          WHERE id(investment) = $that.data.id
+            AND (institution.investments = 2500 OR institution.investments = 5000 OR institution.investments = 10000)
+            AND institution.percentAdjustedValue2b > 15
+
+          RETURN institution.percentAdjustedValue2b AS Class_2b_Composition
+        andThen:
+          type: PrintToStandardOut
+quickQueries:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: "[Node] Adjacent Nodes"
+      querySuffix: MATCH (n)--(m) RETURN DISTINCT m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: "[Node] Parent Node"
+      querySuffix: MATCH (n)<-[]-(m) RETURN DISTINCT m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: "[Node] Refresh"
+      querySuffix: RETURN n
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: "[Text] Local Properties"
+      querySuffix: RETURN id(n) AS NODE_ID, labels(n) AS NODE_LABELS, properties(n) AS NODE_PROPERTIES
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: "[Text] Node Label"
+      querySuffix: RETURN labels(n)
+      queryLanguage: Cypher
+      sort: Text
+
+sampleQueries:
+  - name: Last 10 Nodes
+    query: CALL recentNodes(10)
+  - name: Legend (show one of each node type)
+    query: MATCH (n) WHERE labels(n) IS NOT NULL WITH labels(n) AS kind, collect(n) AS legend RETURN legend[0]
+  - name: Show distribution of investment node classes (grouped by desk)
+    query: MATCH (investment:investment)<-[]-(desk:desk) RETURN desk.deskNumber AS DESK, investment.investmentId AS INVESTMENT, investment.class AS CLASS ORDER BY desk.deskNumber
+  - name: Wiretap Standing Query 1
+    query: 'CALL standing.wiretap({ name: "STANDING-1"}) YIELD meta, data WHERE meta.isPositiveMatch MATCH (n) WHERE id(n) = data.id RETURN properties(n)'
+  - name: Wiretap Standing Query 2
+    query: 'CALL standing.wiretap({ name: "STANDING-2"}) YIELD meta, data WHERE meta.isPositiveMatch MATCH (n) WHERE id(n) = data.id RETURN properties(n)'
+  - name: Wiretap Standing Query 3
+    query: 'CALL standing.wiretap({ name: "STANDING-3"}) YIELD meta, data WHERE meta.isPositiveMatch MATCH (n) WHERE id(n) = data.id RETURN properties(n)'
+
+nodeAppearances:
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 1
+      dbLabel: investment
+    icon: ion-cash
+    color: "#85BB65"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 2
+      dbLabel: investment
+    icon: ion-cash
+    color: "#85BB65"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 3
+      dbLabel: investment
+    icon: ion-cash
+    color: "#85BB65"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 4
+      dbLabel: investment
+    icon: ion-cash
+    color: "#85BB65"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 5
+      dbLabel: investment
+    icon: ion-cash
+    color: "#85BB65"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 6
+      dbLabel: investment
+    icon: ion-android-warning
+    color: "#FFAA33"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 7
+      dbLabel: investment
+    icon: ion-android-warning
+    color: "#FFAA33"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 8
+      dbLabel: investment
+    icon: ion-android-warning
+    color: "#FFAA33"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 9
+      dbLabel: investment
+    icon: ion-android-alert
+    color: "#880808"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: 10
+      dbLabel: investment
+    icon: ion-android-alert
+    color: "#880808"
+    size:
+    label:
+      type: Property
+      key: investmentId
+      prefix: "Investment ID: "
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: desk
+    icon: ion-archive
+    color: "#aaa9ad"
+    size:
+    label:
+      type: Property
+      key: deskNumber
+      prefix: "Desk: "
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: institution
+    icon: ion-android-home
+    color: "#AA4A44"
+    size:

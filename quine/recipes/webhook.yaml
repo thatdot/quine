@@ -1,0 +1,58 @@
+version: 1
+title: Data Enrichment with Webhooks
+contributor: https://github.com/mastapegs
+summary: Stream numbers into graph and notify HTTP endpoint to enrich graph
+description: |-
+  This recipe will stream numbers into the graph and stream them out to an HTTP endpoint, which will
+  then calculate the factors of those numbers, and create relationships between the numbers and their
+  factors.
+ingestStreams:
+  - type: NumberIteratorIngest
+    startAtOffset: 1
+    ingestLimit: 13
+    format:
+      type: CypherLine
+      query: |-
+        WITH toInteger($that) AS number
+        MATCH (n) WHERE id(n) = idFrom("Number", number)
+        SET n:Number, n.number = number
+standingQueries:
+  - pattern:
+      type: Cypher
+      mode: DistinctId
+      query: |-
+        MATCH (n:Number)
+        WHERE n.number IS NOT NULL
+        RETURN DISTINCT id(n) AS id
+    outputs:
+      log-to-console:
+        type: CypherQuery
+        query: |-
+          MATCH (n:Number)
+          WHERE id(n) = $that.data.id
+          RETURN n.number AS number, $that.data.id AS id
+        andThen:
+          type: PrintToStandardOut
+      post-to-webhook:
+        type: CypherQuery
+        query: |-
+          MATCH (n:Number)
+          WHERE id(n) = $that.data.id
+          RETURN n.number AS number, $that.data.id AS id
+        andThen:
+          type: PostToEndpoint
+          url: http://127.0.0.1:3000/webhook
+nodeAppearances:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Number
+    label:
+      type: Property
+      key: number
+      prefix: "Number: "
+quickQueries: []
+sampleQueries:
+  - name: Return all Number nodes
+    query: MATCH (n:Number) RETURN n
+statusQuery: null

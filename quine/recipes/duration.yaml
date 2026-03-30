@@ -1,0 +1,145 @@
+version: 1
+title: Temporal Locality Example
+contributor: https://github.com/maglietti
+summary: Relate email messages sent or received by a specific user within a 4-6 minute window.
+description: |-
+        This recipe looks for emails sent or received by cto@company.com within a 4-6 minute
+        window as a means of highlighting a technique for matching on temporal locality of nodes.
+
+ingestStreams:
+  - type: FileIngest
+    path: email.json
+    format:
+      type: CypherJson
+      query: |-
+        MATCH (sender), (message) 
+        WHERE id(sender) = idFrom('email', $that.from)
+          AND id(message) = idFrom('message', $that) 
+        
+        SET sender.email = $that.from,
+            sender: Email,
+            message.from = $that.from,
+            message.to = $that.to,
+            message.subject = $that.subject,
+            message.time = datetime({ epochMillis: $that.time}),
+            message: Message
+        
+        CREATE (sender)-[:SENT_MSG]->(message)
+        
+        WITH $that as t, message
+        UNWIND t.to AS rcv
+        MATCH (receiver)
+        WHERE id(receiver) = idFrom('email', rcv)
+        
+        SET receiver.email = rcv,
+            receiver: Email
+        
+        CREATE (message)-[:RECEIVED_MSG]->(receiver)
+
+standingQueries:
+   - pattern:
+       type: Cypher
+       mode: MultipleValues
+       query: |-
+         MATCH (n)-[:SENT_MSG]->(m)-[:RECEIVED_MSG]->(r)
+         WHERE n.email="cto@company.com" OR r.email="cto@company.com"
+         RETURN id(n) as ctoId, id(m) as ctoMsgId, m.time as mTime, id(r) as recId
+     outputs:
+       withinFourToSixMinuteWindow:
+         type: CypherQuery
+         query: |-
+           MATCH (n)-[:SENT_MSG]->(m)-[:RECEIVED_MSG]->(r), (thisMsg)
+           WHERE id(n) = $that.data.ctoId
+             AND id(r) = $that.data.recId
+             AND id(thisMsg) = $that.data.ctoMsgId
+             AND id(m) <> id(thisMsg)
+             AND duration("PT6M") > duration.between(m.time,thisMsg.time) > duration("PT4M")
+           
+           CREATE (m)-[:IN_WINDOW]->(thisMsg)
+           CREATE (m)<-[:IN_WINDOW]-(thisMsg)
+           
+           WITH n, m, r, "http://localhost:8080/#MATCH" + text.urlencode(' (n)-[:SENT_MSG]->(m)-[:RECEIVED_MSG]->(r) WHERE strId(n)="' + strId(n) + '"AND strId(r)="' + strId(r) + '" AND  strId(m)="' + strId(m) + '" RETURN n, r, m') as URL
+          
+           RETURN URL
+         andThen:
+          type: PrintToStandardOut
+
+nodeAppearances:
+  - predicate:
+      propertyKeys:
+        - email
+      knownValues:
+        email: "cto@company.com"
+      dbLabel: Email
+    icon: ion-android-person
+    color: "#F44336"
+    size:
+    label:
+      type: Property
+      key: email
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Email
+    icon: ion-android-person
+    color: "#2ECC71"
+    size:
+    label:
+      type: Property
+      key: email
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Message
+    icon: ion-ios-email-outline
+    color: "#2ECC71"
+    size:
+    label:
+      type: Property
+      key: subject
+
+quickQueries:
+  - predicate:
+      propertyKeys: [ ]
+      knownValues: {}
+    quickQuery:
+      name: "[Node] Adjacent Nodes"
+      querySuffix: MATCH (n)--(m) RETURN DISTINCT m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: "[Node] Refresh"
+      querySuffix: RETURN n
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: "[Text] Local Properties"
+      querySuffix: RETURN id(n), properties(n)
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Message
+    quickQuery:
+      name: "[Node] Messages in Window"
+      querySuffix: MATCH (n)-[:IN_WINDOW]-(m) RETURN n,m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Message
+    quickQuery:
+      name: "[Text] Table of Messages in Window"
+      querySuffix: MATCH (n)-[r:IN_WINDOW]-(m) RETURN DISTINCT n.time AS MSG1_TIME, n.subject AS MSG1_SUBJECT, m.time AS MSG2_TIME, m.subject AS MSG2_SUBJECT, toString(abs(duration.between(n.time,m.time).seconds/60)) + " Minutes " + toString(abs(duration.between(n.time,m.time).seconds)-abs(duration.between(n.time,m.time).seconds/60)*60) + " Seconds" AS DELTA_TIME
+      queryLanguage: Cypher
+      sort: Text
+
+sampleQueries: []
