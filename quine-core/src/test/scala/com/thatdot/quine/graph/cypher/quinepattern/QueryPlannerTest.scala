@@ -503,6 +503,73 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     ) shouldBe false
   }
 
+  "CREATE node without labels" should "produce FreshNode with SetProperties for CREATE with properties" in {
+    val plan = planQuery("""CREATE (c {name: "literal"}) RETURN c""")
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.FreshNode(Symbol("1")),
+      QueryPlan.Project(
+        List(Projection(Expression.Ident(ts(36, 36), Right(QuineIdentifier(1)), None), Symbol("1"))),
+        true,
+        QueryPlan.LocalEffect(
+          List(
+            LocalQueryEffect.SetProperties(
+              None,
+              Expression.MapLiteral(
+                ts(10, 26),
+                Map(Symbol("name") -> Expression.AtomicLiteral(ts(17, 25), Value.Text("literal"), None)),
+                None,
+              ),
+            ),
+          ),
+          QueryPlan.Unit,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  it should "produce FreshNode with no effects for bare CREATE" in {
+    val plan = planQuery("""CREATE (c) RETURN c""")
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.FreshNode(Symbol("1")),
+      QueryPlan.Project(
+        List(Projection(Expression.Ident(ts(18, 18), Right(QuineIdentifier(1)), None), Symbol("1"))),
+        true,
+        QueryPlan.Unit,
+      ),
+    )
+    plan shouldBe expected
+  }
+
+  it should "produce FreshNode with SetLabels and SetProperties for CREATE with labels" in {
+    val plan = planQuery("""CREATE (c:Person {name: "literal"}) RETURN c""")
+    val ts = Source.TextSource
+    val expected = QueryPlan.Anchor(
+      AnchorTarget.FreshNode(Symbol("1")),
+      QueryPlan.Project(
+        List(Projection(Expression.Ident(ts(43, 43), Right(QuineIdentifier(1)), None), Symbol("1"))),
+        true,
+        QueryPlan.LocalEffect(
+          List(
+            LocalQueryEffect.SetLabels(None, Set(Symbol("Person"))),
+            LocalQueryEffect.SetProperties(
+              None,
+              Expression.MapLiteral(
+                ts(17, 33),
+                Map(Symbol("name") -> Expression.AtomicLiteral(ts(24, 32), Value.Text("literal"), None)),
+                None,
+              ),
+            ),
+          ),
+          QueryPlan.Unit,
+        ),
+      ),
+    )
+    plan shouldBe expected
+  }
+
   // ============================================================
   // EDGE CREATION PLANNING TESTS
   // ============================================================

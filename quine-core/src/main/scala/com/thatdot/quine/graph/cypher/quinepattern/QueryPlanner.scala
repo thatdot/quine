@@ -1984,12 +1984,11 @@ object QueryPlanner {
       val maybeProperties = nodePattern.maybeProperties
       // Only create node if:
       // 1. Binding is resolved (FOREACH bindings reference existing nodes)
-      // 2. It has labels (indicates creation intent)
-      // 3. The binding doesn't already exist (not from MATCH, etc.)
+      // 2. The binding doesn't already exist (not from MATCH, etc.)
       val createEffect = bindingInfo match {
         case ResolvedBinding(bindingId) =>
           val binding = bindingSymbol(bindingId)
-          if (labels.nonEmpty && !existingBindings.contains(binding))
+          if (!existingBindings.contains(binding))
             Some(LocalQueryEffect.CreateNode(binding, labels, maybeProperties))
           else None
         case _: ForeachBinding => None // FOREACH bindings reference existing nodes
