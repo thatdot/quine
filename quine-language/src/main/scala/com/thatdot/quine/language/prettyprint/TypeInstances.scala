@@ -41,6 +41,7 @@ trait TypeInstances extends BaseInstances {
       case Type.PrimitiveType.Boolean => text("Boolean")
       case Type.PrimitiveType.String => text("String")
       case Type.PrimitiveType.NodeType => text("Node")
+      case Type.PrimitiveType.EdgeType => text("Edge")
     }
 }
 

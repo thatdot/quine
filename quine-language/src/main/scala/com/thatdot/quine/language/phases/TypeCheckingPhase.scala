@@ -350,7 +350,7 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
           case _: Value.Map => pure(atomic.copy(ty = Some(Type.Any)))
           case _: Value.NodeId => pure(atomic.copy(ty = Some(PrimitiveType.NodeType)))
           case _: Value.Node => pure(atomic.copy(ty = Some(PrimitiveType.NodeType)))
-          case _: Value.Relationship => pure(atomic.copy(ty = Some(Type.Any)))
+          case _: Value.Relationship => pure(atomic.copy(ty = Some(PrimitiveType.EdgeType)))
         }
 
       case list: Expression.ListLiteral =>
@@ -691,6 +691,9 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
   } yield pattern.copy(initial = annotatedInitial, path = annotatedPath)
 
   def annotateConnection(connection: Connection): TCEffect[Connection] = for {
+    _ <- connection.edge.maybeBinding.traverse_ { id =>
+      addTableEntryForId(id, PrimitiveType.EdgeType)
+    }
     annotatedDest <- annotateNodePattern(connection.dest)
   } yield connection.copy(dest = annotatedDest)
 

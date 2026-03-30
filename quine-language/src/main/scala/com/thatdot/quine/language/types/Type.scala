@@ -133,5 +133,8 @@ object Type {
 
     /** Graph node reference */
     case object NodeType extends PrimitiveType
+
+    /** Graph edge reference */
+    case object EdgeType extends PrimitiveType
   }
 }

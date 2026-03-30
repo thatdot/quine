@@ -394,6 +394,37 @@ class TypeCheckerTests extends munit.FunSuite {
     )
   }
 
+  test("edge binding gets EdgeType") {
+    val (state, maybeQuery) = parseAndCheck("MATCH (a)-[r:KNOWS]->(b) RETURN r")
+
+    assert(maybeQuery.isDefined, "Should parse relationship pattern")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+
+    val edgeTypes = state.symbolTable.typeVars.filter(_.ty == PrimitiveType.EdgeType)
+    assert(edgeTypes.nonEmpty, "Should have at least one EdgeType entry in symbol table")
+  }
+
+  test("edge binding preserves EdgeType through WITH alias") {
+    val (state, maybeQuery) = parseAndCheck("MATCH (a)-[r:KNOWS]->(b) WITH r AS e RETURN e")
+
+    assert(maybeQuery.isDefined, "Should parse query with edge alias")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+
+    def resolve(ty: Type): Type = ty match {
+      case Type.TypeVariable(id, _) => state.typeEnv.get(id).map(resolve).getOrElse(ty)
+      case other => other
+    }
+
+    // The WITH alias 'e' should have a type that resolves to EdgeType
+    // Find the type entry for the alias (it will be a type variable that unifies with EdgeType)
+    val allResolved = state.symbolTable.typeVars.map(e => (e.identifier, resolve(e.ty)))
+    val edgeEntries = allResolved.filter(_._2 == PrimitiveType.EdgeType)
+    assert(
+      edgeEntries.size >= 2,
+      s"Both r and e should resolve to EdgeType, got: $allResolved",
+    )
+  }
+
   test("null literal gets Null type") {
     val (state, maybeQuery) = parseAndCheck("RETURN null")
 

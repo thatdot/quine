@@ -223,7 +223,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     containsOperator(
       plan,
       {
-        case QueryPlan.CrossProduct(queries, _) => queries.size >= 2
+        case QueryPlan.CrossProduct(queries, _) => queries.size == 2
         case _ => false
       },
     ) shouldBe true
@@ -1039,7 +1039,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     """)
 
     // Verify we have anchors for both m and g
-    countComputedAnchors(plan) should be >= 2
+    countComputedAnchors(plan) shouldBe 3
 
     // Find Unwind in the plan
     def findUnwind(p: QueryPlan): Option[QueryPlan.Unwind] = p match {
@@ -2238,8 +2238,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     }
 
     val bindingIds = collectWithBindings(allParts)
-    // There should be at least 2 different bindings for 'x' with distinct IDs
-    bindingIds.toSet.size should be >= 2
+    // There should be exactly 2 different bindings for 'x' with distinct IDs
+    bindingIds.toSet.size shouldBe 2
   }
 
   "extractWithAliases" should "not track property-access aliases" in {
