@@ -67,8 +67,8 @@ class NonNodeActor(graph: QuinePatternOpsGraph with StandingQueryOpsGraph, names
           properties = Map.empty,
           edges = Set.empty[HalfEdge],
           labels = Set.empty,
-          graph = Some(graph),
-          namespace = Some(ns),
+          graph = graph,
+          namespace = ns,
         )
 
         // Install the state graph and kickstart it

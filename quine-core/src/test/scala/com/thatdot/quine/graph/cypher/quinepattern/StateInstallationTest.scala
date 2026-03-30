@@ -215,7 +215,7 @@ class StateInstallationTest extends AnyFlatSpec with Matchers {
     def countAnchors(p: QueryPlan): Int = p match {
       case QueryPlan.Anchor(_, onTarget) => 1 + countAnchors(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countAnchors).sum
-      case QueryPlan.Sequence(first, andThen, _) => countAnchors(first) + countAnchors(andThen)
+      case QueryPlan.Sequence(first, andThen) => countAnchors(first) + countAnchors(andThen)
       case QueryPlan.Filter(_, input) => countAnchors(input)
       case QueryPlan.Project(_, _, input) => countAnchors(input)
       case QueryPlan.LocalEffect(_, input) => countAnchors(input)

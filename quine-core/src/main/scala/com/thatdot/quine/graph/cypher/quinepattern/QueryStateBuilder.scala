@@ -128,7 +128,6 @@ object StateDescriptor {
     mode: RuntimeMode,
     plan: QueryPlan.CrossProduct,
     childIds: List[StandingQueryId],
-    childEntryPoints: Set[StandingQueryId] = Set.empty, // Children that need context injection
   ) extends StateDescriptor
 
   /** State for Union operator */
@@ -147,9 +146,8 @@ object StateDescriptor {
     parentId: StandingQueryId,
     mode: RuntimeMode,
     plan: QueryPlan.Optional,
-    innerId: StandingQueryId,
+    innerPlan: QueryPlan, // Plan to install with injected context when context arrives
     nullBindings: Set[Symbol],
-    contextBridgeId: StandingQueryId, // Bridge that forwards context to inner's entry point
   ) extends StateDescriptor
 
   /** State for Sequence operator */
@@ -159,22 +157,8 @@ object StateDescriptor {
     mode: RuntimeMode,
     plan: QueryPlan.Sequence,
     firstId: StandingQueryId,
-    andThenId: StandingQueryId,
-    contextBridgeId: Option[StandingQueryId], // Bridge that feeds first's context into andThen
-    contextFlow: ContextFlow,
+    andThenPlan: QueryPlan, // Plan to install with injected context when first produces results
   ) extends StateDescriptor
-
-  /** Bridge state that receives context from Sequence and forwards to andThen's entry point.
-    * This enables Sequence to properly inject first's context into andThen before andThen evaluates.
-    */
-  case class ContextBridge(
-    id: StandingQueryId,
-    parentId: StandingQueryId, // The state in andThen that receives context
-    mode: RuntimeMode,
-    sequenceId: StandingQueryId, // The Sequence state that sends context
-  ) extends StateDescriptor {
-    def plan: QueryPlan = QueryPlan.Unit // Placeholder
-  }
 
   /** State for Expand operator */
   case class Expand(
@@ -229,8 +213,7 @@ object StateDescriptor {
     parentId: StandingQueryId,
     mode: RuntimeMode,
     plan: QueryPlan.Unwind,
-    subqueryId: StandingQueryId,
-    contextBridgeId: Option[StandingQueryId], // Bridge that feeds Unwind's bindings into subquery
+    subqueryPlan: QueryPlan, // Plan to install for each unwound binding
   ) extends StateDescriptor
 
   /** State for Procedure call operator.
@@ -244,8 +227,7 @@ object StateDescriptor {
     parentId: StandingQueryId,
     mode: RuntimeMode,
     plan: QueryPlan.Procedure,
-    subqueryId: StandingQueryId,
-    contextBridgeId: Option[StandingQueryId], // Bridge that feeds procedure result bindings into subquery
+    subqueryPlan: QueryPlan, // Plan to install for each procedure result row
   ) extends StateDescriptor
 
   /** State for LocalEffect operator */
@@ -558,67 +540,16 @@ object QueryStateBuilder {
 
       case p @ QueryPlan.Optional(inner, nullBindings) =>
         val id = StandingQueryId.fresh()
-        // Create a bridge ID for forwarding context to inner's entry point
-        val bridgeId = StandingQueryId.fresh()
-        // Use buildPlanWithContextInjection to find inner's entry point
-        val (ctxAfterInner, innerId, maybeEntryPointId) =
-          buildPlanWithContextInjection(inner, id, mode, ctx, fallbackOutput, bridgeId)
+        val desc = StateDescriptor.Optional(id, parentId, mode, p, inner, nullBindings)
+        // Optional is a leaf - when installed via LoadQueryPlan it kickstarts with injectedContext
+        (ctx.addState(desc, isLeaf = true), id)
 
-        // Inner plan always comes from planMatch which produces Anchor/Expand plans,
-        // so there is always an entry point. Assert this invariant.
-        val entryPointId = maybeEntryPointId.getOrElse(
-          throw new IllegalStateException(
-            s"Optional inner plan must have an entry point for context injection, but none was found for plan: $inner",
-          ),
-        )
-        // Bridge receives from Optional and forwards to inner's entry point
-        val bridgeDesc = StateDescriptor.ContextBridge(bridgeId, entryPointId, mode, id)
-        val ctxWithBridge = ctxAfterInner
-          .addState(bridgeDesc, isLeaf = false)
-          .markNotLeaf(entryPointId) // Entry point is no longer a leaf - it receives from bridge
-
-        val desc =
-          StateDescriptor.Optional(id, parentId, mode, p, innerId, nullBindings, bridgeId)
-        (ctxWithBridge.addState(desc, isLeaf = false), id)
-
-      case p @ QueryPlan.Sequence(first, andThen, contextFlow) =>
+      case p @ QueryPlan.Sequence(first, andThen) =>
         val id = StandingQueryId.fresh()
-        // Build first child
+        // Build first child only; andThen is deferred until first produces context
         val (ctxAfterFirst, firstId) = buildPlan(first, id, mode, ctx, fallbackOutput)
-
-        // Create a ContextBridge to inject first's context into andThen
-        val bridgeId = StandingQueryId.fresh()
-
-        // Find the entry point of andThen (Unit leaf or first state that needs context)
-        // and build andThen with the bridge as the parent for its entry point
-        val (ctxAfterAndThen, andThenId, maybeEntryPointId) =
-          buildPlanWithContextInjection(andThen, id, mode, ctxAfterFirst, fallbackOutput, bridgeId)
-
-        // Add the context bridge state
-        val ctxWithBridge = maybeEntryPointId match {
-          case Some(entryPointId) =>
-            // Bridge receives from Sequence and forwards to andThen's entry point
-            val bridgeDesc = StateDescriptor.ContextBridge(bridgeId, entryPointId, mode, id)
-            ctxAfterAndThen
-              .addState(bridgeDesc, isLeaf = false) // Bridge is not a leaf - it waits for Sequence
-              .markNotLeaf(entryPointId) // Entry point is no longer a leaf - it receives from bridge
-          case None =>
-            // No entry point found (andThen doesn't need context injection)
-            ctxAfterAndThen
-        }
-
-        // Add sequence state with bridge ID
-        val desc = StateDescriptor.Sequence(
-          id,
-          parentId,
-          mode,
-          p,
-          firstId,
-          andThenId,
-          maybeEntryPointId.map(_ => bridgeId), // Only set bridgeId if we have an entry point
-          contextFlow,
-        )
-        (ctxWithBridge.addState(desc, isLeaf = false), id)
+        val desc = StateDescriptor.Sequence(id, parentId, mode, p, firstId, andThen)
+        (ctxAfterFirst.addState(desc, isLeaf = false), id)
 
       // === DISPATCH OPERATORS ===
 
@@ -662,53 +593,19 @@ object QueryStateBuilder {
 
       case p @ QueryPlan.Unwind(_, _, subquery) =>
         val id = StandingQueryId.fresh()
-        // Create a bridge ID for forwarding bindings to subquery
-        val bridgeId = StandingQueryId.fresh()
-        // Use buildPlanWithContextInjection to find subquery's entry point
-        val (ctxAfterSubquery, subqueryId, maybeEntryPointId) =
-          buildPlanWithContextInjection(subquery, id, mode, ctx, fallbackOutput, bridgeId)
-
-        // Create context bridge if subquery has an entry point
-        val ctxWithBridge = maybeEntryPointId match {
-          case Some(entryPointId) =>
-            // Bridge receives from Unwind and forwards to subquery's entry point
-            val bridgeDesc = StateDescriptor.ContextBridge(bridgeId, entryPointId, mode, id)
-            ctxAfterSubquery
-              .addState(bridgeDesc, isLeaf = false) // Bridge is not a leaf - it waits for Unwind
-              .markNotLeaf(entryPointId) // Entry point is no longer a leaf - it receives from bridge
-          case None =>
-            ctxAfterSubquery
-        }
-
-        val desc = StateDescriptor.Unwind(id, parentId, mode, p, subqueryId, maybeEntryPointId.map(_ => bridgeId))
+        // Don't build subquery here - store the plan and defer installation for each unwound binding
+        val desc = StateDescriptor.Unwind(id, parentId, mode, p, subquery)
         // Unwind IS a leaf - it generates initial bindings from the list expression
-        (ctxWithBridge.addState(desc, isLeaf = true), id)
+        (ctx.addState(desc, isLeaf = true), id)
 
       // === PROCEDURE CALL ===
 
       case p @ QueryPlan.Procedure(_, _, _, subquery) =>
         val id = StandingQueryId.fresh()
-        // Create a bridge ID for forwarding procedure result bindings to subquery
-        val bridgeId = StandingQueryId.fresh()
-        // Use buildPlanWithContextInjection to find subquery's entry point
-        val (ctxAfterSubquery, subqueryId, maybeEntryPointId) =
-          buildPlanWithContextInjection(subquery, id, mode, ctx, fallbackOutput, bridgeId)
-
-        // Create context bridge if subquery has an entry point
-        val ctxWithBridge = maybeEntryPointId match {
-          case Some(entryPointId) =>
-            // Bridge receives from Procedure and forwards to subquery's entry point
-            val bridgeDesc = StateDescriptor.ContextBridge(bridgeId, entryPointId, mode, id)
-            ctxAfterSubquery
-              .addState(bridgeDesc, isLeaf = false) // Bridge is not a leaf - it waits for Procedure
-              .markNotLeaf(entryPointId) // Entry point is no longer a leaf - it receives from bridge
-          case None =>
-            ctxAfterSubquery
-        }
-
-        val desc = StateDescriptor.Procedure(id, parentId, mode, p, subqueryId, maybeEntryPointId.map(_ => bridgeId))
+        // Don't build subquery here - store the plan and defer installation for each procedure result row
+        val desc = StateDescriptor.Procedure(id, parentId, mode, p, subquery)
         // Procedure IS a leaf - it generates initial bindings from procedure results
-        (ctxWithBridge.addState(desc, isLeaf = true), id)
+        (ctx.addState(desc, isLeaf = true), id)
 
       // === EFFECT OPERATORS ===
 
@@ -746,265 +643,6 @@ object QueryStateBuilder {
     }
   }
 
-  /** Build a plan for Sequence's andThen, identifying the entry point that needs context injection.
-    *
-    * The entry point is the state that should receive context from first (via ContextBridge).
-    * This is typically:
-    * - Unit leaf (for plans like Project(columns, Unit))
-    * - The root itself (for dispatch operators like Anchor that need context for target evaluation)
-    *
-    * @return (updated context, andThen root ID, optional entry point ID)
-    */
-  private def buildPlanWithContextInjection(
-    plan: QueryPlan,
-    parentId: StandingQueryId,
-    mode: RuntimeMode,
-    ctx: BuildContext,
-    fallbackOutput: Option[OutputTarget],
-    bridgeId: StandingQueryId, // The bridge that will provide context
-  ): (BuildContext, StandingQueryId, Option[StandingQueryId]) =
-    plan match {
-      // For Unit, the entry point IS the Unit - it will receive from bridge instead of kickstarting
-      case QueryPlan.Unit =>
-        val id = StandingQueryId.fresh()
-        // Create Unit state but with bridge as its "source" - it will receive context, not generate it
-        val desc = StateDescriptor.Unit(id, parentId, mode, QueryPlan.Unit)
-        (ctx.addState(desc, isLeaf = true), id, Some(id))
-
-      // For dispatch operators (Anchor, Expand), they ARE the entry point
-      // They need context to evaluate their target/edges
-      case p @ QueryPlan.Anchor(target, onTarget) =>
-        val id = StandingQueryId.fresh()
-        val desc = StateDescriptor.Anchor(id, parentId, mode, p, target, onTarget, fallbackOutput)
-        (ctx.addState(desc, isLeaf = true), id, Some(id))
-
-      case p @ QueryPlan.Expand(_, _, onNeighbor) =>
-        val id = StandingQueryId.fresh()
-        val desc = StateDescriptor.Expand(id, parentId, mode, p, onNeighbor)
-        (ctx.addState(desc, isLeaf = true), id, Some(id))
-
-      // For transform operators (Project, Filter, etc.), recurse to find the entry point in their input
-      case p @ QueryPlan.Project(_, _, input) =>
-        val id = StandingQueryId.fresh()
-        val (ctxAfterInput, inputId, maybeEntryPoint) =
-          buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
-        val desc = StateDescriptor.Project(id, parentId, mode, p, inputId)
-        (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
-
-      case p @ QueryPlan.Filter(_, input) =>
-        val id = StandingQueryId.fresh()
-        val (ctxAfterInput, inputId, maybeEntryPoint) =
-          buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
-        val desc = StateDescriptor.Filter(id, parentId, mode, p, inputId)
-        (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
-
-      case p @ QueryPlan.Distinct(input) =>
-        val id = StandingQueryId.fresh()
-        val (ctxAfterInput, inputId, maybeEntryPoint) =
-          buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
-        val desc = StateDescriptor.Distinct(id, parentId, mode, p, inputId)
-        (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
-
-      case p @ QueryPlan.LocalEffect(_, input) =>
-        val id = StandingQueryId.fresh()
-        val (ctxAfterInput, inputId, maybeEntryPoint) =
-          buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
-        val desc = StateDescriptor.Effect(id, parentId, mode, p, inputId)
-        (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
-
-      case p @ QueryPlan.Aggregate(_, _, input) =>
-        val id = StandingQueryId.fresh()
-        val (ctxAfterInput, inputId, maybeEntryPoint) =
-          buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
-        val desc = StateDescriptor.Aggregate(id, parentId, mode, p, inputId)
-        (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
-
-      case p @ QueryPlan.Sort(_, input) =>
-        val id = StandingQueryId.fresh()
-        val (ctxAfterInput, inputId, maybeEntryPoint) =
-          buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
-        val desc = StateDescriptor.Sort(id, parentId, mode, p, inputId)
-        (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
-
-      case p @ QueryPlan.Limit(_, input) =>
-        val id = StandingQueryId.fresh()
-        val (ctxAfterInput, inputId, maybeEntryPoint) =
-          buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
-        val desc = StateDescriptor.Limit(id, parentId, mode, p, inputId)
-        (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
-
-      case p @ QueryPlan.Skip(_, input) =>
-        val id = StandingQueryId.fresh()
-        val (ctxAfterInput, inputId, maybeEntryPoint) =
-          buildPlanWithContextInjection(input, id, mode, ctx, fallbackOutput, bridgeId)
-        val desc = StateDescriptor.Skip(id, parentId, mode, p, inputId)
-        (ctxAfterInput.addState(desc, isLeaf = false), id, maybeEntryPoint)
-
-      // For nested Sequence, the entry point is in first's subtree
-      // Context flows: outer bridge -> first's entry point -> first -> (inner bridge) -> andThen's entry point
-      case p @ QueryPlan.Sequence(first, andThen, contextFlow) =>
-        val id = StandingQueryId.fresh()
-        // Recurse into first to find its entry point (using outer bridgeId)
-        val (ctxAfterFirst, firstId, maybeEntryInFirst) =
-          buildPlanWithContextInjection(first, id, mode, ctx, fallbackOutput, bridgeId)
-
-        // This inner Sequence ALSO needs its own bridge for first->andThen context flow!
-        // Create a NEW bridge for this Sequence's internal context forwarding
-        val innerBridgeId = StandingQueryId.fresh()
-
-        // Build andThen with context injection using this Sequence's inner bridge
-        val (ctxAfterAndThen, andThenId, maybeEntryInAndThen) =
-          buildPlanWithContextInjection(andThen, id, mode, ctxAfterFirst, fallbackOutput, innerBridgeId)
-
-        // Add the inner context bridge if andThen has an entry point
-        val ctxWithBridge = maybeEntryInAndThen match {
-          case Some(entryPointId) =>
-            // Inner bridge receives from this Sequence and forwards to andThen's entry point
-            val bridgeDesc = StateDescriptor.ContextBridge(innerBridgeId, entryPointId, mode, id)
-            ctxAfterAndThen
-              .addState(bridgeDesc, isLeaf = false)
-              .markNotLeaf(entryPointId)
-          case None =>
-            ctxAfterAndThen
-        }
-
-        val desc = StateDescriptor.Sequence(
-          id,
-          parentId,
-          mode,
-          p,
-          firstId,
-          andThenId,
-          maybeEntryInAndThen.map(_ => innerBridgeId), // Use inner bridge for first->andThen flow
-          contextFlow,
-        )
-        (ctxWithBridge.addState(desc, isLeaf = false), id, maybeEntryInFirst)
-
-      // For CrossProduct, collect ALL child entry points (not just the first)
-      // If multiple children need context, CrossProduct itself becomes the entry point
-      // and forwards context to all child entry points
-      case p @ QueryPlan.CrossProduct(queries, _) =>
-        val id = StandingQueryId.fresh()
-        var currentCtx = ctx
-        var allChildEntryPoints = Set.empty[StandingQueryId]
-        val childIds = queries.map { childPlan =>
-          val (childCtx, childId, maybeChildEntry) =
-            buildPlanWithContextInjection(childPlan, id, mode, currentCtx, fallbackOutput, bridgeId)
-          currentCtx = childCtx
-          // Collect ALL child entry points
-          maybeChildEntry.foreach(ep => allChildEntryPoints += ep)
-          childId
-        }
-
-        // If any children need context, CrossProduct becomes the entry point
-        // and will forward context to all child entry points
-        val (finalCtx, entryPoint) = if (allChildEntryPoints.nonEmpty) {
-          // Mark all child entry points as not-leaves (they receive from CrossProduct)
-          val ctxWithMarkedChildren = allChildEntryPoints.foldLeft(currentCtx)(_.markNotLeaf(_))
-          val desc = StateDescriptor.Product(id, parentId, mode, p, childIds, allChildEntryPoints)
-          (ctxWithMarkedChildren.addState(desc, isLeaf = false), Some(id))
-        } else {
-          val desc = StateDescriptor.Product(id, parentId, mode, p, childIds)
-          (currentCtx.addState(desc, isLeaf = false), None)
-        }
-        (finalCtx, id, entryPoint)
-
-      // For Unwind, create bridge to subquery's entry point
-      // Unwind itself becomes an entry point (it needs context from parent to combine with unwound values)
-      case p @ QueryPlan.Unwind(_, _, subquery) =>
-        val id = StandingQueryId.fresh()
-        // Create Unwind's own context bridge to its subquery
-        val unwindBridgeId = StandingQueryId.fresh()
-        // Find subquery's entry point using buildPlanWithContextInjection
-        val (ctxAfterSubquery, subqueryId, maybeSubqueryEntry) =
-          buildPlanWithContextInjection(subquery, id, mode, ctx, fallbackOutput, unwindBridgeId)
-
-        val ctxWithBridge = maybeSubqueryEntry match {
-          case Some(entryPointId) =>
-            val bridgeDesc = StateDescriptor.ContextBridge(unwindBridgeId, entryPointId, mode, id)
-            ctxAfterSubquery
-              .addState(bridgeDesc, isLeaf = false)
-              .markNotLeaf(entryPointId)
-          case None =>
-            ctxAfterSubquery
-        }
-
-        val desc =
-          StateDescriptor.Unwind(id, parentId, mode, p, subqueryId, maybeSubqueryEntry.map(_ => unwindBridgeId))
-        // Unwind IS the entry point - it receives context from parent and combines with unwound values
-        (ctxWithBridge.addState(desc, isLeaf = true), id, Some(id))
-
-      // For Procedure, create bridge to subquery's entry point
-      // Procedure itself becomes an entry point (it needs context from parent to evaluate arguments)
-      case p @ QueryPlan.Procedure(_, _, _, subquery) =>
-        val id = StandingQueryId.fresh()
-        // Create Procedure's own context bridge to its subquery
-        val procBridgeId = StandingQueryId.fresh()
-        // Find subquery's entry point using buildPlanWithContextInjection
-        val (ctxAfterSubquery, subqueryId, maybeSubqueryEntry) =
-          buildPlanWithContextInjection(subquery, id, mode, ctx, fallbackOutput, procBridgeId)
-
-        val ctxWithBridge = maybeSubqueryEntry match {
-          case Some(entryPointId) =>
-            val bridgeDesc = StateDescriptor.ContextBridge(procBridgeId, entryPointId, mode, id)
-            ctxAfterSubquery
-              .addState(bridgeDesc, isLeaf = false)
-              .markNotLeaf(entryPointId)
-          case None =>
-            ctxAfterSubquery
-        }
-
-        val desc =
-          StateDescriptor.Procedure(id, parentId, mode, p, subqueryId, maybeSubqueryEntry.map(_ => procBridgeId))
-        // Procedure IS the entry point - it receives context from parent and combines with procedure results
-        (ctxWithBridge.addState(desc, isLeaf = true), id, Some(id))
-
-      // For Union, both children independently generate their own results.
-      // No context injection needed - falls through to buildPlan.
-      case _: QueryPlan.Union =>
-        val (ctxAfter, rootId) = buildPlan(plan, parentId, mode, ctx, fallbackOutput)
-        (ctxAfter, rootId, None)
-
-      // For Optional, it IS the entry point - it receives context from parent and forwards to inner
-      case p @ QueryPlan.Optional(inner, nullBindings) =>
-        val id = StandingQueryId.fresh()
-        // Create Optional's own bridge for forwarding context to inner
-        val optionalBridgeId = StandingQueryId.fresh()
-        // Find inner's entry point
-        val (ctxAfterInner, innerId, maybeInnerEntry) =
-          buildPlanWithContextInjection(inner, id, mode, ctx, fallbackOutput, optionalBridgeId)
-
-        // Inner plan always comes from planMatch which produces Anchor/Expand plans,
-        // so there is always an entry point. Assert this invariant.
-        val innerEntryId = maybeInnerEntry.getOrElse(
-          throw new IllegalStateException(
-            s"Optional inner plan must have an entry point for context injection, but none was found for plan: $inner",
-          ),
-        )
-        // Bridge receives from Optional and forwards to inner's entry point
-        val bridgeDesc = StateDescriptor.ContextBridge(optionalBridgeId, innerEntryId, mode, id)
-        val ctxWithBridge = ctxAfterInner
-          .addState(bridgeDesc, isLeaf = false)
-          .markNotLeaf(innerEntryId)
-
-        val desc = StateDescriptor.Optional(
-          id,
-          parentId,
-          mode,
-          p,
-          innerId,
-          nullBindings,
-          optionalBridgeId,
-        )
-        // Optional IS the entry point - it receives context from parent and combines with inner results
-        (ctxWithBridge.addState(desc, isLeaf = false), id, Some(id))
-
-      // For other leaf operators that generate their own context (LocalId, LocalProperty, etc.),
-      // there's no entry point to inject - they don't need context from first
-      case _ =>
-        val (ctxAfter, rootId) = buildPlan(plan, parentId, mode, ctx, fallbackOutput)
-        (ctxAfter, rootId, None)
-    }
 }
 
 /** Query execution context - bindings from symbols to values.

@@ -16,6 +16,7 @@ import org.scalatest.matchers.should.Matchers
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
+import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.cypher.quinepattern.OutputTarget.LazyResultCollector
 import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan._
 import com.thatdot.quine.graph.quinepattern.{LoadQuery, NonNodeActor, QuinePatternOpsGraph}
@@ -29,7 +30,7 @@ import com.thatdot.quine.graph.{
   StandingQueryResult,
   defaultNamespaceId,
 }
-import com.thatdot.quine.language.ast.{Expression, Source, Value}
+import com.thatdot.quine.language.ast.{CypherIdentifier, Expression, Source, Value}
 import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
@@ -155,7 +156,6 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("aId")),
             LocalId(Symbol("a")),
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -207,7 +207,6 @@ class QueryPlanRuntimeTest
             Expression.AtomicLiteral(noSource, Value.False, None),
             Unit,
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -299,7 +298,6 @@ class QueryPlanRuntimeTest
             Expression.AtomicLiteral(noSource, Value.False, None),
             Unit,
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -352,7 +350,6 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("bId")),
             LocalId(Symbol("b")),
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -411,7 +408,6 @@ class QueryPlanRuntimeTest
             dropExisting = true,
             Unit,
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -1348,7 +1344,6 @@ class QueryPlanRuntimeTest
             ),
             LocalId(Symbol("b")),
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -1384,7 +1379,7 @@ class QueryPlanRuntimeTest
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
 
-  it should "dispatch correctly when anchor target evaluates to Value.Node in context bridge" in {
+  it should "dispatch correctly when anchor target evaluates to Value.Node in sequence" in {
     val graph = makeGraph("node-value-bridge-test")
     while (!graph.isReady) Thread.sleep(10)
 
@@ -1403,7 +1398,7 @@ class QueryPlanRuntimeTest
       )
 
       // Query plan simulating: MATCH (a) WHERE id(a) = $nodeIdA WITH a MATCH (b) WHERE id(b) = $nodeIdB RETURN a, b
-      // The WITH clause produces a Node value that gets passed via ContextBridge
+      // The WITH clause produces a Node value that gets passed via LoadQueryPlan with injected context
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeIdA")),
         Sequence(
@@ -1412,7 +1407,6 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("nodeIdB")),
             LocalId(Symbol("b")),
           ),
-          ContextFlow.Extend, // a should be in context for second anchor
         ),
       )
 
@@ -1556,7 +1550,6 @@ class QueryPlanRuntimeTest
             ),
             input = Unit,
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -1660,10 +1653,8 @@ class QueryPlanRuntimeTest
                 ),
                 input = Unit,
               ),
-              ContextFlow.Extend,
             ),
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -1860,7 +1851,6 @@ class QueryPlanRuntimeTest
             binding = Symbol("item"),
             subquery = LocalId(Symbol("item")),
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -1928,11 +1918,9 @@ class QueryPlanRuntimeTest
                   ),
                   input = Unit,
                 ),
-                ContextFlow.Extend,
               ),
             ),
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -2078,7 +2066,6 @@ class QueryPlanRuntimeTest
             input = Unit,
           ),
         ),
-        ContextFlow.Extend,
       )
 
       val resultPromise = Promise[Seq[QueryContext]]()
@@ -2389,7 +2376,7 @@ class QueryPlanRuntimeTest
         case LocalEffect(effects, child) =>
           effects.collect { case e: LocalQueryEffect.CreateHalfEdge => e } ++ findCreateHalfEdges(child)
         case Anchor(_, onTarget) => findCreateHalfEdges(onTarget)
-        case Sequence(first, andThen, _) => findCreateHalfEdges(first) ++ findCreateHalfEdges(andThen)
+        case Sequence(first, andThen) => findCreateHalfEdges(first) ++ findCreateHalfEdges(andThen)
         case CrossProduct(queries, _) => queries.flatMap(findCreateHalfEdges)
         case Filter(_, input) => findCreateHalfEdges(input)
         case Project(_, _, input) => findCreateHalfEdges(input)
@@ -2507,7 +2494,7 @@ class QueryPlanRuntimeTest
         case LocalEffect(effects, child) =>
           effects.collect { case e: LocalQueryEffect.CreateHalfEdge => e } ++ findCreateHalfEdges(child)
         case Anchor(_, onTarget) => findCreateHalfEdges(onTarget)
-        case Sequence(first, andThen, _) => findCreateHalfEdges(first) ++ findCreateHalfEdges(andThen)
+        case Sequence(first, andThen) => findCreateHalfEdges(first) ++ findCreateHalfEdges(andThen)
         case CrossProduct(queries, _) => queries.flatMap(findCreateHalfEdges)
         case Filter(_, input) => findCreateHalfEdges(input)
         case Project(_, _, input) => findCreateHalfEdges(input)
@@ -4366,7 +4353,7 @@ class QueryPlanRuntimeTest
       case Project(_, _, input) =>
         prettyPrintPlan(input, indent + 1)
 
-      case Sequence(first, andThen, _) =>
+      case Sequence(first, andThen) =>
         prettyPrintPlan(first, indent + 2)
         prettyPrintPlan(andThen, indent + 2)
 
@@ -9156,7 +9143,6 @@ class QueryPlanRuntimeTest
         Sequence(
           LocalProperty(Symbol("score"), Some(Symbol("s")), PropertyConstraint.Any),
           Filter(filterExpr, Unit),
-          ContextFlow.Extend,
         ),
       )
 
@@ -9214,7 +9200,6 @@ class QueryPlanRuntimeTest
         Sequence(
           LocalProperty(Symbol("score"), Some(Symbol("s")), PropertyConstraint.Any),
           Filter(filterExpr, Unit),
-          ContextFlow.Extend,
         ),
       )
 
@@ -9275,7 +9260,6 @@ class QueryPlanRuntimeTest
             dropExisting = false,
             Unit,
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -9335,7 +9319,6 @@ class QueryPlanRuntimeTest
             dropExisting = false,
             Unit,
           ),
-          ContextFlow.Extend,
         ),
       )
 
@@ -9390,7 +9373,6 @@ class QueryPlanRuntimeTest
         Sequence(
           LocalProperty(Symbol("first"), Some(Symbol("f")), PropertyConstraint.Any),
           LocalProperty(Symbol("second"), Some(Symbol("s")), PropertyConstraint.Any),
-          ContextFlow.Extend,
         ),
       )
 
@@ -9445,7 +9427,6 @@ class QueryPlanRuntimeTest
         Sequence(
           LocalProperty(Symbol("first"), Some(Symbol("f")), PropertyConstraint.Any),
           LocalProperty(Symbol("second"), Some(Symbol("s")), PropertyConstraint.Any),
-          ContextFlow.Extend,
         ),
       )
 
@@ -9877,6 +9858,506 @@ class QueryPlanRuntimeTest
       // The edge existed at t1, so we should get 1 result
       //  (this test could be more precise once we have relationship variable support in Quine Pattern)
       collector.positiveCount shouldBe 1
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  // ============================================================
+  // Sequence dependent-anchor retraction: when b.baz changes,
+  // the standing query must retract the old value and assert the new one.
+  // ============================================================
+
+  "Sequence dependent anchor" should "retract and re-assert when downstream property changes" in {
+    val graph = makeGraph("sequence-baz-retract-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Compute node A's ID via idFrom("foo") — same as the Cypher expression
+      val nodeIdA = com.thatdot.quine.graph.idFrom(Expr.Str("foo"))(qidProvider)
+      // Node B is a separate node whose ID will be stored in a.bar
+      val nodeIdB = qidProvider.newQid()
+
+      // Set up node A: bar property points to node B's ID
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeIdA, "bar", QuineValue.Id(nodeIdB)),
+        5.seconds,
+      )
+
+      // Set up node B: baz property with initial value
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeIdB, "baz", QuineValue.Str("original")),
+        5.seconds,
+      )
+
+      // Plan the query:
+      //   MATCH (a) WHERE id(a) = idFrom("foo")
+      //   MATCH (b) WHERE id(b) = a.bar
+      //   RETURN b.baz
+      val query =
+        """
+          MATCH (a) WHERE id(a) = idFrom("foo")
+          MATCH (b) WHERE id(b) = a.bar
+          RETURN b.baz AS baz
+        """
+      val planned = QueryPlanner.planFromString(query) match {
+        case Right(p) => p
+        case Left(err) => fail(s"Failed to plan: $err")
+      }
+
+      val collector = new LazyResultCollector()
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = planned.plan,
+        mode = RuntimeMode.Lazy,
+        params = Map.empty,
+        namespace = namespace,
+        output = OutputTarget.LazyCollector(collector),
+        returnColumns = planned.returnColumns,
+        outputNameMapping = planned.outputNameMapping,
+      )
+
+      // Step 1: Initial result — b.baz = "original"
+      collector.awaitFirstDelta(5.seconds) shouldBe true
+      collector.positiveCount shouldBe 1
+      val initialResult = collector.netResult
+      initialResult.size shouldBe 1
+      val initialRow = initialResult.keys.head
+      initialRow.bindings(Symbol("baz")) shouldBe Value.Text("original")
+      collector.clear()
+
+      // Step 2: Change b.baz to "updated" — should retract old and assert new
+      Await.result(
+        graph.literalOps(namespace).setProp(nodeIdB, "baz", QuineValue.Str("updated")),
+        5.seconds,
+      )
+      Thread.sleep(500)
+
+      // Net result should be zero (one retraction + one assertion)
+      collector.netResult.values.sum shouldBe 0
+      collector.hasRetractions shouldBe true
+
+      // Verify the retraction is for the old value and the assertion is for the new value
+      val allDeltas = collector.allDeltas.flatMap(_.toSeq)
+      val retractions = allDeltas.filter(_._2 < 0).map(_._1)
+      val assertions = allDeltas.filter(_._2 > 0).map(_._1)
+
+      retractions should have size 1
+      retractions.head.bindings(Symbol("baz")) shouldBe Value.Text("original")
+
+      assertions should have size 1
+      assertions.head.bindings(Symbol("baz")) shouldBe Value.Text("updated")
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  // ============================================================
+  // Sequence cross-product correctness: when first produces
+  // multiple distinct context rows, andThen results must only
+  // combine with the specific context row that spawned them,
+  // not be cross-producted with the entire accumulated firstState.
+  // ============================================================
+
+  "Sequence with multiple first rows" should "produce exactly one output row per first-andThen pair" in {
+    val graph = makeGraph("sequence-multi-row-crossproduct-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Two "person" nodes, each pointing to a distinct "hobby" node via a.friend property
+      val nodeA1 = qidProvider.newQid()
+      val nodeA2 = qidProvider.newQid()
+      val nodeB1 = qidProvider.newQid()
+      val nodeB2 = qidProvider.newQid()
+
+      // Set up person nodes with names and friend pointers
+      Await.result(graph.literalOps(namespace).setProp(nodeA1, "name", QuineValue.Str("Alice")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeA1, "friend", QuineValue.Id(nodeB1)), 5.seconds)
+
+      Await.result(graph.literalOps(namespace).setProp(nodeA2, "name", QuineValue.Str("Bob")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeA2, "friend", QuineValue.Id(nodeB2)), 5.seconds)
+
+      // Set up hobby nodes
+      Await.result(graph.literalOps(namespace).setProp(nodeB1, "hobby", QuineValue.Str("chess")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeB2, "hobby", QuineValue.Str("drums")), 5.seconds)
+
+      // Query plan that creates a SINGLE Sequence with multiple first-rows:
+      //
+      //   Sequence(
+      //     first = Union(                              ← produces 2 rows: Alice's and Bob's bindings
+      //       Anchor(a1, CrossProduct(LocalProp(name), LocalProp(friend))),
+      //       Anchor(a2, CrossProduct(LocalProp(name), LocalProp(friend))),
+      //     ),
+      //     andThen = Anchor(fid, LocalProp(hobby))     ← should be installed per-row with that row's fid
+      //   )
+      //
+      // If the cross-product bug exists, when andThen-for-Alice responds it will be
+      // cross-producted with BOTH Alice's and Bob's rows in firstState, producing spurious results.
+
+      val plan = Sequence(
+        // first: Union of two anchors, each producing {name, fid} — 2 rows total
+        QueryPlan.Union(
+          Anchor(
+            AnchorTarget.Computed(param("a1Id")),
+            CrossProduct(
+              List(
+                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+          Anchor(
+            AnchorTarget.Computed(param("a2Id")),
+            CrossProduct(
+              List(
+                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+        ),
+        // andThen: look up the friend node by fid, get its hobby
+        Anchor(
+          AnchorTarget.Computed(Expression.Ident(noSource, Left(CypherIdentifier(Symbol("fid"))), None)),
+          LocalProperty(Symbol("hobby"), Some(Symbol("hobby")), PropertyConstraint.Any),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val outputTarget = OutputTarget.EagerCollector(resultPromise)
+      val params = Map(
+        Symbol("a1Id") -> Value.NodeId(nodeA1),
+        Symbol("a2Id") -> Value.NodeId(nodeA2),
+      )
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plan,
+        mode = RuntimeMode.Eager,
+        params = params,
+        namespace = namespace,
+        output = outputTarget,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Should get exactly 2 rows: (Alice, chess) and (Bob, drums)
+      results should have size 2
+
+      val nameHobbyPairs = results.map { ctx =>
+        val name = ctx.bindings(Symbol("name")) match {
+          case Value.Text(s) => s
+          case other => fail(s"Expected Text for name, got $other")
+        }
+        val hobby = ctx.bindings(Symbol("hobby")) match {
+          case Value.Text(s) => s
+          case other => fail(s"Expected Text for hobby, got $other")
+        }
+        (name, hobby)
+      }.toSet
+
+      nameHobbyPairs should contain(("Alice", "chess"))
+      nameHobbyPairs should contain(("Bob", "drums"))
+
+      // Crucially: there should be NO spurious cross-rows like (Alice, drums) or (Bob, chess)
+      nameHobbyPairs should not contain (("Alice", "drums"))
+      nameHobbyPairs should not contain (("Bob", "chess"))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  // ============================================================
+  // Optional (LEFT JOIN) per-row null-padding: when multiple
+  // context rows flow into OPTIONAL MATCH, each row must be
+  // independently null-padded or matched. A match for one row
+  // must not retract the null-padded default for a different row.
+  // ============================================================
+
+  "Optional with multiple context rows" should "null-pad only the rows without inner matches" in {
+    val graph = makeGraph("optional-multi-row-nullpad-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Alice's friend (NodeC) has a hobby; Bob's friend (NodeD) does not.
+      val nodeAlice = qidProvider.newQid()
+      val nodeBob = qidProvider.newQid()
+      val nodeC = qidProvider.newQid()
+      val nodeD = qidProvider.newQid()
+
+      Await.result(graph.literalOps(namespace).setProp(nodeAlice, "name", QuineValue.Str("Alice")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeAlice, "friend", QuineValue.Id(nodeC)), 5.seconds)
+
+      Await.result(graph.literalOps(namespace).setProp(nodeBob, "name", QuineValue.Str("Bob")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeBob, "friend", QuineValue.Id(nodeD)), 5.seconds)
+
+      // NodeC has hobby; NodeD does not
+      Await.result(graph.literalOps(namespace).setProp(nodeC, "hobby", QuineValue.Str("chess")), 5.seconds)
+      // NodeD intentionally has no "hobby" property
+
+      // Plan equivalent to:
+      //   MATCH (a) WHERE id(a) IN [$alice, $bob]
+      //   WITH a.name AS name, a.friend AS fid
+      //   OPTIONAL MATCH (b) WHERE id(b) = fid
+      //   RETURN name, b.hobby AS hobby
+      //
+      // Built as Sequence(Union(Alice-anchor, Bob-anchor), Optional(Anchor(fid, hobby)))
+      // SequenceState dispatches a separate OptionalState per first-row.
+      // Each OptionalState independently decides: match → real results, no match → null-padded.
+
+      val plan = Sequence(
+        // first: Union produces two rows: {name, fid} for Alice and Bob
+        QueryPlan.Union(
+          Anchor(
+            AnchorTarget.Computed(param("aliceId")),
+            CrossProduct(
+              List(
+                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+          Anchor(
+            AnchorTarget.Computed(param("bobId")),
+            CrossProduct(
+              List(
+                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+        ),
+        // andThen: Optional that looks up hobby from the friend node
+        QueryPlan.Optional(
+          Anchor(
+            AnchorTarget.Computed(Expression.Ident(noSource, Left(CypherIdentifier(Symbol("fid"))), None)),
+            LocalProperty(Symbol("hobby"), Some(Symbol("hobby")), PropertyConstraint.Any),
+          ),
+          nullBindings = Set(Symbol("hobby")),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val outputTarget = OutputTarget.EagerCollector(resultPromise)
+      val params = Map(
+        Symbol("aliceId") -> Value.NodeId(nodeAlice),
+        Symbol("bobId") -> Value.NodeId(nodeBob),
+      )
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plan,
+        mode = RuntimeMode.Eager,
+        params = params,
+        namespace = namespace,
+        output = outputTarget,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Should get exactly 2 rows
+      results should have size 2
+
+      val nameHobbyPairs = results.map { ctx =>
+        val name = ctx.bindings(Symbol("name")) match {
+          case Value.Text(s) => s
+          case other => fail(s"Expected Text for name, got $other")
+        }
+        val hobby = ctx.bindings.get(Symbol("hobby")) match {
+          case Some(Value.Text(s)) => Some(s)
+          case Some(Value.Null) | None => None
+          case Some(other) => fail(s"Expected Text or Null for hobby, got $other")
+        }
+        (name, hobby)
+      }.toSet
+
+      // Alice's friend has a hobby → real result
+      nameHobbyPairs should contain(("Alice", Some("chess")))
+
+      // Bob's friend has no hobby → null-padded
+      nameHobbyPairs should contain(("Bob", None))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "produce correct results when all rows match the optional inner" in {
+    val graph = makeGraph("optional-multi-row-all-match-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Both friends have hobbies
+      val nodeAlice = qidProvider.newQid()
+      val nodeBob = qidProvider.newQid()
+      val nodeC = qidProvider.newQid()
+      val nodeD = qidProvider.newQid()
+
+      Await.result(graph.literalOps(namespace).setProp(nodeAlice, "name", QuineValue.Str("Alice")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeAlice, "friend", QuineValue.Id(nodeC)), 5.seconds)
+
+      Await.result(graph.literalOps(namespace).setProp(nodeBob, "name", QuineValue.Str("Bob")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeBob, "friend", QuineValue.Id(nodeD)), 5.seconds)
+
+      Await.result(graph.literalOps(namespace).setProp(nodeC, "hobby", QuineValue.Str("chess")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeD, "hobby", QuineValue.Str("drums")), 5.seconds)
+
+      val plan = Sequence(
+        QueryPlan.Union(
+          Anchor(
+            AnchorTarget.Computed(param("aliceId")),
+            CrossProduct(
+              List(
+                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+          Anchor(
+            AnchorTarget.Computed(param("bobId")),
+            CrossProduct(
+              List(
+                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+        ),
+        QueryPlan.Optional(
+          Anchor(
+            AnchorTarget.Computed(Expression.Ident(noSource, Left(CypherIdentifier(Symbol("fid"))), None)),
+            LocalProperty(Symbol("hobby"), Some(Symbol("hobby")), PropertyConstraint.Any),
+          ),
+          nullBindings = Set(Symbol("hobby")),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val outputTarget = OutputTarget.EagerCollector(resultPromise)
+      val params = Map(
+        Symbol("aliceId") -> Value.NodeId(nodeAlice),
+        Symbol("bobId") -> Value.NodeId(nodeBob),
+      )
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plan,
+        mode = RuntimeMode.Eager,
+        params = params,
+        namespace = namespace,
+        output = outputTarget,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      results should have size 2
+
+      val nameHobbyPairs = results.map { ctx =>
+        val name = ctx.bindings(Symbol("name")) match {
+          case Value.Text(s) => s
+          case other => fail(s"Expected Text for name, got $other")
+        }
+        val hobby = ctx.bindings(Symbol("hobby")) match {
+          case Value.Text(s) => s
+          case other => fail(s"Expected Text for hobby, got $other")
+        }
+        (name, hobby)
+      }.toSet
+
+      nameHobbyPairs should contain(("Alice", "chess"))
+      nameHobbyPairs should contain(("Bob", "drums"))
+
+      // No null-padded rows — both matched
+      nameHobbyPairs should not contain (("Alice", "drums"))
+      nameHobbyPairs should not contain (("Bob", "chess"))
+
+    } finally Await.result(graph.shutdown(), 5.seconds)
+  }
+
+  it should "null-pad all rows when no inner matches exist" in {
+    val graph = makeGraph("optional-multi-row-no-match-test")
+    while (!graph.isReady) Thread.sleep(10)
+
+    try {
+      // Neither friend has a hobby
+      val nodeAlice = qidProvider.newQid()
+      val nodeBob = qidProvider.newQid()
+      val nodeC = qidProvider.newQid()
+      val nodeD = qidProvider.newQid()
+
+      Await.result(graph.literalOps(namespace).setProp(nodeAlice, "name", QuineValue.Str("Alice")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeAlice, "friend", QuineValue.Id(nodeC)), 5.seconds)
+
+      Await.result(graph.literalOps(namespace).setProp(nodeBob, "name", QuineValue.Str("Bob")), 5.seconds)
+      Await.result(graph.literalOps(namespace).setProp(nodeBob, "friend", QuineValue.Id(nodeD)), 5.seconds)
+
+      // Neither NodeC nor NodeD has a "hobby" property
+
+      val plan = Sequence(
+        QueryPlan.Union(
+          Anchor(
+            AnchorTarget.Computed(param("aliceId")),
+            CrossProduct(
+              List(
+                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+          Anchor(
+            AnchorTarget.Computed(param("bobId")),
+            CrossProduct(
+              List(
+                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+              ),
+            ),
+          ),
+        ),
+        QueryPlan.Optional(
+          Anchor(
+            AnchorTarget.Computed(Expression.Ident(noSource, Left(CypherIdentifier(Symbol("fid"))), None)),
+            LocalProperty(Symbol("hobby"), Some(Symbol("hobby")), PropertyConstraint.Any),
+          ),
+          nullBindings = Set(Symbol("hobby")),
+        ),
+      )
+
+      val resultPromise = Promise[Seq[QueryContext]]()
+      val outputTarget = OutputTarget.EagerCollector(resultPromise)
+      val params = Map(
+        Symbol("aliceId") -> Value.NodeId(nodeAlice),
+        Symbol("bobId") -> Value.NodeId(nodeBob),
+      )
+
+      val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
+      loader ! QuinePatternCommand.LoadQueryPlan(
+        sqid = StandingQueryId.fresh(),
+        plan = plan,
+        mode = RuntimeMode.Eager,
+        params = params,
+        namespace = namespace,
+        output = outputTarget,
+      )
+
+      val results = Await.result(resultPromise.future, 10.seconds)
+
+      // Both rows should be null-padded
+      results should have size 2
+
+      val nameHobbyPairs = results.map { ctx =>
+        val name = ctx.bindings(Symbol("name")) match {
+          case Value.Text(s) => s
+          case other => fail(s"Expected Text for name, got $other")
+        }
+        val hobby = ctx.bindings.get(Symbol("hobby")) match {
+          case Some(Value.Null) | None => None
+          case Some(other) => fail(s"Expected Null for hobby, got $other")
+        }
+        (name, hobby)
+      }.toSet
+
+      nameHobbyPairs should contain(("Alice", None))
+      nameHobbyPairs should contain(("Bob", None))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }

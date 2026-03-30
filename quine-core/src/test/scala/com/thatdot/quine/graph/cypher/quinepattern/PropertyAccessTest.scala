@@ -67,7 +67,6 @@ class PropertyAccessTest
         Sequence(
           LocalProperty(Symbol("name"), aliasAs = Some(Symbol("1.name")), PropertyConstraint.Unconditional),
           LocalId(Symbol("n")),
-          ContextFlow.Extend,
         ),
       )
 

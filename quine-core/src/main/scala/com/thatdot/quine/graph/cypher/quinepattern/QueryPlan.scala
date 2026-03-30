@@ -210,12 +210,10 @@ object QueryPlan {
     *
     * @param first The first step, produces results with context
     * @param andThen The continuation, receives context from first
-    * @param contextFlow How context flows from first to andThen
     */
   case class Sequence(
     first: QueryPlan,
     andThen: QueryPlan,
-    contextFlow: ContextFlow,
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq(first, andThen)
   }
@@ -494,32 +492,6 @@ object AnchorTarget {
     * @param binding Symbol to bind the new node ID to
     */
   case class FreshNode(binding: Symbol) extends AnchorTarget
-}
-
-// ============================================================
-// CONTEXT FLOW
-// ============================================================
-
-/** How context flows between Sequence steps */
-sealed trait ContextFlow
-
-object ContextFlow {
-
-  /** Output replaces first's bindings with andThen's result only.
-    *
-    * First's bindings are passed to andThen for evaluation, but the final
-    * output contains only andThen's bindings.
-    * Used when first's bindings are intermediate and not needed in output.
-    */
-  case object Replace extends ContextFlow
-
-  /** Output extends first's bindings with andThen's result.
-    *
-    * Cross-products first's context with andThen's result, so final output
-    * contains bindings from both.
-    * Used when both first and andThen's bindings are needed in output.
-    */
-  case object Extend extends ContextFlow
 }
 
 // ============================================================

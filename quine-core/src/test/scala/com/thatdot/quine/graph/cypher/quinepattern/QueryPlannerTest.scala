@@ -48,7 +48,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     case QueryPlan.Anchor(AnchorTarget.AllNodes, onTarget) => countComputedAnchors(onTarget)
     case QueryPlan.Project(_, _, input) => countComputedAnchors(input)
     case QueryPlan.Filter(_, input) => countComputedAnchors(input)
-    case QueryPlan.Sequence(first, andThen, _) => countComputedAnchors(first) + countComputedAnchors(andThen)
+    case QueryPlan.Sequence(first, andThen) => countComputedAnchors(first) + countComputedAnchors(andThen)
     case QueryPlan.CrossProduct(queries, _) => queries.map(countComputedAnchors).sum
     case QueryPlan.LocalEffect(_, input) => countComputedAnchors(input)
     case QueryPlan.Distinct(input) => countComputedAnchors(input)
@@ -65,7 +65,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
         case QueryPlan.Anchor(_, onTarget) => containsOperator(onTarget, check)
         case QueryPlan.Project(_, _, input) => containsOperator(input, check)
         case QueryPlan.Filter(_, input) => containsOperator(input, check)
-        case QueryPlan.Sequence(first, andThen, _) =>
+        case QueryPlan.Sequence(first, andThen) =>
           containsOperator(first, check) || containsOperator(andThen, check)
         case QueryPlan.CrossProduct(queries, _) => queries.exists(q => containsOperator(q, check))
         case QueryPlan.LocalEffect(_, input) => containsOperator(input, check)
@@ -85,7 +85,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     case QueryPlan.Anchor(_, onTarget) => findLocalNodes(onTarget)
     case QueryPlan.Project(_, _, input) => findLocalNodes(input)
     case QueryPlan.Filter(_, input) => findLocalNodes(input)
-    case QueryPlan.Sequence(first, andThen, _) => findLocalNodes(first) ++ findLocalNodes(andThen)
+    case QueryPlan.Sequence(first, andThen) => findLocalNodes(first) ++ findLocalNodes(andThen)
     case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalNodes)
     case QueryPlan.LocalEffect(_, input) => findLocalNodes(input)
     case QueryPlan.Distinct(input) => findLocalNodes(input)
@@ -103,7 +103,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     case QueryPlan.Anchor(_, onTarget) => findCreateHalfEdges(onTarget)
     case QueryPlan.Project(_, _, input) => findCreateHalfEdges(input)
     case QueryPlan.Filter(_, input) => findCreateHalfEdges(input)
-    case QueryPlan.Sequence(first, andThen, _) => findCreateHalfEdges(first) ++ findCreateHalfEdges(andThen)
+    case QueryPlan.Sequence(first, andThen) => findCreateHalfEdges(first) ++ findCreateHalfEdges(andThen)
     case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findCreateHalfEdges)
     case QueryPlan.Unwind(_, _, subquery) => findCreateHalfEdges(subquery)
     case _ => Nil
@@ -115,7 +115,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     case QueryPlan.CrossProduct(queries, _) => queries.map(countExpands).sum
     case QueryPlan.Filter(_, input) => countExpands(input)
     case QueryPlan.Project(_, _, input) => countExpands(input)
-    case QueryPlan.Sequence(first, andThen, _) => countExpands(first) + countExpands(andThen)
+    case QueryPlan.Sequence(first, andThen) => countExpands(first) + countExpands(andThen)
     case QueryPlan.Anchor(_, onTarget) => countExpands(onTarget)
     case _ => 0
   }
@@ -393,7 +393,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     def findLocalProperties(p: QueryPlan): List[QueryPlan.LocalProperty] = p match {
       case lp: QueryPlan.LocalProperty => List(lp)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
-      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.Sequence(first, andThen) => findLocalProperties(first) ++ findLocalProperties(andThen)
       case QueryPlan.Filter(_, input) => findLocalProperties(input)
       case QueryPlan.Project(_, _, input) => findLocalProperties(input)
       case QueryPlan.Distinct(input) => findLocalProperties(input)
@@ -820,7 +820,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => countUnwinds(onTarget)
       case QueryPlan.Project(_, _, input) => countUnwinds(input)
       case QueryPlan.Filter(_, input) => countUnwinds(input)
-      case QueryPlan.Sequence(first, andThen, _) => countUnwinds(first) + countUnwinds(andThen)
+      case QueryPlan.Sequence(first, andThen) => countUnwinds(first) + countUnwinds(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countUnwinds).sum
       case QueryPlan.LocalEffect(_, input) => countUnwinds(input)
       case _ => 0
@@ -945,7 +945,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findSetLabelsEffects(onTarget)
       case QueryPlan.Project(_, _, input) => findSetLabelsEffects(input)
       case QueryPlan.Filter(_, input) => findSetLabelsEffects(input)
-      case QueryPlan.Sequence(first, andThen, _) => findSetLabelsEffects(first) ++ findSetLabelsEffects(andThen)
+      case QueryPlan.Sequence(first, andThen) => findSetLabelsEffects(first) ++ findSetLabelsEffects(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findSetLabelsEffects)
       case QueryPlan.Unwind(_, _, subquery) => findSetLabelsEffects(subquery)
       case _ => Nil
@@ -958,7 +958,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findCreateNodeEffects(onTarget)
       case QueryPlan.Project(_, _, input) => findCreateNodeEffects(input)
       case QueryPlan.Filter(_, input) => findCreateNodeEffects(input)
-      case QueryPlan.Sequence(first, andThen, _) => findCreateNodeEffects(first) ++ findCreateNodeEffects(andThen)
+      case QueryPlan.Sequence(first, andThen) => findCreateNodeEffects(first) ++ findCreateNodeEffects(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findCreateNodeEffects)
       case QueryPlan.Unwind(_, _, subquery) => findCreateNodeEffects(subquery)
       case _ => Nil
@@ -1005,7 +1005,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findSetLabelsEffects(onTarget)
       case QueryPlan.Project(_, _, input) => findSetLabelsEffects(input)
       case QueryPlan.Filter(_, input) => findSetLabelsEffects(input)
-      case QueryPlan.Sequence(first, andThen, _) => findSetLabelsEffects(first) ++ findSetLabelsEffects(andThen)
+      case QueryPlan.Sequence(first, andThen) => findSetLabelsEffects(first) ++ findSetLabelsEffects(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findSetLabelsEffects)
       case QueryPlan.Unwind(_, _, subquery) => findSetLabelsEffects(subquery)
       case _ => Nil
@@ -1018,7 +1018,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findCreateNodeEffects(onTarget)
       case QueryPlan.Project(_, _, input) => findCreateNodeEffects(input)
       case QueryPlan.Filter(_, input) => findCreateNodeEffects(input)
-      case QueryPlan.Sequence(first, andThen, _) => findCreateNodeEffects(first) ++ findCreateNodeEffects(andThen)
+      case QueryPlan.Sequence(first, andThen) => findCreateNodeEffects(first) ++ findCreateNodeEffects(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findCreateNodeEffects)
       case QueryPlan.Unwind(_, _, subquery) => findCreateNodeEffects(subquery)
       case _ => Nil
@@ -1112,7 +1112,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     def findUnwind(p: QueryPlan): Option[QueryPlan.Unwind] = p match {
       case u: QueryPlan.Unwind => Some(u)
       case QueryPlan.Project(_, _, input) => findUnwind(input)
-      case QueryPlan.Sequence(first, andThen, _) => findUnwind(first).orElse(findUnwind(andThen))
+      case QueryPlan.Sequence(first, andThen) => findUnwind(first).orElse(findUnwind(andThen))
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findUnwind).headOption
       case QueryPlan.Anchor(_, onTarget) => findUnwind(onTarget)
       case QueryPlan.Filter(_, input) => findUnwind(input)
@@ -1129,7 +1129,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findCreateHalfEdge(onTarget)
       case QueryPlan.Project(_, _, input) => findCreateHalfEdge(input)
       case QueryPlan.Filter(_, input) => findCreateHalfEdge(input)
-      case QueryPlan.Sequence(first, andThen, _) => findCreateHalfEdge(first) ++ findCreateHalfEdge(andThen)
+      case QueryPlan.Sequence(first, andThen) => findCreateHalfEdge(first) ++ findCreateHalfEdge(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findCreateHalfEdge)
       case QueryPlan.Unwind(_, _, subquery) => findCreateHalfEdge(subquery)
       case _ => Nil
@@ -1175,7 +1175,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findCreateHalfEdge(onTarget)
       case QueryPlan.Project(_, _, input) => findCreateHalfEdge(input)
       case QueryPlan.Filter(_, input) => findCreateHalfEdge(input)
-      case QueryPlan.Sequence(first, andThen, _) => findCreateHalfEdge(first) ++ findCreateHalfEdge(andThen)
+      case QueryPlan.Sequence(first, andThen) => findCreateHalfEdge(first) ++ findCreateHalfEdge(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findCreateHalfEdge)
       case QueryPlan.Unwind(_, _, subquery) => findCreateHalfEdge(subquery)
       case _ => Nil
@@ -1225,7 +1225,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(AnchorTarget.AllNodes, onTarget) => 1 + countAllNodesAnchors(onTarget)
       case QueryPlan.Anchor(_, onTarget) => countAllNodesAnchors(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countAllNodesAnchors).sum
-      case QueryPlan.Sequence(first, andThen, _) => countAllNodesAnchors(first) + countAllNodesAnchors(andThen)
+      case QueryPlan.Sequence(first, andThen) => countAllNodesAnchors(first) + countAllNodesAnchors(andThen)
       case QueryPlan.Filter(_, input) => countAllNodesAnchors(input)
       case QueryPlan.Project(_, _, input) => countAllNodesAnchors(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countAllNodesAnchors(onNeighbor)
@@ -1270,7 +1270,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(AnchorTarget.AllNodes, onTarget) => 1 + countAllNodesAnchors(onTarget)
       case QueryPlan.Anchor(_, onTarget) => countAllNodesAnchors(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countAllNodesAnchors).sum
-      case QueryPlan.Sequence(first, andThen, _) => countAllNodesAnchors(first) + countAllNodesAnchors(andThen)
+      case QueryPlan.Sequence(first, andThen) => countAllNodesAnchors(first) + countAllNodesAnchors(andThen)
       case QueryPlan.Filter(_, input) => countAllNodesAnchors(input)
       case QueryPlan.Project(_, _, input) => countAllNodesAnchors(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countAllNodesAnchors(onNeighbor)
@@ -1312,7 +1312,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     def hasAllNodesAnchor(p: QueryPlan): Boolean = p match {
       case QueryPlan.Anchor(AnchorTarget.AllNodes, _) => true
       case QueryPlan.Anchor(_, onTarget) => hasAllNodesAnchor(onTarget)
-      case QueryPlan.Sequence(first, andThen, _) => hasAllNodesAnchor(first) || hasAllNodesAnchor(andThen)
+      case QueryPlan.Sequence(first, andThen) => hasAllNodesAnchor(first) || hasAllNodesAnchor(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.exists(hasAllNodesAnchor)
       case QueryPlan.Filter(_, input) => hasAllNodesAnchor(input)
       case QueryPlan.Project(_, _, input) => hasAllNodesAnchor(input)
@@ -1325,7 +1325,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     def hasFilter(p: QueryPlan): Boolean = p match {
       case QueryPlan.Filter(_, _) => true
       case QueryPlan.Anchor(_, onTarget) => hasFilter(onTarget)
-      case QueryPlan.Sequence(first, andThen, _) => hasFilter(first) || hasFilter(andThen)
+      case QueryPlan.Sequence(first, andThen) => hasFilter(first) || hasFilter(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.exists(hasFilter)
       case QueryPlan.Project(_, _, input) => hasFilter(input)
       case QueryPlan.Expand(_, _, onNeighbor) => hasFilter(onNeighbor)
@@ -1368,7 +1368,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(AnchorTarget.AllNodes, onTarget) => 1 + countAllNodesAnchors(onTarget)
       case QueryPlan.Anchor(_, onTarget) => countAllNodesAnchors(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countAllNodesAnchors).sum
-      case QueryPlan.Sequence(first, andThen, _) => countAllNodesAnchors(first) + countAllNodesAnchors(andThen)
+      case QueryPlan.Sequence(first, andThen) => countAllNodesAnchors(first) + countAllNodesAnchors(andThen)
       case QueryPlan.Filter(_, input) => countAllNodesAnchors(input)
       case QueryPlan.Project(_, _, input) => countAllNodesAnchors(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countAllNodesAnchors(onNeighbor)
@@ -1381,7 +1381,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Filter(_, input) => 1 + countFilters(input)
       case QueryPlan.Anchor(_, onTarget) => countFilters(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countFilters).sum
-      case QueryPlan.Sequence(first, andThen, _) => countFilters(first) + countFilters(andThen)
+      case QueryPlan.Sequence(first, andThen) => countFilters(first) + countFilters(andThen)
       case QueryPlan.Project(_, _, input) => countFilters(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countFilters(onNeighbor)
       case QueryPlan.Distinct(input) => countFilters(input)
@@ -1393,7 +1393,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.LocalProperty(_, _, PropertyConstraint.Equal(_)) => 1
       case QueryPlan.Anchor(_, onTarget) => countPushedDownPredicates(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countPushedDownPredicates).sum
-      case QueryPlan.Sequence(first, andThen, _) =>
+      case QueryPlan.Sequence(first, andThen) =>
         countPushedDownPredicates(first) + countPushedDownPredicates(andThen)
       case QueryPlan.Project(_, _, input) => countPushedDownPredicates(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countPushedDownPredicates(onNeighbor)
@@ -1408,7 +1408,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.CrossProduct(queries, _) => queries.map(countAllExpands).sum
       case QueryPlan.Filter(_, input) => countAllExpands(input)
       case QueryPlan.Project(_, _, input) => countAllExpands(input)
-      case QueryPlan.Sequence(first, andThen, _) => countAllExpands(first) + countAllExpands(andThen)
+      case QueryPlan.Sequence(first, andThen) => countAllExpands(first) + countAllExpands(andThen)
       case QueryPlan.Anchor(_, onTarget) => countAllExpands(onTarget)
       case QueryPlan.Distinct(input) => countAllExpands(input)
       case QueryPlan.LocalEffect(_, input) => countAllExpands(input)
@@ -1473,7 +1473,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.CrossProduct(queries, _) => queries.map(countAllExpands).sum
       case QueryPlan.Filter(_, input) => countAllExpands(input)
       case QueryPlan.Project(_, _, input) => countAllExpands(input)
-      case QueryPlan.Sequence(first, andThen, _) => countAllExpands(first) + countAllExpands(andThen)
+      case QueryPlan.Sequence(first, andThen) => countAllExpands(first) + countAllExpands(andThen)
       case QueryPlan.Anchor(_, onTarget) => countAllExpands(onTarget)
       case QueryPlan.Distinct(input) => countAllExpands(input)
       case QueryPlan.LocalEffect(_, input) => countAllExpands(input)
@@ -1658,7 +1658,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     def countAnchors(p: QueryPlan): Int = p match {
       case QueryPlan.Anchor(_, onTarget) => 1 + countAnchors(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countAnchors).sum
-      case QueryPlan.Sequence(first, andThen, _) => countAnchors(first) + countAnchors(andThen)
+      case QueryPlan.Sequence(first, andThen) => countAnchors(first) + countAnchors(andThen)
       case QueryPlan.Filter(_, input) => countAnchors(input)
       case QueryPlan.Project(_, _, input) => countAnchors(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countAnchors(onNeighbor)
@@ -1671,7 +1671,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.LocalEffect(effects, input) => effects.size + countEffects(input)
       case QueryPlan.Anchor(_, onTarget) => countEffects(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countEffects).sum
-      case QueryPlan.Sequence(first, andThen, _) => countEffects(first) + countEffects(andThen)
+      case QueryPlan.Sequence(first, andThen) => countEffects(first) + countEffects(andThen)
       case QueryPlan.Filter(_, input) => countEffects(input)
       case QueryPlan.Project(_, _, input) => countEffects(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countEffects(onNeighbor)
@@ -1703,7 +1703,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.LocalProperty(_, _, PropertyConstraint.Equal(_)) => 1
       case QueryPlan.Anchor(_, onTarget) => countPushedDownPredicates(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countPushedDownPredicates).sum
-      case QueryPlan.Sequence(first, andThen, _) =>
+      case QueryPlan.Sequence(first, andThen) =>
         countPushedDownPredicates(first) + countPushedDownPredicates(andThen)
       case QueryPlan.Project(_, _, input) => countPushedDownPredicates(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countPushedDownPredicates(onNeighbor)
@@ -1731,7 +1731,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.LocalProperty(_, _, PropertyConstraint.Equal(_)) => 1
       case QueryPlan.Anchor(_, onTarget) => countPushedDownPredicates(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countPushedDownPredicates).sum
-      case QueryPlan.Sequence(first, andThen, _) =>
+      case QueryPlan.Sequence(first, andThen) =>
         countPushedDownPredicates(first) + countPushedDownPredicates(andThen)
       case QueryPlan.Project(_, _, input) => countPushedDownPredicates(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countPushedDownPredicates(onNeighbor)
@@ -1753,7 +1753,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.LocalProperty(_, _, PropertyConstraint.Equal(_)) => 1
       case QueryPlan.Anchor(_, onTarget) => countPushedDownPredicates(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countPushedDownPredicates).sum
-      case QueryPlan.Sequence(first, andThen, _) =>
+      case QueryPlan.Sequence(first, andThen) =>
         countPushedDownPredicates(first) + countPushedDownPredicates(andThen)
       case QueryPlan.Project(_, _, input) => countPushedDownPredicates(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countPushedDownPredicates(onNeighbor)
@@ -1935,7 +1935,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
       case QueryPlan.Project(_, _, input) => findLocalProperties(input)
       case QueryPlan.Filter(_, input) => findLocalProperties(input)
-      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.Sequence(first, andThen) => findLocalProperties(first) ++ findLocalProperties(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
       case QueryPlan.Distinct(input) => findLocalProperties(input)
       case _ => Nil
@@ -1971,7 +1971,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
       case QueryPlan.Project(_, _, input) => findLocalProperties(input)
       case QueryPlan.Filter(_, input) => findLocalProperties(input)
-      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.Sequence(first, andThen) => findLocalProperties(first) ++ findLocalProperties(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
       case QueryPlan.Distinct(input) => findLocalProperties(input)
       case _ => Nil
@@ -2007,7 +2007,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
       case QueryPlan.Project(_, _, input) => findLocalProperties(input)
       case QueryPlan.Filter(_, input) => findLocalProperties(input)
-      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.Sequence(first, andThen) => findLocalProperties(first) ++ findLocalProperties(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
       case QueryPlan.Distinct(input) => findLocalProperties(input)
       case QueryPlan.Expand(_, _, child) => findLocalProperties(child)
@@ -2042,7 +2042,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findEqualConstraints(onTarget)
       case QueryPlan.Project(_, _, input) => findEqualConstraints(input)
       case QueryPlan.Filter(_, input) => findEqualConstraints(input)
-      case QueryPlan.Sequence(first, andThen, _) => findEqualConstraints(first) ++ findEqualConstraints(andThen)
+      case QueryPlan.Sequence(first, andThen) => findEqualConstraints(first) ++ findEqualConstraints(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findEqualConstraints)
       case QueryPlan.Distinct(input) => findEqualConstraints(input)
       case _ => Nil
@@ -2073,7 +2073,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findEqualConstraints(onTarget)
       case QueryPlan.Project(_, _, input) => findEqualConstraints(input)
       case QueryPlan.Filter(_, input) => findEqualConstraints(input)
-      case QueryPlan.Sequence(first, andThen, _) => findEqualConstraints(first) ++ findEqualConstraints(andThen)
+      case QueryPlan.Sequence(first, andThen) => findEqualConstraints(first) ++ findEqualConstraints(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findEqualConstraints)
       case QueryPlan.Distinct(input) => findEqualConstraints(input)
       case _ => Nil
@@ -2102,7 +2102,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(AnchorTarget.AllNodes, onTarget) => 1 + countAllNodesAnchors(onTarget)
       case QueryPlan.Anchor(_, onTarget) => countAllNodesAnchors(onTarget)
       case QueryPlan.CrossProduct(queries, _) => queries.map(countAllNodesAnchors).sum
-      case QueryPlan.Sequence(first, andThen, _) => countAllNodesAnchors(first) + countAllNodesAnchors(andThen)
+      case QueryPlan.Sequence(first, andThen) => countAllNodesAnchors(first) + countAllNodesAnchors(andThen)
       case QueryPlan.Filter(_, input) => countAllNodesAnchors(input)
       case QueryPlan.Project(_, _, input) => countAllNodesAnchors(input)
       case QueryPlan.Expand(_, _, onNeighbor) => countAllNodesAnchors(onNeighbor)
@@ -2117,7 +2117,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findEqualConstraints(onTarget)
       case QueryPlan.Project(_, _, input) => findEqualConstraints(input)
       case QueryPlan.Filter(_, input) => findEqualConstraints(input)
-      case QueryPlan.Sequence(first, andThen, _) => findEqualConstraints(first) ++ findEqualConstraints(andThen)
+      case QueryPlan.Sequence(first, andThen) => findEqualConstraints(first) ++ findEqualConstraints(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findEqualConstraints)
       case QueryPlan.Distinct(input) => findEqualConstraints(input)
       case QueryPlan.Expand(_, _, child) => findEqualConstraints(child)
@@ -2144,7 +2144,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
       case QueryPlan.Project(_, _, input) => findLocalProperties(input)
       case QueryPlan.Filter(_, input) => findLocalProperties(input)
-      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.Sequence(first, andThen) => findLocalProperties(first) ++ findLocalProperties(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
       case QueryPlan.Distinct(input) => findLocalProperties(input)
       case QueryPlan.Unwind(_, _, subquery) => findLocalProperties(subquery)
@@ -2170,7 +2170,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
       case QueryPlan.Project(_, _, input) => findLocalProperties(input)
       case QueryPlan.Filter(_, input) => findLocalProperties(input)
-      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.Sequence(first, andThen) => findLocalProperties(first) ++ findLocalProperties(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
       case QueryPlan.Distinct(input) => findLocalProperties(input)
       case _ => Nil
@@ -2207,7 +2207,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       case QueryPlan.Anchor(_, onTarget) => findLocalProperties(onTarget)
       case QueryPlan.Project(_, _, input) => findLocalProperties(input)
       case QueryPlan.Filter(_, input) => findLocalProperties(input)
-      case QueryPlan.Sequence(first, andThen, _) => findLocalProperties(first) ++ findLocalProperties(andThen)
+      case QueryPlan.Sequence(first, andThen) => findLocalProperties(first) ++ findLocalProperties(andThen)
       case QueryPlan.CrossProduct(queries, _) => queries.flatMap(findLocalProperties)
       case QueryPlan.Distinct(input) => findLocalProperties(input)
       case _ => Nil
@@ -2370,7 +2370,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             AnchorTarget.Computed(Expression.Ident(ts(76, 79), Right(QuineIdentifier(3)), None)),
             QueryPlan.LocalNode(Symbol("2")),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2402,7 +2401,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             ),
             QueryPlan.LocalNode(Symbol("2")),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2436,10 +2434,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
                 AnchorTarget.Computed(Expression.Ident(ts(116, 122), Right(QuineIdentifier(5)), None)),
                 QueryPlan.LocalNode(Symbol("3")),
               ),
-              ContextFlow.Extend,
             ),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2519,7 +2515,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             ),
             false,
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2567,7 +2562,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             ),
             false,
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2619,7 +2613,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
               ),
             ),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2656,7 +2649,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             AnchorTarget.Computed(Expression.Parameter(ts(87, 90), Symbol("$bId"), None)),
             QueryPlan.LocalNode(Symbol("2")),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2698,7 +2690,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             ),
             false,
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2783,7 +2774,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             ),
             Set(Symbol("2")),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2883,7 +2873,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             ),
             false,
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2923,7 +2912,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             ),
             Set(Symbol("2")),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -2979,7 +2967,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             ),
             QueryPlan.LocalNode(Symbol("2")),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -3022,7 +3009,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             ),
             false,
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -3067,7 +3053,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
               false,
             ),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -3102,7 +3087,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             List((Symbol("edge"), Symbol("2"))),
             QueryPlan.Unit,
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -3147,10 +3131,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
                 ),
                 QueryPlan.Unit,
               ),
-              ContextFlow.Extend,
             ),
           ),
-          ContextFlow.Extend,
         ),
       ),
     )
@@ -3196,7 +3178,6 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
                 ),
                 QueryPlan.Unit,
               ),
-              ContextFlow.Extend,
             ),
           ),
         ),

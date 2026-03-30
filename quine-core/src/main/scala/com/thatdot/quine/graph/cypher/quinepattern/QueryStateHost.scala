@@ -638,15 +638,9 @@ case class NodeContext(
   properties: Map[Symbol, PropertyValue],
   edges: Set[HalfEdge],
   labels: Set[Symbol],
-  graph: Option[
-    com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph with com.thatdot.quine.graph.StandingQueryOpsGraph,
-  ],
-  namespace: Option[com.thatdot.quine.graph.NamespaceId],
+  graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph with com.thatdot.quine.graph.StandingQueryOpsGraph,
+  namespace: com.thatdot.quine.graph.NamespaceId,
 )
-
-object NodeContext {
-  val empty: NodeContext = NodeContext(None, Map.empty, Set.empty, Set.empty, None, None)
-}
 
 /** Events from the graph that states may react to */
 sealed trait GraphEvent
@@ -815,10 +809,7 @@ object DefaultStateInstantiator extends StateInstantiator {
     descriptor match {
 
       case d @ StateDescriptor.Output(id, _, target) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for OutputState but not provided in NodeContext"),
-        )
-        new OutputState(id, d.mode, target, graph, stateGraph.returnColumns, stateGraph.outputNameMapping)
+        new OutputState(id, d.mode, target, nodeContext.graph, stateGraph.returnColumns, stateGraph.outputNameMapping)
 
       case d @ StateDescriptor.Unit(id, parentId, _, _) =>
         // UnitState uses injectedContext if provided - this seeds context from parent (e.g., Anchor dispatch)
@@ -840,43 +831,56 @@ object DefaultStateInstantiator extends StateInstantiator {
       case d @ StateDescriptor.WatchNode(id, parentId, _, _, binding) =>
         new WatchNodeState(id, parentId, d.mode, binding, injectedContext)
 
-      case d @ StateDescriptor.Product(id, parentId, _, plan, childIds, childEntryPoints) =>
-        new ProductState(id, parentId, d.mode, childIds, plan.emitSubscriptionsLazily, childEntryPoints)
+      case d @ StateDescriptor.Product(id, parentId, _, plan, childIds) =>
+        new ProductState(id, parentId, d.mode, childIds, plan.emitSubscriptionsLazily)
 
       case d @ StateDescriptor.Union(id, parentId, _, _, lhsId, rhsId) =>
         new UnionState(id, parentId, d.mode, lhsId, rhsId)
 
-      case d @ StateDescriptor.Optional(id, parentId, _, _, innerId, nullBindings, contextBridgeId) =>
-        new OptionalState(id, parentId, d.mode, innerId, nullBindings, contextBridgeId)
+      case d @ StateDescriptor.Optional(id, parentId, _, _, innerPlan, nullBindings) =>
+        new OptionalState(
+          id = id,
+          publishTo = parentId,
+          mode = d.mode,
+          innerPlan = innerPlan,
+          nullBindings = nullBindings,
+          namespace = nodeContext.namespace,
+          params = stateGraph.params,
+          atTime = stateGraph.atTime,
+          injectedContext = injectedContext,
+        )
 
-      case d @ StateDescriptor.Sequence(id, parentId, _, _, firstId, andThenId, contextBridgeId, contextFlow) =>
-        new SequenceState(id, parentId, d.mode, firstId, andThenId, contextBridgeId, contextFlow)
-
-      case d @ StateDescriptor.ContextBridge(id, parentId, _, sequenceId) =>
-        new ContextBridgeState(id, parentId, d.mode, sequenceId)
+      case d @ StateDescriptor.Sequence(id, parentId, _, _, firstId, andThenPlan) =>
+        new SequenceState(
+          id = id,
+          publishTo = parentId,
+          mode = d.mode,
+          firstId = firstId,
+          andThenPlan = andThenPlan,
+          namespace = nodeContext.namespace,
+          params = stateGraph.params,
+          atTime = stateGraph.atTime,
+        )
 
       case d @ StateDescriptor.Filter(id, parentId, _, plan, inputId) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for FilterState but not provided in NodeContext"),
-        )
-        new FilterState(id, parentId, d.mode, plan.predicate, inputId, graph, stateGraph.params)
+        new FilterState(id, parentId, d.mode, plan.predicate, inputId, nodeContext.graph, stateGraph.params)
 
       case d @ StateDescriptor.Project(id, parentId, _, plan, inputId) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for ProjectState but not provided in NodeContext"),
+        new ProjectState(
+          id,
+          parentId,
+          d.mode,
+          plan.columns,
+          plan.dropExisting,
+          inputId,
+          nodeContext.graph,
+          stateGraph.params,
         )
-        new ProjectState(id, parentId, d.mode, plan.columns, plan.dropExisting, inputId, graph, stateGraph.params)
 
       case d @ StateDescriptor.Distinct(id, parentId, _, _, inputId) =>
         new DistinctState(id, parentId, d.mode, inputId)
 
       case d @ StateDescriptor.Expand(id, parentId, _, plan, onNeighborPlan) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for ExpandState but not provided in NodeContext"),
-        )
-        val namespace = nodeContext.namespace.getOrElse(
-          throw new IllegalStateException("Namespace required for ExpandState but not provided in NodeContext"),
-        )
         new ExpandState(
           id = id,
           publishTo = parentId,
@@ -884,56 +888,43 @@ object DefaultStateInstantiator extends StateInstantiator {
           edgeLabel = plan.edgeLabel,
           direction = plan.direction,
           onNeighborPlan = onNeighborPlan,
-          graph = graph,
-          namespace = namespace,
+          graph = nodeContext.graph,
+          namespace = nodeContext.namespace,
           params = stateGraph.params,
           atTime = stateGraph.atTime,
         )
 
       case d @ StateDescriptor.Anchor(id, parentId, _, _, target, onTargetPlan, fallbackOutput) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for AnchorState but not provided in NodeContext"),
-        )
-        val namespace = nodeContext.namespace.getOrElse(
-          throw new IllegalStateException("Namespace required for AnchorState but not provided in NodeContext"),
-        )
         new AnchorState(
           id = id,
           publishTo = parentId,
           mode = d.mode,
           target = target,
           onTargetPlan = onTargetPlan,
-          graph = graph,
-          namespace = namespace,
+          graph = nodeContext.graph,
+          namespace = nodeContext.namespace,
           fallbackOutput = fallbackOutput,
           params = stateGraph.params,
-          injectedContext = stateGraph.injectedContext, // Pass injectedContext for evaluating target expressions
+          injectedContext = stateGraph.injectedContext,
           atTime = stateGraph.atTime,
         )
 
-      case d @ StateDescriptor.Unwind(id, parentId, _, plan, subqueryId, contextBridgeId) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for UnwindState but not provided in NodeContext"),
-        )
+      case d @ StateDescriptor.Unwind(id, parentId, _, plan, subqueryPlan) =>
         new UnwindState(
-          id,
-          parentId,
-          d.mode,
-          plan.list,
-          plan.binding,
-          subqueryId,
-          contextBridgeId,
-          graph,
-          stateGraph.params,
+          id = id,
+          publishTo = parentId,
+          mode = d.mode,
+          listExpr = plan.list,
+          binding = plan.binding,
+          subqueryPlan = subqueryPlan,
+          graph = nodeContext.graph,
+          namespace = nodeContext.namespace,
+          params = stateGraph.params,
+          atTime = stateGraph.atTime,
+          injectedContext = injectedContext,
         )
 
-      case d @ StateDescriptor.Procedure(id, parentId, _, plan, subqueryId, contextBridgeId) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for ProcedureState but not provided in NodeContext"),
-        )
-        val namespace = nodeContext.namespace.getOrElse(
-          throw new IllegalStateException("Namespace required for ProcedureState but not provided in NodeContext"),
-        )
+      case d @ StateDescriptor.Procedure(id, parentId, _, plan, subqueryPlan) =>
         new ProcedureState(
           id = id,
           publishTo = parentId,
@@ -941,30 +932,24 @@ object DefaultStateInstantiator extends StateInstantiator {
           procedureName = plan.procedureName,
           arguments = plan.arguments,
           yields = plan.yields,
-          subqueryId = subqueryId,
-          contextBridgeId = contextBridgeId,
-          graph = graph,
-          namespace = namespace,
+          subqueryPlan = subqueryPlan,
+          graph = nodeContext.graph,
+          namespace = nodeContext.namespace,
           params = stateGraph.params,
           atTime = stateGraph.atTime,
+          injectedContext = injectedContext,
         )
 
       case d @ StateDescriptor.Effect(id, parentId, _, plan, inputId) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for EffectState but not provided in NodeContext"),
-        )
-        val namespace = nodeContext.namespace.getOrElse(
-          throw new IllegalStateException("Namespace required for EffectState but not provided in NodeContext"),
-        )
         new EffectState(
           id,
           parentId,
           d.mode,
           plan.effects,
           inputId,
-          graph,
+          nodeContext.graph,
           nodeContext.quineId,
-          namespace,
+          nodeContext.namespace,
           stateGraph.params,
         )
 
@@ -972,23 +957,14 @@ object DefaultStateInstantiator extends StateInstantiator {
         new AggregateState(id, parentId, d.mode, plan.aggregations, plan.groupBy, inputId)
 
       case d @ StateDescriptor.Sort(id, parentId, _, plan, inputId) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for SortState but not provided in NodeContext"),
-        )
-        new SortState(id, parentId, d.mode, plan.orderBy, inputId, graph, stateGraph.params)
+        new SortState(id, parentId, d.mode, plan.orderBy, inputId, nodeContext.graph, stateGraph.params)
 
       case d @ StateDescriptor.Limit(id, parentId, _, plan, inputId) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for LimitState but not provided in NodeContext"),
-        )
-        val count = evaluateCountExpr(plan.countExpr, graph, stateGraph.params)
+        val count = evaluateCountExpr(plan.countExpr, nodeContext.graph, stateGraph.params)
         new LimitState(id, parentId, d.mode, count, inputId)
 
       case d @ StateDescriptor.Skip(id, parentId, _, plan, inputId) =>
-        val graph = nodeContext.graph.getOrElse(
-          throw new IllegalStateException("Graph required for SkipState but not provided in NodeContext"),
-        )
-        val count = evaluateCountExpr(plan.countExpr, graph, stateGraph.params)
+        val count = evaluateCountExpr(plan.countExpr, nodeContext.graph, stateGraph.params)
         new SkipState(id, parentId, d.mode, count, inputId)
 
       case d @ StateDescriptor.SubscribeToQueryPart(id, parentId, _, plan, queryPartId) =>
@@ -1352,7 +1328,7 @@ class WatchAllPropertiesState(
 
   override def kickstart(context: NodeContext, actor: ActorRef): Unit = {
     // Store the labelsProperty key for filtering
-    labelsPropertyKey = context.graph.map(_.labelsProperty)
+    labelsPropertyKey = Some(context.graph.labelsProperty)
     // Filter out labelsProperty from properties
     currentProperties = context.properties
       .filter { case (k, _) => !labelsPropertyKey.contains(k) }
@@ -1515,7 +1491,7 @@ class WatchNodeState(
     currentQuineId = context.quineId
     currentLabels = context.labels
     // Store the labelsProperty key for filtering
-    labelsPropertyKey = context.graph.map(_.labelsProperty)
+    labelsPropertyKey = Some(context.graph.labelsProperty)
     // Filter out labelsProperty from properties
     currentProperties = context.properties
       .filter { case (k, _) => !labelsPropertyKey.contains(k) }
@@ -1595,11 +1571,8 @@ class ProductState(
   val mode: RuntimeMode,
   val childIds: List[StandingQueryId],
   val emitSubscriptionsLazily: Boolean,
-  val childEntryPoints: Set[StandingQueryId] = Set.empty, // Children that need context injection
 ) extends QueryState
     with PublishingState {
-
-  import com.thatdot.quine.graph.behavior.QuinePatternCommand
 
   // Accumulated state from each child: Map[QueryContext, multiplicity]
   private val childStates: mutable.Map[StandingQueryId, Delta.T] = mutable.Map.empty
@@ -1643,18 +1616,6 @@ class ProductState(
   }
 
   override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
-    // Check if this is context injection (from a ContextBridge, not from a child)
-    if (!childIds.contains(from) && childEntryPoints.nonEmpty) {
-      // This is context injection - forward to all child entry points
-      QPTrace.log(
-        s"Product $id: context injection from=$from, forwarding to ${childEntryPoints.size} child entry points",
-      )
-      childEntryPoints.foreach { childId =>
-        actor ! QuinePatternCommand.QueryUpdate(childId, id, delta)
-      }
-      return
-    }
-
     // Lazy subscription: check if this child is active
     val childIndex = childIds.indexOf(from)
     if (childIndex >= activeChildCount) {
@@ -1842,126 +1803,183 @@ class UnionState(
   * @param nullBindings the set of binding names introduced exclusively by the
   *                     inner (OPTIONAL MATCH) side, to be padded with `Null`
   *                     when there are no inner matches
-  * @param contextBridgeId optional bridge state that forwards context from the
-  *                        preceding clause into the inner pattern
   */
 class OptionalState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val innerId: StandingQueryId,
+  val innerPlan: QueryPlan,
   val nullBindings: Set[Symbol],
-  val contextBridgeId: StandingQueryId,
+  val namespace: NamespaceId,
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
+  val atTime: Option[Milliseconds],
+  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value] = Map.empty,
 ) extends QueryState
     with PublishingState {
 
   import com.thatdot.quine.graph.behavior.QuinePatternCommand
   import com.thatdot.quine.language.ast.Value
 
-  private var receivedContext: Delta.T = Delta.empty
+  // ═══════════════════════════════════════════════════════════════
+  // STATE — Per unique context row σ
+  //
+  // n(σ)  — multiplicity of σ in the accumulated input bag
+  // G(σ)  — current result bag of g({σ}), the inner match results
+  //
+  // cachedOutput holds the memoized output(σ) for each row. Lazy
+  // diffs against it; eager sums it at flush time.
+  // ═══════════════════════════════════════════════════════════════
 
-  // Eager mode: context and inner can arrive in either order, so we buffer both
-  // and emit once we have both pieces.
-  private var contextReceived: Boolean = false
-  private var innerResult: Delta.T = Delta.empty
-  private var innerNotified: Boolean = false
+  private val inputMultiplicity: mutable.Map[QueryContext, Int] = mutable.Map.empty
+  private val innerResults: mutable.Map[QueryContext, Delta.T] = mutable.Map.empty
+  private val cachedOutput: mutable.Map[QueryContext, Delta.T] = mutable.Map.empty
 
-  // Lazy mode: tracks whether we've emitted the null-padded default.
-  // Zero-crossing detection uses innerResult.isEmpty instead of a separate counter.
-  private var defaultEmitted: Boolean = false
+  // Routing: one inner plan per unique context row
+  private val senderToContext: mutable.Map[StandingQueryId, QueryContext] = mutable.Map.empty
+  private val contextToSender: mutable.Map[QueryContext, StandingQueryId] = mutable.Map.empty
 
-  // Produces the LEFT JOIN fallback: each context row extended with Null for every inner-only binding
-  private def buildNullPaddedDelta(): Delta.T = {
-    val nullValues = nullBindings.map(sym => sym -> Value.Null).toMap
-    receivedContext.map { case (ctx, mult) =>
-      (ctx ++ nullValues, mult)
+  private val nullValues: Map[Symbol, Value] = nullBindings.map(sym => sym -> Value.Null).toMap
+
+  // Tracks which inner plans have not yet responded (eager mode: expect exactly one response each)
+  private val awaitingResponse: mutable.Set[StandingQueryId] = mutable.Set.empty
+
+  // ═══════════════════════════════════════════════════════════════
+  // LAYER 1: computeOutput — the LEFT JOIN rule (mode-independent)
+  //
+  // output(σ) = n(σ) × { σ ∪ σ' | σ' ∈ G(σ) }
+  //   where G(σ) defaults to { ⊥ } when empty (LEFT JOIN null-padding)
+  // ═══════════════════════════════════════════════════════════════
+  private val nullDefault: Delta.T = Map(QueryContext(nullValues) -> 1)
+
+  private def computeOutput(ctx: QueryContext): Delta.T = {
+    val n = inputMultiplicity.getOrElse(ctx, 0)
+    if (n <= 0) {
+      Delta.empty
+    } else {
+      val g = innerResults.getOrElse(ctx, nullDefault)
+      g.map { case (innerCtx, innerMult) => (ctx ++ innerCtx) -> innerMult * n }
     }
   }
 
-  private def tryEmitEager(actor: ActorRef): Unit =
-    if (contextReceived && innerNotified) {
-      if (innerResult.isEmpty) {
-        // Inner completed with no results - emit null-padded
-        val nullPadded = buildNullPaddedDelta()
-        QPTrace.log(s"Optional $id: eager mode - emitting null-padded (inner had no results)")
-        emit(nullPadded, actor)
-      } else {
-        // Inner has results - inner received context via bridge, so results already include it
-        val outputDelta = innerResult
-        QPTrace.log(s"Optional $id: eager mode - emitting ${outputDelta.size} combined results")
-        emit(outputDelta, actor)
-      }
+  // ═══════════════════════════════════════════════════════════════
+  // LAYER 2: updateRowOutput — update cache, return diff (mode-independent)
+  // ═══════════════════════════════════════════════════════════════
+  private def updateRowOutput(ctx: QueryContext): Delta.T = {
+    val oldOutput = cachedOutput.getOrElse(ctx, Delta.empty)
+    val newOutput = computeOutput(ctx)
+
+    if (newOutput.isEmpty) cachedOutput.remove(ctx)
+    else cachedOutput(ctx) = newOutput
+
+    Delta.subtract(newOutput, oldOutput)
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // LAYER 3: emitForMode — single mode-dependent emission decision
+  //
+  // Lazy:  emit the diff immediately
+  // Eager: when all dispatched inner plans have responded, sum cachedOutput and emit total
+  // ═══════════════════════════════════════════════════════════════
+  private def emitForMode(diff: Delta.T, actor: ActorRef): Unit =
+    mode match {
+      case RuntimeMode.Lazy =>
+        if (diff.nonEmpty) emit(diff, actor)
+      case RuntimeMode.Eager =>
+        if (awaitingResponse.isEmpty) {
+          val total = cachedOutput.values.foldLeft(Delta.empty)(Delta.add)
+          emit(total, actor)
+        }
     }
+
+  // ═══════════════════════════════════════════════════════════════
+  // INNER PLAN MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════
+
+  private def ensureInnerPlan(ctx: QueryContext, actor: ActorRef): Unit =
+    if (!contextToSender.contains(ctx)) {
+      val sqid = StandingQueryId.fresh()
+      senderToContext(sqid) = ctx
+      contextToSender(ctx) = sqid
+      awaitingResponse += sqid
+
+      val output = OutputTarget.HostedState(actor, id, sqid)
+      actor ! QuinePatternCommand.LoadQueryPlan(
+        sqid = sqid,
+        plan = innerPlan,
+        mode = mode,
+        params = params,
+        namespace = namespace,
+        output = output,
+        injectedContext = ctx.bindings,
+        atTime = atTime,
+      )
+      QPTrace.log(
+        s"Optional $id: dispatched inner sqid=$sqid for context keys=[${ctx.bindings.keys.map(_.name).mkString(",")}]",
+      )
+    }
+
+  // ═══════════════════════════════════════════════════════════════
+  // DELTA HANDLERS
+  //
+  // Both handlers: update state → updateRowOutput → emitForMode
+  // No mode branching here.
+  // ═══════════════════════════════════════════════════════════════
+
+  private def processInputDelta(delta: Delta.T, actor: ActorRef): Unit = {
+    delta.foreach { case (ctx, mult) =>
+      val oldN = inputMultiplicity.getOrElse(ctx, 0)
+      val newN = oldN + mult
+
+      if (newN <= 0) inputMultiplicity.remove(ctx)
+      else inputMultiplicity(ctx) = newN
+
+      if (newN > 0) ensureInnerPlan(ctx, actor)
+
+      val diff = updateRowOutput(ctx)
+      emitForMode(diff, actor)
+    }
+    // Eager mode: if the input delta was empty (no rows at all), we still
+    // need to signal completion. The foreach above never runs, so emitForMode
+    // was never called.
+    if (delta.isEmpty && mode == RuntimeMode.Eager && awaitingResponse.isEmpty) {
+      emit(Delta.empty, actor)
+    }
+  }
+
+  private def processInnerDelta(from: StandingQueryId, delta: Delta.T, actor: ActorRef): Unit = {
+    val ctx = senderToContext(from)
+
+    val oldG = innerResults.getOrElse(ctx, Delta.empty)
+    val newG = Delta.add(oldG, delta)
+    if (newG.isEmpty) innerResults.remove(ctx)
+    else innerResults(ctx) = newG
+
+    val wasAwaiting = awaitingResponse.remove(from)
+    if (!wasAwaiting && mode == RuntimeMode.Eager)
+      QPTrace.log(s"Optional $id: WARNING duplicate/unexpected eager response from=$from")
+
+    val diff = updateRowOutput(ctx)
+    emitForMode(diff, actor)
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ENTRY POINTS
+  // ═══════════════════════════════════════════════════════════════
 
   override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
     QPTrace.log(
       s"Optional $id: notify from=$from deltaSize=${delta.size} " +
-      s"innerNotified=$innerNotified contextReceived=$contextReceived mode=$mode",
+      s"awaitingResponse=${awaitingResponse.size} mode=$mode",
     )
 
-    val isContextInjection = from != innerId
-
-    if (isContextInjection) {
-      // Receiving context from parent (preceding clause)
-      receivedContext = Delta.add(receivedContext, delta)
-      contextReceived = true
-
-      // Forward context to inner via ContextBridge
-      QPTrace.log(s"Optional $id: forwarding context to bridge $contextBridgeId")
-      actor ! QuinePatternCommand.QueryUpdate(contextBridgeId, id, delta)
-
-      mode match {
-        case RuntimeMode.Eager =>
-          // Try to emit if we now have both pieces
-          tryEmitEager(actor)
-        case RuntimeMode.Lazy if !defaultEmitted =>
-          val nullPadded = buildNullPaddedDelta()
-          if (nullPadded.nonEmpty) {
-            QPTrace.log(s"Optional $id: emitting null-padded default on context receipt")
-            emit(nullPadded, actor)
-            defaultEmitted = true
-          }
-        case _ => ()
-      }
-    } else {
-      innerNotified = true
-      val hadMatches = innerResult.nonEmpty
-      innerResult = Delta.add(innerResult, delta)
-      val hasMatches = innerResult.nonEmpty
-
-      mode match {
-        case RuntimeMode.Eager =>
-          tryEmitEager(actor)
-
-        case RuntimeMode.Lazy =>
-          QPTrace.log(
-            s"Optional $id: lazy mode - hadMatches=$hadMatches hasMatches=$hasMatches",
-          )
-
-          (hadMatches, hasMatches) match {
-            case (false, true) if defaultEmitted =>
-              // Transitioning from no matches to having matches:
-              // Retract the null-padded default and assert real results in a single atomic delta.
-              QPTrace.log(s"Optional $id: retracting null-padded default, emitting real results")
-              defaultEmitted = false
-              val nullPaddedRetraction = buildNullPaddedDelta().view.mapValues(-_).toMap
-              emit(Delta.add(nullPaddedRetraction, delta), actor)
-            case (true, false) =>
-              // Transitioning from having matches to no matches:
-              // Retract the final real results and re-emit the null-padded default in a single atomic delta.
-              QPTrace.log(s"Optional $id: retracting final real results, re-emitting null-padded default")
-              defaultEmitted = true
-              emit(Delta.add(delta, buildNullPaddedDelta()), actor)
-            case (true, true) =>
-              emit(delta, actor)
-            case _ => ()
-          }
-      }
-    }
+    if (senderToContext.contains(from))
+      processInnerDelta(from, delta, actor)
+    else
+      processInputDelta(delta, actor)
   }
 
-  // Optional is NOT a leaf - it waits for context from parent
-  override def kickstart(context: NodeContext, actor: ActorRef): Unit = ()
+  override def kickstart(context: NodeContext, actor: ActorRef): Unit =
+    processInputDelta(Map(QueryContext(injectedContext) -> 1), actor)
 }
 
 class SequenceState(
@@ -1969,102 +1987,93 @@ class SequenceState(
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val firstId: StandingQueryId,
-  val andThenId: StandingQueryId,
-  val contextBridgeId: Option[StandingQueryId], // Bridge that feeds first's context into andThen
-  val contextFlow: ContextFlow,
+  val andThenPlan: QueryPlan,
+  val namespace: NamespaceId,
+  val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
+  val atTime: Option[Milliseconds],
 ) extends QueryState
     with PublishingState {
 
   import com.thatdot.quine.graph.behavior.QuinePatternCommand
 
-  // Log Sequence construction with connection info
-  QPTrace.log(
-    s"SEQUENCE-CREATED id=$id firstId=$firstId andThenId=$andThenId bridgeId=${contextBridgeId.getOrElse("none")} publishTo=$publishTo",
-  )
+  QPTrace.log(s"SEQUENCE-CREATED id=$id firstId=$firstId publishTo=$publishTo")
 
   // Track accumulated results from first
-  // We need this to combine with andThen's results according to contextFlow
   private var firstState: Delta.T = Delta.empty
 
-  // Track whether we've received from first and andThen (for Eager mode)
-  private var firstNotified: Boolean = false
-  private var andThenNotified: Boolean = false
+  // Track all andThen subquery senders, mapping each to the originating first-row context
+  private val andThenSenders: mutable.Map[StandingQueryId, QueryContext] = mutable.Map.empty
+
+  private var outputDelta: Delta.T = Delta.empty
+  private val andThenResponded: mutable.Set[StandingQueryId] = mutable.Set.empty
 
   override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
     QPTrace.log(
       s"Sequence $id: notify from=$from deltaSize=${delta.size} " +
-      s"isFirst=${from == firstId} isAndThen=${from == andThenId} " +
-      s"firstNotified=$firstNotified andThenNotified=$andThenNotified",
+      s"isFirst=${from == firstId} isAndThen=${andThenSenders.contains(from)}",
     )
 
     if (from == firstId) {
-      firstNotified = true
-      // Update first's accumulated state
       firstState = Delta.add(firstState, delta)
 
-      // Forward first's context to andThen via the context bridge
-      contextBridgeId match {
-        case Some(bridgeId) =>
-          QPTrace.log(s"Sequence $id: forwarding to bridge $bridgeId")
-          actor ! QuinePatternCommand.QueryUpdate(bridgeId, id, delta)
-        case None =>
-          QPTrace.log(s"Sequence $id: no bridge, cannot forward context")
+      // In Eager mode, if this delta has no positive rows and we've never dispatched,
+      // signal completion immediately — no andThen will ever produce results.
+      if (mode == RuntimeMode.Eager && delta.forall(_._2 <= 0) && andThenSenders.isEmpty) {
+        QPTrace.log(s"Sequence $id: eager mode, no positive results, emitting empty")
+        emit(Delta.empty, actor)
+      } else {
+        // For each positive result from first, install mult copies of andThen.
+        // Each installation represents one multiplicity unit because andThen may
+        // have side effects (CREATE, SET) that must execute mult times.
+        delta.foreach { case (ctx, mult) =>
+          (1 to mult).foreach { _ =>
+            val sqid = StandingQueryId.fresh()
+            andThenSenders(sqid) = ctx
+            val output = OutputTarget.HostedState(actor, id, sqid)
+            actor ! QuinePatternCommand.LoadQueryPlan(
+              sqid = sqid,
+              plan = andThenPlan,
+              mode = mode,
+              params = params,
+              namespace = namespace,
+              output = output,
+              injectedContext = ctx.bindings,
+              atTime = atTime,
+            )
+            QPTrace.log(
+              s"Sequence $id: dispatched andThen sqid=$sqid for context keys=[${ctx.bindings.keys.map(_.name).mkString(",")}]",
+            )
+          }
+        }
       }
 
-    } else if (from == andThenId) {
-      andThenNotified = true
+    } else if (andThenSenders.contains(from)) {
+      // Results from an andThen installation — scope cross-product to the originating first-row
+      val originCtx = andThenSenders(from)
+      val originDelta: Delta.T = Map(originCtx -> 1)
+      val newDelta = Delta.crossProduct(originDelta, delta)
+      outputDelta = Delta.add(outputDelta, newDelta)
+      val isNew = andThenResponded.add(from)
+      if (!isNew && mode == RuntimeMode.Eager)
+        QPTrace.log(s"Sequence $id: WARNING duplicate eager response from=$from")
 
-      // andThen has produced results
-      val outputDelta = contextFlow match {
-        case ContextFlow.Replace => delta
-        case ContextFlow.Extend => Delta.crossProduct(firstState, delta)
-      }
+      QPTrace.log(
+        s"Sequence $id: andThen result from=$from outputDelta size=${outputDelta.size} " +
+        s"responded=${andThenResponded.size} total=${andThenSenders.size}",
+      )
 
-      QPTrace.log(s"Sequence $id: andThen notified, outputDelta size=${outputDelta.size}")
-
-      // In Eager mode, emit even if empty - this signals "andThen completed with no results"
-      if (outputDelta.nonEmpty || mode == RuntimeMode.Eager) {
-        emit(outputDelta, actor)
+      mode match {
+        case RuntimeMode.Lazy =>
+          if (newDelta.nonEmpty) emit(newDelta, actor)
+        case RuntimeMode.Eager =>
+          if (andThenResponded.size == andThenSenders.size)
+            emit(outputDelta, actor)
       }
     } else {
-      QPTrace.log(s"Sequence $id: unknown sender $from (expected first=$firstId or andThen=$andThenId)")
+      QPTrace.log(s"Sequence $id: unknown sender $from")
     }
   }
 
-  override def kickstart(context: NodeContext, actor: ActorRef): Unit = ()
-}
-
-/** Bridge state that receives context from Sequence and forwards to andThen's entry point.
-  *
-  * This enables proper context flow in Sequence: first produces context, Sequence forwards
-  * to this bridge, bridge forwards to andThen's entry point, andThen evaluates with that context.
-  */
-class ContextBridgeState(
-  val id: StandingQueryId,
-  val publishTo: StandingQueryId, // The entry point state in andThen
-  val mode: RuntimeMode,
-  val sequenceId: StandingQueryId, // The Sequence state that sends context
-) extends QueryState
-    with PublishingState {
-
-  // Log ContextBridge construction with connection info
-  QPTrace.log(s"BRIDGE-CREATED id=$id publishTo=$publishTo sequenceId=$sequenceId")
-
-  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
-    QPTrace.log(
-      s"ContextBridge $id: notify from=$from deltaSize=${delta.size} " +
-      s"expectedFrom=$sequenceId forwardTo=$publishTo",
-    )
-    // Only accept context from the Sequence state
-    if (from == sequenceId) {
-      // Forward context to andThen's entry point
-      emit(delta, actor)
-    } else {
-      QPTrace.log(s"ContextBridge $id: ignoring notification from unexpected sender $from")
-    }
-  }
-
-  // Don't kickstart - wait for context from Sequence
   override def kickstart(context: NodeContext, actor: ActorRef): Unit = ()
 }
 
@@ -2450,7 +2459,7 @@ class AnchorState(
           ()
       }
     } else {
-      // This is context injection (from ContextBridge in a Sequence)
+      // This is context injection (from a Sequence's andThen installation)
       // The Anchor may not have been kickstarted (if it's an entry point for andThen),
       // so we need to set hostActorRef here for dispatchToTarget to work
       if (hostActorRef.isEmpty) {
@@ -2611,7 +2620,7 @@ class AnchorState(
       dispatchToTarget(nodeId, context)
     }
 
-  /** Dispatch using injected context (from ContextBridge in a Sequence).
+  /** Dispatch using injected context (from a Sequence's andThen installation).
     * This evaluates the target expression using the injected context bindings.
     */
   private def dispatchWithContext(ctx: QueryContext, actor: ActorRef): Unit = {
@@ -2829,10 +2838,12 @@ class UnwindState(
   val mode: RuntimeMode,
   val listExpr: com.thatdot.quine.language.ast.Expression,
   val binding: Symbol,
-  val subqueryId: StandingQueryId,
-  val contextBridgeId: Option[StandingQueryId], // Bridge that forwards bindings to subquery's entry point
+  val subqueryPlan: QueryPlan,
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
+  val namespace: NamespaceId,
   val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
+  val atTime: Option[Milliseconds],
+  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value] = Map.empty,
 ) extends QueryState
     with PublishingState {
 
@@ -2842,78 +2853,136 @@ class UnwindState(
 
   implicit private val idProvider: com.thatdot.quine.model.QuineIdProvider = graph.idProvider
 
-  // Log Unwind construction with connection info
   QPTrace.log(
-    s"UNWIND-CREATED id=$id subqueryId=$subqueryId bridgeId=${contextBridgeId.getOrElse("none")} publishTo=$publishTo",
+    s"UNWIND-CREATED id=$id publishTo=$publishTo injectedContextKeys=[${injectedContext.keys.map(_.name).mkString(",")}]",
   )
 
-  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
-    QPTrace.log(s"Unwind $id: notify from=$from deltaSize=${delta.size} isSubquery=${from == subqueryId}")
+  // Track all subquery senders (one per unwound value)
+  private val subquerySenders: mutable.Set[StandingQueryId] = mutable.Set.empty
 
-    if (from == subqueryId) {
-      // Results from subquery - pass through to parent
-      QPTrace.log(s"Unwind $id: passing through subquery results to parent")
-      emit(delta, actor)
+  // Eager mode: accumulate results across all subqueries, emit once all respond
+  private var eagerAccumulator: Delta.T = Delta.empty
+  private var eagerRespondedCount: Int = 0
+
+  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
+    QPTrace.log(s"Unwind $id: notify from=$from deltaSize=${delta.size} isSubquery=${subquerySenders.contains(from)}")
+
+    if (subquerySenders.contains(from)) {
+      // Results from a subquery installation
+      QPTrace.log(s"Unwind $id: received subquery result")
+      mode match {
+        case RuntimeMode.Lazy =>
+          emit(delta, actor)
+        case RuntimeMode.Eager =>
+          // Accumulate and emit once all subqueries have responded
+          eagerAccumulator = Delta.add(eagerAccumulator, delta)
+          eagerRespondedCount += 1
+          QPTrace.log(
+            s"Unwind $id: eager accumulated responded=$eagerRespondedCount total=${subquerySenders.size}",
+          )
+          if (eagerRespondedCount == subquerySenders.size) {
+            QPTrace.log(s"Unwind $id: eager all responded, emitting combined size=${eagerAccumulator.size}")
+            emit(eagerAccumulator, actor)
+          }
+      }
     } else {
-      // Incoming context from parent (when Unwind is an entry point)
-      // Evaluate list with this context and forward to subquery via bridge
+      // Incoming context from parent - evaluate list and install subqueries
       QPTrace.log(s"Unwind $id: received parent context, evaluating list")
       processWithContext(delta, actor)
     }
   }
 
   override def kickstart(context: NodeContext, actor: ActorRef): Unit = {
-    QPTrace.log(s"Unwind $id: kickstart bridgeId=${contextBridgeId.getOrElse("none")}")
-    // Evaluate the list expression with empty context (no parent bindings)
-    processWithContext(Map(QueryContext.empty -> 1), actor)
+    QPTrace.log(s"Unwind $id: kickstart")
+    processWithContext(Map(QueryContext(injectedContext) -> 1), actor)
   }
 
-  /** Evaluate list expression for each incoming context and forward to subquery */
-  private def processWithContext(incomingDelta: Delta.T, actor: ActorRef): Unit = {
-    val outputDelta = mutable.Map.empty[QueryContext, Int]
-
-    incomingDelta.foreach { case (incomingCtx, mult) =>
-      if (mult > 0) {
-        // Pass QueryContext directly - no conversion needed since EvalEnvironment now uses Pattern.Value
-        val env = EvalEnvironment(incomingCtx, params)
-
-        eval(listExpr).run(env) match {
-          case Right(Value.List(values)) =>
-            // For each element, create a combined context
-            values.foreach { value =>
-              val ctx = incomingCtx ++ Map(binding -> value)
+  /** Evaluate list expression for each incoming context.
+    * When subquery is Unit, emit directly as a batch (Unit just echoes injectedContext).
+    * Otherwise, install a subquery for each unwound element via LoadQueryPlan.
+    */
+  private def processWithContext(incomingDelta: Delta.T, actor: ActorRef): Unit =
+    if (subqueryPlan == QueryPlan.Unit) {
+      // Optimization: Unit just echoes injectedContext, so emit directly as a batch
+      val outputDelta = mutable.Map.empty[QueryContext, Int]
+      incomingDelta.foreach { case (incomingCtx, mult) =>
+        if (mult > 0) {
+          val env = EvalEnvironment(incomingCtx, params)
+          eval(listExpr).run(env) match {
+            case Right(Value.List(values)) =>
+              values.foreach { value =>
+                val ctx = incomingCtx ++ Map(binding -> value)
+                outputDelta(ctx) = outputDelta.getOrElse(ctx, 0) + mult
+              }
+            case Right(Value.Null) => ()
+            case Right(other) =>
+              val ctx = incomingCtx ++ Map(binding -> other)
               outputDelta(ctx) = outputDelta.getOrElse(ctx, 0) + mult
-            }
-          case Right(Value.Null) =>
-            // Null list - no output for this context
-            ()
-          case Right(other) =>
-            // Non-list value - treat as single-element list
-            val ctx = incomingCtx ++ Map(binding -> other)
-            outputDelta(ctx) = outputDelta.getOrElse(ctx, 0) + mult
-          case Left(err) =>
-            // Evaluation error - log and skip
-            QPTrace.log(s"Unwind $id: list evaluation error: $err")
+            case Left(err) =>
+              QPTrace.log(s"Unwind $id: list evaluation error: $err")
+          }
         }
       }
-    }
+      if (outputDelta.nonEmpty || mode == RuntimeMode.Eager) {
+        QPTrace.log(s"Unwind $id: direct emit ${outputDelta.size} bindings (Unit subquery)")
+        emit(outputDelta.toMap, actor)
+      }
+    } else {
+      // Full subquery dispatch via LoadQueryPlan for each unwound element
+      var anyDispatched = false
 
-    QPTrace.log(s"Unwind $id: produced ${outputDelta.size} bindings")
+      incomingDelta.foreach { case (incomingCtx, mult) =>
+        if (mult > 0) {
+          val env = EvalEnvironment(incomingCtx, params)
 
-    // Forward to subquery via context bridge
-    contextBridgeId match {
-      case Some(bridgeId) =>
-        if (outputDelta.nonEmpty || mode == RuntimeMode.Eager) {
-          QPTrace.log(s"Unwind $id: forwarding to bridge $bridgeId")
-          actor ! QuinePatternCommand.QueryUpdate(bridgeId, id, outputDelta.toMap)
+          eval(listExpr).run(env) match {
+            case Right(Value.List(values)) =>
+              values.foreach { value =>
+                val ctx = incomingCtx ++ Map(binding -> value)
+                val sqid = StandingQueryId.fresh()
+                subquerySenders.add(sqid)
+                val output = OutputTarget.HostedState(actor, id, sqid)
+                actor ! QuinePatternCommand.LoadQueryPlan(
+                  sqid = sqid,
+                  plan = subqueryPlan,
+                  mode = mode,
+                  params = params,
+                  namespace = namespace,
+                  output = output,
+                  injectedContext = ctx.bindings,
+                  atTime = atTime,
+                )
+                anyDispatched = true
+                QPTrace.log(s"Unwind $id: dispatched subquery sqid=$sqid for binding ${binding.name}=${value}")
+              }
+            case Right(Value.Null) => ()
+            case Right(other) =>
+              val ctx = incomingCtx ++ Map(binding -> other)
+              val sqid = StandingQueryId.fresh()
+              subquerySenders.add(sqid)
+              val output = OutputTarget.HostedState(actor, id, sqid)
+              actor ! QuinePatternCommand.LoadQueryPlan(
+                sqid = sqid,
+                plan = subqueryPlan,
+                mode = mode,
+                params = params,
+                namespace = namespace,
+                output = output,
+                injectedContext = ctx.bindings,
+                atTime = atTime,
+              )
+              anyDispatched = true
+            case Left(err) =>
+              QPTrace.log(s"Unwind $id: list evaluation error: $err")
+          }
         }
-      case None =>
-        // No bridge - emit directly to parent (fallback for simple cases without subquery)
-        if (outputDelta.nonEmpty || mode == RuntimeMode.Eager) {
-          emit(outputDelta.toMap, actor)
-        }
+      }
+
+      if (!anyDispatched && mode == RuntimeMode.Eager) {
+        QPTrace.log(s"Unwind $id: no elements dispatched in eager mode, emitting empty")
+        emit(Delta.empty, actor)
+      }
     }
-  }
 }
 
 /** State for executing procedure calls.
@@ -2929,12 +2998,12 @@ class ProcedureState(
   val procedureName: Symbol,
   val arguments: List[com.thatdot.quine.language.ast.Expression],
   val yields: List[(Symbol, Symbol)],
-  val subqueryId: StandingQueryId,
-  val contextBridgeId: Option[StandingQueryId],
+  val subqueryPlan: QueryPlan,
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
   val namespace: NamespaceId,
   val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
   val atTime: Option[Milliseconds],
+  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value] = Map.empty,
 ) extends QueryState
     with PublishingState {
 
@@ -2960,56 +3029,77 @@ class ProcedureState(
   QuinePatternProcedureRegistry.register(GetFilteredEdgesProcedure)
 
   QPTrace.log(
-    s"PROCEDURE-CREATED id=$id procedure=$procedureName subqueryId=$subqueryId bridgeId=${contextBridgeId
-      .getOrElse("none")} publishTo=$publishTo",
+    s"PROCEDURE-CREATED id=$id procedure=$procedureName publishTo=$publishTo injectedContextKeys=[${injectedContext.keys.map(_.name).mkString(",")}]",
   )
 
-  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
-    QPTrace.log(s"Procedure $id: notify from=$from deltaSize=${delta.size} isSubquery=${from == subqueryId}")
+  // Sentinel sender ID: when the Future callback sends procedure results back to the actor,
+  // it uses this ID so notify can distinguish "procedure results ready" from "subquery responded".
+  private val procedureResultSender: StandingQueryId = StandingQueryId.fresh()
 
-    if (from == subqueryId) {
-      // Results from subquery - pass through to parent
-      QPTrace.log(s"Procedure $id: passing through subquery results to parent")
-      emit(delta, actor)
+  // Track all subquery senders (one per procedure result row) — only mutated on actor thread
+  private val subquerySenders: mutable.Set[StandingQueryId] = mutable.Set.empty
+
+  // Eager mode: accumulate results across all subqueries, emit once all respond
+  private var eagerAccumulator: Delta.T = Delta.empty
+  private var eagerRespondedCount: Int = 0
+
+  override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {
+    QPTrace.log(
+      s"Procedure $id: notify from=$from deltaSize=${delta.size} isSubquery=${subquerySenders.contains(from)}",
+    )
+
+    if (from == procedureResultSender) {
+      // Procedure Future completed — delta contains all procedure result rows.
+      // Dispatch subqueries on the actor thread (no cross-thread mutation).
+      dispatchSubqueries(delta, actor)
+    } else if (subquerySenders.contains(from)) {
+      // Results from a subquery installation
+      QPTrace.log(s"Procedure $id: received subquery result")
+      mode match {
+        case RuntimeMode.Lazy =>
+          emit(delta, actor)
+        case RuntimeMode.Eager =>
+          // Accumulate and emit once all subqueries have responded
+          eagerAccumulator = Delta.add(eagerAccumulator, delta)
+          eagerRespondedCount += 1
+          QPTrace.log(
+            s"Procedure $id: eager accumulated responded=$eagerRespondedCount total=${subquerySenders.size}",
+          )
+          if (eagerRespondedCount == subquerySenders.size) {
+            QPTrace.log(s"Procedure $id: eager all responded, emitting combined size=${eagerAccumulator.size}")
+            emit(eagerAccumulator, actor)
+          }
+      }
     } else {
-      // Incoming context from parent (when Procedure is an entry point)
-      // Execute procedure with this context and forward results to subquery via bridge
+      // Incoming context from parent - execute procedure and install subqueries
       QPTrace.log(s"Procedure $id: received parent context, executing procedure")
       processWithContext(delta, actor)
     }
   }
 
   override def kickstart(context: NodeContext, actor: ActorRef): Unit = {
-    QPTrace.log(s"Procedure $id: kickstart bridgeId=${contextBridgeId.getOrElse("none")}")
-    // Execute the procedure with empty context (no parent bindings)
-    processWithContext(Map(QueryContext.empty -> 1), actor)
+    QPTrace.log(s"Procedure $id: kickstart")
+    processWithContext(Map(QueryContext(injectedContext) -> 1), actor)
   }
 
-  /** Execute procedure for each incoming context and forward results to subquery */
+  /** Execute procedure for each incoming context, then pipe results back to actor thread.
+    *
+    * The Future callback only builds an immutable delta and sends it as a QueryUpdate
+    * to this state via `procedureResultSender`. All mutable state manipulation
+    * (subquerySenders, eagerAccumulator, dispatch) happens in notify on the actor thread.
+    */
   private def processWithContext(incomingDelta: Delta.T, actor: ActorRef): Unit = {
     import scala.concurrent.Future
 
-    // Look up the procedure
     val procedureOpt = QuinePatternProcedureRegistry.get(procedureName.name)
     procedureOpt match {
       case None =>
         QPTrace.log(s"Procedure $id: unknown procedure '${procedureName.name}'")
-        // Unknown procedure - emit error or empty in eager mode
-        if (mode == RuntimeMode.Eager) {
-          contextBridgeId match {
-            case Some(bridgeId) =>
-              actor ! QuinePatternCommand.QueryUpdate(bridgeId, id, Map.empty)
-            case None =>
-              emit(Map.empty, actor)
-          }
-        }
+        if (mode == RuntimeMode.Eager) emit(Map.empty, actor)
 
       case Some(procedure) =>
-        // Collect all futures for procedure executions
-        // Each future returns a delta map for its input context
-        val futures: Seq[Future[Map[QueryContext, Int]]] = incomingDelta.toSeq.flatMap { case (incomingCtx, mult) =>
+        val futures: Seq[Future[Seq[(QueryContext, Int)]]] = incomingDelta.toSeq.flatMap { case (incomingCtx, mult) =>
           if (mult > 0) {
-            // Evaluate arguments in context
             val env = EvalEnvironment(incomingCtx, params)
             val evaluatedArgs: Seq[Value] = arguments.map { argExpr =>
               eval(argExpr).run(env) match {
@@ -3020,9 +3110,6 @@ class ProcedureState(
               }
             }
 
-            // Create procedure context
-            // Note: At runtime, the graph is a GraphService that extends both QuinePatternOpsGraph
-            // and LiteralOpsGraph, so this cast is safe
             val literalGraph =
               graph.asInstanceOf[com.thatdot.quine.graph.BaseGraph with com.thatdot.quine.graph.LiteralOpsGraph]
             val procContext = ProcedureContext(
@@ -3032,28 +3119,19 @@ class ProcedureState(
               timeout = timeout,
             )
 
-            // Execute the procedure and map results to delta
-            val resultFuture: Future[Map[QueryContext, Int]] = procedure
+            val resultFuture: Future[Seq[(QueryContext, Int)]] = procedure
               .execute(evaluatedArgs, procContext)
               .map { results =>
-                val outputDelta = mutable.Map.empty[QueryContext, Int]
-                results.foreach { resultRow =>
-                  // Map procedure outputs to yield symbols
-                  // yields is List[(resultField, boundAs)] - look up resultField, bind to boundAs
+                results.map { resultRow =>
                   val bindings: Map[Symbol, Value] = yields.flatMap { case (resultField, boundAs) =>
                     resultRow.get(resultField.name).map(boundAs -> _)
                   }.toMap
-
-                  // Combine with incoming context
-                  val ctx = incomingCtx ++ bindings
-                  outputDelta(ctx) = outputDelta.getOrElse(ctx, 0) + mult
+                  (incomingCtx ++ bindings, mult)
                 }
-                QPTrace.log(s"Procedure $id: context produced ${outputDelta.size} bindings")
-                outputDelta.toMap
               }
               .recover { case err =>
                 QPTrace.log(s"Procedure $id: execution error: ${err.getMessage}")
-                Map.empty[QueryContext, Int]
+                Seq.empty
               }
 
             Some(resultFuture)
@@ -3062,33 +3140,50 @@ class ProcedureState(
           }
         }
 
-        // Wait for ALL procedure calls to complete, then emit combined results
-        Future.sequence(futures).foreach { allDeltas =>
-          // Combine all deltas into one
-          val combinedDelta = mutable.Map.empty[QueryContext, Int]
-          allDeltas.foreach { delta =>
-            delta.foreach { case (ctx, mult) =>
-              combinedDelta(ctx) = combinedDelta.getOrElse(ctx, 0) + mult
-            }
+        // Collect all procedure results in the Future, then pipe back to actor thread
+        // as a single QueryUpdate. No mutable state is touched from the callback.
+        Future.sequence(futures).foreach { allRows =>
+          val allContexts = allRows.flatten
+          QPTrace.log(s"Procedure $id: all calls complete, ${allContexts.size} result rows")
+          val combinedDelta = allContexts.foldLeft(Map.empty[QueryContext, Int]) { case (acc, (ctx, mult)) =>
+            acc + (ctx -> (acc.getOrElse(ctx, 0) + mult))
           }
-
-          QPTrace.log(s"Procedure $id: all calls complete, combined ${combinedDelta.size} bindings")
-
-          // Forward combined results to subquery via context bridge
-          contextBridgeId match {
-            case Some(bridgeId) =>
-              if (combinedDelta.nonEmpty || mode == RuntimeMode.Eager) {
-                QPTrace.log(s"Procedure $id: forwarding combined results to bridge $bridgeId")
-                actor ! QuinePatternCommand.QueryUpdate(bridgeId, id, combinedDelta.toMap)
-              }
-            case None =>
-              if (combinedDelta.nonEmpty || mode == RuntimeMode.Eager) {
-                emit(combinedDelta.toMap, actor)
-              }
-          }
+          // Send back to self on actor thread via procedureResultSender sentinel
+          actor ! QuinePatternCommand.QueryUpdate(id, procedureResultSender, combinedDelta)
         }
     }
   }
+
+  /** Dispatch subqueries for procedure results. Called on actor thread from notify. */
+  private def dispatchSubqueries(procedureResults: Delta.T, actor: ActorRef): Unit =
+    if (subqueryPlan == QueryPlan.Unit) {
+      // Optimization: Unit just echoes injectedContext, so emit directly as a batch
+      QPTrace.log(s"Procedure $id: Unit subquery, direct emit size=${procedureResults.size}")
+      if (procedureResults.nonEmpty || mode == RuntimeMode.Eager)
+        emit(procedureResults, actor)
+    } else if (procedureResults.isEmpty) {
+      QPTrace.log(s"Procedure $id: no results, emitting empty")
+      if (mode == RuntimeMode.Eager) emit(Delta.empty, actor)
+    } else {
+      procedureResults.foreach { case (ctx, mult) =>
+        if (mult > 0) {
+          val sqid = StandingQueryId.fresh()
+          subquerySenders.add(sqid)
+          val output = OutputTarget.HostedState(actor, id, sqid)
+          actor ! QuinePatternCommand.LoadQueryPlan(
+            sqid = sqid,
+            plan = subqueryPlan,
+            mode = mode,
+            params = params,
+            namespace = namespace,
+            output = output,
+            injectedContext = ctx.bindings,
+            atTime = atTime,
+          )
+          QPTrace.log(s"Procedure $id: dispatched subquery sqid=$sqid")
+        }
+      }
+    }
 }
 
 class EffectState(

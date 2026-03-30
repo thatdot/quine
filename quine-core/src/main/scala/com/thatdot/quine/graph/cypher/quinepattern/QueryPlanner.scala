@@ -1629,7 +1629,7 @@ object QueryPlanner {
 
         if (hasDependents) {
           // Dependent patterns need Sequence (context flows from first to rest)
-          QueryPlan.Sequence(firstPlan, restPlan, ContextFlow.Extend)
+          QueryPlan.Sequence(firstPlan, restPlan)
         } else {
           // Independent patterns can use CrossProduct - flatten nested CrossProducts
           restPlan match {
@@ -2391,7 +2391,7 @@ object QueryPlanner {
           }
 
           if (anyRestDependsOnFirst || nextIsEffect) {
-            QueryPlan.Sequence(firstPlan, restPlan, ContextFlow.Extend)
+            QueryPlan.Sequence(firstPlan, restPlan)
           } else {
             QueryPlan.CrossProduct(List(firstPlan, restPlan))
           }
@@ -2454,7 +2454,7 @@ object QueryPlanner {
         // Recurse on the remaining parts
         val restPlan =
           planQueryParts(afterWith, idLookups, nodeDeps, symbolTable, propertyBindings, bindingsThroughWith)
-        QueryPlan.Sequence(withPlan, restPlan, ContextFlow.Extend)
+        QueryPlan.Sequence(withPlan, restPlan)
       }
     }
   }
@@ -2483,7 +2483,7 @@ object QueryPlanner {
     case QueryPlan.LocalId(binding) => Some(binding)
     case QueryPlan.LocalAllProperties(binding) => Some(binding)
     case QueryPlan.LocalNode(binding) => Some(binding)
-    case QueryPlan.Sequence(first, _, _) => findLocalIdBinding(first)
+    case QueryPlan.Sequence(first, _) => findLocalIdBinding(first)
     case QueryPlan.CrossProduct(children, _) => children.flatMap(findLocalIdBinding).headOption
     case QueryPlan.Filter(_, child) => findLocalIdBinding(child)
     case QueryPlan.Project(_, _, child) => findLocalIdBinding(child)
@@ -2543,7 +2543,7 @@ object QueryPlanner {
   private def extractEffectsFromPlan(plan: QueryPlan): List[LocalQueryEffect] = plan match {
     case QueryPlan.LocalEffect(effects, child) =>
       effects ++ extractEffectsFromPlan(child)
-    case QueryPlan.Sequence(first, andThen, _) =>
+    case QueryPlan.Sequence(first, andThen) =>
       extractEffectsFromPlan(first) ++ extractEffectsFromPlan(andThen)
     case _ => Nil
   }
@@ -2566,14 +2566,14 @@ object QueryPlanner {
   /** Strip LocalEffect nodes from a plan, leaving the remainder */
   private def stripEffectsFromPlan(plan: QueryPlan): QueryPlan = plan match {
     case QueryPlan.LocalEffect(_, child) => stripEffectsFromPlan(child)
-    case QueryPlan.Sequence(first, andThen, flow) =>
+    case QueryPlan.Sequence(first, andThen) =>
       val strippedFirst = stripEffectsFromPlan(first)
       val strippedAndThen = stripEffectsFromPlan(andThen)
       (strippedFirst, strippedAndThen) match {
         case (QueryPlan.Unit, QueryPlan.Unit) => QueryPlan.Unit
         case (QueryPlan.Unit, other) => other
         case (other, QueryPlan.Unit) => other
-        case (f, a) => QueryPlan.Sequence(f, a, flow)
+        case (f, a) => QueryPlan.Sequence(f, a)
       }
     case other => other
   }
@@ -2594,7 +2594,7 @@ object QueryPlanner {
     // Inner function that tracks current anchor binding (which node we're "on")
     def push(plan: QueryPlan, anchorContext: Option[Symbol]): QueryPlan = plan match {
       // Main case: Sequence with Anchor followed by something else
-      case QueryPlan.Sequence(QueryPlan.Anchor(target, onTarget), rest, flow) =>
+      case QueryPlan.Sequence(QueryPlan.Anchor(target, onTarget), rest) =>
         // Determine binding from this anchor
         // For Computed(Ident(n)), extract n directly
         // For Computed(SynthesizeId(...)) or similar, check IdLookups to find the binding
@@ -2608,7 +2608,7 @@ object QueryPlanner {
           case AnchorTarget.FreshNode(b) => Some(b)
         }
         // Push the rest into the anchor's onTarget
-        val newOnTarget = QueryPlan.Sequence(onTarget, rest, flow)
+        val newOnTarget = QueryPlan.Sequence(onTarget, rest)
         // Process with this anchor's context
         QueryPlan.Anchor(target, push(newOnTarget, binding.orElse(anchorContext)))
 
@@ -2661,7 +2661,6 @@ object QueryPlanner {
       case QueryPlan.Sequence(
             cp @ QueryPlan.CrossProduct(children, emitLazily),
             effectRest,
-            flow,
           ) if children.exists(_.isInstanceOf[QueryPlan.Anchor]) =>
         // Extract all effects from the rest of the sequence
         val allEffects = extractEffectsFromPlan(effectRest)
@@ -2737,7 +2736,6 @@ object QueryPlanner {
                   val newOnTarget = QueryPlan.Sequence(
                     onTarget,
                     QueryPlan.LocalEffect(clearedEffects, QueryPlan.Unit),
-                    ContextFlow.Extend,
                   )
                   QueryPlan.Anchor(target, push(newOnTarget, binding.orElse(anchorContext)))
                 } else {
@@ -2754,7 +2752,7 @@ object QueryPlanner {
           val newCrossProduct = QueryPlan.CrossProduct(injectedChildren, emitLazily)
           val withRemainder =
             if (remainder != QueryPlan.Unit)
-              QueryPlan.Sequence(newCrossProduct, push(remainder, anchorContext), flow)
+              QueryPlan.Sequence(newCrossProduct, push(remainder, anchorContext))
             else newCrossProduct
 
           // Handle effects that couldn't be pushed (have cross-node dependencies)
@@ -2810,7 +2808,6 @@ object QueryPlanner {
                         QueryPlan.Sequence(
                           onTarget,
                           QueryPlan.LocalEffect(clearedEffects, QueryPlan.Unit),
-                          ContextFlow.Extend,
                         )
                       QueryPlan.Anchor(target, withEffect)
                     } else {
@@ -2823,22 +2820,22 @@ object QueryPlanner {
               // Combine target plans (if multiple, use Sequence)
               val targetPlan = targetPlans match {
                 case single :: Nil => single
-                case multiple => multiple.reduceLeft((acc, p) => QueryPlan.Sequence(acc, p, ContextFlow.Extend))
+                case multiple => multiple.reduceLeft((acc, p) => QueryPlan.Sequence(acc, p))
               }
 
               // Add remainder after targets
               val withRemainder2 =
                 if (remainder != QueryPlan.Unit)
-                  QueryPlan.Sequence(targetPlan, push(remainder, anchorContext), flow)
+                  QueryPlan.Sequence(targetPlan, push(remainder, anchorContext))
                 else targetPlan
 
               // Wrap with dependency anchors (outermost)
               val result = depChildren.foldLeft(withRemainder2) { case (inner, (depAnchor, _)) =>
                 depAnchor match {
                   case QueryPlan.Anchor(target, onTarget) =>
-                    val withInner = QueryPlan.Sequence(onTarget, inner, ContextFlow.Extend)
+                    val withInner = QueryPlan.Sequence(onTarget, inner)
                     QueryPlan.Anchor(target, withInner)
-                  case _ => QueryPlan.Sequence(depAnchor, inner, ContextFlow.Extend)
+                  case _ => QueryPlan.Sequence(depAnchor, inner)
                 }
               }
 
@@ -2853,9 +2850,9 @@ object QueryPlanner {
                     val clearedEffects = targetEffects.map(clearEffectTarget)
                     val effectPlan = QueryPlan.LocalEffect(clearedEffects, QueryPlan.Unit)
                     val anchoredEffect = QueryPlan.Anchor(AnchorTarget.Computed(makeBindingExpr(target)), effectPlan)
-                    result = QueryPlan.Sequence(result, anchoredEffect, ContextFlow.Extend)
+                    result = QueryPlan.Sequence(result, anchoredEffect)
                   case None =>
-                    result = QueryPlan.Sequence(result, QueryPlan.LocalEffect(targetEffects, QueryPlan.Unit), flow)
+                    result = QueryPlan.Sequence(result, QueryPlan.LocalEffect(targetEffects, QueryPlan.Unit))
                 }
               }
               result
@@ -2865,12 +2862,12 @@ object QueryPlanner {
           }
         } else {
           // No effects to push - normal processing
-          QueryPlan.Sequence(push(cp, anchorContext), push(effectRest, anchorContext), flow)
+          QueryPlan.Sequence(push(cp, anchorContext), push(effectRest, anchorContext))
         }
 
       // Recurse into other structures
-      case QueryPlan.Sequence(first, andThen, flow) =>
-        QueryPlan.Sequence(push(first, anchorContext), push(andThen, anchorContext), flow)
+      case QueryPlan.Sequence(first, andThen) =>
+        QueryPlan.Sequence(push(first, anchorContext), push(andThen, anchorContext))
 
       case QueryPlan.Anchor(target, onTarget) =>
         // Determine binding from this anchor and pass it to children

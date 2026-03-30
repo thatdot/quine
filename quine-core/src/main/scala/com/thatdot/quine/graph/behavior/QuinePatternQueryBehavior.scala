@@ -247,8 +247,8 @@ trait QuinePatternQueryBehavior
         properties = properties.toMap,
         edges = edges.toSet,
         labels = getLabels().getOrElse(Set.empty),
-        graph = Some(graph),
-        namespace = Some(namespace),
+        graph = graph,
+        namespace = namespace,
       )
 
       // Install the state graph

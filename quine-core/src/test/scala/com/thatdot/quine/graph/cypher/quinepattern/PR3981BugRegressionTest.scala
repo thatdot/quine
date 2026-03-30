@@ -282,46 +282,72 @@ class PR3981BugRegressionTest
   // ============================================================
 
   "OptionalState (Bug 5)" should "retract real results and re-emit null-padded default atomically on matches→no-matches transition" in {
-    val probe = TestProbe()
-    val parentId = StandingQueryId.fresh()
-    val innerId = StandingQueryId.fresh()
-    val contextSenderId = StandingQueryId.fresh()
-    val stateId = StandingQueryId.fresh()
+    val graph = makeGraph("PR3981BugRegressionTest-Bug5")
+    try {
+      val probe = TestProbe()
+      val parentId = StandingQueryId.fresh()
+      val contextSenderId = StandingQueryId.fresh()
+      val stateId = StandingQueryId.fresh()
 
-    val bridgeId = StandingQueryId.fresh()
-    val nullBindings = Set(Symbol("friend"))
-    val state = new OptionalState(stateId, parentId, RuntimeMode.Lazy, innerId, nullBindings, bridgeId)
+      val nullBindings = Set(Symbol("friend"))
+      // Inner plan is a simple Unit - in this unit test we simulate its results manually
+      val state = new OptionalState(
+        id = stateId,
+        publishTo = parentId,
+        mode = RuntimeMode.Lazy,
+        innerPlan = QueryPlan.Unit,
+        nullBindings = nullBindings,
+        namespace = namespace,
+        params = Map.empty,
+        atTime = None,
+      )
 
-    val contextRow = makeCtx(Symbol("p") -> Value.Integer(42))
-    val contextDelta: Delta.T = Map(contextRow -> 1)
+      val contextRow = makeCtx(Symbol("p") -> Value.Integer(42))
+      val contextDelta: Delta.T = Map(contextRow -> 1)
 
-    val innerRow = makeCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Integer(99))
-    val nullPaddedRow = makeCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Null)
-    val innerAdd: Delta.T = Map(innerRow -> 1)
-    val innerRetract: Delta.T = Map(innerRow -> -1)
+      val innerRow = makeCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Integer(99))
+      val nullPaddedRow = makeCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Null)
+      val innerAdd: Delta.T = Map(innerRow -> 1)
+      val innerRetract: Delta.T = Map(innerRow -> -1)
 
-    // Step 1: context arrives → bridge-forward QueryUpdate + null-padded emission (2 messages)
-    state.notify(contextDelta, contextSenderId, probe.ref)
-    expectQueryUpdates(probe, 2, 1.second)
-    expectNoQueryUpdate(probe, 100.millis)
+      // Step 1: context arrives → LoadQueryPlan is sent (not QueryUpdate) + null-padded QueryUpdate to parent
+      state.notify(contextDelta, contextSenderId, probe.ref)
 
-    // Step 2: inner match arrives (0 → 1) → single atomic delta: retract null-padded + emit real result
-    state.notify(innerAdd, innerId, probe.ref)
-    expectQueryUpdates(probe, 1, 1.second)
-    expectNoQueryUpdate(probe, 100.millis)
+      // Capture the LoadQueryPlan to get the inner sqid
+      val loadPlanMsg = probe
+        .fishForMessage(1.second) {
+          case _: QuinePatternCommand.LoadQueryPlan => true
+          case _ => false
+        }
+        .asInstanceOf[QuinePatternCommand.LoadQueryPlan]
+      val innerSqid = loadPlanMsg.sqid
 
-    // Step 3: inner retracts (1 → 0) — the combined delta must contain both
-    // the retraction of innerRow and the assertion of the null-padded default
-    state.notify(innerRetract, innerId, probe.ref)
+      // Also expect the null-padded default emission (QueryUpdate to parent)
+      val nullPaddedMsg = expectQueryUpdates(probe, 1, 1.second).head
+      nullPaddedMsg.delta should contain(nullPaddedRow -> 1)
+      expectNoQueryUpdate(probe, 100.millis)
 
-    val transitionMsg = expectQueryUpdates(probe, 1, 1.second).head
-    expectNoQueryUpdate(probe, 100.millis)
+      // Step 2: inner match arrives (0 → 1) via the inner sqid → single atomic delta: retract null-padded + emit real result
+      state.notify(innerAdd, innerSqid, probe.ref)
+      val addMsg = expectQueryUpdates(probe, 1, 1.second).head
+      // The delta should retract the null-padded default and emit the real result
+      addMsg.delta should contain(nullPaddedRow -> -1)
+      addMsg.delta should contain(innerRow -> 1)
+      expectNoQueryUpdate(probe, 100.millis)
 
-    // The single delta must contain the retraction of the real result
-    transitionMsg.delta should contain(innerRow -> -1)
+      // Step 3: inner retracts (1 → 0) — the combined delta must contain both
+      // the retraction of innerRow and the assertion of the null-padded default
+      state.notify(innerRetract, innerSqid, probe.ref)
 
-    // The single delta must contain the null-padded default assertion
-    transitionMsg.delta should contain(nullPaddedRow -> 1)
+      val transitionMsg = expectQueryUpdates(probe, 1, 1.second).head
+      expectNoQueryUpdate(probe, 100.millis)
+
+      // The single delta must contain the retraction of the real result
+      transitionMsg.delta should contain(innerRow -> -1)
+
+      // The single delta must contain the null-padded default assertion
+      transitionMsg.delta should contain(nullPaddedRow -> 1)
+    } finally Await.result(graph.shutdown(), 5.seconds)
   }
 
 }
