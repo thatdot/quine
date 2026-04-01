@@ -62,6 +62,7 @@ object QuineSettings {
       Tests.Argument(TestFrameworks.ScalaTest, "-l", integrationTestTag),
       Tests.Argument(TestFrameworks.ScalaTest, "-l", licenseRequiredTestTag),
     ),
+    dependencyOverrides ++= Dependencies.jvmDependencyOverrides,
     excludeDependencies ++= Seq(
       ExclusionRule("commons-logging", "commons-logging"),
       // Exclude old lz4-java; we use at.yawk.lz4:lz4-java instead (CVE-2025-66566, CVE-2025-12183)

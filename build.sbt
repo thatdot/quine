@@ -110,11 +110,6 @@ lazy val `quine-serialization`: Project = project
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
       // Glue->AWS Netty Client->Netty, which has some CVEs. Glue 1.1.27 has vulnerable Netty; override to safe AWS SDK.
       "software.amazon.awssdk" % "netty-nio-client" % awsSdkV,
-      // Netty overrides for CVE-2026-33870 & CVE-2026-33871, required for AWS Glue SDK
-      "io.netty" % "netty-handler" % nettyOverrideV,
-      "io.netty" % "netty-codec-http" % nettyOverrideV,
-      "io.netty" % "netty-codec-http2" % nettyOverrideV,
-      "io.netty" % "netty-transport-classes-epoll" % nettyOverrideV,
       "org.apache.avro" % "avro" % avroV,
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
       "org.endpoints4s" %%% "json-schema-circe" % endpoints4sCirceV,
@@ -160,13 +155,8 @@ lazy val `quine-cassandra-persistor`: Project = project
       // The sigv4-auth plugin specifies a dep on com.datastax.oss, SBT doesn't know that our org.apache.cassandra
       // dep is supposed to be the replacement for that, and includes both on the classpath, which then conflict
       // at the sbt-assembly step (because they both have the same package names internally).
-      "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % "4.0.9" exclude ("com.datastax.oss", "java-driver-core"),
+      "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % sigv4AuthCassandraPluginV exclude ("com.datastax.oss", "java-driver-core"),
       "software.amazon.awssdk" % "sts" % awsSdkV,
-      // Netty overrides for CVE-2026-33870 & CVE-2026-33871, required for AWS SDK
-      "io.netty" % "netty-handler" % nettyOverrideV,
-      "io.netty" % "netty-codec-http" % nettyOverrideV,
-      "io.netty" % "netty-codec-http2" % nettyOverrideV,
-      "io.netty" % "netty-transport-classes-epoll" % nettyOverrideV,
       "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test,
     ),
   )
@@ -300,11 +290,6 @@ lazy val `outputs2`: Project = project
       "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-sns" % pekkoConnectorsV,
       "software.amazon.awssdk" % "netty-nio-client" % awsSdkV,
-      // Netty overrides for CVE-2026-33870 & CVE-2026-33871, required for AWS SDK
-      "io.netty" % "netty-handler" % nettyOverrideV,
-      "io.netty" % "netty-codec-http" % nettyOverrideV,
-      "io.netty" % "netty-codec-http2" % nettyOverrideV,
-      "io.netty" % "netty-transport-classes-epoll" % nettyOverrideV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test,
@@ -363,6 +348,7 @@ lazy val `quine-browser`: Project = project
       "com.raquo" %%% "waypoint" % waypointV,
     ),
     Compile / npmDevDependencies ++= Seq(
+      // When updating, check whether the minimatch yarn resolution below is still needed
       "ts-loader" -> "8.0.0",
       "typescript" -> "4.9.5",
       "@types/node" -> "16.7.13",
@@ -385,12 +371,7 @@ lazy val `quine-browser`: Project = project
       "@coreui/icons" -> coreuiIconsV,
       "@popperjs/core" -> "2.11.8",
     ),
-    // Force patched dependency versions via yarn resolutions
-    // - lodash: CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
-    // - react-router: CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
-    // - minimatch: CVE-2026-27903 & CVE-2026-27904
-    // - yaml: CVE-2026-33532 (GHSA-48c2-rrv3-qjmp)
-    // - brace-expansion: CVE-2026-33750 (GHSA-f886-m6hf-6m8v)
+    // Force patched dependency versions via yarn resolutions (see NPM Override Versions in Dependencies.scala)
     Compile / additionalNpmConfig := Map(
       "resolutions" -> obj(
         "lodash" -> str(lodashV),
@@ -487,11 +468,6 @@ lazy val `quine`: Project = project
       "org.webjars" % "webjars-locator" % webjarsLocatorV,
       "org.webjars.npm" % "sugar-date" % sugarV,
       "org.apache.avro" % "avro" % avroV,
-      // Netty overrides for CVE-2026-33870 & CVE-2026-33871, required for AWS SDK
-      "io.netty" % "netty-handler" % nettyOverrideV,
-      "io.netty" % "netty-codec-http" % nettyOverrideV,
-      "io.netty" % "netty-codec-http2" % nettyOverrideV,
-      "io.netty" % "netty-transport-classes-epoll" % nettyOverrideV,
       // AWS SDK deps (next 4) effectively bundle sibling JARs needed for certain features, despite no code references
       "software.amazon.awssdk" % "sso" % awsSdkV,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV,

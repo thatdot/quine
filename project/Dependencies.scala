@@ -1,8 +1,12 @@
+import sbt._
+
 object Dependencies {
   val amazonKinesisClientV = "3.4.1"
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.1"
+  // On update, check whether nettyOverrideV override is removable
   val awsSdkV = "2.42.24"
+  // On update, check whether netty-nio-client override in quine-serialization is removable
   val amazonGlueV = "1.1.27"
   val betterMonadicForV = "0.3.1"
   val boopickleV = "1.5.0"
@@ -31,17 +35,18 @@ object Dependencies {
   val jqueryV = "3.6.3"
   val jwtV = "0.13.0"
   val jwtScalaV = "11.0.3"
-  // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
+  // On update, keep lz4JavaV in sync
   val kafkaClientsV = "3.9.2"
   val kindProjectorV = "0.13.4"
   val logbackV = "1.5.32"
   val laminarV = "17.2.1"
   val waypointV = "10.0.0-M7"
-  val lz4JavaV = "1.10.4" // Try to keep this in sync w/ the version kafka-client depends on.
+  // Keep in sync with the version kafka-clients (kafkaClientsV) depends on
+  val lz4JavaV = "1.10.4"
+  // On update, check whether net.jpountz.lz4:lz4 exclusion in quine-mapdb-persistor is removable
   val mapDbV = "3.1.0"
   val metricsInfluxdbV = "1.1.0"
   val msgPackV = "0.9.11"
-  val nettyOverrideV = "4.1.132.Final"
   val openApiCirceYamlV = "0.11.10"
   val openCypherV = "9.2.3"
   val parboiledV = "1.4.1"
@@ -64,13 +69,7 @@ object Dependencies {
   val memeid4sV = "0.8.0"
   val munitV = "1.2.4"
   val quineCommonV = "0.0.4"
-  val lodashV = "4.17.23" // Patched for CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
-  val reactV = "17.0.2" // Required as peer dependency by @stoplight/elements
-  val reactRouterV = "6.30.3" // Patched for CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
-  val remixRunRouterV = "1.23.2" // Patched for CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
-  val minimatchV = "3.1.5" // Patched for CVE-2026-27903 & CVE-2026-27904
-  val braceExpansionV = "1.1.13" // Patched for CVE-2026-33750 (GHSA-f886-m6hf-6m8v)
-  val yamlV = "1.10.3" // Patched for CVE-2026-33532 (GHSA-48c2-rrv3-qjmp)
+  val reactV = "17.0.2"
   val rocksdbV = "10.10.1"
   val scaffeineV = "5.3.0"
   val scalaCheckV = "1.19.0"
@@ -84,6 +83,9 @@ object Dependencies {
   val scoptV = "4.1.0"
   val shapelessV = "2.3.13"
   val ayzaV = "10.0.4"
+  // On update, check whether com.datastax.oss exclusion in quine-cassandra-persistor is removable
+  val sigv4AuthCassandraPluginV = "4.0.9"
+  // On update, check whether any NPM Override Versions (below) are removable
   val stoplightElementsV = "9.0.1"
   val sugarV = "2.0.6"
   val tapirV = "1.13.14"
@@ -91,14 +93,46 @@ object Dependencies {
   val circeV = "0.14.15"
   val circeGenericExtrasV = "0.14.4"
   val circeOpticsV = "0.15.1"
+  val webjarsLocatorV = "0.52"
+
+  // === Vis-Network and Peer Dependencies
   val visNetworkV = "10.0.2"
-  // vis-network peer dependencies
   val visDataV = "8.0.3"
   val visUtilV = "6.0.0"
   val egjsHammerjsV = "2.0.17"
   val componentEmitterV = "2.0.0"
   val keycharmV = "0.4.0"
   val uuidV = "11.1.0"
-  //
-  val webjarsLocatorV = "0.52"
+
+  // === JVM Override Versions ===
+  // == Remove overrides when parents require fixed versions of the transitive dependency. ==
+
+  // Parent: AWS SDK (awsSdkV) via transitive Netty dependency
+  val nettyOverrideV = "4.1.132.Final" // CVE-2026-33871
+
+  val jvmDependencyOverrides: Seq[ModuleID] = Seq(
+    "io.netty" % "netty-handler" % nettyOverrideV,
+    "io.netty" % "netty-codec-http" % nettyOverrideV,
+    "io.netty" % "netty-codec-http2" % nettyOverrideV,
+    "io.netty" % "netty-transport-classes-epoll" % nettyOverrideV,
+  )
+
+  // === NPM Override Versions ===
+  // == Remove overrides when parents require fixed versions of the transitive dependency. ==
+
+  // Parents: @stoplight/elements (stoplightElementsV), webpack (scalajs-bundler)
+  val lodashV = "4.17.23" // CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
+
+  // Parent: @stoplight/elements (stoplightElementsV) via react-router-dom
+  val reactRouterV = "6.30.3" // CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
+  val remixRunRouterV = "1.23.2" // CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
+
+  // Parents: @stoplight/elements (stoplightElementsV), glob.
+  val minimatchV = "3.1.5" // CVE-2026-27903 & CVE-2026-27904
+
+  // Parent: @stoplight/elements (stoplightElementsV) via @stoplight/yaml and openapi3-ts
+  val yamlV = "1.10.3" // CVE-2026-33532 (GHSA-48c2-rrv3-qjmp)
+
+  // Parent: @stoplight/elements (stoplightElementsV) via minimatch
+  val braceExpansionV = "1.1.13" // CVE-2026-33750 (GHSA-f886-m6hf-6m8v)
 }
