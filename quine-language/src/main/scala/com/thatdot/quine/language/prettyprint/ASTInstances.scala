@@ -9,13 +9,13 @@ trait ASTInstances extends BaseInstances with TypeInstances {
   implicit val cypherIdentifierPrettyPrint: PrettyPrint[CypherIdentifier] =
     PrettyPrint.instance(id => text(id.name.name))
 
-  implicit val quineIdentifierPrettyPrint: PrettyPrint[QuineIdentifier] =
-    PrettyPrint.instance(id => text(s"#${id.name}"))
+  implicit val bindingIdPrettyPrint: PrettyPrint[BindingId] =
+    PrettyPrint.instance(bid => text(s"#${bid.id}"))
 
-  implicit def identifierEitherPrettyPrint: PrettyPrint[Either[CypherIdentifier, QuineIdentifier]] =
+  implicit def identifierEitherPrettyPrint: PrettyPrint[Either[CypherIdentifier, BindingId]] =
     PrettyPrint.instance {
       case Left(cid) => cypherIdentifierPrettyPrint.doc(cid)
-      case Right(qid) => quineIdentifierPrettyPrint.doc(qid)
+      case Right(bid) => bindingIdPrettyPrint.doc(bid)
     }
 
   implicit val sourcePrettyPrint: PrettyPrint[Source] =

@@ -1,8 +1,13 @@
 package com.thatdot.quine.language
 
 import com.thatdot.quine.cypher.ast.Query
-import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{SymbolTable, TableMonoid}
-import com.thatdot.quine.cypher.phases.{CanonicalizationPhase, LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
+import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{
+  PropertyAccessMapping,
+  PropertyAccessMappingMonoid,
+  SymbolTable,
+  TableMonoid,
+}
+import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, MaterializationPhase, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.language.diagnostic.Diagnostic
 import com.thatdot.quine.language.phases.{TypeCheckingPhase, UpgradeModule}
 import com.thatdot.quine.language.types.Type
@@ -45,6 +50,7 @@ case class TypeCheckResult(
   ast: Option[Query],
   symbolTable: SymbolTable,
   typeEnv: Map[Symbol, Type],
+  propertyAccessMapping: PropertyAccessMapping,
   diagnostics: List[Diagnostic],
 ) {
   def hasErrors: Boolean = diagnostics.exists(!_.isInstanceOf[Diagnostic.SymbolAnalysisWarning])
@@ -66,8 +72,8 @@ object Cypher {
   type CompileResult = TypeCheckResult
 
   private val parsePipeline = LexerPhase andThen ParserPhase
-  private val analyzePipeline = parsePipeline andThen SymbolAnalysisPhase andThen CanonicalizationPhase
-  private val typeCheckPipeline = analyzePipeline andThen TypeCheckingPhase()
+  private val analyzePipeline = parsePipeline andThen SymbolAnalysisPhase
+  private val typeCheckPipeline = analyzePipeline andThen TypeCheckingPhase() andThen MaterializationPhase
 
   def parse(query: String): ParseResult = {
     val (state, result) = parsePipeline.process(query).value.run(LexerState(Nil)).value
@@ -92,6 +98,7 @@ object Cypher {
       ast = result,
       symbolTable = state.symbolTable,
       typeEnv = state.typeEnv,
+      propertyAccessMapping = state.propertyAccessMapping,
       diagnostics = state.diagnostics,
     )
   }

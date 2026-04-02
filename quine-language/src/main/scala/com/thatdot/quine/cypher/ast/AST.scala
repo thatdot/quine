@@ -1,8 +1,8 @@
 package com.thatdot.quine.cypher.ast
 
-import com.thatdot.quine.language.ast.{CypherIdentifier, Direction, Expression, QuineIdentifier, Source}
+import com.thatdot.quine.language.ast.{BindingId, CypherIdentifier, Direction, Expression, Source}
 
-case class Projection(source: Source, expression: Expression, as: Either[CypherIdentifier, QuineIdentifier])
+case class Projection(source: Source, expression: Expression, as: Either[CypherIdentifier, BindingId])
 
 /** A single item in an ORDER BY clause.
   * @param source Source location in the query text
@@ -16,17 +16,22 @@ sealed trait Effect {
 }
 
 object Effect {
-  case class Foreach(source: Source, binding: Symbol, in: Expression, effects: List[Effect]) extends Effect
+  case class Foreach(
+    source: Source,
+    binding: Either[CypherIdentifier, BindingId],
+    in: Expression,
+    effects: List[Effect],
+  ) extends Effect
   case class SetProperty(source: Source, property: Expression.FieldAccess, value: Expression) extends Effect
-  case class SetProperties(source: Source, of: Either[CypherIdentifier, QuineIdentifier], properties: Expression)
+  case class SetProperties(source: Source, of: Either[CypherIdentifier, BindingId], properties: Expression)
       extends Effect
-  case class SetLabel(source: Source, on: Either[CypherIdentifier, QuineIdentifier], labels: Set[Symbol]) extends Effect
+  case class SetLabel(source: Source, on: Either[CypherIdentifier, BindingId], labels: Set[Symbol]) extends Effect
   case class Create(source: Source, patterns: List[GraphPattern]) extends Effect
 }
 
 case class EdgePattern(
   source: Source,
-  maybeBinding: Option[Either[CypherIdentifier, QuineIdentifier]],
+  maybeBinding: Option[Either[CypherIdentifier, BindingId]],
   direction: Direction,
   edgeType: Symbol,
 )
@@ -44,7 +49,7 @@ case class Connection(edge: EdgePattern, dest: NodePattern)
   */
 case class NodePattern(
   source: Source,
-  maybeBinding: Option[Either[CypherIdentifier, QuineIdentifier]],
+  maybeBinding: Option[Either[CypherIdentifier, BindingId]],
   labels: Set[Symbol],
   maybeProperties: Option[Expression],
 )
@@ -58,13 +63,13 @@ sealed trait ReadingClause {
 /** Represents a single item in a YIELD clause.
   * @param resultField The name of the field returned by the procedure
   * @param boundAs The variable it's bound to in the query scope (starts as CypherIdentifier,
-  *                rewritten to QuineIdentifier during symbol analysis)
+  *                rewritten to BindingId during symbol analysis)
   *
   * Examples:
   *   - `YIELD edge` -> YieldItem(resultField = 'edge, boundAs = Left(CypherIdentifier('edge)))
   *   - `YIELD result AS r` -> YieldItem(resultField = 'result, boundAs = Left(CypherIdentifier('r)))
   */
-case class YieldItem(resultField: Symbol, boundAs: Either[CypherIdentifier, QuineIdentifier])
+case class YieldItem(resultField: Symbol, boundAs: Either[CypherIdentifier, BindingId])
 
 object ReadingClause {
   case class FromPatterns(
@@ -73,13 +78,12 @@ object ReadingClause {
     maybePredicate: Option[Expression],
     isOptional: Boolean = false,
   ) extends ReadingClause
-  case class FromUnwind(source: Source, list: Expression, as: Either[CypherIdentifier, QuineIdentifier])
-      extends ReadingClause
+  case class FromUnwind(source: Source, list: Expression, as: Either[CypherIdentifier, BindingId]) extends ReadingClause
   case class FromProcedure(source: Source, name: Symbol, args: List[Expression], yields: List[YieldItem])
       extends ReadingClause
   case class FromSubquery(
     source: Source,
-    bindings: List[Either[CypherIdentifier, QuineIdentifier]],
+    bindings: List[Either[CypherIdentifier, BindingId]],
     subquery: Query,
   ) extends ReadingClause
 }

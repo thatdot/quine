@@ -22,7 +22,7 @@ import com.thatdot.quine.cypher.ast.{
   YieldItem,
 }
 import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{SymbolTable, SymbolTableState}
-import com.thatdot.quine.language.ast.{Direction, Expression, QuineIdentifier, Source}
+import com.thatdot.quine.language.ast.{BindingId, Expression, Source}
 import com.thatdot.quine.language.diagnostic.Diagnostic
 import com.thatdot.quine.language.phases.CompilerPhase.{SimpleCompilerPhase, SimpleCompilerPhaseEffect}
 import com.thatdot.quine.language.phases.CompilerState
@@ -30,38 +30,39 @@ import com.thatdot.quine.language.types.Type
 
 object SymbolAnalysisModule {
 
-  sealed trait SymbolTableEntry {
-    val source: Source
-    val identifier: Int
+  /** A binding declaration in the symbol table.
+    * Records that a binding exists, its unique identifier, its original name (for display),
+    * and its source location. Types are assigned by the type checker. Property access mappings
+    * are produced by the materialization phase as a separate data structure.
+    *
+    * @param source Source location of the binding declaration
+    * @param identifier Globally unique integer identifier assigned by symbol analysis
+    * @param originalName The user-facing name from the query (e.g., Symbol("n") for MATCH (n)).
+    *                     None for anonymous/synthetic bindings.
+    */
+  case class BindingEntry(source: Source, identifier: Int, originalName: Option[Symbol])
+
+  case class TypeEntry(source: Source = Source.NoSource, identifier: BindingId, ty: Type)
+
+  /** A materialized property access: reading `property` on graph element `onBinding`
+    * is rewritten to a reference to synthetic identifier `synthId`.
+    */
+  case class PropertyAccess(synthId: Int, onBinding: Int, property: Symbol)
+
+  /** The property access mapping produced by the materialization phase.
+    * Records which synthetic identifiers correspond to which property reads
+    * on which graph element bindings.
+    */
+  case class PropertyAccessMapping(entries: List[PropertyAccess]) {
+    def isEmpty: Boolean = entries.isEmpty
+    def nonEmpty: Boolean = entries.nonEmpty
   }
 
-  object SymbolTableEntry {
-    case class NodeEntry(source: Source, identifier: Int, labels: Set[Symbol], maybeProperties: Option[Expression])
-        extends SymbolTableEntry
-    case class EdgeEntry(source: Source, identifier: Int, edgeType: Symbol, direction: Direction)
-        extends SymbolTableEntry
-    case class UnwindEntry(source: Source, identifier: Int, from: Expression) extends SymbolTableEntry
-    case class ForeachEntry(source: Source, identifier: Int, from: Expression) extends SymbolTableEntry
-    case class ProcedureYieldEntry(source: Source, identifier: Int, procedureName: Symbol, resultField: Symbol)
-        extends SymbolTableEntry
-    case class ExpressionEntry(source: Source, identifier: Int, exp: Expression) extends SymbolTableEntry
-
-    /** Entry for property access on a graph element (node or edge).
-      * Created when symbol analysis rewrites `n.propName` to an identifier.
-      *
-      * @param identifier The synthetic identifier for this property access
-      * @param onBinding The graph element binding being accessed
-      * @param property The property name being accessed
-      */
-    case class PropertyAccessEntry(source: Source, identifier: Int, onBinding: Int, property: Symbol)
-        extends SymbolTableEntry
-
-    case class QuineToCypherIdEntry(source: Source, identifier: Int, cypherIdentifier: Symbol) extends SymbolTableEntry
+  object PropertyAccessMapping {
+    val empty: PropertyAccessMapping = PropertyAccessMapping(Nil)
   }
 
-  case class TypeEntry(source: Source = Source.NoSource, identifier: String, ty: Type)
-
-  case class SymbolTable(references: List[SymbolTableEntry], typeVars: List[TypeEntry])
+  case class SymbolTable(references: List[BindingEntry], typeVars: List[TypeEntry])
 
   object SymbolTable {
     def empty: SymbolTable = SymbolTable(Nil, Nil)
@@ -75,6 +76,13 @@ object SymbolAnalysisModule {
         references = x.references ::: y.references,
         typeVars = x.typeVars ::: y.typeVars,
       )
+  }
+
+  implicit val PropertyAccessMappingMonoid: Monoid[PropertyAccessMapping] = new Monoid[PropertyAccessMapping] {
+    override def empty: PropertyAccessMapping = PropertyAccessMapping.empty
+
+    override def combine(x: PropertyAccessMapping, y: PropertyAccessMapping): PropertyAccessMapping =
+      PropertyAccessMapping(x.entries ::: y.entries)
   }
 
   case class SymbolTableState(
@@ -113,15 +121,15 @@ object SymbolAnalysisModule {
   def findInScopeByName(name: Symbol): SymbolProgram[Option[Int]] =
     inspect(_.currentScope.find(_._2 == name).map(_._1))
 
-  def intro(name: Symbol, source: Source): SymbolProgram[QuineIdentifier] = for {
+  def intro(name: Symbol, source: Source): SymbolProgram[BindingId] = for {
     id <- freshId
     _ <- mod(st => st.copy(currentScope = st.currentScope + ((id, name))))
-    _ <- addEntry(SymbolTableEntry.QuineToCypherIdEntry(source, id, name))
-  } yield QuineIdentifier(id)
+    _ <- addEntry(BindingEntry(source, id, Some(name)))
+  } yield BindingId(id)
 
-  def freshScope(imports: Set[QuineIdentifier]): SymbolProgram[Unit] =
+  def freshScope(imports: Set[BindingId]): SymbolProgram[Unit] =
     for {
-      maybeNewScope <- imports.toList.traverse(qid => findScopeEntryByInt(qid.name))
+      maybeNewScope <- imports.toList.traverse(bid => findScopeEntryByInt(bid.id))
       newScope <- maybeNewScope.foldM(Set.empty[(Int, Symbol)]) { (acc, maybeEntry) =>
         maybeEntry match {
           case Some(entry) => pure(acc + entry)
@@ -132,11 +140,11 @@ object SymbolAnalysisModule {
       _ <- mod(st => st.copy(currentScope = newScope))
     } yield ()
 
-  def rewriteId(name: Symbol, source: Source = Source.NoSource): SymbolProgram[QuineIdentifier] =
+  def rewriteId(name: Symbol, source: Source = Source.NoSource): SymbolProgram[BindingId] =
     for {
       maybeId <- findInScopeByName(name)
       rewrittenId <- maybeId match {
-        case Some(id) => pure(QuineIdentifier(id))
+        case Some(id) => pure(BindingId(id))
         case None => intro(name, source)
       }
     } yield rewrittenId
@@ -173,36 +181,30 @@ object SymbolAnalysisModule {
     *
     * @param name   The symbol name to look up
     * @param source Source location for error reporting
-    * @return A program that returns the QuineIdentifier if found, or a fresh one with an error if not
+    * @return A program that returns the BindingId if found, or a fresh one with an error if not
     */
-  def lookupId(name: Symbol, source: Source): SymbolProgram[QuineIdentifier] =
+  def lookupId(name: Symbol, source: Source): SymbolProgram[BindingId] =
     for {
       maybeId <- findInScopeByName(name)
       result <- maybeId match {
-        case Some(id) => pure(QuineIdentifier(id))
+        case Some(id) => pure(BindingId(id))
         case None =>
           // Variable not in scope - this is an error at reference sites
           addError(s"Undefined variable '${name.name}' at $source") *>
             // Return a fresh ID to allow analysis to continue and catch more errors
-            freshId.map(QuineIdentifier(_))
+            freshId.map(BindingId(_))
       }
     } yield result
 
-  /** Checks if an entry of the same type already exists for a given identifier.
-    * This is used to detect actual redefinitions (e.g., two NodeEntries for the same binding)
-    * rather than different entry types for the same identifier (which is expected).
-    */
-  def sameTypeEntryExists(entry: SymbolTableEntry): SymbolProgram[Boolean] =
+  /** Checks if an entry already exists for a given identifier. */
+  def entryExists(entry: BindingEntry): SymbolProgram[Boolean] =
     inspect { st =>
-      st.table.references.exists { existing =>
-        existing.identifier == entry.identifier &&
-        existing.getClass == entry.getClass
-      }
+      st.table.references.exists(_.identifier == entry.identifier)
     }
 
-  def addEntry(entry: SymbolTableEntry): SymbolProgram[Unit] =
+  def addEntry(entry: BindingEntry): SymbolProgram[Unit] =
     for {
-      alreadyDefined <- sameTypeEntryExists(entry)
+      alreadyDefined <- entryExists(entry)
       _ <- mod(st =>
         st.copy(
           table = st.table.copy(references = entry :: st.table.references),
@@ -234,7 +236,7 @@ object SymbolAnalysisModule {
   /** Analyzes a field access expression that is a read (e.g., RETURN n.name).
     * Recursively analyzes the target expression. Field access rewriting (converting
     * graph element property access to synthetic identifiers) is handled by the
-    * canonicalization phase.
+    * materialization phase.
     */
   def analyzeFieldAccess(
     fa: Expression.FieldAccess,
@@ -319,7 +321,6 @@ object SymbolAnalysisModule {
         case Left(value) => rewriteId(value.name, projection.source)
         case Right(value) => pure(value)
       }
-      _ <- addEntry(SymbolTableEntry.ExpressionEntry(projection.source, rewrittenAs.name, rewrittenExp))
     } yield projection.copy(expression = rewrittenExp, as = Right(rewrittenAs))
 
   /** Creates a program that, when run
@@ -389,7 +390,6 @@ object SymbolAnalysisModule {
               case Left(value) => rewriteId(value.name, p.source)
               case Right(value) => pure(value)
             }
-            _ <- addEntry(SymbolTableEntry.ExpressionEntry(p.source, rewrittenAs.name, rewrittenExp))
           } yield p.copy(expression = rewrittenExp, as = Right(rewrittenAs))
         }
         rewrittenWhere <- withClause.maybePredicate match {
@@ -410,24 +410,11 @@ object SymbolAnalysisModule {
       rewrittenId <- pattern.maybeBinding match {
         case Some(id) =>
           id match {
-            case Left(value) => rewriteId(value.name, pattern.source).map(qid => Some(Right(qid)))
+            case Left(value) => rewriteId(value.name, pattern.source).map(bid => Some(Right(bid)))
             case Right(value) => pure(Some(Right(value)))
           }
         // Anonymous edges (no binding) stay anonymous - don't generate an ID
         case None => pure(None)
-      }
-      // Add EdgeEntry for named edge bindings so downstream phases can look them up
-      _ <- rewrittenId match {
-        case Some(Right(qid)) =>
-          addEntry(
-            SymbolTableEntry.EdgeEntry(
-              pattern.source,
-              qid.name,
-              pattern.edgeType,
-              pattern.direction,
-            ),
-          )
-        case _ => pure(())
       }
     } yield pattern.copy(maybeBinding = rewrittenId)
 
@@ -447,20 +434,16 @@ object SymbolAnalysisModule {
                 case Left(value) => rewriteId(value.name, nodePattern.source)
                 case Right(value) => pure(value)
               }
-            case None => freshId.map(QuineIdentifier)
+            case None =>
+              for {
+                id <- freshId
+                _ <- addEntry(BindingEntry(nodePattern.source, id, None))
+              } yield BindingId(id)
           }
           rewrittenProps <- nodePattern.maybeProperties match {
             case Some(value) => analyzeExpression(value).map(p => Some(p))
             case None => pure(Option.empty)
           }
-          _ <- addEntry(
-            SymbolTableEntry.NodeEntry(
-              nodePattern.source,
-              rewrittenId.name,
-              nodePattern.labels,
-              rewrittenProps,
-            ),
-          )
         } yield nodePattern.copy(
           maybeBinding = Some(Right(rewrittenId)),
           maybeProperties = rewrittenProps,
@@ -488,7 +471,7 @@ object SymbolAnalysisModule {
   /** Extract rewritten output identifiers from a query (SingleQuery or Union).
     * For Union, uses lhs bindings since both sides must have the same columns.
     */
-  private def queryOutputIds(query: Query): Set[QuineIdentifier] = query match {
+  private def queryOutputIds(query: Query): Set[BindingId] = query match {
     case q: Query.SingleQuery =>
       singleQueryBindings(q).flatMap(_.as.toOption).toSet
     case u: Query.Union =>
@@ -517,16 +500,8 @@ object SymbolAnalysisModule {
           for {
             rewrittenBoundAs <- yieldItem.boundAs match {
               case Left(cypherId) => rewriteId(cypherId.name, fromProcedure.source)
-              case Right(quineId) => pure(quineId)
+              case Right(value) => pure(value)
             }
-            _ <- addEntry(
-              SymbolTableEntry.ProcedureYieldEntry(
-                fromProcedure.source,
-                rewrittenBoundAs.name,
-                fromProcedure.name,
-                yieldItem.resultField,
-              ),
-            )
           } yield YieldItem(yieldItem.resultField, Right(rewrittenBoundAs))
         }
       } yield fromProcedure.copy(args = rewriteExps, yields = rewrittenYields)
@@ -537,10 +512,6 @@ object SymbolAnalysisModule {
           case Left(value) => rewriteId(value.name, fromUnwind.source)
           case Right(value) => pure(value)
         }
-        _ <- addEntry(
-          SymbolTableEntry
-            .UnwindEntry(fromUnwind.source, rewrittenAs.name, rewrittenList),
-        )
       } yield fromUnwind.copy(list = rewrittenList, as = Right(rewrittenAs))
     case fromSq: ReadingClause.FromSubquery =>
       for {
@@ -553,8 +524,8 @@ object SymbolAnalysisModule {
         oldScope <- inspect(_.currentScope)
         rewrittenQuery <- analyzeQuery(fromSq.subquery, rewrittenBindings.toSet)
         imports = queryOutputIds(rewrittenQuery)
-        newIntros <- imports.toList.traverse(qid =>
-          findInScopeByInt(qid.name).map(maybeId => maybeId.map(name => (qid.name -> name))),
+        newIntros <- imports.toList.traverse(bid =>
+          findInScopeByInt(bid.id).map(maybeId => maybeId.map(name => (bid.id -> name))),
         )
         validIntros = newIntros.collect { case Some(intro) =>
           intro
@@ -573,19 +544,14 @@ object SymbolAnalysisModule {
         // Save current scope before introducing FOREACH binding
         oldScope <- inspect(_.currentScope)
         // Introduce the FOREACH binding into scope so nested effects can reference it
-        rewrittenBinding <- intro(foreach.binding, foreach.source)
-        // Add ForeachEntry so downstream phases can look up the binding
-        _ <- addEntry(
-          SymbolTableEntry.ForeachEntry(
-            foreach.source,
-            rewrittenBinding.name,
-            rewrittenExpression,
-          ),
-        )
+        rewrittenBinding <- foreach.binding match {
+          case Left(value) => intro(value.name, foreach.source)
+          case Right(value) => pure(value)
+        }
         rewrittenEffects <- foreach.effects.traverse(analyzeEffect)
         // Restore the old scope (FOREACH binding goes out of scope)
         _ <- mod(st => st.copy(currentScope = oldScope))
-      } yield foreach.copy(in = rewrittenExpression, effects = rewrittenEffects)
+      } yield foreach.copy(binding = Right(rewrittenBinding), in = rewrittenExpression, effects = rewrittenEffects)
     case sp: Effect.SetProperty =>
       for {
         rewrittenExpression <- analyzeExpression(sp.value)
@@ -658,7 +624,7 @@ object SymbolAnalysisModule {
 
   def analyzeSingleQuery(
     query: SingleQuery,
-    imports: Set[QuineIdentifier] = Set.empty,
+    imports: Set[BindingId] = Set.empty,
   ): SymbolProgram[SingleQuery] = query match {
     case complex: SingleQuery.MultipartQuery =>
       for {
@@ -669,7 +635,7 @@ object SymbolAnalysisModule {
     case simple: SingleQuery.SinglepartQuery => freshScope(imports) *> analyzeSimpleQuery(simple).widen[SingleQuery]
   }
 
-  def analyzeQuery(query: Query, imports: Set[QuineIdentifier] = Set.empty): SymbolProgram[Query] =
+  def analyzeQuery(query: Query, imports: Set[BindingId] = Set.empty): SymbolProgram[Query] =
     query match {
       case union: Query.Union =>
         for {
@@ -686,7 +652,7 @@ case class SymbolAnalysisState(
   diagnostics: List[Diagnostic],
   symbolTable: SymbolTable,
   cypherText: String,
-  nextFreshId: Int,
+  freshId: Int,
 ) extends CompilerState
 
 /** This compiler phase does two things.
@@ -695,9 +661,9 @@ case class SymbolAnalysisState(
   *   <li>Builds a symbol table</li>
   * </ol>
   *
-  * The IDs have the ScopeID appended to them. This enables the query planner
-  * to correctly build a dependency graph without having to understand the
-  * shadowing (or lack thereof) rules within Cypher.
+  * Each binding gets a globally unique integer ID (BindingId). This enables the
+  * query planner to correctly build a dependency graph without having to understand
+  * the shadowing (or lack thereof) rules within Cypher.
   */
 object SymbolAnalysisPhase extends SimpleCompilerPhase[SymbolAnalysisState, Query, Query] {
   override def process(
@@ -715,7 +681,7 @@ object SymbolAnalysisPhase extends SimpleCompilerPhase[SymbolAnalysisState, Quer
       val resultState = symbolAnalysisState.copy(
         diagnostics = errorDiagnostics ::: warningDiagnostics ::: symbolAnalysisState.diagnostics,
         symbolTable = finalState.table,
-        nextFreshId = finalState.currentFreshId,
+        freshId = finalState.currentFreshId,
       )
 
       (resultState, Some(rewrittenQuery))

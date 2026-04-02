@@ -20,7 +20,6 @@ import com.thatdot.common.logging.Pretty.PrettyHelper
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.CypherProcedures
-import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.graph.cypher.quinepattern.{
   OutputTarget,
   QueryContext => QPQueryContext,
@@ -230,21 +229,16 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     namespace: NamespaceId,
     atTime: Option[Milliseconds],
   ): (Source[QPQueryContext, NotUsed], QueryPlanner.PlannedQuery) = {
-    import com.thatdot.quine.language.phases.UpgradeModule._
     requireQuinePatternEnabled()
     val parameters = toQuinePatternParameters(query.parameters)
     val qpGraph: QuinePatternOpsGraph = graph.asInstanceOf[QuinePatternOpsGraph]
     implicit val ec = qpGraph.system.dispatcher
 
-    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
-    val (symbolState, parseResult) = parser.process(query.text).value.run(LexerState(Nil)).value
-
-    val planned = parseResult match {
-      case Some(cypherAst) =>
-        QueryPlanner.planWithMetadata(cypherAst, symbolState.symbolTable)
-      case None =>
+    val planned = QueryPlanner.planFromString(query.text) match {
+      case Right(p) => p
+      case Left(error) =>
         throw new IllegalArgumentException(
-          s"Failed to parse query. QuinePattern does not support this query syntax: ${query.text.take(100)}",
+          s"Failed to parse query. QuinePattern does not support this query syntax: ${query.text.take(100)}: $error",
         )
     }
 

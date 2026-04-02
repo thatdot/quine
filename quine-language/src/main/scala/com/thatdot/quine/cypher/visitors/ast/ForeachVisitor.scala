@@ -7,7 +7,7 @@ import cats.implicits._
 import com.thatdot.quine.cypher.ast.Effect
 import com.thatdot.quine.cypher.parsing.{CypherBaseVisitor, CypherParser}
 import com.thatdot.quine.cypher.visitors.ast.expressions.ExpressionVisitor
-import com.thatdot.quine.language.ast.Source
+import com.thatdot.quine.language.ast.{CypherIdentifier, Source}
 
 object ForeachVisitor extends CypherBaseVisitor[Option[List[Effect]]] {
   override def visitOC_Foreach(
@@ -20,6 +20,6 @@ object ForeachVisitor extends CypherBaseVisitor[Option[List[Effect]]] {
     val maybeEffects =
       ctx.oC_Effect.asScala.toList.flatTraverse(_.accept(EffectVisitor))
 
-    maybeEffects.map(effects => List(Effect.Foreach(src, Symbol(id), exp, effects)))
+    maybeEffects.map(effects => List(Effect.Foreach(src, Left(CypherIdentifier(Symbol(id))), exp, effects)))
   }
 }

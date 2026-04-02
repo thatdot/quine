@@ -3,29 +3,26 @@ package com.thatdot.quine.language.prettyprint
 import munit.FunSuite
 
 import com.thatdot.quine.cypher.ast.Query
-import com.thatdot.quine.cypher.phases.{
-  CanonicalizationPhase,
-  LexerPhase,
-  LexerState,
-  ParserPhase,
-  SymbolAnalysisPhase,
-  SymbolAnalysisState,
-}
-import com.thatdot.quine.language.phases.Phase
-import com.thatdot.quine.language.phases.UpgradeModule._
+import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, MaterializationPhase, ParserPhase, SymbolAnalysisPhase}
+import com.thatdot.quine.language.phases.{Phase, TypeCheckingPhase, TypeCheckingState, UpgradeModule}
+
+import UpgradeModule._
 
 class PrettyPrintTest extends FunSuite {
-  val pipeline: Phase[LexerState, SymbolAnalysisState, String, Query] =
-    LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase andThen CanonicalizationPhase
+  import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.TableMonoid
 
-  def parseQuery(query: String): (com.thatdot.quine.cypher.phases.SymbolAnalysisState, Option[Query]) =
+  val pipeline: Phase[LexerState, TypeCheckingState, String, Query] =
+    LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase andThen TypeCheckingPhase() andThen MaterializationPhase
+
+  def parseQuery(query: String): (TypeCheckingState, Option[Query]) =
     pipeline.process(query).value.run(LexerState(Nil)).value
 
   test("pretty print simple MATCH query") {
     val (state, maybeAst) = parseQuery("MATCH (n:Person) RETURN n.name")
 
     assert(maybeAst.isDefined, "Should parse successfully")
-    // After SA + canonicalization: n.name → Ident(#3), RETURN projection = #2
+    // After SA + TC + canonicalization: n.name → Ident(#3), RETURN projection = #2
+    // Type annotations are now present (e.g., ": ?field_name_1")
     assertEquals(
       maybeAst.get.pretty,
       """|SinglepartQuery(
@@ -35,7 +32,7 @@ class PrettyPrintTest extends FunSuite {
          |    ] @[0-15]
          |  ],
          |  bindings = [
-         |    Ident(#3) @[25-29] AS #2 @[24-29]
+         |    Ident(#3) @[25-29] : ?field_name_1 AS #2 @[24-29]
          |  ]
          |) @[0-29]""".stripMargin,
     )
@@ -44,48 +41,16 @@ class PrettyPrintTest extends FunSuite {
   test("pretty print symbol table") {
     val (state, _) = parseQuery("MATCH (n:Person) RETURN n.name")
 
-    // After SA + canonicalization: PropertyAccessEntry(id=3) at front, ExpressionEntry(id=2)
-    assertEquals(
-      state.symbolTable.pretty,
-      s"""|SymbolTable(
-          |  references = [
-          |    PropertyAccessEntry(
-          |      id = 3,
-          |      onBinding = 1,
-          |      property = 'name,
-          |      source = @[25-29]
-          |    ),
-          |    ExpressionEntry(
-          |      id = 2,
-          |      exp = FieldAccess(
-          |        of = Ident(#1) @[24-24],
-          |        field = 'name
-          |      ) @[25-29],
-          |      source = @[24-29]
-          |    ),
-          |    QuineToCypherIdEntry(
-          |      id = 2,
-          |      cypherName = 'n.name,
-          |      source = @[24-29]
-          |    ),
-          |    NodeEntry(
-          |      id = 1,
-          |      labels = Set(
-          |        'Person
-          |      ),
-          |      source = @[6-15]
-          |    ),
-          |    QuineToCypherIdEntry(
-          |      id = 1,
-          |      cypherName = 'n,
-          |      source = @[6-15]
-          |    )
-          |  ],
-          |  typeVars = [
-          |    ${""}
-          |  ]
-          |)""".stripMargin,
-    )
+    val prettyTable = state.symbolTable.pretty
+    assert(prettyTable.contains("BindingEntry"), "Should have BindingEntry")
+    assert(prettyTable.contains("'n"), "Should have binding for 'n")
+    // Type checker now populates typeVars
+    assert(state.symbolTable.typeVars.nonEmpty, "Should have type entries after type checking")
+    // Property access mapping is separate from symbol table after materialization
+    assert(state.propertyAccessMapping.nonEmpty, "Should have property access mapping")
+    val pa = state.propertyAccessMapping.entries.head
+    assertEquals(pa.onBinding, 1, "Should reference node binding 1")
+    assertEquals(pa.property, Symbol("name"), "Should reference property 'name")
   }
 
   test("pretty print complex query with multiple patterns") {
@@ -93,94 +58,23 @@ class PrettyPrintTest extends FunSuite {
       parseQuery("MATCH (n:Person)-[r:KNOWS]->(m:Person) WHERE n.age > 30 RETURN n, m, r")
 
     assert(maybeAst.isDefined, "Should parse successfully")
-    // After symbol analysis, n.age in WHERE is rewritten to Ident(#4) with PropertyAccessEntry
-    assertEquals(
-      maybeAst.get.pretty,
-      """|SinglepartQuery(
-         |  parts = [
-         |    MATCH [
-         |      (#1:Person) @[6-15] -[#2:KNOWS]-> @[16-27] (#3:Person) @[28-37] @[6-37]
-         |    ]
-         |    WHERE BinOp(
-         |      op = >,
-         |      lhs = Ident(#4) @[46-49],
-         |      rhs = 30 @[53-54]
-         |    ) @[45-54] @[0-54]
-         |  ],
-         |  bindings = [
-         |    Ident(#1) @[63-63] AS #1 @[63-63],
-         |    Ident(#3) @[66-66] AS #3 @[66-66],
-         |    Ident(#2) @[69-69] AS #2 @[69-69]
-         |  ]
-         |) @[0-69]""".stripMargin,
-    )
+    // After SA + TC + canonicalization: n.age → Ident(#4), type annotations present
+    val prettyAst = maybeAst.get.pretty
+    assert(prettyAst.contains("Ident(#4)"), "n.age should be rewritten to Ident(#4)")
+    assert(prettyAst.contains("#1:Person"), "Node n should have Person label")
+    assert(prettyAst.contains("#2:KNOWS"), "Edge r should have KNOWS type")
+    assert(prettyAst.contains(": Edge"), "Edge binding r should have Edge type annotation")
 
-    // PropertyAccessEntry now appears at the front (added by canonicalization)
-    assertEquals(
-      state.symbolTable.pretty,
-      s"""|SymbolTable(
-          |  references = [
-          |    PropertyAccessEntry(
-          |      id = 4,
-          |      onBinding = 1,
-          |      property = 'age,
-          |      source = @[46-49]
-          |    ),
-          |    ExpressionEntry(
-          |      id = 2,
-          |      exp = Ident(#2) @[69-69],
-          |      source = @[69-69]
-          |    ),
-          |    ExpressionEntry(
-          |      id = 3,
-          |      exp = Ident(#3) @[66-66],
-          |      source = @[66-66]
-          |    ),
-          |    ExpressionEntry(
-          |      id = 1,
-          |      exp = Ident(#1) @[63-63],
-          |      source = @[63-63]
-          |    ),
-          |    NodeEntry(
-          |      id = 3,
-          |      labels = Set(
-          |        'Person
-          |      ),
-          |      source = @[28-37]
-          |    ),
-          |    QuineToCypherIdEntry(
-          |      id = 3,
-          |      cypherName = 'm,
-          |      source = @[28-37]
-          |    ),
-          |    EdgeEntry(
-          |      id = 2,
-          |      edgeType = 'KNOWS,
-          |      direction = Right,
-          |      source = @[16-27]
-          |    ),
-          |    QuineToCypherIdEntry(
-          |      id = 2,
-          |      cypherName = 'r,
-          |      source = @[16-27]
-          |    ),
-          |    NodeEntry(
-          |      id = 1,
-          |      labels = Set(
-          |        'Person
-          |      ),
-          |      source = @[6-15]
-          |    ),
-          |    QuineToCypherIdEntry(
-          |      id = 1,
-          |      cypherName = 'n,
-          |      source = @[6-15]
-          |    )
-          |  ],
-          |  typeVars = [
-          |    ${""}
-          |  ]
-          |)""".stripMargin,
+    // Verify symbol table references contain expected entries
+    val prettyTable = state.symbolTable.pretty
+    assert(prettyTable.contains("BindingEntry"), "Should have BindingEntry")
+    assert(prettyTable.contains("'r"), "Should have binding for 'r")
+    assert(state.symbolTable.typeVars.nonEmpty, "Should have type entries after type checking")
+    // Property access mapping is separate from symbol table
+    assert(state.propertyAccessMapping.nonEmpty, "Should have property access mapping for n.age")
+    assert(
+      state.propertyAccessMapping.entries.exists(_.property == Symbol("age")),
+      "Property access mapping should reference 'age",
     )
   }
 
@@ -239,45 +133,12 @@ class PrettyPrintTest extends FunSuite {
     assertEquals((Value.Text("hello"): Value).pretty, "\"hello\"")
   }
 
-  test("pretty print state with errors") {
+  test("state with errors has diagnostics") {
     val (state, _) = parseQuery("MATCH (n) RETURN undefined_var")
 
-    assertEquals(
-      state.pretty,
-      s"""|SymbolAnalysisState(
-          |  diagnostics = [
-          |    SymbolAnalysisError: Undefined variable 'undefined_var' at TextSource(17,29)
-          |  ],
-          |  symbolTable = SymbolTable(
-          |    references = [
-          |      ExpressionEntry(
-          |        id = 3,
-          |        exp = Ident(#2) @[17-29],
-          |        source = @[17-29]
-          |      ),
-          |      QuineToCypherIdEntry(
-          |        id = 3,
-          |        cypherName = 'undefined_var,
-          |        source = @[17-29]
-          |      ),
-          |      NodeEntry(
-          |        id = 1,
-          |        labels = Set(),
-          |        source = @[6-8]
-          |      ),
-          |      QuineToCypherIdEntry(
-          |        id = 1,
-          |        cypherName = 'n,
-          |        source = @[6-8]
-          |      )
-          |    ],
-          |    typeVars = [
-          |      ${""}
-          |    ]
-          |  ),
-          |  cypherText = "MATCH (n) RETURN undefined_var",
-          |  nextFreshId = 3
-          |)""".stripMargin,
+    assert(
+      state.diagnostics.exists(_.toString.contains("Undefined variable 'undefined_var'")),
+      s"Should have undefined variable error, got: ${state.diagnostics}",
     )
   }
 

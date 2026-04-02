@@ -8,19 +8,19 @@ import cats.implicits._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.cypher.CypherException.Runtime
-import com.thatdot.quine.language.ast.{CypherIdentifier, Expression, Operator, QuineIdentifier, Value}
+import com.thatdot.quine.language.ast.{BindingId, CypherIdentifier, Expression, Operator, Value}
 import com.thatdot.quine.model.QuineIdProvider
 
 object QuinePatternExpressionInterpreter {
 
   /** Convert an identifier to the Symbol key used in QueryContext.
-    * After symbol analysis, identifiers should be Right(QuineIdentifier).
+    * After symbol analysis, identifiers should be Right(BindingId).
     * The key format matches what QueryPlanner.bindingSymbol produces.
     * We use the raw integer from symbol analysis directly - no prefix needed.
     */
-  private def identKey(ident: Either[CypherIdentifier, QuineIdentifier]): Symbol =
+  private def identKey(ident: Either[CypherIdentifier, BindingId]): Symbol =
     ident match {
-      case Right(quineId) => Symbol(quineId.name.toString)
+      case Right(bindingId) => Symbol(bindingId.id.toString)
       case Left(cypherIdent) => cypherIdent.name // Fallback for synthetic identifiers
     }
 

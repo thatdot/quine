@@ -5,9 +5,8 @@ import cats.implicits._
 
 import com.thatdot.quine.cypher.ast.Query.SingleQuery
 import com.thatdot.quine.cypher.ast._
-import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.SymbolTableEntry.{ExpressionEntry, NodeEntry, UnwindEntry}
-import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{SymbolTable, TypeEntry}
-import com.thatdot.quine.language.ast.{CypherIdentifier, Expression, Operator, QuineIdentifier, Value}
+import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{PropertyAccessMapping, SymbolTable, TypeEntry}
+import com.thatdot.quine.language.ast.{BindingId, Expression, Operator, Value}
 import com.thatdot.quine.language.diagnostic.Diagnostic
 import com.thatdot.quine.language.phases.CompilerPhase.{SimpleCompilerPhase, SimpleCompilerPhaseEffect}
 import com.thatdot.quine.language.types.Type.{PrimitiveType, TypeConstructor, TypeVariable}
@@ -25,14 +24,18 @@ import com.thatdot.quine.language.types.{Constraint, Type}
   *                    types. When a TypeVariable is unified with a concrete type or another
   *                    variable, the binding is recorded here. Use `deref` to follow chains
   *                    of bindings to find the resolved type.
-  * @param freshId     Counter for generating unique type variable names. Incremented each
-  *                    time `freshen` is called to ensure globally unique type variable IDs.
+  * @param freshId          Binding ID counter from symbol analysis. TC does not modify this;
+  *                         it passes through to materialization which continues the sequence.
+  * @param freshTypeVarId   Counter for generating unique type variable symbols. Incremented
+  *                         each time `freshen` is called. Independent of binding IDs.
   */
 case class TypeCheckingState(
   diagnostics: List[Diagnostic],
   symbolTable: SymbolTable,
   typeEnv: Map[Symbol, Type],
   freshId: Int,
+  freshTypeVarId: Int = 0,
+  propertyAccessMapping: PropertyAccessMapping = PropertyAccessMapping.empty,
 ) extends CompilerState
 
 /** Type checking phase for Cypher queries using Hindley-Milner style type inference.
@@ -114,22 +117,29 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
   def checkEnv(id: Symbol): TCEffect[Option[Type]] =
     inspect(_.typeEnv.get(id))
 
-  def typeOfSymbol(id: String): TCEffect[Option[Type]] =
+  def typeOfSymbol(id: BindingId): TCEffect[Option[Type]] =
     inspect(_.symbolTable.typeVars.find(_.identifier == id).map(_.ty))
 
-  def addTableEntry(id: String, ty: Type): TCEffect[Unit] =
-    mod(st =>
-      st.copy(symbolTable =
-        st.symbolTable.copy(typeVars = TypeEntry(identifier = id, ty = ty) :: st.symbolTable.typeVars),
-      ),
-    )
-
-  def addTableEntryForId(id: Either[CypherIdentifier, QuineIdentifier], ty: Type): TCEffect[Unit] = {
-    val idStr = id match {
-      case Left(cypher) => cypher.name.name
-      case Right(quine) => s"_q${quine.name}"
+  def addTableEntry(id: BindingId, ty: Type): TCEffect[Unit] =
+    typeOfSymbol(id).flatMap {
+      case Some(existingTy) =>
+        // Entry already exists for this binding — unify rather than duplicate.
+        unify(existingTy, ty)
+      case None =>
+        mod(st =>
+          st.copy(symbolTable =
+            st.symbolTable.copy(typeVars = TypeEntry(identifier = id, ty = ty) :: st.symbolTable.typeVars),
+          ),
+        )
     }
-    addTableEntry(idStr, ty)
+
+  /** Requires that symbol analysis has already resolved the identifier to a BindingId. */
+  def requireBindingId(id: Either[_, BindingId]): BindingId = id match {
+    case Right(binding) => binding
+    case Left(other) =>
+      throw new IllegalStateException(
+        s"Expected BindingId after symbol analysis, but got: $other",
+      )
   }
 
   /** Generates a fresh, unique type variable symbol.
@@ -143,8 +153,8 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
     */
   def freshen(hint: Option[String]): TCEffect[Symbol] =
     for {
-      _ <- mod(st => st.copy(freshId = st.freshId + 1))
-      idSuffix <- inspect(_.freshId)
+      _ <- mod(st => st.copy(freshTypeVarId = st.freshTypeVarId + 1))
+      idSuffix <- inspect(_.freshTypeVarId)
     } yield hint match {
       case Some(value) => Symbol(s"${value}_$idSuffix")
       case None => Symbol(s"type_$idSuffix")
@@ -300,17 +310,12 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
           pure(Type.error)
     }
 
-  def computeTypeForId(identifier: Either[CypherIdentifier, QuineIdentifier]): TCEffect[Type] = {
-    val idStr = identifier match {
-      case Left(cypher) => cypher.name.name
-      case Right(quine) => s"_q${quine.name}"
-    }
-    typeOfSymbol(idStr).flatMap {
+  def computeTypeForId(identifier: BindingId): TCEffect[Type] =
+    typeOfSymbol(identifier).flatMap {
       case Some(ty) => pure(ty)
       case None =>
-        freshen(Some(idStr)).map(tv => TypeVariable(tv, Constraint.None))
+        freshen(Some(identifier.id.toString)).map(tv => TypeVariable(tv, Constraint.None))
     }
-  }
 
   // === Expression Type Checking ===
 
@@ -368,7 +373,7 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
 
       case ident: Expression.Ident =>
         for {
-          typeOf <- computeTypeForId(ident.identifier)
+          typeOf <- computeTypeForId(requireBindingId(ident.identifier))
         } yield ident.copy(ty = Some(typeOf))
 
       case param: Expression.Parameter =>
@@ -474,7 +479,7 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
 
       case lookup: Expression.IdLookup =>
         for {
-          typeOf <- computeTypeForId(lookup.nodeIdentifier)
+          typeOf <- computeTypeForId(requireBindingId(lookup.nodeIdentifier))
         } yield lookup.copy(ty = Some(typeOf))
 
       case synthesize: Expression.SynthesizeId =>
@@ -579,10 +584,7 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
       for {
         annotatedList <- annotateAndCheckExpression(fu.list)
         listType <- getType(annotatedList)
-        idName = fu.as match {
-          case Left(cypher) => cypher.name.name
-          case Right(quine) => s"_q${quine.name}"
-        }
+        idName = requireBindingId(fu.as).id.toString
         freshName <- freshen(Some(idName))
         elementType = TypeVariable(freshName, Constraint.None)
         resolvedListType <- deref(listType)
@@ -594,7 +596,7 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
           case other =>
             addDiagnostic(s"UNWIND requires a list, but got type: $other")
         }
-        _ <- addTableEntryForId(fu.as, elementType)
+        _ <- addTableEntry(requireBindingId(fu.as), elementType)
       } yield fu.copy(list = annotatedList)
 
     case fp: ReadingClause.FromProcedure =>
@@ -605,7 +607,7 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
           for {
             freshName <- freshen(None)
             yieldType = TypeVariable(freshName, Constraint.None)
-            _ <- addTableEntryForId(yieldItem.boundAs, yieldType)
+            _ <- addTableEntry(requireBindingId(yieldItem.boundAs), yieldType)
           } yield ()
         }
       } yield fp.copy(args = annotatedArgs)
@@ -682,7 +684,7 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
   def annotateProjection(projection: Projection): TCEffect[Projection] = for {
     annotatedExp <- annotateAndCheckExpression(projection.expression)
     expType <- getType(annotatedExp)
-    _ <- addTableEntryForId(projection.as, expType)
+    _ <- addTableEntry(requireBindingId(projection.as), expType)
   } yield projection.copy(expression = annotatedExp)
 
   def annotatePattern(pattern: GraphPattern): TCEffect[GraphPattern] = for {
@@ -692,7 +694,7 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
 
   def annotateConnection(connection: Connection): TCEffect[Connection] = for {
     _ <- connection.edge.maybeBinding.traverse_ { id =>
-      addTableEntryForId(id, PrimitiveType.EdgeType)
+      addTableEntry(requireBindingId(id), PrimitiveType.EdgeType)
     }
     annotatedDest <- annotateNodePattern(connection.dest)
   } yield connection.copy(dest = annotatedDest)
@@ -702,28 +704,9 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
       annotateAndCheckExpression(props)
     }
     _ <- pattern.maybeBinding.traverse_ { id =>
-      addTableEntryForId(id, PrimitiveType.NodeType)
+      addTableEntry(requireBindingId(id), PrimitiveType.NodeType)
     }
   } yield pattern.copy(maybeProperties = annotatedProps)
-
-  // === Symbol Table Initialization ===
-
-  def recordTypesFromSymbolTable: TCEffect[Unit] = for {
-    entries <- inspect(_.symbolTable.references)
-    _ <- entries.traverse_ {
-      case node: NodeEntry =>
-        addTableEntry(s"_q${node.identifier}", PrimitiveType.NodeType)
-      case _: UnwindEntry =>
-        // Type will be inferred when processing the unwind expression
-        pure(())
-      case _: ExpressionEntry =>
-        // Expression types are inferred during traversal
-        pure(())
-      case _ =>
-        // Handle any other entry types
-        pure(())
-    }
-  } yield ()
 
   // === Entry Point ===
 
@@ -743,7 +726,6 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
     */
   override def process(input: Query): TCEffect[Query] = for {
     _ <- mod(st => st.copy(typeEnv = initialTypeEnv))
-    _ <- recordTypesFromSymbolTable
     annotatedQuery <- annotateQuery(input)
   } yield annotatedQuery
 }

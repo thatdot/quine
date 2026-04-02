@@ -9,7 +9,7 @@ import com.thatdot.quine.cypher.ast.{GraphPattern, NodePattern}
 import com.thatdot.quine.language.types.Type
 
 case class CypherIdentifier(name: Symbol)
-case class QuineIdentifier(name: Int)
+case class BindingId(id: Int)
 
 sealed trait Source
 
@@ -73,14 +73,13 @@ sealed trait Expression {
 }
 
 object Expression {
-  case class IdLookup(source: Source, nodeIdentifier: Either[CypherIdentifier, QuineIdentifier], ty: Option[Type])
+  case class IdLookup(source: Source, nodeIdentifier: Either[CypherIdentifier, BindingId], ty: Option[Type])
       extends Expression
   case class SynthesizeId(source: Source, from: List[Expression], ty: Option[Type]) extends Expression
   case class AtomicLiteral(source: Source, value: Value, ty: Option[Type]) extends Expression
   case class ListLiteral(source: Source, value: List[Expression], ty: Option[Type]) extends Expression
   case class MapLiteral(source: Source, value: Map[Symbol, Expression], ty: Option[Type]) extends Expression
-  case class Ident(source: Source, identifier: Either[CypherIdentifier, QuineIdentifier], ty: Option[Type])
-      extends Expression
+  case class Ident(source: Source, identifier: Either[CypherIdentifier, BindingId], ty: Option[Type]) extends Expression
   case class Parameter(source: Source, name: Symbol, ty: Option[Type]) extends Expression
   case class Apply(source: Source, name: Symbol, args: List[Expression], ty: Option[Type]) extends Expression
   case class UnaryOp(source: Source, op: Operator, exp: Expression, ty: Option[Type]) extends Expression
@@ -107,28 +106,28 @@ sealed trait LocalEffect
 
 object LocalEffect {
   case class SetProperty(field: Expression.FieldAccess, to: Expression) extends LocalEffect
-  case class SetLabels(on: Either[CypherIdentifier, QuineIdentifier], labels: Set[Symbol]) extends LocalEffect
+  case class SetLabels(on: Either[CypherIdentifier, BindingId], labels: Set[Symbol]) extends LocalEffect
   case class CreateNode(
-    identifier: Either[CypherIdentifier, QuineIdentifier],
+    identifier: Either[CypherIdentifier, BindingId],
     labels: Set[Symbol],
     maybeProperties: Option[Expression.MapLiteral],
   ) extends LocalEffect
   case class CreateEdge(
     labels: Set[Symbol],
     direction: Direction,
-    left: Either[CypherIdentifier, QuineIdentifier],
-    right: Either[CypherIdentifier, QuineIdentifier],
-    binding: Either[CypherIdentifier, QuineIdentifier],
+    left: Either[CypherIdentifier, BindingId],
+    right: Either[CypherIdentifier, BindingId],
+    binding: Either[CypherIdentifier, BindingId],
   ) extends LocalEffect
 }
 
-case class Projection(expression: Expression, as: Either[CypherIdentifier, QuineIdentifier])
+case class Projection(expression: Expression, as: Either[CypherIdentifier, BindingId])
 
 sealed trait Operation
 
 object Operation {
   case object Call extends Operation
-  case class Unwind(expression: Expression, as: Either[CypherIdentifier, QuineIdentifier]) extends Operation
+  case class Unwind(expression: Expression, as: Either[CypherIdentifier, BindingId]) extends Operation
   case class Effect(cypherEffect: com.thatdot.quine.cypher.ast.Effect) extends Operation
 }
 

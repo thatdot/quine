@@ -83,7 +83,7 @@ trait CypherASTInstances extends ASTInstances {
             concat(
               line,
               text("binding = "),
-              symbolPrettyPrint.doc(binding),
+              identifierEitherPrettyPrint.doc(binding),
               text(","),
               line,
               text("in = "),

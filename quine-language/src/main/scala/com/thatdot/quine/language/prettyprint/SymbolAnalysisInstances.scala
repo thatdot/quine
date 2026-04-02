@@ -19,208 +19,30 @@ trait SymbolAnalysisInstances extends CypherASTInstances {
         concat(text("TypeCheckError: "), text(message))
     }
 
-  implicit lazy val symbolTableEntryPrettyPrint: PrettyPrint[SymbolTableEntry] =
-    PrettyPrint.instance {
-      case SymbolTableEntry.NodeEntry(source, identifier, labels, maybeProperties) =>
-        val propsDoc = maybeProperties match {
-          case Some(props) => concat(text(", properties = "), expressionPrettyPrint.doc(props))
-          case None => empty
-        }
-        concat(
-          text("NodeEntry("),
-          nest(
-            1,
-            concat(
-              line,
-              text("id = "),
-              text(identifier.toString),
-              text(","),
-              line,
-              text("labels = "),
-              setPrettyPrint[Symbol].doc(labels),
-              propsDoc,
-              text(","),
-              line,
-              text("source = "),
-              sourcePrettyPrint.doc(source),
-            ),
+  implicit lazy val symbolTableEntryPrettyPrint: PrettyPrint[BindingEntry] =
+    PrettyPrint.instance { case BindingEntry(source, identifier, originalName) =>
+      val nameDoc = originalName match {
+        case Some(name) => concat(text(", name = "), symbolPrettyPrint.doc(name))
+        case None => empty
+      }
+      concat(
+        text("BindingEntry("),
+        nest(
+          1,
+          concat(
+            line,
+            text("id = "),
+            text(identifier.toString),
+            nameDoc,
+            text(","),
+            line,
+            text("source = "),
+            sourcePrettyPrint.doc(source),
           ),
-          line,
-          text(")"),
-        )
-
-      case SymbolTableEntry.EdgeEntry(source, identifier, edgeType, direction) =>
-        concat(
-          text("EdgeEntry("),
-          nest(
-            1,
-            concat(
-              line,
-              text("id = "),
-              text(identifier.toString),
-              text(","),
-              line,
-              text("edgeType = "),
-              symbolPrettyPrint.doc(edgeType),
-              text(","),
-              line,
-              text("direction = "),
-              directionPrettyPrint.doc(direction),
-              text(","),
-              line,
-              text("source = "),
-              sourcePrettyPrint.doc(source),
-            ),
-          ),
-          line,
-          text(")"),
-        )
-
-      case SymbolTableEntry.UnwindEntry(source, identifier, from) =>
-        concat(
-          text("UnwindEntry("),
-          nest(
-            1,
-            concat(
-              line,
-              text("id = "),
-              text(identifier.toString),
-              text(","),
-              line,
-              text("from = "),
-              expressionPrettyPrint.doc(from),
-              text(","),
-              line,
-              text("source = "),
-              sourcePrettyPrint.doc(source),
-            ),
-          ),
-          line,
-          text(")"),
-        )
-
-      case SymbolTableEntry.ForeachEntry(source, identifier, from) =>
-        concat(
-          text("ForeachEntry("),
-          nest(
-            1,
-            concat(
-              line,
-              text("id = "),
-              text(identifier.toString),
-              text(","),
-              line,
-              text("from = "),
-              expressionPrettyPrint.doc(from),
-              text(","),
-              line,
-              text("source = "),
-              sourcePrettyPrint.doc(source),
-            ),
-          ),
-          line,
-          text(")"),
-        )
-
-      case SymbolTableEntry.ProcedureYieldEntry(source, identifier, procedureName, resultField) =>
-        concat(
-          text("ProcedureYieldEntry("),
-          nest(
-            1,
-            concat(
-              line,
-              text("id = "),
-              text(identifier.toString),
-              text(","),
-              line,
-              text("procedureName = "),
-              symbolPrettyPrint.doc(procedureName),
-              text(","),
-              line,
-              text("resultField = "),
-              symbolPrettyPrint.doc(resultField),
-              text(","),
-              line,
-              text("source = "),
-              sourcePrettyPrint.doc(source),
-            ),
-          ),
-          line,
-          text(")"),
-        )
-
-      case SymbolTableEntry.ExpressionEntry(source, identifier, exp) =>
-        concat(
-          text("ExpressionEntry("),
-          nest(
-            1,
-            concat(
-              line,
-              text("id = "),
-              text(identifier.toString),
-              text(","),
-              line,
-              text("exp = "),
-              expressionPrettyPrint.doc(exp),
-              text(","),
-              line,
-              text("source = "),
-              sourcePrettyPrint.doc(source),
-            ),
-          ),
-          line,
-          text(")"),
-        )
-
-      case SymbolTableEntry.PropertyAccessEntry(source, identifier, onBinding, property) =>
-        concat(
-          text("PropertyAccessEntry("),
-          nest(
-            1,
-            concat(
-              line,
-              text("id = "),
-              text(identifier.toString),
-              text(","),
-              line,
-              text("onBinding = "),
-              text(onBinding.toString),
-              text(","),
-              line,
-              text("property = "),
-              symbolPrettyPrint.doc(property),
-              text(","),
-              line,
-              text("source = "),
-              sourcePrettyPrint.doc(source),
-            ),
-          ),
-          line,
-          text(")"),
-        )
-
-      case SymbolTableEntry.QuineToCypherIdEntry(source, identifier, cypherIdentifier) =>
-        concat(
-          text("QuineToCypherIdEntry("),
-          nest(
-            1,
-            concat(
-              line,
-              text("id = "),
-              text(identifier.toString),
-              text(","),
-              line,
-              text("cypherName = "),
-              symbolPrettyPrint.doc(cypherIdentifier),
-              text(","),
-              line,
-              text("source = "),
-              sourcePrettyPrint.doc(source),
-            ),
-          ),
-          line,
-          text(")"),
-        )
+        ),
+        line,
+        text(")"),
+      )
     }
 
   implicit val typeEntryPrettyPrint: PrettyPrint[TypeEntry] =
@@ -232,7 +54,7 @@ trait SymbolAnalysisInstances extends CypherASTInstances {
           concat(
             line,
             text("identifier = "),
-            text(te.identifier),
+            text(te.identifier.id.toString),
             text(","),
             line,
             text("ty = "),
@@ -334,8 +156,8 @@ trait SymbolAnalysisInstances extends CypherASTInstances {
             text(s""""${sas.cypherText}""""),
             text(","),
             line,
-            text("nextFreshId = "),
-            text(sas.nextFreshId.toString),
+            text("freshId = "),
+            text(sas.freshId.toString),
           ),
         ),
         line,

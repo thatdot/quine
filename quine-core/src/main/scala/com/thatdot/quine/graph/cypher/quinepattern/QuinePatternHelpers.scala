@@ -3,7 +3,7 @@ package com.thatdot.quine.graph.cypher.quinepattern
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.CypherException.Runtime
 import com.thatdot.quine.graph.cypher.{CypherException, Expr}
-import com.thatdot.quine.language.ast.{CypherIdentifier, Direction, Expression, QuineIdentifier, Value}
+import com.thatdot.quine.language.ast.{BindingId, CypherIdentifier, Direction, Expression, Value}
 import com.thatdot.quine.model.EdgeDirection
 
 object QuinePatternHelpers {
@@ -35,7 +35,7 @@ object QuinePatternHelpers {
     case Direction.Right => EdgeDirection.Incoming
   }
 
-  def getRootId(expression: Expression): Either[Runtime, Either[CypherIdentifier, QuineIdentifier]] = expression match {
+  def getRootId(expression: Expression): Either[Runtime, Either[CypherIdentifier, BindingId]] = expression match {
     case Expression.FieldAccess(_, of, _, _) => getRootId(of)
     case Expression.Ident(_, id, _) => Right(id)
     case Expression.Parameter(_, name, _) => Right(Left(CypherIdentifier(name)))

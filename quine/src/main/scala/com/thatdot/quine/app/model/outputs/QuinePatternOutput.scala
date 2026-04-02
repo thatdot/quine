@@ -7,7 +7,6 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.cypher.quinepattern.CypherAndQuineHelpers.quineValueToPatternValue
 import com.thatdot.quine.graph.cypher.quinepattern.{
@@ -59,12 +58,10 @@ class QuinePatternOutput(
   ): Flow[StandingQueryResult, MasterStream.SqResultsExecToken, NotUsed] = {
     val token = execToken(name, inNamespace)
 
-    import com.thatdot.quine.language.phases.UpgradeModule._
-
-    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
-    val (symbolState, result) = parser.process(config.query).value.run(LexerState(Nil)).value
-
-    val planned = QueryPlanner.planWithMetadata(result.get, symbolState.symbolTable)
+    val planned = QueryPlanner.planFromString(config.query) match {
+      case Right(p) => p
+      case Left(error) => throw new IllegalArgumentException(s"Failed to compile query: $error")
+    }
 
     val andThenFlow: Flow[(StandingQueryResult.Meta, QueryContext), SqResultsExecToken, NotUsed] =
       (config.andThen match {

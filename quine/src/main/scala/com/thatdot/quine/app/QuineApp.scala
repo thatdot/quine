@@ -32,7 +32,6 @@ import com.thatdot.quine.app.v2api.converters.ApiToStanding
 import com.thatdot.quine.app.v2api.definitions.query.{standing => V2ApiStanding}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
-import com.thatdot.quine.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.StandingQueryPattern.{
@@ -253,12 +252,10 @@ final class QuineApp(
 
                         maybeIsQPEnabled match {
                           case Some(true) =>
-                            import com.thatdot.quine.language.phases.UpgradeModule._
-
-                            val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
-                            val (state, result) = parser.process(cypherQuery).value.run(LexerState(Nil)).value
-
-                            val planned = QueryPlanner.planWithMetadata(result.get, state.symbolTable)
+                            val planned = QueryPlanner.planFromString(cypherQuery) match {
+                              case Right(p) => p
+                              case Left(error) => sys.error(s"Failed to compile query: $error")
+                            }
                             val qpPattern =
                               QuinePatternQueryPattern(
                                 planned.plan,
@@ -361,12 +358,10 @@ final class QuineApp(
 
                   maybeIsQPEnabled match {
                     case Some(true) =>
-                      import com.thatdot.quine.language.phases.UpgradeModule._
-
-                      val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
-                      val (state, result) = parser.process(cypherQuery).value.run(LexerState(Nil)).value
-
-                      val planned = QueryPlanner.planWithMetadata(result.get, state.symbolTable)
+                      val planned = QueryPlanner.planFromString(cypherQuery) match {
+                        case Right(p) => p
+                        case Left(error) => sys.error(s"Failed to compile query: $error")
+                      }
                       val qpPattern =
                         QuinePatternQueryPattern(
                           planned.plan,

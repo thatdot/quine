@@ -293,9 +293,8 @@ class TypeCheckerTests extends munit.FunSuite {
     assert(maybeQuery.isDefined, "Should parse UNWIND query")
     assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
 
-    // After symbol analysis, 'x' becomes QuineIdentifier(N), stored as "_qN" in the type table
-    // Check that there's at least one type entry for a QuineIdentifier (which UNWIND creates)
-    val quineTypeEntries = state.symbolTable.typeVars.filter(_.identifier.startsWith("_q"))
+    // Check that there's at least one type entry (which UNWIND creates for 'x')
+    val quineTypeEntries = state.symbolTable.typeVars
     assert(
       quineTypeEntries.nonEmpty,
       s"Should have type entry for UNWIND binding, found: ${state.symbolTable.typeVars.map(_.identifier)}",
@@ -314,7 +313,7 @@ class TypeCheckerTests extends munit.FunSuite {
       case other => other
     }
 
-    val quineTypeEntries = state.symbolTable.typeVars.filter(_.identifier.startsWith("_q"))
+    val quineTypeEntries = state.symbolTable.typeVars
     assert(quineTypeEntries.nonEmpty, "Should have type entry for UNWIND binding")
 
     val resolvedType = resolve(quineTypeEntries.head.ty)
@@ -338,7 +337,7 @@ class TypeCheckerTests extends munit.FunSuite {
 
     // The UNWIND element variable `x` should have a type entry
     // When the list is an unresolved type variable, UNWIND constrains it to List(elementType)
-    val quineTypeEntries = state.symbolTable.typeVars.filter(_.identifier.startsWith("_q"))
+    val quineTypeEntries = state.symbolTable.typeVars
     assert(quineTypeEntries.nonEmpty, "Should have type entry for UNWIND binding")
 
     // Find the type entry whose resolved type is List(...) — this is the `items` variable
@@ -384,7 +383,7 @@ class TypeCheckerTests extends munit.FunSuite {
       case other => other
     }
 
-    val quineTypeEntries = state.symbolTable.typeVars.filter(_.identifier.startsWith("_q"))
+    val quineTypeEntries = state.symbolTable.typeVars
     assert(quineTypeEntries.nonEmpty, "Should have type entry for UNWIND binding")
 
     val resolvedType = resolve(quineTypeEntries.head.ty)
@@ -493,6 +492,73 @@ class TypeCheckerTests extends munit.FunSuite {
 
     assert(maybeQuery.isDefined, "Should parse relationship pattern")
     assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+  }
+
+  // === Graph element type annotation tests ===
+
+  test("node binding preserves NodeType through WITH alias") {
+    val (state, maybeQuery) = parseAndCheck("MATCH (n) WITH n AS m RETURN m")
+
+    assert(maybeQuery.isDefined, "Should parse query with node alias")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+
+    def resolve(ty: Type): Type = ty match {
+      case Type.TypeVariable(id, _) => state.typeEnv.get(id).map(resolve).getOrElse(ty)
+      case other => other
+    }
+
+    // Both 'n' and 'm' should resolve to NodeType
+    val allResolved = state.symbolTable.typeVars.map(e => (e.identifier, resolve(e.ty)))
+    val nodeEntries = allResolved.filter(_._2 == PrimitiveType.NodeType)
+    assert(
+      nodeEntries.size >= 2,
+      s"Both n and m should resolve to NodeType, got: $allResolved",
+    )
+  }
+
+  test("multiple nodes in same pattern all get NodeType") {
+    val (state, maybeQuery) = parseAndCheck("MATCH (a), (b), (c) RETURN a, b, c")
+
+    assert(maybeQuery.isDefined, "Should parse query with multiple node patterns")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+
+    val nodeTypes = state.symbolTable.typeVars.filter(_.ty == PrimitiveType.NodeType)
+    assert(
+      nodeTypes.size >= 3,
+      s"Should have at least 3 NodeType entries (a, b, c), got ${nodeTypes.size}: $nodeTypes",
+    )
+  }
+
+  test("node and edge in same pattern get correct types") {
+    val (state, maybeQuery) = parseAndCheck("MATCH (a)-[r:KNOWS]->(b) RETURN a, r, b")
+
+    assert(maybeQuery.isDefined, "Should parse relationship pattern")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+
+    val nodeTypes = state.symbolTable.typeVars.filter(_.ty == PrimitiveType.NodeType)
+    val edgeTypes = state.symbolTable.typeVars.filter(_.ty == PrimitiveType.EdgeType)
+
+    assert(nodeTypes.size >= 2, s"Should have at least 2 NodeType entries (a, b), got: $nodeTypes")
+    assert(edgeTypes.size >= 1, s"Should have at least 1 EdgeType entry (r), got: $edgeTypes")
+  }
+
+  test("field access on node binding gets TypeVariable, not NodeType") {
+    val (state, maybeQuery) = parseAndCheck("MATCH (n:Person) RETURN n.name")
+
+    assert(maybeQuery.isDefined, "Should parse query")
+    assert(getErrors(state.diagnostics).isEmpty, s"Should have no type errors: ${state.diagnostics}")
+
+    // The field access n.name should have a TypeVariable type (field types are unknown statically)
+    val returnExp = getReturnExpression(maybeQuery.get)
+    assert(returnExp.isDefined, "Should have return expression")
+    returnExp.foreach { exp =>
+      assert(exp.ty.isDefined, "Field access should have a type")
+      exp.ty.foreach {
+        case _: Type.TypeVariable => () // Expected - field type is unknown
+        case PrimitiveType.NodeType => fail("Field access should NOT have NodeType (that's the node's type)")
+        case other => fail(s"Expected TypeVariable for field access type, got $other")
+      }
+    }
   }
 
   test("diagnostics accumulate type errors") {

@@ -23,13 +23,13 @@ class PropertyVisitorTests extends munit.FunSuite {
   test("simple property") {
     val actual = parseProperty("foo.bar")
 
-    // The AST visitor produces CypherIdentifiers (unresolved) - symbol analysis resolves them to QuineIdentifiers
+    // The AST visitor produces CypherIdentifiers (unresolved) - symbol analysis resolves them to BindingIds
     actual match {
       case FieldAccess(_, of: Ident, fieldName, _) =>
         assertEquals(fieldName, Symbol("bar"))
         of.identifier match {
           case Left(CypherIdentifier(name)) => assertEquals(name, Symbol("foo"))
-          case Right(_) => fail("Expected CypherIdentifier (Left), got QuineIdentifier (Right)")
+          case Right(_) => fail("Expected CypherIdentifier (Left), got BindingId (Right)")
         }
       case _ => fail(s"Expected FieldAccess(Ident), got $actual")
     }
@@ -38,14 +38,14 @@ class PropertyVisitorTests extends munit.FunSuite {
   test("property of property") {
     val actual = parseProperty("foo.bar.baz")
 
-    // The AST visitor produces CypherIdentifiers (unresolved) - symbol analysis resolves them to QuineIdentifiers
+    // The AST visitor produces CypherIdentifiers (unresolved) - symbol analysis resolves them to BindingIds
     actual match {
       case FieldAccess(_, inner: FieldAccess, outerField, _) =>
         assertEquals(outerField, Symbol("baz"))
         assertEquals(inner.fieldName, Symbol("bar"))
         inner.of match {
           case Ident(_, Left(CypherIdentifier(name)), _) => assertEquals(name, Symbol("foo"))
-          case Ident(_, Right(_), _) => fail("Expected CypherIdentifier (Left), got QuineIdentifier (Right)")
+          case Ident(_, Right(_), _) => fail("Expected CypherIdentifier (Left), got BindingId (Right)")
           case other => fail(s"Expected Ident, got $other")
         }
       case _ => fail(s"Expected FieldAccess(FieldAccess(Ident)), got $actual")
