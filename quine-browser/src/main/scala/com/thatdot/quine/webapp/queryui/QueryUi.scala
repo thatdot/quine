@@ -4,7 +4,6 @@ import scala.collection.mutable
 import scala.concurrent._
 import scala.scalajs.js
 import scala.scalajs.js.Dynamic.{literal => jsObj}
-import scala.scalajs.js.|
 import scala.util.{Failure, Random, Success}
 
 import cats.data.Validated
@@ -20,7 +19,6 @@ import com.thatdot.api.v2.QueryWebSocketProtocol.QueryInterpreter
 import com.thatdot.quine.Util.escapeHtml
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
-import com.thatdot.quine.routes.exts.NamespaceParameter.defaultNamespaceParameter
 import com.thatdot.quine.webapp.components.{
   ContextMenu,
   ContextMenuItem,
@@ -115,6 +113,8 @@ object QueryUi {
     // Mutable refs
     var network: Option[vis.Network] = None
     var layout: NetworkLayout = props.initialLayout
+    val visualization: GraphVisualization = new VisNetworkVisualization(props.graphData, () => network)
+    val pinTracker = new PinTracker(visualization)
     var webSocketClientFut: Future[WebSocketQueryClient] =
       Future.failed(new Exception("Client not initialized"))
     var webSocketClientV2Fut: Future[V2WebSocketQueryClient] =
@@ -303,6 +303,7 @@ object QueryUi {
           props.graphData.nodeSet.remove(nodes.map(n => n.id: vis.IdType).toJSArray)
           props.graphData.edgeSet.remove(edges.map(e => edgeId(e): vis.IdType).toJSArray)
           props.graphData.edgeSet.remove(syntheticEdges.map(e => edgeId(e): vis.IdType).toJSArray)
+          pinTracker.removeNodes(nodes.map(_.id))
           ()
 
         case Collapse(nodes, clusterId, name) =>
@@ -344,13 +345,10 @@ object QueryUi {
 
         case Checkpoint(_) =>
         case Layout(positions) =>
+          pinTracker.resetStateOnly(positions.collect { case (id, NodePosition(_, _, true)) => id }.toSet)
           for ((nodeId, NodePosition(x, y, isFixed)) <- positions) {
-            network.get.moveNode(nodeId, x, y)
-            props.graphData.nodeSet.update(new vis.Node {
-              override val id = nodeId
-              override val fixed = isFixed
-              override val shadow = isFixed
-            })
+            visualization.setNodePosition(nodeId, x, y)
+            if (isFixed) visualization.pinNode(nodeId) else visualization.unpinNode(nodeId)
           }
       }
 
@@ -1045,67 +1043,43 @@ object QueryUi {
       ()
     }
 
-    def networkHold(event: vis.ClickEvent): Unit = {
-      val heldNodeId = network.get.getNodeAt(event.pointer.DOM).toOption match {
-        case None => return
-        case Some(nodeId) => nodeId
-      }
+    /** Unfix pinned nodes at drag start so vis-network allows repositioning.
+      * Skipped when shift is held, since shift+click means "unpin", not "drag".
+      */
+    def networkDragStart(event: vis.ClickEvent): Unit = {
+      if (event.event.asInstanceOf[VisIndirectMouseEvent].srcEvent.shiftKey) return
+      val draggedIds = event.nodes.toSeq
+        .map(_.asInstanceOf[String])
+        .filterNot(nodeId => network.exists(_.isCluster(nodeId)))
+      for (nodeId <- draggedIds if pinTracker.isPinned(nodeId))
+        visualization.unfixForDrag(nodeId)
+    }
 
+    def networkDragEnd(event: vis.ClickEvent): Unit = {
+      val draggedIds = event.nodes.toSeq
+        .map(_.asInstanceOf[String])
+        .filterNot(nodeId => network.exists(_.isCluster(nodeId)))
+      if (draggedIds.nonEmpty)
+        processVisualizationEvent(GraphVisualizationEvent.NodesMoved(draggedIds))
+    }
+
+    def networkClick(event: vis.ClickEvent): Unit =
       if (event.event.asInstanceOf[VisIndirectMouseEvent].srcEvent.shiftKey) {
-        val TrueFixed: Boolean | vis.NodeOptions.Fixed = true
-
-        val selectedNodes = network.get.getSelectedNodes()
-        network.get.selectNodes(heldNodeId +: selectedNodes)
-
-        val (fixedNodes, unfixedNodes) = (heldNodeId +: event.nodes)
-          .map(nodeId => (props.graphData.nodeSet.get(nodeId).merge: vis.Node))
-          .partition(_.fixed.toOption.fold(false) {
-            case TrueFixed => true
-            case _ => false
-          })
-
-        val (fixedAndFlashNodes, flashedNodes) = if (unfixedNodes.isEmpty) {
-          val unfixNodesUpdate = fixedNodes.map(fixedNode =>
-            new vis.Node {
-              override val id = fixedNode.id
-              override val fixed = false
-              override val shadow = false
-              override val icon = new vis.NodeOptions.Icon {
-                override val color = "black"
-              }
-            },
-          )
-          unfixNodesUpdate -> fixedNodes
-        } else {
-          val fixNodesUpdate = unfixedNodes.map(unfixedNode =>
-            new vis.Node {
-              override val id = unfixedNode.id
-              override val fixed = true
-              override val shadow = true
-              override val icon = new vis.NodeOptions.Icon {
-                override val color = "black"
-              }
-            },
-          )
-          fixNodesUpdate -> unfixedNodes
+        network.get.getNodeAt(event.pointer.DOM).toOption.foreach { nodeId =>
+          val selected = network.get.getSelectedNodes()
+          val ids = (if (selected.contains(nodeId)) selected.toSeq else Seq(nodeId))
+            .map(_.asInstanceOf[String])
+            .filterNot(id => network.exists(_.isCluster(id)))
+          processVisualizationEvent(GraphVisualizationEvent.UnpinRequested(ids))
         }
-
-        val unflashNodes = flashedNodes.map(flashedNode =>
-          new vis.Node {
-            override val id = flashedNode.id
-            override val icon = flashedNode.icon
-          },
-        )
-
-        props.graphData.nodeSet.update(fixedAndFlashNodes)
-        window.setTimeout(() => props.graphData.nodeSet.update(unflashNodes), 500)
-        ()
-      } else {
-        val visNode: vis.Node = props.graphData.nodeSet.get(heldNodeId).merge
-        val uiNode = visNode.asInstanceOf[QueryUiVisNodeExt].uiNode
-        println(uiNode)
-        props.routes.debugOpsVerbose((uiNode.id, None, defaultNamespaceParameter)).future.onComplete(println(_))
       }
+
+    def processVisualizationEvent(event: GraphVisualizationEvent): Unit = event match {
+      case GraphVisualizationEvent.NodesMoved(nodeIds) =>
+        pinTracker.pin(nodeIds)
+
+      case GraphVisualizationEvent.UnpinRequested(nodeIds) =>
+        pinTracker.unpinWithFlash(nodeIds)
     }
 
     def networkDeselect(event: vis.DeselectEvent): Unit = {
@@ -1265,20 +1239,11 @@ object QueryUi {
       }
 
     def networkLayout(callback: () => Unit): Unit = {
-      val positions = Map.newBuilder[String, QueryUiEvent.NodePosition]
-      for ((nodeId, pos) <- network.get.getPositions(props.graphData.nodeSet.getIds())) {
-        val visNode: vis.Node = props.graphData.nodeSet.get(nodeId).merge
-
-        val TrueFixed: Boolean | vis.NodeOptions.Fixed = true
-        val isFixed = visNode.fixed.toOption.fold(false) {
-          case TrueFixed => true
-          case _ => false
-        }
-
-        positions += nodeId -> QueryUiEvent.NodePosition(pos.x, pos.y, isFixed)
+      val coords = visualization.readNodePositions()
+      val positions = coords.map { case (nodeId, (x, y)) =>
+        nodeId -> QueryUiEvent.NodePosition(x, y, pinTracker.isPinned(nodeId))
       }
-
-      val layoutEvent = QueryUiEvent.Layout(positions.result())
+      val layoutEvent = QueryUiEvent.Layout(positions)
       updateHistory(hist => Some(hist.observe(layoutEvent)), callback)
     }
 
@@ -1290,8 +1255,10 @@ object QueryUi {
 
       net.onDoubleClick(networkDoubleClick)
       net.onContext(networkRightClick)
-      net.onHold(networkHold)
       net.onDeselectNode(networkDeselect)
+      net.onDragStart(networkDragStart)
+      net.onDragEnd(networkDragEnd)
+      net.onClick(networkClick)
 
       if (props.initialLayout != NetworkLayout.Graph) toggleNetworkLayout()
     }
