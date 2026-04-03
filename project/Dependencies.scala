@@ -121,7 +121,7 @@ object Dependencies {
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
   // Parents: @stoplight/elements (stoplightElementsV), webpack (scalajs-bundler)
-  val lodashV = "4.17.23" // CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg)
+  val lodashV = "4.18.0" // CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg), CVE-2026-4800
 
   // Parent: @stoplight/elements (stoplightElementsV) via react-router-dom
   val reactRouterV = "6.30.3" // CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
