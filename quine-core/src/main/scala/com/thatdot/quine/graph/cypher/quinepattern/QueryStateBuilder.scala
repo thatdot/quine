@@ -1,7 +1,7 @@
 package com.thatdot.quine.graph.cypher.quinepattern
 
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId}
-import com.thatdot.quine.language.ast.Value
+import com.thatdot.quine.language.ast.{BindingId, Value}
 import com.thatdot.quine.model.Milliseconds
 
 /** Result of building a query state graph from a QueryPlan.
@@ -26,9 +26,9 @@ case class StateGraph(
   leaves: Set[StandingQueryId],
   edges: Map[StandingQueryId, StandingQueryId],
   params: Map[Symbol, Value],
-  injectedContext: Map[Symbol, Value],
-  returnColumns: Option[Set[Symbol]],
-  outputNameMapping: Map[Symbol, Symbol] = Map.empty,
+  injectedContext: Map[BindingId, Value],
+  returnColumns: Option[Set[BindingId]],
+  outputNameMapping: Map[BindingId, Symbol] = Map.empty,
   atTime: Option[Milliseconds],
 )
 
@@ -67,7 +67,7 @@ object StateDescriptor {
     parentId: StandingQueryId,
     mode: RuntimeMode,
     plan: QueryPlan.LocalId,
-    binding: Symbol,
+    binding: BindingId,
   ) extends StateDescriptor
 
   /** State for LocalProperty operator */
@@ -77,7 +77,7 @@ object StateDescriptor {
     mode: RuntimeMode,
     plan: QueryPlan.LocalProperty,
     property: Symbol,
-    aliasAs: Option[Symbol],
+    aliasAs: Option[BindingId],
     constraint: PropertyConstraint,
   ) extends StateDescriptor
 
@@ -87,7 +87,7 @@ object StateDescriptor {
     parentId: StandingQueryId,
     mode: RuntimeMode,
     plan: QueryPlan.LocalAllProperties,
-    binding: Symbol,
+    binding: BindingId,
   ) extends StateDescriptor
 
   /** State for LocalLabels operator */
@@ -96,7 +96,7 @@ object StateDescriptor {
     parentId: StandingQueryId,
     mode: RuntimeMode,
     plan: QueryPlan.LocalLabels,
-    aliasAs: Option[Symbol],
+    aliasAs: Option[BindingId],
     constraint: LabelConstraint,
   ) extends StateDescriptor
 
@@ -110,7 +110,7 @@ object StateDescriptor {
     parentId: StandingQueryId,
     mode: RuntimeMode,
     plan: QueryPlan.LocalNode,
-    binding: Symbol,
+    binding: BindingId,
   ) extends StateDescriptor
 
   /** State for Unit operator */
@@ -147,7 +147,7 @@ object StateDescriptor {
     mode: RuntimeMode,
     plan: QueryPlan.Optional,
     innerPlan: QueryPlan, // Plan to install with injected context when context arrives
-    nullBindings: Set[Symbol],
+    nullBindings: Set[BindingId],
   ) extends StateDescriptor
 
   /** State for Sequence operator */
@@ -431,9 +431,9 @@ object QueryStateBuilder {
     params: Map[Symbol, Value],
     namespace: NamespaceId,
     output: OutputTarget,
-    injectedContext: Map[Symbol, Value] = Map.empty,
-    returnColumns: Option[Set[Symbol]] = None,
-    outputNameMapping: Map[Symbol, Symbol] = Map.empty,
+    injectedContext: Map[BindingId, Value] = Map.empty,
+    returnColumns: Option[Set[BindingId]] = None,
+    outputNameMapping: Map[BindingId, Symbol] = Map.empty,
     atTime: Option[Milliseconds] = None,
   ): StateGraph = {
     val rootId = StandingQueryId.fresh()
@@ -645,16 +645,16 @@ object QueryStateBuilder {
 
 }
 
-/** Query execution context - bindings from symbols to values.
+/** Query execution context - maps binding IDs to values.
   *
   * This is the unit of data that flows through the state graph.
   * In lazy mode, results include multiplicity (+1 for assertion, -1 for retraction).
   */
-case class QueryContext(bindings: Map[Symbol, Value]) {
-  def get(symbol: Symbol): Option[Value] = bindings.get(symbol)
-  def +(kv: (Symbol, Value)): QueryContext = QueryContext(bindings + kv)
+case class QueryContext(bindings: Map[BindingId, Value]) {
+  def get(key: BindingId): Option[Value] = bindings.get(key)
+  def +(kv: (BindingId, Value)): QueryContext = QueryContext(bindings + kv)
   def ++(other: QueryContext): QueryContext = QueryContext(bindings ++ other.bindings)
-  def ++(other: Map[Symbol, Value]): QueryContext = QueryContext(bindings ++ other)
+  def ++(other: Map[BindingId, Value]): QueryContext = QueryContext(bindings ++ other)
 }
 
 object QueryContext {

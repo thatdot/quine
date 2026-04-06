@@ -5,6 +5,7 @@ import org.apache.pekko.actor.{Actor, Props}
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher.quinepattern.{OutputTarget, QueryPlan, RuntimeMode}
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, StandingQueryOpsGraph}
+import com.thatdot.quine.language.ast.BindingId
 import com.thatdot.quine.language.{ast => Pattern}
 import com.thatdot.quine.model.Milliseconds
 
@@ -28,8 +29,8 @@ case class LoadQuery(
   params: Map[Symbol, Pattern.Value],
   namespace: NamespaceId,
   output: OutputTarget,
-  returnColumns: Option[Set[Symbol]] = None,
-  outputNameMapping: Map[Symbol, Symbol] = Map.empty,
+  returnColumns: Option[Set[BindingId]] = None,
+  outputNameMapping: Map[BindingId, Symbol] = Map.empty,
   queryName: Option[String] = None,
   atTime: Option[Milliseconds] = None,
 )

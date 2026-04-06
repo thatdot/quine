@@ -337,7 +337,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     project.input shouldBe a[QueryPlan.Aggregate]
     val aggregate = project.input.asInstanceOf[QueryPlan.Aggregate]
     aggregate.aggregations should have size 1
-    aggregate.aggregations.head shouldBe a[Aggregation.Count]
+    aggregate.aggregations.head._1 shouldBe a[Aggregation.Count]
+    aggregate.aggregations.head._2 shouldBe a[BindingId]
   }
 
   it should "plan sum aggregation: MATCH (n) RETURN sum(n.value) AS total" in {
@@ -347,7 +348,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val project = plan.asInstanceOf[QueryPlan.Project]
     project.input shouldBe a[QueryPlan.Aggregate]
     val aggregate = project.input.asInstanceOf[QueryPlan.Aggregate]
-    aggregate.aggregations.head shouldBe a[Aggregation.Sum]
+    aggregate.aggregations.head._1 shouldBe a[Aggregation.Sum]
+    aggregate.aggregations.head._2 shouldBe a[BindingId]
   }
 
   // ============================================================
@@ -384,7 +386,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     project.columns should have size 1
     // Projection aliases use raw binding IDs (integers from symbol analysis)
     // Note: User-facing output uses outputNameMapping to convert back to human-readable names
-    project.columns.head.as.name.head.isDigit shouldBe true
+    project.columns.head.as.id should be >= 0
   }
 
   // ============================================================
@@ -520,9 +522,9 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val plan = planQuery("""CREATE (c {name: "literal"}) RETURN c""")
     val ts = Source.TextSource
     val expected = QueryPlan.Anchor(
-      AnchorTarget.FreshNode(Symbol("1")),
+      AnchorTarget.FreshNode(BindingId(1)),
       QueryPlan.Project(
-        List(Projection(Expression.Ident(ts(36, 36), Right(BindingId(1)), NodeTy), Symbol("1"))),
+        List(Projection(Expression.Ident(ts(36, 36), Right(BindingId(1)), NodeTy), BindingId(1))),
         true,
         QueryPlan.LocalEffect(
           List(
@@ -546,9 +548,9 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val plan = planQuery("""CREATE (c) RETURN c""")
     val ts = Source.TextSource
     val expected = QueryPlan.Anchor(
-      AnchorTarget.FreshNode(Symbol("1")),
+      AnchorTarget.FreshNode(BindingId(1)),
       QueryPlan.Project(
-        List(Projection(Expression.Ident(ts(18, 18), Right(BindingId(1)), NodeTy), Symbol("1"))),
+        List(Projection(Expression.Ident(ts(18, 18), Right(BindingId(1)), NodeTy), BindingId(1))),
         true,
         QueryPlan.Unit,
       ),
@@ -560,9 +562,9 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val plan = planQuery("""CREATE (c:Person {name: "literal"}) RETURN c""")
     val ts = Source.TextSource
     val expected = QueryPlan.Anchor(
-      AnchorTarget.FreshNode(Symbol("1")),
+      AnchorTarget.FreshNode(BindingId(1)),
       QueryPlan.Project(
-        List(Projection(Expression.Ident(ts(43, 43), Right(BindingId(1)), NodeTy), Symbol("1"))),
+        List(Projection(Expression.Ident(ts(43, 43), Right(BindingId(1)), NodeTy), BindingId(1))),
         true,
         QueryPlan.LocalEffect(
           List(
@@ -851,13 +853,13 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val outerUnwind = findOuterUnwind(plan)
     outerUnwind shouldBe defined
     // Binding uses raw binding ID (integer from symbol analysis)
-    outerUnwind.get.binding.name.head.isDigit shouldBe true
+    outerUnwind.get.binding.id should be >= 0
 
     // The inner UNWIND should be nested inside the outer UNWIND
     containsOperator(
       outerUnwind.get.subquery,
       {
-        case QueryPlan.Unwind(_, innerBinding, _) => innerBinding.name.head.isDigit
+        case QueryPlan.Unwind(_, innerBinding, _) => innerBinding.id >= 0
         case _ => false
       },
     ) shouldBe true
@@ -888,7 +890,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val unwind = findUnwind(plan)
     unwind shouldBe defined
     // Binding uses raw binding ID (integer from symbol analysis)
-    unwind.get.binding.name.head.isDigit shouldBe true
+    unwind.get.binding.id should be >= 0
   }
 
   it should "plan UNWIND with aggregation" in {
@@ -923,7 +925,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val unwind = findUnwind(plan)
     unwind shouldBe defined
     // Binding uses raw binding ID (integer from symbol analysis)
-    unwind.get.binding.name.head.isDigit shouldBe true
+    unwind.get.binding.id should be >= 0
 
     // The Anchor should be inside the Unwind
     containsOperator(
@@ -1850,7 +1852,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val hasRenamedBinding = containsOperator(
       plan,
       {
-        case QueryPlan.LocalId(sym) if sym.name.contains("10000") => true
+        case QueryPlan.LocalId(bid) if bid.id == 10000 => true
         case _ => false
       },
     )
@@ -1954,7 +1956,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     // The aliasAs should be a numeric synthId (not the old "binding.prop" format)
     val alias = nameProps.head.aliasAs
     alias shouldBe defined
-    alias.get.name.forall(_.isDigit) shouldBe true
+    alias.get.id should be >= 0
   }
 
   it should "handle multiple different properties on same node" in {
@@ -1989,7 +1991,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     propNames should contain("age")
 
     // Each should have a different synthId alias
-    val aliases = localProps.flatMap(_.aliasAs).map(_.name).toSet
+    val aliases = localProps.flatMap(_.aliasAs).map(_.id).toSet
     aliases should have size localProps.size.toLong // All unique
   }
 
@@ -2025,7 +2027,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     nameProps should have size 2
 
     // Each should have a different synthId alias
-    val aliases = nameProps.flatMap(_.aliasAs).map(_.name).toSet
+    val aliases = nameProps.flatMap(_.aliasAs).map(_.id).toSet
     aliases should have size 2
   }
 
@@ -2327,7 +2329,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     // All alias sources should be graph element bindings only.
     // Verify via type entries: source binding should have NodeType or EdgeType
     aliases.values.foreach { sourceId =>
-      val typeEntry = parsed.symbolTable.typeVars.find(_.identifier == BindingId(sourceId))
+      val typeEntry = parsed.symbolTable.typeVars.find(_.identifier == sourceId)
       typeEntry shouldBe defined
     }
   }
@@ -2364,13 +2366,13 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
         Expression.SynthesizeId(ts(31, 43), List(Expression.AtomicLiteral(ts(38, 42), Value.Text("foo"), StrTy)), AnyTy),
       ),
       QueryPlan.Project(
-        List(Projection(Expression.Ident(ts(94, 94), Right(BindingId(2)), NodeTy), Symbol("2"))),
+        List(Projection(Expression.Ident(ts(94, 94), Right(BindingId(2)), NodeTy), BindingId(2))),
         true,
         QueryPlan.Sequence(
-          QueryPlan.LocalProperty(Symbol("bar"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+          QueryPlan.LocalProperty(Symbol("bar"), Some(BindingId(3)), PropertyConstraint.Unconditional),
           QueryPlan.Anchor(
             AnchorTarget.Computed(Expression.Ident(ts(76, 79), Right(BindingId(3)), tv("field_bar_2"))),
-            QueryPlan.LocalNode(Symbol("2")),
+            QueryPlan.LocalNode(BindingId(2)),
           ),
         ),
       ),
@@ -2389,10 +2391,10 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val expected = QueryPlan.Anchor(
       AnchorTarget.Computed(Expression.Parameter(ts(31, 34), Symbol("$aId"), tv("$aId_1"))),
       QueryPlan.Project(
-        List(Projection(Expression.Ident(ts(91, 91), Right(BindingId(2)), NodeTy), Symbol("2"))),
+        List(Projection(Expression.Ident(ts(91, 91), Right(BindingId(2)), NodeTy), BindingId(2))),
         true,
         QueryPlan.Sequence(
-          QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+          QueryPlan.LocalProperty(Symbol("x"), Some(BindingId(3)), PropertyConstraint.Unconditional),
           QueryPlan.Anchor(
             AnchorTarget.Computed(
               Expression.SynthesizeId(
@@ -2401,7 +2403,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
                 AnyTy,
               ),
             ),
-            QueryPlan.LocalNode(Symbol("2")),
+            QueryPlan.LocalNode(BindingId(2)),
           ),
         ),
       ),
@@ -2425,17 +2427,17 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
           .SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), StrTy)), AnyTy),
       ),
       QueryPlan.Project(
-        List(Projection(Expression.Ident(ts(137, 137), Right(BindingId(3)), NodeTy), Symbol("3"))),
+        List(Projection(Expression.Ident(ts(137, 137), Right(BindingId(3)), NodeTy), BindingId(3))),
         true,
         QueryPlan.Sequence(
-          QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("4")), PropertyConstraint.Unconditional),
+          QueryPlan.LocalProperty(Symbol("nextId"), Some(BindingId(4)), PropertyConstraint.Unconditional),
           QueryPlan.Anchor(
             AnchorTarget.Computed(Expression.Ident(ts(77, 83), Right(BindingId(4)), tv("field_nextId_2"))),
             QueryPlan.Sequence(
-              QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("5")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalProperty(Symbol("nextId"), Some(BindingId(5)), PropertyConstraint.Unconditional),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Ident(ts(116, 122), Right(BindingId(5)), tv("field_nextId_4"))),
-                QueryPlan.LocalNode(Symbol("3")),
+                QueryPlan.LocalNode(BindingId(3)),
               ),
             ),
           ),
@@ -2455,19 +2457,19 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val ts = Source.TextSource
     val expected = QueryPlan.Project(
       List(
-        Projection(Expression.Ident(ts(84, 84), Right(BindingId(1)), NodeTy), Symbol("1")),
-        Projection(Expression.Ident(ts(87, 87), Right(BindingId(2)), NodeTy), Symbol("2")),
+        Projection(Expression.Ident(ts(84, 84), Right(BindingId(1)), NodeTy), BindingId(1)),
+        Projection(Expression.Ident(ts(87, 87), Right(BindingId(2)), NodeTy), BindingId(2)),
       ),
       true,
       QueryPlan.CrossProduct(
         List(
           QueryPlan.Anchor(
             AnchorTarget.Computed(Expression.Parameter(ts(31, 34), Symbol("$aId"), tv("$aId_1"))),
-            QueryPlan.LocalNode(Symbol("1")),
+            QueryPlan.LocalNode(BindingId(1)),
           ),
           QueryPlan.Anchor(
             AnchorTarget.Computed(Expression.Parameter(ts(66, 69), Symbol("$bId"), tv("$bId_3"))),
-            QueryPlan.LocalNode(Symbol("2")),
+            QueryPlan.LocalNode(BindingId(2)),
           ),
         ),
         false,
@@ -2493,16 +2495,16 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(133, 133), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(136, 136), Right(BindingId(2)), NodeTy), Symbol("2")),
-          Projection(Expression.Ident(ts(139, 139), Right(BindingId(3)), NodeTy), Symbol("3")),
+          Projection(Expression.Ident(ts(133, 133), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(136, 136), Right(BindingId(2)), NodeTy), BindingId(2)),
+          Projection(Expression.Ident(ts(139, 139), Right(BindingId(3)), NodeTy), BindingId(3)),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
-              QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("4")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalNode(BindingId(1)),
+              QueryPlan.LocalProperty(Symbol("nextId"), Some(BindingId(4)), PropertyConstraint.Unconditional),
             ),
             false,
           ),
@@ -2510,11 +2512,11 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             List(
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Ident(ts(77, 83), Right(BindingId(4)), tv("field_nextId_2"))),
-                QueryPlan.LocalNode(Symbol("2")),
+                QueryPlan.LocalNode(BindingId(2)),
               ),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Parameter(ts(115, 118), Symbol("$cId"), tv("$cId_4"))),
-                QueryPlan.LocalNode(Symbol("3")),
+                QueryPlan.LocalNode(BindingId(3)),
               ),
             ),
             false,
@@ -2541,16 +2543,16 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(133, 133), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(136, 136), Right(BindingId(2)), NodeTy), Symbol("2")),
-          Projection(Expression.Ident(ts(139, 139), Right(BindingId(3)), NodeTy), Symbol("3")),
+          Projection(Expression.Ident(ts(133, 133), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(136, 136), Right(BindingId(2)), NodeTy), BindingId(2)),
+          Projection(Expression.Ident(ts(139, 139), Right(BindingId(3)), NodeTy), BindingId(3)),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
-              QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.LocalProperty(Symbol("nextId"), Some(Symbol("4")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalNode(BindingId(1)),
+              QueryPlan.LocalProperty(Symbol("nextId"), Some(BindingId(4)), PropertyConstraint.Unconditional),
             ),
             false,
           ),
@@ -2558,11 +2560,11 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             List(
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Parameter(ts(76, 79), Symbol("$bId"), tv("$bId_2"))),
-                QueryPlan.LocalNode(Symbol("2")),
+                QueryPlan.LocalNode(BindingId(2)),
               ),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Ident(ts(112, 118), Right(BindingId(4)), tv("field_nextId_4"))),
-                QueryPlan.LocalNode(Symbol("3")),
+                QueryPlan.LocalNode(BindingId(3)),
               ),
             ),
             false,
@@ -2588,15 +2590,15 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(108, 108), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(111, 111), Right(BindingId(2)), NodeTy), Symbol("2")),
+          Projection(Expression.Ident(ts(108, 108), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(111, 111), Right(BindingId(2)), NodeTy), BindingId(2)),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
-              QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("4")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalNode(BindingId(1)),
+              QueryPlan.LocalProperty(Symbol("x"), Some(BindingId(4)), PropertyConstraint.Unconditional),
             ),
             false,
           ),
@@ -2612,8 +2614,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
               ),
               QueryPlan.CrossProduct(
                 List(
-                  QueryPlan.LocalNode(Symbol("2")),
-                  QueryPlan.LocalProperty(Symbol("y"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+                  QueryPlan.LocalNode(BindingId(2)),
+                  QueryPlan.LocalProperty(Symbol("y"), Some(BindingId(3)), PropertyConstraint.Unconditional),
                 ),
                 false,
               ),
@@ -2640,21 +2642,21 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(105, 105), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(108, 108), Right(BindingId(2)), NodeTy), Symbol("2")),
+          Projection(Expression.Ident(ts(105, 105), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(108, 108), Right(BindingId(2)), NodeTy), BindingId(2)),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
-              QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalNode(BindingId(1)),
+              QueryPlan.LocalProperty(Symbol("x"), Some(BindingId(3)), PropertyConstraint.Unconditional),
             ),
             false,
           ),
           QueryPlan.Anchor(
             AnchorTarget.Computed(Expression.Parameter(ts(87, 90), Symbol("$bId"), tv("$bId_3"))),
-            QueryPlan.LocalNode(Symbol("2")),
+            QueryPlan.LocalNode(BindingId(2)),
           ),
         ),
       ),
@@ -2678,22 +2680,22 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(112, 112), Right(BindingId(2)), NodeTy), Symbol("2")),
-          Projection(Expression.Ident(ts(115, 115), Right(BindingId(3)), NodeTy), Symbol("3")),
+          Projection(Expression.Ident(ts(112, 112), Right(BindingId(2)), NodeTy), BindingId(2)),
+          Projection(Expression.Ident(ts(115, 115), Right(BindingId(3)), NodeTy), BindingId(3)),
         ),
         true,
         QueryPlan.Sequence(
-          QueryPlan.LocalNode(Symbol("1")),
+          QueryPlan.LocalNode(BindingId(1)),
           QueryPlan.CrossProduct(
             List(
               QueryPlan.Project(
-                List(Projection(Expression.Ident(ts(57, 57), Right(BindingId(1)), NodeTy), Symbol("2"))),
+                List(Projection(Expression.Ident(ts(57, 57), Right(BindingId(1)), NodeTy), BindingId(2))),
                 true,
                 QueryPlan.Unit,
               ),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Parameter(ts(94, 97), Symbol("$cId"), tv("$cId_2"))),
-                QueryPlan.LocalNode(Symbol("3")),
+                QueryPlan.LocalNode(BindingId(3)),
               ),
             ),
             false,
@@ -2715,8 +2717,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val ts = Source.TextSource
     val expected = QueryPlan.Project(
       List(
-        Projection(Expression.Ident(ts(112, 112), Right(BindingId(2)), IntTy), Symbol("2")),
-        Projection(Expression.Ident(ts(115, 115), Right(BindingId(3)), NodeTy), Symbol("3")),
+        Projection(Expression.Ident(ts(112, 112), Right(BindingId(2)), IntTy), BindingId(2)),
+        Projection(Expression.Ident(ts(115, 115), Right(BindingId(3)), NodeTy), BindingId(3)),
       ),
       true,
       QueryPlan.CrossProduct(
@@ -2731,13 +2733,13 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
           QueryPlan.CrossProduct(
             List(
               QueryPlan.Project(
-                List(Projection(Expression.AtomicLiteral(ts(57, 57), Value.Integer(1), IntTy), Symbol("2"))),
+                List(Projection(Expression.AtomicLiteral(ts(57, 57), Value.Integer(1), IntTy), BindingId(2))),
                 true,
                 QueryPlan.Unit,
               ),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Parameter(ts(94, 97), Symbol("$cId"), tv("$cId_2"))),
-                QueryPlan.LocalNode(Symbol("3")),
+                QueryPlan.LocalNode(BindingId(3)),
               ),
             ),
             false,
@@ -2764,24 +2766,24 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(109, 109), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(112, 112), Right(BindingId(2)), NodeTy), Symbol("2")),
+          Projection(Expression.Ident(ts(109, 109), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(112, 112), Right(BindingId(2)), NodeTy), BindingId(2)),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
-              QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.LocalProperty(Symbol("friendId"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalNode(BindingId(1)),
+              QueryPlan.LocalProperty(Symbol("friendId"), Some(BindingId(3)), PropertyConstraint.Unconditional),
             ),
             false,
           ),
           QueryPlan.Optional(
             QueryPlan.Anchor(
               AnchorTarget.Computed(Expression.Ident(ts(86, 94), Right(BindingId(3)), tv("field_friendId_2"))),
-              QueryPlan.LocalNode(Symbol("2")),
+              QueryPlan.LocalNode(BindingId(2)),
             ),
-            Set(Symbol("2")),
+            Set(BindingId(2)),
           ),
         ),
       ),
@@ -2799,8 +2801,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val ts = Source.TextSource
     val expected = QueryPlan.Project(
       List(
-        Projection(Expression.Ident(ts(103, 103), Right(BindingId(1)), NodeTy), Symbol("1")),
-        Projection(Expression.Ident(ts(106, 106), Right(BindingId(2)), NodeTy), Symbol("2")),
+        Projection(Expression.Ident(ts(103, 103), Right(BindingId(1)), NodeTy), BindingId(1)),
+        Projection(Expression.Ident(ts(106, 106), Right(BindingId(2)), NodeTy), BindingId(2)),
       ),
       true,
       QueryPlan.CrossProduct(
@@ -2810,14 +2812,14 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
               Expression
                 .SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), StrTy)), AnyTy),
             ),
-            QueryPlan.LocalNode(Symbol("1")),
+            QueryPlan.LocalNode(BindingId(1)),
           ),
           QueryPlan.Optional(
             QueryPlan.Anchor(
               AnchorTarget.Computed(Expression.Parameter(ts(85, 88), Symbol("$bId"), tv("$bId_2"))),
-              QueryPlan.LocalNode(Symbol("2")),
+              QueryPlan.LocalNode(BindingId(2)),
             ),
-            Set(Symbol("2")),
+            Set(BindingId(2)),
           ),
         ),
         false,
@@ -2842,16 +2844,16 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(143, 143), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(146, 146), Right(BindingId(2)), NodeTy), Symbol("2")),
-          Projection(Expression.Ident(ts(149, 149), Right(BindingId(3)), NodeTy), Symbol("3")),
+          Projection(Expression.Ident(ts(143, 143), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(146, 146), Right(BindingId(2)), NodeTy), BindingId(2)),
+          Projection(Expression.Ident(ts(149, 149), Right(BindingId(3)), NodeTy), BindingId(3)),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
-              QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("5")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalNode(BindingId(1)),
+              QueryPlan.LocalProperty(Symbol("x"), Some(BindingId(5)), PropertyConstraint.Unconditional),
             ),
             false,
           ),
@@ -2859,7 +2861,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             List(
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Parameter(ts(76, 79), Symbol("$bId"), tv("$bId_2"))),
-                QueryPlan.LocalNode(Symbol("2")),
+                QueryPlan.LocalNode(BindingId(2)),
               ),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Parameter(ts(111, 114), Symbol("$cId"), tv("$cId_4"))),
@@ -2873,8 +2875,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
                   ),
                   QueryPlan.CrossProduct(
                     List(
-                      QueryPlan.LocalNode(Symbol("3")),
-                      QueryPlan.LocalProperty(Symbol("y"), Some(Symbol("4")), PropertyConstraint.Unconditional),
+                      QueryPlan.LocalNode(BindingId(3)),
+                      QueryPlan.LocalProperty(Symbol("y"), Some(BindingId(4)), PropertyConstraint.Unconditional),
                     ),
                     false,
                   ),
@@ -2903,24 +2905,24 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       AnchorTarget.Computed(idFromRoot),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(103, 103), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(106, 111), Right(BindingId(2)), NodeTy), Symbol("2")),
+          Projection(Expression.Ident(ts(103, 103), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(106, 111), Right(BindingId(2)), NodeTy), BindingId(2)),
         ),
         true,
         QueryPlan.Sequence(
-          QueryPlan.LocalNode(Symbol("1")),
+          QueryPlan.LocalNode(BindingId(1)),
           QueryPlan.Optional(
             QueryPlan.Anchor(
               AnchorTarget.Computed(idFromRoot),
               QueryPlan.CrossProduct(
                 List(
-                  QueryPlan.LocalNode(Symbol("1")),
-                  QueryPlan.Expand(Some(Symbol("KNOWS")), EdgeDirection.Outgoing, QueryPlan.LocalNode(Symbol("2"))),
+                  QueryPlan.LocalNode(BindingId(1)),
+                  QueryPlan.Expand(Some(Symbol("KNOWS")), EdgeDirection.Outgoing, QueryPlan.LocalNode(BindingId(2))),
                 ),
                 false,
               ),
             ),
-            Set(Symbol("2")),
+            Set(BindingId(2)),
           ),
         ),
       ),
@@ -2943,15 +2945,15 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(147, 147), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(150, 150), Right(BindingId(2)), NodeTy), Symbol("2")),
+          Projection(Expression.Ident(ts(147, 147), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(150, 150), Right(BindingId(2)), NodeTy), BindingId(2)),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
-              QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalNode(BindingId(1)),
+              QueryPlan.LocalProperty(Symbol("x"), Some(BindingId(3)), PropertyConstraint.Unconditional),
             ),
             false,
           ),
@@ -2980,7 +2982,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
                 AnyTy,
               ),
             ),
-            QueryPlan.LocalNode(Symbol("2")),
+            QueryPlan.LocalNode(BindingId(2)),
           ),
         ),
       ),
@@ -3005,22 +3007,22 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(114, 114), Right(BindingId(2)), tv("field_x_2")), Symbol("2")),
-          Projection(Expression.Ident(ts(117, 117), Right(BindingId(3)), NodeTy), Symbol("3")),
+          Projection(Expression.Ident(ts(114, 114), Right(BindingId(2)), tv("field_x_2")), BindingId(2)),
+          Projection(Expression.Ident(ts(117, 117), Right(BindingId(3)), NodeTy), BindingId(3)),
         ),
         true,
         QueryPlan.Sequence(
-          QueryPlan.LocalProperty(Symbol("x"), Some(Symbol("4")), PropertyConstraint.Unconditional),
+          QueryPlan.LocalProperty(Symbol("x"), Some(BindingId(4)), PropertyConstraint.Unconditional),
           QueryPlan.CrossProduct(
             List(
               QueryPlan.Project(
-                List(Projection(Expression.Ident(ts(58, 59), Right(BindingId(4)), tv("field_x_2")), Symbol("2"))),
+                List(Projection(Expression.Ident(ts(58, 59), Right(BindingId(4)), tv("field_x_2")), BindingId(2))),
                 true,
                 QueryPlan.Unit,
               ),
               QueryPlan.Anchor(
                 AnchorTarget.Computed(Expression.Parameter(ts(96, 99), Symbol("$bId"), tv("$bId_3"))),
-                QueryPlan.LocalNode(Symbol("3")),
+                QueryPlan.LocalNode(BindingId(3)),
               ),
             ),
             false,
@@ -3046,17 +3048,17 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(124, 124), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(127, 127), Right(BindingId(3)), NodeTy), Symbol("3")),
-          Projection(Expression.Ident(ts(130, 130), Right(BindingId(4)), NodeTy), Symbol("4")),
-          Projection(Expression.Ident(ts(133, 133), Right(BindingId(5)), NodeTy), Symbol("5")),
+          Projection(Expression.Ident(ts(124, 124), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(127, 127), Right(BindingId(3)), NodeTy), BindingId(3)),
+          Projection(Expression.Ident(ts(130, 130), Right(BindingId(4)), NodeTy), BindingId(4)),
+          Projection(Expression.Ident(ts(133, 133), Right(BindingId(5)), NodeTy), BindingId(5)),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
-              QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.Expand(Some(Symbol("KNOWS")), EdgeDirection.Outgoing, QueryPlan.LocalNode(Symbol("3"))),
+              QueryPlan.LocalNode(BindingId(1)),
+              QueryPlan.Expand(Some(Symbol("KNOWS")), EdgeDirection.Outgoing, QueryPlan.LocalNode(BindingId(3))),
             ),
             false,
           ),
@@ -3064,8 +3066,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
             AnchorTarget.Computed(Expression.Parameter(ts(106, 109), Symbol("$cId"), tv("$cId_2"))),
             QueryPlan.CrossProduct(
               List(
-                QueryPlan.LocalNode(Symbol("4")),
-                QueryPlan.Expand(Some(Symbol("KNOWS")), EdgeDirection.Outgoing, QueryPlan.LocalNode(Symbol("5"))),
+                QueryPlan.LocalNode(BindingId(4)),
+                QueryPlan.Expand(Some(Symbol("KNOWS")), EdgeDirection.Outgoing, QueryPlan.LocalNode(BindingId(5))),
               ),
               false,
             ),
@@ -3090,7 +3092,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
           .SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), StrTy)), AnyTy),
       ),
       QueryPlan.Project(
-        List(Projection(Expression.Ident(ts(119, 122), Right(BindingId(2)), tv("type_4")), Symbol("2"))),
+        List(Projection(Expression.Ident(ts(119, 122), Right(BindingId(2)), tv("type_4")), BindingId(2))),
         true,
         QueryPlan.Sequence(
           QueryPlan.Unit,
@@ -3120,7 +3122,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
               ),
               Expression.AtomicLiteral(ts(89, 92), Value.True, BoolTy),
             ),
-            List((Symbol("edge"), Symbol("2"))),
+            List((Symbol("edge"), BindingId(2))),
             QueryPlan.Unit,
           ),
         ),
@@ -3145,22 +3147,22 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
       ),
       QueryPlan.Project(
         List(
-          Projection(Expression.Ident(ts(114, 114), Right(BindingId(1)), NodeTy), Symbol("1")),
-          Projection(Expression.Ident(ts(117, 117), Right(BindingId(2)), NodeTy), Symbol("2")),
+          Projection(Expression.Ident(ts(114, 114), Right(BindingId(1)), NodeTy), BindingId(1)),
+          Projection(Expression.Ident(ts(117, 117), Right(BindingId(2)), NodeTy), BindingId(2)),
         ),
         true,
         QueryPlan.Sequence(
           QueryPlan.CrossProduct(
             List(
-              QueryPlan.LocalNode(Symbol("1")),
-              QueryPlan.LocalProperty(Symbol("y"), Some(Symbol("3")), PropertyConstraint.Unconditional),
+              QueryPlan.LocalNode(BindingId(1)),
+              QueryPlan.LocalProperty(Symbol("y"), Some(BindingId(3)), PropertyConstraint.Unconditional),
             ),
             false,
           ),
           QueryPlan.Anchor(
             AnchorTarget.Computed(Expression.Parameter(ts(76, 79), Symbol("$bId"), tv("$bId_2"))),
             QueryPlan.Sequence(
-              QueryPlan.LocalNode(Symbol("2")),
+              QueryPlan.LocalNode(BindingId(2)),
               QueryPlan.LocalEffect(
                 List(
                   LocalQueryEffect
@@ -3195,8 +3197,8 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
     val ts = Source.TextSource
     val expected = QueryPlan.Project(
       List(
-        Projection(Expression.Ident(ts(120, 120), Right(BindingId(1)), NodeTy), Symbol("1")),
-        Projection(Expression.Ident(ts(123, 123), Right(BindingId(2)), NodeTy), Symbol("2")),
+        Projection(Expression.Ident(ts(120, 120), Right(BindingId(1)), NodeTy), BindingId(1)),
+        Projection(Expression.Ident(ts(123, 123), Right(BindingId(2)), NodeTy), BindingId(2)),
       ),
       true,
       QueryPlan.CrossProduct(
@@ -3206,12 +3208,12 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
               Expression
                 .SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), StrTy)), AnyTy),
             ),
-            QueryPlan.LocalNode(Symbol("1")),
+            QueryPlan.LocalNode(BindingId(1)),
           ),
           QueryPlan.Anchor(
             AnchorTarget.Computed(Expression.Parameter(ts(76, 79), Symbol("$bId"), tv("$bId_2"))),
             QueryPlan.Sequence(
-              QueryPlan.LocalNode(Symbol("2")),
+              QueryPlan.LocalNode(BindingId(2)),
               QueryPlan.LocalEffect(
                 List(
                   LocalQueryEffect

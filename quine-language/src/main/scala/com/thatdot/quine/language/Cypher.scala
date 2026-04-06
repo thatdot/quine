@@ -1,6 +1,7 @@
 package com.thatdot.quine.language
 
 import com.thatdot.quine.cypher.ast.Query
+import com.thatdot.quine.cypher.phases.MaterializationOutput.{AggregationAccessMapping, AggregationAccessMappingMonoid}
 import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{
   PropertyAccessMapping,
   PropertyAccessMappingMonoid,
@@ -51,6 +52,7 @@ case class TypeCheckResult(
   symbolTable: SymbolTable,
   typeEnv: Map[Symbol, Type],
   propertyAccessMapping: PropertyAccessMapping,
+  aggregationAccessMapping: AggregationAccessMapping,
   diagnostics: List[Diagnostic],
 ) {
   def hasErrors: Boolean = diagnostics.exists(!_.isInstanceOf[Diagnostic.SymbolAnalysisWarning])
@@ -99,6 +101,7 @@ object Cypher {
       symbolTable = state.symbolTable,
       typeEnv = state.typeEnv,
       propertyAccessMapping = state.propertyAccessMapping,
+      aggregationAccessMapping = state.aggregationAccessMapping,
       diagnostics = state.diagnostics,
     )
   }

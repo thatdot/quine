@@ -11,7 +11,7 @@ import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.{StandingQueryId, defaultNamespaceId}
-import com.thatdot.quine.language.ast.Value
+import com.thatdot.quine.language.ast.{BindingId, Value}
 
 /** Correctness tests for OptionalState, lifted from the Lean formalization
   * in lean-learning/OptionalLeftJoin/.
@@ -38,9 +38,9 @@ class OptionalStateCorrectnessTest
   override def afterAll(): Unit = TestKit.shutdownActorSystem(system)
 
   private val namespace = defaultNamespaceId
-  private val nullBindings = Set(Symbol("friend"))
+  private val nullBindings = Set(BindingId(2))
 
-  private def mkCtx(bindings: (Symbol, Value)*): QueryContext =
+  private def mkCtx(bindings: (BindingId, Value)*): QueryContext =
     QueryContext(bindings.toMap)
 
   private def mkState(mode: RuntimeMode): OptionalState =
@@ -86,8 +86,8 @@ class OptionalStateCorrectnessTest
     val probe = TestProbe()
     val state = mkState(RuntimeMode.Lazy)
     val contextSender = StandingQueryId.fresh()
-    val σ = mkCtx(Symbol("p") -> Value.Integer(42))
-    val nullPadded = mkCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Null)
+    val σ = mkCtx(BindingId(1) -> Value.Integer(42))
+    val nullPadded = mkCtx(BindingId(1) -> Value.Integer(42), BindingId(2) -> Value.Null)
 
     state.notify(Map(σ -> 1), contextSender, probe.ref)
 
@@ -105,9 +105,9 @@ class OptionalStateCorrectnessTest
     val probe = TestProbe()
     val state = mkState(RuntimeMode.Lazy)
     val contextSender = StandingQueryId.fresh()
-    val σ = mkCtx(Symbol("p") -> Value.Integer(42))
-    val nullPadded = mkCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Null)
-    val innerRow = mkCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Integer(99))
+    val σ = mkCtx(BindingId(1) -> Value.Integer(42))
+    val nullPadded = mkCtx(BindingId(1) -> Value.Integer(42), BindingId(2) -> Value.Null)
+    val innerRow = mkCtx(BindingId(1) -> Value.Integer(42), BindingId(2) -> Value.Integer(99))
 
     state.notify(Map(σ -> 1), contextSender, probe.ref)
     val innerSqid = captureInnerSqid(probe)
@@ -128,9 +128,9 @@ class OptionalStateCorrectnessTest
     val probe = TestProbe()
     val state = mkState(RuntimeMode.Lazy)
     val contextSender = StandingQueryId.fresh()
-    val σ = mkCtx(Symbol("p") -> Value.Integer(42))
-    val nullPadded = mkCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Null)
-    val innerRow = mkCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Integer(99))
+    val σ = mkCtx(BindingId(1) -> Value.Integer(42))
+    val nullPadded = mkCtx(BindingId(1) -> Value.Integer(42), BindingId(2) -> Value.Null)
+    val innerRow = mkCtx(BindingId(1) -> Value.Integer(42), BindingId(2) -> Value.Integer(99))
 
     state.notify(Map(σ -> 1), contextSender, probe.ref)
     val innerSqid = captureInnerSqid(probe)
@@ -155,8 +155,8 @@ class OptionalStateCorrectnessTest
     val probe = TestProbe()
     val state = mkState(RuntimeMode.Lazy)
     val contextSender = StandingQueryId.fresh()
-    val σ = mkCtx(Symbol("p") -> Value.Integer(42))
-    val innerRow = mkCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Integer(99))
+    val σ = mkCtx(BindingId(1) -> Value.Integer(42))
+    val innerRow = mkCtx(BindingId(1) -> Value.Integer(42), BindingId(2) -> Value.Integer(99))
 
     // Event 1: context arrives → null-padded
     state.notify(Map(σ -> 1), contextSender, probe.ref)
@@ -189,9 +189,9 @@ class OptionalStateCorrectnessTest
     val probe = TestProbe()
     val state = mkState(RuntimeMode.Lazy)
     val contextSender = StandingQueryId.fresh()
-    val σ = mkCtx(Symbol("p") -> Value.Integer(42))
-    val nullPadded = mkCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Null)
-    val innerRow = mkCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Integer(99))
+    val σ = mkCtx(BindingId(1) -> Value.Integer(42))
+    val nullPadded = mkCtx(BindingId(1) -> Value.Integer(42), BindingId(2) -> Value.Null)
+    val innerRow = mkCtx(BindingId(1) -> Value.Integer(42), BindingId(2) -> Value.Integer(99))
 
     state.notify(Map(σ -> 1), contextSender, probe.ref)
     val innerSqid = captureInnerSqid(probe)
@@ -214,11 +214,11 @@ class OptionalStateCorrectnessTest
     val probe = TestProbe()
     val state = mkState(RuntimeMode.Lazy)
     val contextSender = StandingQueryId.fresh()
-    val σ1 = mkCtx(Symbol("p") -> Value.Integer(1))
-    val σ2 = mkCtx(Symbol("p") -> Value.Integer(2))
-    val nullPadded1 = mkCtx(Symbol("p") -> Value.Integer(1), Symbol("friend") -> Value.Null)
-    val nullPadded2 = mkCtx(Symbol("p") -> Value.Integer(2), Symbol("friend") -> Value.Null)
-    val inner1 = mkCtx(Symbol("p") -> Value.Integer(1), Symbol("friend") -> Value.Integer(10))
+    val σ1 = mkCtx(BindingId(1) -> Value.Integer(1))
+    val σ2 = mkCtx(BindingId(1) -> Value.Integer(2))
+    val nullPadded1 = mkCtx(BindingId(1) -> Value.Integer(1), BindingId(2) -> Value.Null)
+    val nullPadded2 = mkCtx(BindingId(1) -> Value.Integer(2), BindingId(2) -> Value.Null)
+    val inner1 = mkCtx(BindingId(1) -> Value.Integer(1), BindingId(2) -> Value.Integer(10))
 
     // Send context rows separately so we can track which sqid maps to which row
     state.notify(Map(σ1 -> 1), contextSender, probe.ref)
@@ -249,8 +249,8 @@ class OptionalStateCorrectnessTest
   // ════════════════════════════════════════════════════════════════
 
   "Mode equivalence (mode_equivalence)" should "produce same total for lazy and eager" in {
-    val σ = mkCtx(Symbol("p") -> Value.Integer(42))
-    val innerRow = mkCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Integer(99))
+    val σ = mkCtx(BindingId(1) -> Value.Integer(42))
+    val innerRow = mkCtx(BindingId(1) -> Value.Integer(42), BindingId(2) -> Value.Integer(99))
 
     // Lazy run
     val lazyProbe = TestProbe()
@@ -306,7 +306,7 @@ class OptionalStateCorrectnessTest
     val probe = TestProbe()
     val state = mkState(RuntimeMode.Eager)
     val contextSender = StandingQueryId.fresh()
-    val σ = mkCtx(Symbol("p") -> Value.Integer(42))
+    val σ = mkCtx(BindingId(1) -> Value.Integer(42))
 
     // Context row with multiplicity 0 — effectively absent
     state.notify(Map(σ -> 0), contextSender, probe.ref)

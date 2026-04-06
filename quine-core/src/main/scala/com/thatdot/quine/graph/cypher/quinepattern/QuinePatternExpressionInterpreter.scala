@@ -13,15 +13,17 @@ import com.thatdot.quine.model.QuineIdProvider
 
 object QuinePatternExpressionInterpreter {
 
-  /** Convert an identifier to the Symbol key used in QueryContext.
+  /** Convert an identifier to the BindingId key used in QueryContext.
     * After symbol analysis, identifiers should be Right(BindingId).
-    * The key format matches what QueryPlanner.bindingSymbol produces.
-    * We use the raw integer from symbol analysis directly - no prefix needed.
     */
-  private def identKey(ident: Either[CypherIdentifier, BindingId]): Symbol =
+  private def identKey(ident: Either[CypherIdentifier, BindingId]): BindingId =
     ident match {
-      case Right(bindingId) => Symbol(bindingId.id.toString)
-      case Left(cypherIdent) => cypherIdent.name // Fallback for synthetic identifiers
+      case Right(bindingId) => bindingId
+      case Left(cypherIdent) =>
+        throw new RuntimeException(
+          s"Encountered unresolved CypherIdentifier '${cypherIdent.name}' - " +
+          "this indicates a bug in the symbol analysis phase",
+        )
     }
 
   /** Evaluation environment using QuinePattern's native QueryContext with Pattern.Value bindings.
@@ -198,48 +200,17 @@ object QuinePatternExpressionInterpreter {
               case Some(value) => value
               case None => Value.Null
             })
-          case Value.Node(_, _, props) =>
-            // First try the node's properties
-            props.values.get(fieldName) match {
-              case Some(value) => pure(value)
-              case None =>
-                // If not found, check for a captured property binding (e.g., "1.time" for node 1's time property)
-                // This handles the case where LocalProperty captured the value separately
-                of match {
-                  case Expression.Ident(_, ident, _) =>
-                    val capturedKey = Symbol(s"${identKey(ident).name}.${fieldName.name}")
-                    fromEnvironment(_.queryContext.get(capturedKey)) >>= {
-                      case Some(capturedValue) => pure(capturedValue)
-                      case None => pure(Value.Null)
-                    }
-                  case _ => pure(Value.Null)
-                }
-            }
-          case Value.NodeId(_) =>
-            // NodeId has no properties - go directly to captured binding lookup
-            // Properties for node bindings are pre-computed by LocalProperty and stored in the context
-            of match {
-              case Expression.Ident(_, ident, _) =>
-                val capturedKey = Symbol(s"${identKey(ident).name}.${fieldName.name}")
-                fromEnvironment(_.queryContext.get(capturedKey)) >>= {
-                  case Some(capturedValue) => pure(capturedValue)
-                  case None => pure(Value.Null)
-                }
-              case _ => pure(Value.Null)
-            }
+          case Value.Node(_, _, _) | Value.NodeId(_) =>
+            // After materialization, all FieldAccess on graph-element-typed bindings
+            // should have been rewritten to references to synthetic temporaries.
+            // Reaching this path means the type system or materialization missed a case.
+            error(
+              s"FieldAccess '${fieldName.name}' on graph element value — " +
+              "this indicates the materialization phase failed to rewrite a graph-element field access",
+            )
           case Value.Null =>
-            // When of evaluates to Null (e.g., binding not found), still check for captured property binding.
-            // This handles cases where LocalProperty stored the value under "1.name" but the node binding
-            // "1" itself isn't in context (which happens when Project only has LocalProperty as input).
-            of match {
-              case Expression.Ident(_, ident, _) =>
-                val capturedKey = Symbol(s"${identKey(ident).name}.${fieldName.name}")
-                fromEnvironment(_.queryContext.get(capturedKey)) >>= {
-                  case Some(capturedValue) => pure(capturedValue)
-                  case None => pure(Value.Null)
-                }
-              case _ => pure(Value.Null)
-            }
+            // Null propagation: field access on null produces null
+            pure(Value.Null)
           case thing => error(s"Don't know how to do field access on $thing")
         }
       case Expression.IndexIntoArray(_, of, indexExp, _) =>

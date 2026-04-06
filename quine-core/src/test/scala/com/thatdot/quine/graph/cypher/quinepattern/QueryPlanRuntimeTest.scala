@@ -30,7 +30,7 @@ import com.thatdot.quine.graph.{
   StandingQueryResult,
   defaultNamespaceId,
 }
-import com.thatdot.quine.language.ast.{CypherIdentifier, Expression, Source, Value}
+import com.thatdot.quine.language.ast.{BindingId, Expression, Source, Value}
 import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
@@ -95,7 +95,7 @@ class QueryPlanRuntimeTest
       // Create a simple query plan: Anchor(nodeId) -> LocalId(n)
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n")),
+        LocalId(BindingId(1)),
       )
 
       // Execute in eager mode
@@ -117,10 +117,10 @@ class QueryPlanRuntimeTest
 
       results should have size 1
       val ctx = results.head
-      ctx.bindings should contain key Symbol("n")
+      ctx.bindings should contain key BindingId(1)
 
       // Verify we got a Node value with the expected structure
-      val nodeValue = ctx.bindings(Symbol("n"))
+      val nodeValue = ctx.bindings(BindingId(1))
       nodeValue shouldBe a[Value.NodeId]
       val node = nodeValue.asInstanceOf[Value.NodeId]
       node.id shouldEqual nodeId
@@ -151,10 +151,10 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("bId")),
         Sequence(
-          LocalId(Symbol("b")),
+          LocalId(BindingId(3)),
           Anchor(
             AnchorTarget.Computed(param("aId")),
-            LocalId(Symbol("a")),
+            LocalId(BindingId(2)),
           ),
         ),
       )
@@ -180,12 +180,12 @@ class QueryPlanRuntimeTest
 
       results should have size 1
       val ctx = results.head
-      ctx.bindings should contain key Symbol("a")
-      ctx.bindings should contain key Symbol("b")
+      ctx.bindings should contain key BindingId(2)
+      ctx.bindings should contain key BindingId(3)
 
       // Verify both nodes are present
-      ctx.bindings(Symbol("a")) shouldBe a[Value.NodeId]
-      ctx.bindings(Symbol("b")) shouldBe a[Value.NodeId]
+      ctx.bindings(BindingId(2)) shouldBe a[Value.NodeId]
+      ctx.bindings(BindingId(3)) shouldBe a[Value.NodeId]
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -202,7 +202,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalId(Symbol("n")),
+          LocalId(BindingId(1)),
           Filter(
             Expression.AtomicLiteral(noSource, Value.False, None),
             Unit,
@@ -246,7 +246,7 @@ class QueryPlanRuntimeTest
       // Query plan for lazy mode
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n")),
+        LocalId(BindingId(1)),
       )
 
       val sqId = StandingQueryId.fresh()
@@ -293,7 +293,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalId(Symbol("n")),
+          LocalId(BindingId(1)),
           Filter(
             Expression.AtomicLiteral(noSource, Value.False, None),
             Unit,
@@ -345,10 +345,10 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("aId")),
         Sequence(
-          LocalId(Symbol("a")),
+          LocalId(BindingId(2)),
           Anchor(
             AnchorTarget.Computed(param("bId")),
-            LocalId(Symbol("b")),
+            LocalId(BindingId(3)),
           ),
         ),
       )
@@ -375,7 +375,7 @@ class QueryPlanRuntimeTest
       // Should have exactly one result with both bindings
       results should have size 1
       val ctx = results.head
-      ctx.bindings.keySet should contain allOf (Symbol("a"), Symbol("b"))
+      ctx.bindings.keySet should contain allOf (BindingId(2), BindingId(3))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -397,12 +397,12 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalId(Symbol("n")),
+          LocalId(BindingId(1)),
           Project(
             List(
               Projection(
-                Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("n"))), None),
-                Symbol("result"),
+                Expression.Ident(noSource, Right(BindingId(1)), None),
+                BindingId(7),
               ),
             ),
             dropExisting = true,
@@ -430,7 +430,7 @@ class QueryPlanRuntimeTest
       // Should have one result with only the projected column
       results should have size 1
       val ctx = results.head
-      ctx.bindings should contain key Symbol("result")
+      ctx.bindings should contain key BindingId(7)
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -453,7 +453,7 @@ class QueryPlanRuntimeTest
       // WatchProperty will trigger on property changes
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("name"), Some(Symbol("n"))),
+        LocalProperty(Symbol("name"), Some(BindingId(1))),
       )
 
       val sqId = StandingQueryId.fresh()
@@ -512,7 +512,7 @@ class QueryPlanRuntimeTest
       // Query plan: Watch for node with property 'name'
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("name"), Some(Symbol("n"))),
+        LocalProperty(Symbol("name"), Some(BindingId(1))),
       )
 
       val sqId = StandingQueryId.fresh()
@@ -572,7 +572,7 @@ class QueryPlanRuntimeTest
       // Query plan: Watch for node with property 'count'
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("count"), Some(Symbol("n"))),
+        LocalProperty(Symbol("count"), Some(BindingId(1))),
       )
 
       val sqId = StandingQueryId.fresh()
@@ -631,7 +631,7 @@ class QueryPlanRuntimeTest
       // Query plan: Watch for node with property 'x'
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("x"), Some(Symbol("n"))),
+        LocalProperty(Symbol("x"), Some(BindingId(1))),
       )
 
       val sqId = StandingQueryId.fresh()
@@ -715,14 +715,14 @@ class QueryPlanRuntimeTest
       // Create a simple query plan for the pattern
       val patternPlan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n")),
+        LocalId(BindingId(1)),
       )
 
       // Register a minimal standing query using the V2 pattern
       val dummyPattern = StandingQueryPattern.QuinePatternQueryPattern(
         compiledQuery = patternPlan,
         mode = RuntimeMode.Lazy,
-        returnColumns = Some(Set(Symbol("n"))),
+        returnColumns = Some(Set(BindingId(1))),
       )
 
       // Create a sink that collects results with a kill switch
@@ -761,7 +761,7 @@ class QueryPlanRuntimeTest
       // Create a simple query plan that will produce a result
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n")),
+        LocalId(BindingId(1)),
       )
 
       // Load the QuinePattern query with StandingQuerySink target
@@ -773,6 +773,7 @@ class QueryPlanRuntimeTest
         params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
         namespace = namespace,
         output = OutputTarget.StandingQuerySink(sqId, namespace),
+        outputNameMapping = Map(BindingId(1) -> Symbol("n")),
       )
 
       // Wait for results to arrive
@@ -781,7 +782,7 @@ class QueryPlanRuntimeTest
       // Verify we got at least one result
       results should not be empty
       results.head.meta.isPositiveMatch shouldBe true
-      results.head.data should contain key "n"
+      results.head.data shouldBe Map("n" -> QuineValue.Id(nodeId))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -803,7 +804,7 @@ class QueryPlanRuntimeTest
       // Create query plan
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalId(Symbol("n")),
+        LocalId(BindingId(1)),
       )
 
       // Load with StandingQuerySink targeting an unregistered sqId
@@ -857,10 +858,13 @@ class QueryPlanRuntimeTest
           .to(Sink.ignore)
 
       // Register standing query
+      val nameMapping = Map(BindingId(1) -> Symbol("name"))
+
       val dummyPattern = StandingQueryPattern.QuinePatternQueryPattern(
-        compiledQuery = LocalProperty(Symbol("name"), Some(Symbol("n"))),
+        compiledQuery = LocalProperty(Symbol("name"), Some(BindingId(1))),
         mode = RuntimeMode.Lazy,
-        returnColumns = Some(Set(Symbol("n"))),
+        returnColumns = Some(Set(BindingId(1))),
+        outputNameMapping = nameMapping,
       )
 
       graph
@@ -885,7 +889,7 @@ class QueryPlanRuntimeTest
       // Load query plan in LAZY mode (required for retractions)
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("name"), Some(Symbol("n"))),
+        LocalProperty(Symbol("name"), Some(BindingId(1))),
       )
 
       val loader = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
@@ -896,6 +900,7 @@ class QueryPlanRuntimeTest
         params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
         namespace = namespace,
         output = OutputTarget.StandingQuerySink(sqId, namespace),
+        outputNameMapping = nameMapping,
       )
 
       // Wait for initial positive result
@@ -953,13 +958,16 @@ class QueryPlanRuntimeTest
       // Query plan with a constraint - only matches when name = "Alice"
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("name"), Some(Symbol("n")), PropertyConstraint.Equal(Value.Text("Alice"))),
+        LocalProperty(Symbol("name"), Some(BindingId(1)), PropertyConstraint.Equal(Value.Text("Alice"))),
       )
+
+      val nameMapping = Map(BindingId(1) -> Symbol("name"))
 
       val dummyPattern = StandingQueryPattern.QuinePatternQueryPattern(
         compiledQuery = plan,
         mode = RuntimeMode.Lazy,
-        returnColumns = Some(Set(Symbol("n"))),
+        returnColumns = Some(Set(BindingId(1))),
+        outputNameMapping = nameMapping,
       )
 
       graph
@@ -989,6 +997,7 @@ class QueryPlanRuntimeTest
         params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
         namespace = namespace,
         output = OutputTarget.StandingQuerySink(sqId, namespace),
+        outputNameMapping = nameMapping,
       )
 
       // Wait for initial match
@@ -1043,13 +1052,16 @@ class QueryPlanRuntimeTest
       // Simple property watch - matches any value
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("name"), Some(Symbol("n"))),
+        LocalProperty(Symbol("name"), Some(BindingId(1))),
       )
+
+      val nameMapping = Map(BindingId(1) -> Symbol("name"))
 
       val dummyPattern = StandingQueryPattern.QuinePatternQueryPattern(
         compiledQuery = plan,
         mode = RuntimeMode.Lazy,
-        returnColumns = Some(Set(Symbol("n"))),
+        returnColumns = Some(Set(BindingId(1))),
+        outputNameMapping = nameMapping,
       )
 
       graph
@@ -1079,6 +1091,7 @@ class QueryPlanRuntimeTest
         params = Map(Symbol("nodeId") -> Value.NodeId(nodeId)),
         namespace = namespace,
         output = OutputTarget.StandingQuerySink(sqId, namespace),
+        outputNameMapping = nameMapping,
       )
 
       Await.result(firstResultPromise.future, 5.seconds)
@@ -1086,7 +1099,7 @@ class QueryPlanRuntimeTest
       resultsList.synchronized {
         resultsList.size shouldBe 1
         resultsList.head.meta.isPositiveMatch shouldBe true
-        resultsList.head.data.get("n") shouldBe Some(QuineValue.Str("Alice"))
+        resultsList.head.data shouldBe Map("name" -> QuineValue.Str("Alice"))
       }
 
       // Change to different value - should trigger retraction of old + assertion of new
@@ -1102,7 +1115,7 @@ class QueryPlanRuntimeTest
         resultsList(0).meta.isPositiveMatch shouldBe true // initial "Alice" match
         resultsList(1).meta.isPositiveMatch shouldBe false // retraction of "Alice"
         resultsList(2).meta.isPositiveMatch shouldBe true // new "Bob" match
-        resultsList(2).data.get("n") shouldBe Some(QuineValue.Str("Bob"))
+        resultsList(2).data shouldBe Map("name" -> QuineValue.Str("Bob"))
       }
 
     } finally Await.result(graph.shutdown(), 5.seconds)
@@ -1138,20 +1151,23 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("personId")),
         CrossProduct(
           List(
-            LocalId(Symbol("p")),
+            LocalId(BindingId(5)),
             Expand(
               Some(Symbol("ACTED_IN")),
               com.thatdot.quine.model.EdgeDirection.Outgoing,
-              LocalId(Symbol("m")),
+              LocalId(BindingId(6)),
             ),
           ),
         ),
       )
 
+      val nameMapping = Map(BindingId(5) -> Symbol("p"), BindingId(6) -> Symbol("m"))
+
       val dummyPattern = StandingQueryPattern.QuinePatternQueryPattern(
         compiledQuery = plan,
         mode = RuntimeMode.Lazy,
-        returnColumns = Some(Set(Symbol("p"), Symbol("m"))),
+        returnColumns = Some(Set(BindingId(5), BindingId(6))),
+        outputNameMapping = nameMapping,
       )
 
       graph
@@ -1181,6 +1197,7 @@ class QueryPlanRuntimeTest
         params = Map(Symbol("personId") -> Value.NodeId(personId)),
         namespace = namespace,
         output = OutputTarget.StandingQuerySink(sqId, namespace),
+        outputNameMapping = nameMapping,
       )
 
       Await.result(firstResultPromise.future, 5.seconds)
@@ -1240,20 +1257,23 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("personId")),
         CrossProduct(
           List(
-            LocalId(Symbol("p")),
+            LocalId(BindingId(5)),
             Expand(
               Some(Symbol("ACTED_IN")),
               com.thatdot.quine.model.EdgeDirection.Outgoing,
-              LocalId(Symbol("m")),
+              LocalId(BindingId(6)),
             ),
           ),
         ),
       )
 
+      val nameMapping = Map(BindingId(5) -> Symbol("p"), BindingId(6) -> Symbol("m"))
+
       val dummyPattern = StandingQueryPattern.QuinePatternQueryPattern(
         compiledQuery = plan,
         mode = RuntimeMode.Lazy,
-        returnColumns = Some(Set(Symbol("p"), Symbol("m"))),
+        returnColumns = Some(Set(BindingId(5), BindingId(6))),
+        outputNameMapping = nameMapping,
       )
 
       graph
@@ -1282,6 +1302,7 @@ class QueryPlanRuntimeTest
         params = Map(Symbol("personId") -> Value.NodeId(personId)),
         namespace = namespace,
         output = OutputTarget.StandingQuerySink(sqId, namespace),
+        outputNameMapping = nameMapping,
       )
 
       // Wait for 3 positive results
@@ -1336,13 +1357,13 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeIdA")),
         Sequence(
-          LocalId(Symbol("a")), // This produces Value.Node(nodeIdA, ...)
+          LocalId(BindingId(2)), // This produces Value.Node(nodeIdA, ...)
           Anchor(
             // This evaluates `a` which is a Value.Node - needs the fix to work
             AnchorTarget.Computed(
-              Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("a"))), None),
+              Expression.Ident(noSource, Right(BindingId(2)), None),
             ),
-            LocalId(Symbol("b")),
+            LocalId(BindingId(3)),
           ),
         ),
       )
@@ -1367,12 +1388,12 @@ class QueryPlanRuntimeTest
       // Value.Node wouldn't be recognized as a valid dispatch target
       results should have size 1
       val ctx = results.head
-      ctx.bindings should contain key Symbol("a")
-      ctx.bindings should contain key Symbol("b")
+      ctx.bindings should contain key BindingId(2)
+      ctx.bindings should contain key BindingId(3)
 
       // Both should be the same node (dispatching to self via Node value)
-      val nodeA = ctx.bindings(Symbol("a")).asInstanceOf[Value.NodeId]
-      val nodeB = ctx.bindings(Symbol("b")).asInstanceOf[Value.NodeId]
+      val nodeA = ctx.bindings(BindingId(2)).asInstanceOf[Value.NodeId]
+      val nodeB = ctx.bindings(BindingId(3)).asInstanceOf[Value.NodeId]
       nodeA.id shouldEqual nodeIdA
       nodeB.id shouldEqual nodeIdA // Second anchor dispatched to same node
 
@@ -1402,10 +1423,10 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeIdA")),
         Sequence(
-          LocalId(Symbol("a")), // Produces Value.Node
+          LocalId(BindingId(2)), // Produces Value.Node
           Anchor(
             AnchorTarget.Computed(param("nodeIdB")),
-            LocalId(Symbol("b")),
+            LocalId(BindingId(3)),
           ),
         ),
       )
@@ -1431,12 +1452,12 @@ class QueryPlanRuntimeTest
 
       results should have size 1
       val ctx = results.head
-      ctx.bindings should contain key Symbol("a")
-      ctx.bindings should contain key Symbol("b")
+      ctx.bindings should contain key BindingId(2)
+      ctx.bindings should contain key BindingId(3)
 
       // Verify both nodes are correctly bound
-      val nodeA = ctx.bindings(Symbol("a")).asInstanceOf[Value.NodeId]
-      val nodeB = ctx.bindings(Symbol("b")).asInstanceOf[Value.NodeId]
+      val nodeA = ctx.bindings(BindingId(2)).asInstanceOf[Value.NodeId]
+      val nodeB = ctx.bindings(BindingId(3)).asInstanceOf[Value.NodeId]
       nodeA.id shouldEqual nodeIdA
       nodeB.id shouldEqual nodeIdB
 
@@ -1465,7 +1486,7 @@ class QueryPlanRuntimeTest
       // Query plan: Parameter $nodes (list of Node values) -> dispatch to each
       val plan = Anchor(
         AnchorTarget.Computed(param("nodes")),
-        LocalId(Symbol("n")),
+        LocalId(BindingId(1)),
       )
 
       val resultPromise = Promise[Seq[QueryContext]]()
@@ -1496,7 +1517,7 @@ class QueryPlanRuntimeTest
 
       // Should get results from both nodes
       results should have size 2
-      val nodeIds = results.map(_.bindings(Symbol("n")).asInstanceOf[Value.NodeId].id).toSet
+      val nodeIds = results.map(_.bindings(BindingId(1)).asInstanceOf[Value.NodeId].id).toSet
       nodeIds should contain(nodeIdA)
       nodeIds should contain(nodeIdB)
 
@@ -1537,7 +1558,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("childId")),
         Sequence(
-          LocalId(Symbol("c")),
+          LocalId(BindingId(4)),
           LocalEffect(
             // Create an edge TO the parent - the target expression evaluates to Value.Node
             effects = List(
@@ -1635,11 +1656,11 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("parentId")),
         Sequence(
-          LocalId(Symbol("p")), // Puts Value.Node in context as `p`
+          LocalId(BindingId(5)), // Puts Value.Node in context as `p`
           Anchor(
             AnchorTarget.Computed(param("childId")),
             Sequence(
-              LocalId(Symbol("c")),
+              LocalId(BindingId(4)),
               LocalEffect(
                 effects = List(
                   LocalQueryEffect.CreateHalfEdge(
@@ -1648,7 +1669,7 @@ class QueryPlanRuntimeTest
                     direction = EdgeDirection.Outgoing,
                     // Use `p` from context - this is a Value.Node
                     other = Expression
-                      .Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("p"))), None),
+                      .Ident(noSource, Right(BindingId(5)), None),
                   ),
                 ),
                 input = Unit,
@@ -1678,8 +1699,8 @@ class QueryPlanRuntimeTest
       val results = Await.result(resultPromise.future, 10.seconds)
 
       results should have size 1
-      results.head.bindings should contain key Symbol("p")
-      results.head.bindings should contain key Symbol("c")
+      results.head.bindings should contain key BindingId(5)
+      results.head.bindings should contain key BindingId(4)
 
       // Wait for edge creation
       Thread.sleep(500)
@@ -1845,11 +1866,11 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("movieId")),
         Sequence(
-          LocalId(Symbol("m")),
+          LocalId(BindingId(6)),
           Unwind(
             list = param("items"),
-            binding = Symbol("item"),
-            subquery = LocalId(Symbol("item")),
+            binding = BindingId(8),
+            subquery = LocalId(BindingId(8)),
           ),
         ),
       )
@@ -1893,16 +1914,16 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalId(Symbol("n")),
+          LocalId(BindingId(1)),
           Unwind(
             list = param("items"),
-            binding = Symbol("item"),
+            binding = BindingId(8),
             subquery = Anchor(
               AnchorTarget.Computed(
-                Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("item"))), None),
+                Expression.Ident(noSource, Right(BindingId(8)), None),
               ),
               Sequence(
-                LocalId(Symbol("target")),
+                LocalId(BindingId(9)),
                 LocalEffect(
                   effects = List(
                     LocalQueryEffect.CreateHalfEdge(
@@ -1911,7 +1932,7 @@ class QueryPlanRuntimeTest
                       direction = EdgeDirection.Incoming,
                       other = Expression.Ident(
                         noSource,
-                        Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("n"))),
+                        Right(BindingId(1)),
                         None,
                       ),
                     ),
@@ -1983,7 +2004,7 @@ class QueryPlanRuntimeTest
               other = param("targetId"),
             ),
           ),
-          input = LocalId(Symbol("n")),
+          input = LocalId(BindingId(1)),
         ),
       )
 
@@ -2133,7 +2154,7 @@ class QueryPlanRuntimeTest
               other = param("movieId"),
             ),
           ),
-          input = LocalId(Symbol("p")),
+          input = LocalId(BindingId(5)),
         ),
       )
 
@@ -2278,7 +2299,7 @@ class QueryPlanRuntimeTest
               other = param("targetId"),
             ),
           ),
-          input = LocalId(Symbol("n")),
+          input = LocalId(BindingId(1)),
         ),
       )
 
@@ -2339,6 +2360,35 @@ class QueryPlanRuntimeTest
       case Right(planned) => planned
       case Left(error) => fail(s"Failed to plan query: $error")
     }
+
+  /** Look up a binding value by its human-readable name (from RETURN clause).
+    * Uses outputNameMapping to resolve the name to a BindingId.
+    */
+  private def byName(
+    ctx: QueryContext,
+    name: String,
+    mapping: Map[BindingId, Symbol],
+  ): Value = {
+    val reverseMap = mapping.map { case (bid, sym) => sym.name -> bid }
+    val bid = reverseMap.getOrElse(name, fail(s"No binding found for name '$name' in outputNameMapping"))
+    ctx.bindings.getOrElse(bid, fail(s"BindingId $bid (name='$name') not found in context bindings"))
+  }
+
+  /** Look up an optional binding value by its human-readable name. */
+  private def byNameOpt(
+    ctx: QueryContext,
+    name: String,
+    mapping: Map[BindingId, Symbol],
+  ): Option[Value] = {
+    val reverseMap = mapping.map { case (bid, sym) => sym.name -> bid }
+    reverseMap.get(name).flatMap(ctx.bindings.get)
+  }
+
+  /** Get the BindingId for a human-readable name from the output mapping. */
+  private def bindingFor(name: String, mapping: Map[BindingId, Symbol]): BindingId = {
+    val reverseMap = mapping.map { case (bid, sym) => sym.name -> bid }
+    reverseMap.getOrElse(name, fail(s"No binding found for name '$name' in outputNameMapping"))
+  }
 
   "QuinePattern End-to-End Edge Creation" should "create edges via parsed Cypher (INGEST-3 pattern)" in {
     // This test replicates the actual movie data INGEST-3 pattern:
@@ -3853,13 +3903,14 @@ class QueryPlanRuntimeTest
         WHERE id(a) = id(m)
         RETURN id(m) as movieId, id(p) as personId
       """
-      val sqPlan = parseAndPlan(sqQuery)
+      val sqPlanned = parseAndPlanWithMetadata(sqQuery)
 
       // Create the standing query pattern (same as recipe would)
       val sqPattern = StandingQueryPattern.QuinePatternQueryPattern(
-        compiledQuery = sqPlan,
+        compiledQuery = sqPlanned.plan,
         mode = RuntimeMode.Lazy,
-        returnColumns = Some(Set(Symbol("movieId"), Symbol("personId"))),
+        returnColumns = sqPlanned.returnColumns,
+        outputNameMapping = sqPlanned.outputNameMapping,
       )
 
       // Collect results
@@ -3893,12 +3944,13 @@ class QueryPlanRuntimeTest
       // Like QuineApp, we need to send LoadQuery to actually start the V2 pattern
       graph.getLoader ! LoadQuery(
         sqId,
-        sqPlan,
+        sqPlanned.plan,
         RuntimeMode.Lazy,
         Map.empty,
         namespace,
         OutputTarget.StandingQuerySink(sqId, namespace),
-        Some(Set(Symbol("movieId"), Symbol("personId"))),
+        sqPlanned.returnColumns,
+        sqPlanned.outputNameMapping,
       )
 
       // Give time for standing query to initialize
@@ -4038,12 +4090,13 @@ class QueryPlanRuntimeTest
         WHERE id(a) = id(m)
         RETURN id(m) as movieId, id(p) as personId
       """
-      val sqPlan = parseAndPlan(sqQuery)
+      val sqPlanned = parseAndPlanWithMetadata(sqQuery)
 
       val sqPattern = StandingQueryPattern.QuinePatternQueryPattern(
-        compiledQuery = sqPlan,
+        compiledQuery = sqPlanned.plan,
         mode = RuntimeMode.Lazy,
-        returnColumns = Some(Set(Symbol("movieId"), Symbol("personId"))),
+        returnColumns = sqPlanned.returnColumns,
+        outputNameMapping = sqPlanned.outputNameMapping,
       )
 
       val resultsList = scala.collection.mutable.ListBuffer.empty[StandingQueryResult]
@@ -4073,12 +4126,13 @@ class QueryPlanRuntimeTest
       // Like QuineApp, we need to send LoadQuery to actually start the V2 pattern
       graph.getLoader ! LoadQuery(
         sqId,
-        sqPlan,
+        sqPlanned.plan,
         RuntimeMode.Lazy,
         Map.empty,
         namespace,
         OutputTarget.StandingQuerySink(sqId, namespace),
-        Some(Set(Symbol("movieId"), Symbol("personId"))),
+        sqPlanned.returnColumns,
+        sqPlanned.outputNameMapping,
       )
 
       Thread.sleep(500)
@@ -5037,15 +5091,12 @@ class QueryPlanRuntimeTest
 
       // CRITICAL: The binding names should be the human-readable names from RETURN clause
       // NOT internal binding IDs (raw integers from symbol analysis)
-      ctx.bindings.keys.map(_.name).toSet should contain("m")
-      ctx.bindings.keys.map(_.name).toSet should contain("movieTitle")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("m")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("movieTitle")
 
-      // Should NOT contain internal binding IDs as keys (pure numeric or legacy __qid_ format)
-      ctx.bindings.keys.map(_.name).foreach { name =>
-        withClue(s"Binding name '$name' should not be an internal identifier") {
-          name should not startWith "__qid_"
-          name.forall(_.isDigit) shouldBe false // Not a raw numeric binding ID
-        }
+      // Every result binding should have a human-readable name in outputNameMapping
+      ctx.bindings.keySet.foreach { bid =>
+        planned.outputNameMapping should contain key bid
       }
 
     } finally Await.result(graph.shutdown(), 5.seconds)
@@ -5092,11 +5143,13 @@ class QueryPlanRuntimeTest
       val ctx = results.head
 
       // Binding names should match the RETURN clause names
-      ctx.bindings.keys.map(_.name).toSet should contain("movie")
-      ctx.bindings.keys.map(_.name).toSet should contain("genreList")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("movie")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("genreList")
 
       // Verify values are correct
-      ctx.bindings(Symbol("genreList")) shouldBe Value.List(List(Value.Text("Action"), Value.Text("Comedy")))
+      byName(ctx, "genreList", planned.outputNameMapping) shouldBe Value.List(
+        List(Value.Text("Action"), Value.Text("Comedy")),
+      )
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -5144,20 +5197,17 @@ class QueryPlanRuntimeTest
 
       // Each result should have human-readable binding names
       results.foreach { ctx =>
-        ctx.bindings.keys.map(_.name).toSet should contain("movie")
-        ctx.bindings.keys.map(_.name).toSet should contain("genreName")
+        ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("movie")
+        ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("genreName")
 
-        // Should NOT contain internal binding IDs (pure numeric or legacy __qid_ format)
-        ctx.bindings.keys.map(_.name).foreach { name =>
-          withClue(s"Binding name '$name' should not be an internal identifier") {
-            name should not startWith "__qid_"
-            name.forall(_.isDigit) shouldBe false // Not a raw numeric binding ID
-          }
+        // Every result binding should have a human-readable name in outputNameMapping
+        ctx.bindings.keySet.foreach { bid =>
+          planned.outputNameMapping should contain key bid
         }
       }
 
       // Verify the genre values are correct
-      val genreNames = results.map(_.bindings(Symbol("genreName"))).toSet
+      val genreNames = results.map(ctx => byName(ctx, "genreName", planned.outputNameMapping)).toSet
       genreNames should contain(Value.Text("Action"))
       genreNames should contain(Value.Text("Comedy"))
 
@@ -5208,10 +5258,10 @@ class QueryPlanRuntimeTest
       val ctx = results.head
 
       // The binding should be named "a" from the RETURN clause
-      ctx.bindings.keys.map(_.name).toSet should contain("a")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("a")
 
       // CRITICAL: The value for "a" should include the node's properties
-      val aValue = ctx.bindings(Symbol("a"))
+      val aValue = byName(ctx, "a", planned.outputNameMapping)
 
       aValue match {
         case Value.Node(id, _, props) =>
@@ -5273,10 +5323,10 @@ class QueryPlanRuntimeTest
       val ctx = results.head
 
       // The binding should be named "n" from the RETURN clause
-      ctx.bindings.keys.map(_.name).toSet should contain("n")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("n")
 
       // The value for "n" should include BOTH the existing property AND the newly set one
-      val nValue = ctx.bindings(Symbol("n"))
+      val nValue = byName(ctx, "n", planned.outputNameMapping)
 
       nValue match {
         case Value.Node(id, _, props) =>
@@ -5346,15 +5396,12 @@ class QueryPlanRuntimeTest
       // CRITICAL: The binding names should be the human-readable names from RETURN clause
       // This validates that outputNameMapping flows through the LoadQuery/QuinePatternLoader path
       withClue("LoadQuery path should produce human-readable output names") {
-        ctx.bindings.keys.map(_.name).toSet should contain("m")
-        ctx.bindings.keys.map(_.name).toSet should contain("movieTitle")
+        ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("m")
+        ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("movieTitle")
 
-        // Should NOT contain internal binding IDs (pure numeric or legacy __qid_ format)
-        ctx.bindings.keys.map(_.name).foreach { name =>
-          withClue(s"Binding name '$name' should not be an internal identifier") {
-            name should not startWith "__qid_"
-            name.forall(_.isDigit) shouldBe false // Not a raw numeric binding ID
-          }
+        // Every result binding should have a human-readable name in outputNameMapping
+        ctx.bindings.keySet.foreach { bid =>
+          planned.outputNameMapping should contain key bid
         }
       }
 
@@ -5403,14 +5450,12 @@ class QueryPlanRuntimeTest
 
       // Validate human-readable names flow through LoadQuery path
       withClue("LoadQuery path should preserve WITH clause renamed bindings") {
-        ctx.bindings.keys.map(_.name).toSet should contain("movie")
-        ctx.bindings.keys.map(_.name).toSet should contain("directorName")
+        ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("movie")
+        ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("directorName")
 
-        ctx.bindings.keys.map(_.name).foreach { name =>
-          withClue(s"Binding name '$name' should not be an internal identifier") {
-            name should not startWith "__qid_"
-            name.forall(_.isDigit) shouldBe false // Not a raw numeric binding ID
-          }
+        // Every result binding should have a human-readable name in outputNameMapping
+        ctx.bindings.keySet.foreach { bid =>
+          planned.outputNameMapping should contain key bid
         }
       }
 
@@ -5480,11 +5525,11 @@ class QueryPlanRuntimeTest
 
       // Verify bindings have the correct names from RETURN clause
       val ctx = results.head
-      ctx.bindings.keys.map(_.name).toSet should contain("hub")
-      ctx.bindings.keys.map(_.name).toSet should contain("leaf")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("hub")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("leaf")
 
       // Verify the leaf binding is correct - may be NodeId or Node depending on what's available
-      val leafValue = ctx.bindings(Symbol("leaf"))
+      val leafValue = byName(ctx, "leaf", planned.outputNameMapping)
       val leafNodeId = leafValue match {
         case Value.NodeId(id) => id
         case Value.Node(id, _, _) => id
@@ -5609,11 +5654,11 @@ class QueryPlanRuntimeTest
 
       // Verify bindings have the correct names from RETURN clause
       val ctx = results.head
-      ctx.bindings.keys.map(_.name).toSet should contain("hub")
-      ctx.bindings.keys.map(_.name).toSet should contain("x")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("hub")
+      ctx.bindings.keySet.flatMap(planned.outputNameMapping.get).map(_.name) should contain("x")
 
       // Verify the x binding is correct - may be NodeId or Node depending on what's available
-      val xValue = ctx.bindings(Symbol("x"))
+      val xValue = byName(ctx, "x", planned.outputNameMapping)
       val xNodeId = xValue match {
         case Value.NodeId(id) => id
         case Value.Node(id, _, _) => id
@@ -5688,13 +5733,10 @@ class QueryPlanRuntimeTest
       // Should find exactly 1 match
       results should have size 1
 
-      // Verify all 4 bindings are present
+      // Verify all 4 bindings are present by checking outputNameMapping
       val ctx = results.head
-      val bindingNames = ctx.bindings.keys.map(_.name).toSet
-      bindingNames should contain("a")
-      bindingNames should contain("b")
-      bindingNames should contain("c")
-      bindingNames should contain("d")
+      val returnedNames = ctx.bindings.keySet.flatMap(planned.outputNameMapping.get)
+      returnedNames shouldBe Set(Symbol("a"), Symbol("b"), Symbol("c"), Symbol("d"))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -6721,15 +6763,17 @@ class QueryPlanRuntimeTest
 
       // Verify bindings have the correct names from RETURN clause
       val ctx = results.head
-      val bindingNames = ctx.bindings.keys.map(_.name).toSet
-      bindingNames should contain("p1")
-      bindingNames should contain("p2")
-      bindingNames should contain("e1")
-      bindingNames should contain("e2")
-      bindingNames should contain("e3")
-      bindingNames should contain("e4")
-      bindingNames should contain("f")
-      bindingNames should contain("ip")
+      val returnedNames = ctx.bindings.keySet.flatMap(planned.outputNameMapping.get)
+      returnedNames shouldBe Set(
+        Symbol("p1"),
+        Symbol("p2"),
+        Symbol("e1"),
+        Symbol("e2"),
+        Symbol("e3"),
+        Symbol("e4"),
+        Symbol("f"),
+        Symbol("ip"),
+      )
 
       // Wait for side effects to propagate
       Thread.sleep(1000)
@@ -7234,8 +7278,8 @@ class QueryPlanRuntimeTest
 
       // Collect the results and validate they are Value.Node with correct structure
       val nodeResults = results.map { ctx =>
-        ctx.bindings.keys.map(_.name).toSet should contain("n")
-        ctx.bindings(Symbol("n"))
+        ctx.bindings.keySet.flatMap(returnPlanned.outputNameMapping.get).map(_.name) should contain("n")
+        byName(ctx, "n", returnPlanned.outputNameMapping)
       }
 
       // Each result should be a Value.Node with id, labels, and properties
@@ -7542,14 +7586,14 @@ class QueryPlanRuntimeTest
 
       val result = results.head
       // Verify all yielded values are present
-      result.bindings should contain key Symbol("name")
-      result.bindings should contain key Symbol("signature")
-      result.bindings should contain key Symbol("description")
+      result.bindings should contain key bindingFor("name", plannedQuery.outputNameMapping)
+      result.bindings should contain key bindingFor("signature", plannedQuery.outputNameMapping)
+      result.bindings should contain key bindingFor("description", plannedQuery.outputNameMapping)
 
       // Verify they are all Text values
-      result.bindings(Symbol("name")) shouldBe a[Value.Text]
-      result.bindings(Symbol("signature")) shouldBe a[Value.Text]
-      result.bindings(Symbol("description")) shouldBe a[Value.Text]
+      byName(result, "name", plannedQuery.outputNameMapping) shouldBe a[Value.Text]
+      byName(result, "signature", plannedQuery.outputNameMapping) shouldBe a[Value.Text]
+      byName(result, "description", plannedQuery.outputNameMapping) shouldBe a[Value.Text]
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -7587,14 +7631,15 @@ class QueryPlanRuntimeTest
 
       val result = results.head
       // Verify aliased names are used in bindings
-      result.bindings should contain key Symbol("funcName")
-      result.bindings should contain key Symbol("sig")
-      result.bindings should contain key Symbol("descr")
+      result.bindings should contain key bindingFor("funcName", plannedQuery.outputNameMapping)
+      result.bindings should contain key bindingFor("sig", plannedQuery.outputNameMapping)
+      result.bindings should contain key bindingFor("descr", plannedQuery.outputNameMapping)
 
       // Verify original names are NOT present (they were aliased)
-      result.bindings should not contain key(Symbol("name"))
-      result.bindings should not contain key(Symbol("signature"))
-      result.bindings should not contain key(Symbol("description"))
+      val reverseMap = plannedQuery.outputNameMapping.map { case (bid, sym) => sym.name -> bid }
+      reverseMap.get("name").foreach(bid => result.bindings should not contain key(bid))
+      reverseMap.get("signature").foreach(bid => result.bindings should not contain key(bid))
+      reverseMap.get("description").foreach(bid => result.bindings should not contain key(bid))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -7633,8 +7678,8 @@ class QueryPlanRuntimeTest
 
       val result = results.head
       // Verify only name is present
-      result.bindings should contain key Symbol("name")
-      result.bindings(Symbol("name")) shouldBe a[Value.Text]
+      result.bindings should contain key bindingFor("name", plannedQuery.outputNameMapping)
+      byName(result, "name", plannedQuery.outputNameMapping) shouldBe a[Value.Text]
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -7714,19 +7759,19 @@ class QueryPlanRuntimeTest
       val ctx = mainResults.head
 
       // Should have bindings for a, b, c
-      ctx.bindings should contain key Symbol("a")
-      ctx.bindings should contain key Symbol("b")
-      ctx.bindings should contain key Symbol("c")
+      ctx.bindings should contain key bindingFor("a", mainPlanned.outputNameMapping)
+      ctx.bindings should contain key bindingFor("b", mainPlanned.outputNameMapping)
+      ctx.bindings should contain key bindingFor("c", mainPlanned.outputNameMapping)
 
       // Helper to validate a node binding
       def validateNode(
-        binding: Symbol,
+        name: String,
         expectedId: QuineId,
         expectedName: String,
         expectedAge: Long,
         expectedCity: String,
       ): Unit = {
-        val value = ctx.bindings(binding)
+        val value = byName(ctx, name, mainPlanned.outputNameMapping)
         value match {
           case Value.Node(nodeId, labels, props) =>
             // Validate ID
@@ -7742,13 +7787,13 @@ class QueryPlanRuntimeTest
             ()
 
           case other =>
-            fail(s"Expected Value.Node for $binding, but got: $other (${other.getClass.getName})")
+            fail(s"Expected Value.Node for $name, but got: $other (${other.getClass.getName})")
         }
       }
 
-      validateNode(Symbol("a"), aliceId, "Alice", 30, "Seattle")
-      validateNode(Symbol("b"), bobId, "Bob", 25, "Portland")
-      validateNode(Symbol("c"), charlieId, "Charlie", 35, "Washington")
+      validateNode("a", aliceId, "Alice", 30, "Seattle")
+      validateNode("b", bobId, "Bob", 25, "Portland")
+      validateNode("c", charlieId, "Charlie", 35, "Washington")
 
       // ========================================
       // STEP 3: Verify edges are in the graph
@@ -7846,7 +7891,7 @@ class QueryPlanRuntimeTest
 
       // Collect the edge information
       val returnedEdges = edgeResults.flatMap { edgeCtx =>
-        edgeCtx.bindings.get(Symbol("e")).map {
+        byNameOpt(edgeCtx, "e", edgePlanned.outputNameMapping).map {
           case Value.Relationship(from, label, _, to) =>
             (from, label.name, to)
           case other =>
@@ -7915,10 +7960,10 @@ class QueryPlanRuntimeTest
 
       // Each result should contain a 'node' binding that is a Value.Node
       results.foreach { ctx =>
-        ctx.bindings should contain key Symbol("node")
-        ctx.bindings(Symbol("node")) shouldBe a[Value.Node]
+        ctx.bindings should contain key bindingFor("node", plannedQuery.outputNameMapping)
+        byName(ctx, "node", plannedQuery.outputNameMapping) shouldBe a[Value.Node]
 
-        val node = ctx.bindings(Symbol("node")).asInstanceOf[Value.Node]
+        val node = byName(ctx, "node", plannedQuery.outputNameMapping).asInstanceOf[Value.Node]
         // Each node should have labels or properties (they are interesting)
         val hasLabels = node.labels.nonEmpty
         val hasProps = node.props.values.nonEmpty
@@ -8016,7 +8061,7 @@ class QueryPlanRuntimeTest
 
       // Every returned node should have non-empty labels or non-empty props
       results.foreach { ctx =>
-        val node = ctx.bindings(Symbol("node")).asInstanceOf[Value.Node]
+        val node = byName(ctx, "node", plannedQuery.outputNameMapping).asInstanceOf[Value.Node]
         val hasLabels = node.labels.nonEmpty
         val hasProps = node.props.values.nonEmpty
         withClue(s"Node ${node.id} should be interesting: ") {
@@ -8065,8 +8110,8 @@ class QueryPlanRuntimeTest
 
       // Find our specific node by ID
       val ourNode = results.collectFirst {
-        case ctx if ctx.bindings(Symbol("node")).asInstanceOf[Value.Node].id == nodeId =>
-          ctx.bindings(Symbol("node")).asInstanceOf[Value.Node]
+        case ctx if byName(ctx, "node", plannedQuery.outputNameMapping).asInstanceOf[Value.Node].id == nodeId =>
+          byName(ctx, "node", plannedQuery.outputNameMapping).asInstanceOf[Value.Node]
       }
 
       ourNode shouldBe defined
@@ -8203,8 +8248,8 @@ class QueryPlanRuntimeTest
 
       val result = results.head
       // Should have alias 'n', not original 'node'
-      result.bindings should contain key Symbol("n")
-      result.bindings(Symbol("n")) shouldBe a[Value.Node]
+      result.bindings should contain key bindingFor("n", plannedQuery.outputNameMapping)
+      byName(result, "n", plannedQuery.outputNameMapping) shouldBe a[Value.Node]
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -8286,7 +8331,7 @@ class QueryPlanRuntimeTest
       // Only produces a result when a node has the "name" property set.
       val plan = Anchor(
         AnchorTarget.AllNodes,
-        LocalProperty(Symbol("name"), Some(Symbol("n"))),
+        LocalProperty(Symbol("name"), Some(BindingId(1))),
       )
 
       // KEY: send LoadQueryPlan directly to a NODE ACTOR via relayTell, not to a NonNodeActor.
@@ -8356,7 +8401,7 @@ class QueryPlanRuntimeTest
 
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+        LocalProperty(Symbol("targetProp"), Some(BindingId(1)), PropertyConstraint.Any),
       )
 
       val resultPromise = Promise[Seq[QueryContext]]()
@@ -8372,7 +8417,7 @@ class QueryPlanRuntimeTest
       )
 
       val results = Await.result(resultPromise.future, 10.seconds)
-      results.head.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t1TargetPropValue))
+      results.head.bindings.get(BindingId(1)) shouldBe Some(Value.Integer(t1TargetPropValue))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -8401,7 +8446,7 @@ class QueryPlanRuntimeTest
 
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+        LocalProperty(Symbol("targetProp"), Some(BindingId(1)), PropertyConstraint.Any),
       )
 
       val collector = new LazyResultCollector()
@@ -8420,7 +8465,7 @@ class QueryPlanRuntimeTest
       collector.positiveCount shouldBe 1
       val delta = collector.allDeltas.head
       val ctx = delta.keys.head
-      ctx.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t1TargetPropValue))
+      ctx.bindings.get(BindingId(1)) shouldBe Some(Value.Integer(t1TargetPropValue))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -8448,7 +8493,7 @@ class QueryPlanRuntimeTest
 
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+        LocalProperty(Symbol("targetProp"), Some(BindingId(1)), PropertyConstraint.Any),
       )
 
       val resultPromise = Promise[Seq[QueryContext]]()
@@ -8464,7 +8509,7 @@ class QueryPlanRuntimeTest
       )
 
       val results = Await.result(resultPromise.future, 10.seconds)
-      results.head.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t2TargetPropValue))
+      results.head.bindings.get(BindingId(1)) shouldBe Some(Value.Integer(t2TargetPropValue))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -8492,7 +8537,7 @@ class QueryPlanRuntimeTest
 
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+        LocalProperty(Symbol("targetProp"), Some(BindingId(1)), PropertyConstraint.Any),
       )
 
       val collector = new LazyResultCollector()
@@ -8511,7 +8556,7 @@ class QueryPlanRuntimeTest
       collector.positiveCount shouldBe 1
       val delta = collector.allDeltas.head
       val ctx = delta.keys.head
-      ctx.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t2TargetPropValue))
+      ctx.bindings.get(BindingId(1)) shouldBe Some(Value.Integer(t2TargetPropValue))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -8539,7 +8584,7 @@ class QueryPlanRuntimeTest
 
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+        LocalProperty(Symbol("targetProp"), Some(BindingId(1)), PropertyConstraint.Any),
       )
 
       val resultPromise = Promise[Seq[QueryContext]]()
@@ -8555,7 +8600,7 @@ class QueryPlanRuntimeTest
       )
 
       val results = Await.result(resultPromise.future, 10.seconds)
-      results.head.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t1TargetPropValue))
+      results.head.bindings.get(BindingId(1)) shouldBe Some(Value.Integer(t1TargetPropValue))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -8583,7 +8628,7 @@ class QueryPlanRuntimeTest
 
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalProperty(Symbol("targetProp"), Some(Symbol("n")), PropertyConstraint.Any),
+        LocalProperty(Symbol("targetProp"), Some(BindingId(1)), PropertyConstraint.Any),
       )
 
       val collector = new LazyResultCollector()
@@ -8602,7 +8647,7 @@ class QueryPlanRuntimeTest
       collector.positiveCount shouldBe 1
       val delta = collector.allDeltas.head
       val ctx = delta.keys.head
-      ctx.bindings.get(Symbol("n")) shouldBe Some(Value.Integer(t1TargetPropValue))
+      ctx.bindings.get(BindingId(1)) shouldBe Some(Value.Integer(t1TargetPropValue))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -8644,14 +8689,14 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeAId")),
         CrossProduct(
           List(
-            LocalId(Symbol("a")),
+            LocalId(BindingId(2)),
             Expand(
               Some(Symbol("KNOWS")),
               EdgeDirection.Outgoing,
               Expand(
                 Some(Symbol("KNOWS")),
                 EdgeDirection.Outgoing,
-                LocalProperty(Symbol("targetProp"), Some(Symbol("target")), PropertyConstraint.Any),
+                LocalProperty(Symbol("targetProp"), Some(BindingId(9)), PropertyConstraint.Any),
               ),
             ),
           ),
@@ -8671,7 +8716,7 @@ class QueryPlanRuntimeTest
       )
 
       val results = Await.result(resultPromise.future, 10.seconds)
-      results.head.bindings.get(Symbol("target")) shouldBe Some(Value.Integer(t1TargetPropValue))
+      results.head.bindings.get(BindingId(9)) shouldBe Some(Value.Integer(t1TargetPropValue))
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
 
@@ -8712,14 +8757,14 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeAId")),
         CrossProduct(
           List(
-            LocalId(Symbol("a")),
+            LocalId(BindingId(2)),
             Expand(
               Some(Symbol("KNOWS")),
               EdgeDirection.Outgoing,
               Expand(
                 Some(Symbol("KNOWS")),
                 EdgeDirection.Outgoing,
-                LocalProperty(Symbol("targetProp"), Some(Symbol("target")), PropertyConstraint.Any),
+                LocalProperty(Symbol("targetProp"), Some(BindingId(9)), PropertyConstraint.Any),
               ),
             ),
           ),
@@ -8742,7 +8787,7 @@ class QueryPlanRuntimeTest
       collector.positiveCount shouldBe 1
       val delta = collector.allDeltas.head
       val ctx = delta.keys.head
-      ctx.bindings.get(Symbol("target")) shouldBe Some(Value.Integer(t1TargetPropValue))
+      ctx.bindings.get(BindingId(9)) shouldBe Some(Value.Integer(t1TargetPropValue))
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
 
@@ -8774,11 +8819,11 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeAId")),
         CrossProduct(
           List(
-            LocalId(Symbol("a")),
+            LocalId(BindingId(2)),
             Expand(
               Some(Symbol("KNOWS")),
               EdgeDirection.Outgoing,
-              LocalProperty(Symbol("name"), Some(Symbol("n")), PropertyConstraint.Any),
+              LocalProperty(Symbol("name"), Some(BindingId(1)), PropertyConstraint.Any),
             ),
           ),
         ),
@@ -8829,11 +8874,11 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeAId")),
         CrossProduct(
           List(
-            LocalId(Symbol("a")),
+            LocalId(BindingId(2)),
             Expand(
               Some(Symbol("KNOWS")),
               EdgeDirection.Outgoing,
-              LocalProperty(Symbol("name"), Some(Symbol("n")), PropertyConstraint.Any),
+              LocalProperty(Symbol("name"), Some(BindingId(1)), PropertyConstraint.Any),
             ),
           ),
         ),
@@ -8889,11 +8934,11 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeAId")),
         CrossProduct(
           List(
-            LocalId(Symbol("a")),
+            LocalId(BindingId(2)),
             Expand(
               Some(Symbol("KNOWS")),
               EdgeDirection.Outgoing,
-              LocalProperty(Symbol("name"), Some(Symbol("n")), PropertyConstraint.Any),
+              LocalProperty(Symbol("name"), Some(BindingId(1)), PropertyConstraint.Any),
             ),
           ),
         ),
@@ -8912,7 +8957,7 @@ class QueryPlanRuntimeTest
       )
 
       val results = Await.result(resultPromise.future, 10.seconds)
-      results.head.bindings.get(Symbol("n")) shouldBe Some(Value.Text("target"))
+      results.head.bindings.get(BindingId(1)) shouldBe Some(Value.Text("target"))
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
 
@@ -8949,11 +8994,11 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeAId")),
         CrossProduct(
           List(
-            LocalId(Symbol("a")),
+            LocalId(BindingId(2)),
             Expand(
               Some(Symbol("KNOWS")),
               EdgeDirection.Outgoing,
-              LocalProperty(Symbol("name"), Some(Symbol("n")), PropertyConstraint.Any),
+              LocalProperty(Symbol("name"), Some(BindingId(1)), PropertyConstraint.Any),
             ),
           ),
         ),
@@ -8975,7 +9020,7 @@ class QueryPlanRuntimeTest
       collector.positiveCount shouldBe 1
       val delta = collector.allDeltas.head
       val ctx = delta.keys.head
-      ctx.bindings.get(Symbol("n")) shouldBe Some(Value.Text("target"))
+      ctx.bindings.get(BindingId(1)) shouldBe Some(Value.Text("target"))
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
 
@@ -9016,8 +9061,8 @@ class QueryPlanRuntimeTest
         AnchorTarget.AllNodes,
         CrossProduct(
           List(
-            LocalId(Symbol("n")),
-            LocalProperty(Symbol("counter"), Some(Symbol("c")), PropertyConstraint.Equal(Value.Integer(matchingValue))),
+            LocalId(BindingId(1)),
+            LocalProperty(Symbol("counter"), Some(BindingId(4)), PropertyConstraint.Equal(Value.Integer(matchingValue))),
           ),
         ),
       )
@@ -9035,7 +9080,7 @@ class QueryPlanRuntimeTest
       )
 
       val results = Await.result(resultPromise.future, 10.seconds)
-      val resultNodeIds = results.flatMap(_.bindings.get(Symbol("n"))).collect { case Value.NodeId(qid) => qid }.toSet
+      val resultNodeIds = results.flatMap(_.bindings.get(BindingId(1))).collect { case Value.NodeId(qid) => qid }.toSet
       resultNodeIds shouldBe Set(node1, node2)
 
     } finally Await.result(graph.shutdown(), 5.seconds)
@@ -9078,8 +9123,8 @@ class QueryPlanRuntimeTest
         AnchorTarget.AllNodes,
         CrossProduct(
           List(
-            LocalId(Symbol("n")),
-            LocalProperty(Symbol("counter"), Some(Symbol("c")), PropertyConstraint.Equal(Value.Integer(matchingValue))),
+            LocalId(BindingId(1)),
+            LocalProperty(Symbol("counter"), Some(BindingId(4)), PropertyConstraint.Equal(Value.Integer(matchingValue))),
           ),
         ),
       )
@@ -9102,7 +9147,7 @@ class QueryPlanRuntimeTest
         Thread.sleep(10)
       collector.positiveCount shouldBe 2
       val contexts = collector.allDeltas.flatMap(_.keys)
-      val resultNodeIds = contexts.flatMap(_.bindings.get(Symbol("n"))).collect { case Value.NodeId(qid) => qid }.toSet
+      val resultNodeIds = contexts.flatMap(_.bindings.get(BindingId(1))).collect { case Value.NodeId(qid) => qid }.toSet
       resultNodeIds shouldBe Set(node1, node2)
 
     } finally Await.result(graph.shutdown(), 5.seconds)
@@ -9133,7 +9178,7 @@ class QueryPlanRuntimeTest
       val filterExpr = Expression.BinOp(
         noSource,
         Operator.GreaterThan,
-        Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("s"))), None),
+        Expression.Ident(noSource, Right(BindingId(16)), None),
         Expression.AtomicLiteral(noSource, Value.Integer(50L), None),
         None,
       )
@@ -9141,7 +9186,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalProperty(Symbol("score"), Some(Symbol("s")), PropertyConstraint.Any),
+          LocalProperty(Symbol("score"), Some(BindingId(16)), PropertyConstraint.Any),
           Filter(filterExpr, Unit),
         ),
       )
@@ -9160,7 +9205,7 @@ class QueryPlanRuntimeTest
 
       val results = Await.result(resultPromise.future, 10.seconds)
       results should have size 1
-      results.head.bindings.get(Symbol("s")) shouldBe Some(Value.Integer(100L))
+      results.head.bindings.get(BindingId(16)) shouldBe Some(Value.Integer(100L))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -9190,7 +9235,7 @@ class QueryPlanRuntimeTest
       val filterExpr = Expression.BinOp(
         noSource,
         Operator.GreaterThan,
-        Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("s"))), None),
+        Expression.Ident(noSource, Right(BindingId(16)), None),
         Expression.AtomicLiteral(noSource, Value.Integer(50L), None),
         None,
       )
@@ -9198,7 +9243,7 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalProperty(Symbol("score"), Some(Symbol("s")), PropertyConstraint.Any),
+          LocalProperty(Symbol("score"), Some(BindingId(16)), PropertyConstraint.Any),
           Filter(filterExpr, Unit),
         ),
       )
@@ -9218,7 +9263,7 @@ class QueryPlanRuntimeTest
       collector.awaitFirstDelta(5.seconds) shouldBe true
       collector.positiveCount shouldBe 1
       val ctx = collector.allDeltas.flatMap(_.keys).head
-      ctx.bindings.get(Symbol("s")) shouldBe Some(Value.Integer(100L))
+      ctx.bindings.get(BindingId(16)) shouldBe Some(Value.Integer(100L))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -9246,7 +9291,7 @@ class QueryPlanRuntimeTest
       val doubledExpr = Expression.BinOp(
         noSource,
         Operator.Asterisk,
-        Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("v"))), None),
+        Expression.Ident(noSource, Right(BindingId(17)), None),
         Expression.AtomicLiteral(noSource, Value.Integer(2L), None),
         None,
       )
@@ -9254,9 +9299,9 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalProperty(Symbol("value"), Some(Symbol("v")), PropertyConstraint.Any),
+          LocalProperty(Symbol("value"), Some(BindingId(17)), PropertyConstraint.Any),
           Project(
-            List(Projection(doubledExpr, Symbol("doubled"))),
+            List(Projection(doubledExpr, BindingId(18))),
             dropExisting = false,
             Unit,
           ),
@@ -9277,7 +9322,7 @@ class QueryPlanRuntimeTest
 
       val results = Await.result(resultPromise.future, 10.seconds)
       results should have size 1
-      results.head.bindings.get(Symbol("doubled")) shouldBe Some(Value.Integer(84L))
+      results.head.bindings.get(BindingId(18)) shouldBe Some(Value.Integer(84L))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -9305,7 +9350,7 @@ class QueryPlanRuntimeTest
       val doubledExpr = Expression.BinOp(
         noSource,
         Operator.Asterisk,
-        Expression.Ident(noSource, Left(com.thatdot.quine.language.ast.CypherIdentifier(Symbol("v"))), None),
+        Expression.Ident(noSource, Right(BindingId(17)), None),
         Expression.AtomicLiteral(noSource, Value.Integer(2L), None),
         None,
       )
@@ -9313,9 +9358,9 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalProperty(Symbol("value"), Some(Symbol("v")), PropertyConstraint.Any),
+          LocalProperty(Symbol("value"), Some(BindingId(17)), PropertyConstraint.Any),
           Project(
-            List(Projection(doubledExpr, Symbol("doubled"))),
+            List(Projection(doubledExpr, BindingId(18))),
             dropExisting = false,
             Unit,
           ),
@@ -9337,7 +9382,7 @@ class QueryPlanRuntimeTest
       collector.awaitFirstDelta(5.seconds) shouldBe true
       collector.positiveCount shouldBe 1
       val ctx = collector.allDeltas.flatMap(_.keys).head
-      ctx.bindings.get(Symbol("doubled")) shouldBe Some(Value.Integer(84L))
+      ctx.bindings.get(BindingId(18)) shouldBe Some(Value.Integer(84L))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -9371,8 +9416,8 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalProperty(Symbol("first"), Some(Symbol("f")), PropertyConstraint.Any),
-          LocalProperty(Symbol("second"), Some(Symbol("s")), PropertyConstraint.Any),
+          LocalProperty(Symbol("first"), Some(BindingId(15)), PropertyConstraint.Any),
+          LocalProperty(Symbol("second"), Some(BindingId(16)), PropertyConstraint.Any),
         ),
       )
 
@@ -9390,8 +9435,8 @@ class QueryPlanRuntimeTest
 
       val results = Await.result(resultPromise.future, 10.seconds)
       results should have size 1
-      results.head.bindings.get(Symbol("f")) shouldBe Some(Value.Text("alpha"))
-      results.head.bindings.get(Symbol("s")) shouldBe Some(Value.Integer(100L))
+      results.head.bindings.get(BindingId(15)) shouldBe Some(Value.Text("alpha"))
+      results.head.bindings.get(BindingId(16)) shouldBe Some(Value.Integer(100L))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -9425,8 +9470,8 @@ class QueryPlanRuntimeTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalProperty(Symbol("first"), Some(Symbol("f")), PropertyConstraint.Any),
-          LocalProperty(Symbol("second"), Some(Symbol("s")), PropertyConstraint.Any),
+          LocalProperty(Symbol("first"), Some(BindingId(15)), PropertyConstraint.Any),
+          LocalProperty(Symbol("second"), Some(BindingId(16)), PropertyConstraint.Any),
         ),
       )
 
@@ -9445,8 +9490,8 @@ class QueryPlanRuntimeTest
       collector.awaitFirstDelta(5.seconds) shouldBe true
       collector.positiveCount shouldBe 1
       val ctx = collector.allDeltas.flatMap(_.keys).head
-      ctx.bindings.get(Symbol("f")) shouldBe Some(Value.Text("alpha"))
-      ctx.bindings.get(Symbol("s")) shouldBe Some(Value.Integer(100L))
+      ctx.bindings.get(BindingId(15)) shouldBe Some(Value.Text("alpha"))
+      ctx.bindings.get(BindingId(16)) shouldBe Some(Value.Integer(100L))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -9473,8 +9518,8 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeId")),
         CrossProduct(
           List(
-            LocalId(Symbol("n")),
-            LocalLabels(Some(Symbol("labels")), LabelConstraint.Unconditional),
+            LocalId(BindingId(1)),
+            LocalLabels(Some(BindingId(11)), LabelConstraint.Unconditional),
           ),
         ),
       )
@@ -9493,7 +9538,7 @@ class QueryPlanRuntimeTest
 
       val results = Await.result(resultPromise.future, 10.seconds)
       results should have size 1
-      val labels = results.head.bindings.get(Symbol("labels")).collect { case Value.List(l) =>
+      val labels = results.head.bindings.get(BindingId(11)).collect { case Value.List(l) =>
         l.collect { case Value.Text(s) => s }.toSet
       }
       labels shouldBe Some(Set("Person", "Employee"))
@@ -9523,8 +9568,8 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeId")),
         CrossProduct(
           List(
-            LocalId(Symbol("n")),
-            LocalLabels(Some(Symbol("labels")), LabelConstraint.Unconditional),
+            LocalId(BindingId(1)),
+            LocalLabels(Some(BindingId(11)), LabelConstraint.Unconditional),
           ),
         ),
       )
@@ -9545,7 +9590,7 @@ class QueryPlanRuntimeTest
       collector.positiveCount shouldBe 1
       val ctx = collector.allDeltas.flatMap(_.keys).head
       val labels =
-        ctx.bindings.get(Symbol("labels")).collect { case Value.List(l) => l.collect { case Value.Text(s) => s }.toSet }
+        ctx.bindings.get(BindingId(11)).collect { case Value.List(l) => l.collect { case Value.Text(s) => s }.toSet }
       labels shouldBe Some(Set("Person", "Employee"))
 
     } finally Await.result(graph.shutdown(), 5.seconds)
@@ -9581,8 +9626,8 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeId")),
         CrossProduct(
           List(
-            LocalId(Symbol("n")),
-            LocalAllProperties(Symbol("props")),
+            LocalId(BindingId(1)),
+            LocalAllProperties(BindingId(12)),
           ),
         ),
       )
@@ -9601,7 +9646,7 @@ class QueryPlanRuntimeTest
 
       val results = Await.result(resultPromise.future, 10.seconds)
       results should have size 1
-      val propsOpt = results.head.bindings.get(Symbol("props")).collect { case Value.Map(m) => m }
+      val propsOpt = results.head.bindings.get(BindingId(12)).collect { case Value.Map(m) => m }
       val props = propsOpt.get
       props.get(Symbol("name")) shouldBe Some(Value.Text("Alice"))
       props.get(Symbol("age")) shouldBe Some(Value.Integer(30L))
@@ -9639,8 +9684,8 @@ class QueryPlanRuntimeTest
         AnchorTarget.Computed(param("nodeId")),
         CrossProduct(
           List(
-            LocalId(Symbol("n")),
-            LocalAllProperties(Symbol("props")),
+            LocalId(BindingId(1)),
+            LocalAllProperties(BindingId(12)),
           ),
         ),
       )
@@ -9660,7 +9705,7 @@ class QueryPlanRuntimeTest
       collector.awaitFirstDelta(5.seconds) shouldBe true
       collector.positiveCount shouldBe 1
       val ctx = collector.allDeltas.flatMap(_.keys).head
-      val propsOpt = ctx.bindings.get(Symbol("props")).collect { case Value.Map(m) => m }
+      val propsOpt = ctx.bindings.get(BindingId(12)).collect { case Value.Map(m) => m }
       val props = propsOpt.get
       props.get(Symbol("name")) shouldBe Some(Value.Text("Alice"))
       props.get(Symbol("age")) shouldBe Some(Value.Integer(30L))
@@ -9692,7 +9737,7 @@ class QueryPlanRuntimeTest
 
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalNode(Symbol("node")),
+        LocalNode(BindingId(10)),
       )
 
       val resultPromise = Promise[Seq[QueryContext]]()
@@ -9709,7 +9754,7 @@ class QueryPlanRuntimeTest
 
       val results = Await.result(resultPromise.future, 10.seconds)
       results should have size 1
-      val nodeVal = results.head.bindings.get(Symbol("node"))
+      val nodeVal = results.head.bindings.get(BindingId(10))
       nodeVal.get match {
         case Value.Node(_, labels, props) =>
           labels should contain(Symbol("Person"))
@@ -9744,7 +9789,7 @@ class QueryPlanRuntimeTest
 
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
-        LocalNode(Symbol("node")),
+        LocalNode(BindingId(10)),
       )
 
       val collector = new LazyResultCollector()
@@ -9762,7 +9807,7 @@ class QueryPlanRuntimeTest
       collector.awaitFirstDelta(5.seconds) shouldBe true
       collector.positiveCount shouldBe 1
       val ctx = collector.allDeltas.flatMap(_.keys).head
-      val nodeVal = ctx.bindings.get(Symbol("node"))
+      val nodeVal = ctx.bindings.get(BindingId(10))
       nodeVal.get match {
         case Value.Node(_, labels, props) =>
           labels should contain(Symbol("Person"))
@@ -9923,7 +9968,7 @@ class QueryPlanRuntimeTest
       val initialResult = collector.netResult
       initialResult.size shouldBe 1
       val initialRow = initialResult.keys.head
-      initialRow.bindings(Symbol("baz")) shouldBe Value.Text("original")
+      byName(initialRow, "baz", planned.outputNameMapping) shouldBe Value.Text("original")
       collector.clear()
 
       // Step 2: Change b.baz to "updated" — should retract old and assert new
@@ -9943,10 +9988,10 @@ class QueryPlanRuntimeTest
       val assertions = allDeltas.filter(_._2 > 0).map(_._1)
 
       retractions should have size 1
-      retractions.head.bindings(Symbol("baz")) shouldBe Value.Text("original")
+      byName(retractions.head, "baz", planned.outputNameMapping) shouldBe Value.Text("original")
 
       assertions should have size 1
-      assertions.head.bindings(Symbol("baz")) shouldBe Value.Text("updated")
+      byName(assertions.head, "baz", planned.outputNameMapping) shouldBe Value.Text("updated")
 
     } finally Await.result(graph.shutdown(), 5.seconds)
   }
@@ -10000,8 +10045,8 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("a1Id")),
             CrossProduct(
               List(
-                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
-                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+                LocalProperty(Symbol("name"), Some(BindingId(19)), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(BindingId(20)), PropertyConstraint.Any),
               ),
             ),
           ),
@@ -10009,16 +10054,16 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("a2Id")),
             CrossProduct(
               List(
-                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
-                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+                LocalProperty(Symbol("name"), Some(BindingId(19)), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(BindingId(20)), PropertyConstraint.Any),
               ),
             ),
           ),
         ),
         // andThen: look up the friend node by fid, get its hobby
         Anchor(
-          AnchorTarget.Computed(Expression.Ident(noSource, Left(CypherIdentifier(Symbol("fid"))), None)),
-          LocalProperty(Symbol("hobby"), Some(Symbol("hobby")), PropertyConstraint.Any),
+          AnchorTarget.Computed(Expression.Ident(noSource, Right(BindingId(20)), None)),
+          LocalProperty(Symbol("hobby"), Some(BindingId(21)), PropertyConstraint.Any),
         ),
       )
 
@@ -10045,11 +10090,11 @@ class QueryPlanRuntimeTest
       results should have size 2
 
       val nameHobbyPairs = results.map { ctx =>
-        val name = ctx.bindings(Symbol("name")) match {
+        val name = ctx.bindings(BindingId(19)) match {
           case Value.Text(s) => s
           case other => fail(s"Expected Text for name, got $other")
         }
-        val hobby = ctx.bindings(Symbol("hobby")) match {
+        val hobby = ctx.bindings(BindingId(21)) match {
           case Value.Text(s) => s
           case other => fail(s"Expected Text for hobby, got $other")
         }
@@ -10111,8 +10156,8 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("aliceId")),
             CrossProduct(
               List(
-                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
-                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+                LocalProperty(Symbol("name"), Some(BindingId(19)), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(BindingId(20)), PropertyConstraint.Any),
               ),
             ),
           ),
@@ -10120,8 +10165,8 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("bobId")),
             CrossProduct(
               List(
-                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
-                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+                LocalProperty(Symbol("name"), Some(BindingId(19)), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(BindingId(20)), PropertyConstraint.Any),
               ),
             ),
           ),
@@ -10129,10 +10174,10 @@ class QueryPlanRuntimeTest
         // andThen: Optional that looks up hobby from the friend node
         QueryPlan.Optional(
           Anchor(
-            AnchorTarget.Computed(Expression.Ident(noSource, Left(CypherIdentifier(Symbol("fid"))), None)),
-            LocalProperty(Symbol("hobby"), Some(Symbol("hobby")), PropertyConstraint.Any),
+            AnchorTarget.Computed(Expression.Ident(noSource, Right(BindingId(20)), None)),
+            LocalProperty(Symbol("hobby"), Some(BindingId(21)), PropertyConstraint.Any),
           ),
-          nullBindings = Set(Symbol("hobby")),
+          nullBindings = Set(BindingId(21)),
         ),
       )
 
@@ -10159,11 +10204,11 @@ class QueryPlanRuntimeTest
       results should have size 2
 
       val nameHobbyPairs = results.map { ctx =>
-        val name = ctx.bindings(Symbol("name")) match {
+        val name = ctx.bindings(BindingId(19)) match {
           case Value.Text(s) => s
           case other => fail(s"Expected Text for name, got $other")
         }
-        val hobby = ctx.bindings.get(Symbol("hobby")) match {
+        val hobby = ctx.bindings.get(BindingId(21)) match {
           case Some(Value.Text(s)) => Some(s)
           case Some(Value.Null) | None => None
           case Some(other) => fail(s"Expected Text or Null for hobby, got $other")
@@ -10206,8 +10251,8 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("aliceId")),
             CrossProduct(
               List(
-                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
-                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+                LocalProperty(Symbol("name"), Some(BindingId(19)), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(BindingId(20)), PropertyConstraint.Any),
               ),
             ),
           ),
@@ -10215,18 +10260,18 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("bobId")),
             CrossProduct(
               List(
-                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
-                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+                LocalProperty(Symbol("name"), Some(BindingId(19)), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(BindingId(20)), PropertyConstraint.Any),
               ),
             ),
           ),
         ),
         QueryPlan.Optional(
           Anchor(
-            AnchorTarget.Computed(Expression.Ident(noSource, Left(CypherIdentifier(Symbol("fid"))), None)),
-            LocalProperty(Symbol("hobby"), Some(Symbol("hobby")), PropertyConstraint.Any),
+            AnchorTarget.Computed(Expression.Ident(noSource, Right(BindingId(20)), None)),
+            LocalProperty(Symbol("hobby"), Some(BindingId(21)), PropertyConstraint.Any),
           ),
-          nullBindings = Set(Symbol("hobby")),
+          nullBindings = Set(BindingId(21)),
         ),
       )
 
@@ -10252,11 +10297,11 @@ class QueryPlanRuntimeTest
       results should have size 2
 
       val nameHobbyPairs = results.map { ctx =>
-        val name = ctx.bindings(Symbol("name")) match {
+        val name = ctx.bindings(BindingId(19)) match {
           case Value.Text(s) => s
           case other => fail(s"Expected Text for name, got $other")
         }
-        val hobby = ctx.bindings(Symbol("hobby")) match {
+        val hobby = ctx.bindings(BindingId(21)) match {
           case Value.Text(s) => s
           case other => fail(s"Expected Text for hobby, got $other")
         }
@@ -10298,8 +10343,8 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("aliceId")),
             CrossProduct(
               List(
-                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
-                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+                LocalProperty(Symbol("name"), Some(BindingId(19)), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(BindingId(20)), PropertyConstraint.Any),
               ),
             ),
           ),
@@ -10307,18 +10352,18 @@ class QueryPlanRuntimeTest
             AnchorTarget.Computed(param("bobId")),
             CrossProduct(
               List(
-                LocalProperty(Symbol("name"), Some(Symbol("name")), PropertyConstraint.Any),
-                LocalProperty(Symbol("friend"), Some(Symbol("fid")), PropertyConstraint.Any),
+                LocalProperty(Symbol("name"), Some(BindingId(19)), PropertyConstraint.Any),
+                LocalProperty(Symbol("friend"), Some(BindingId(20)), PropertyConstraint.Any),
               ),
             ),
           ),
         ),
         QueryPlan.Optional(
           Anchor(
-            AnchorTarget.Computed(Expression.Ident(noSource, Left(CypherIdentifier(Symbol("fid"))), None)),
-            LocalProperty(Symbol("hobby"), Some(Symbol("hobby")), PropertyConstraint.Any),
+            AnchorTarget.Computed(Expression.Ident(noSource, Right(BindingId(20)), None)),
+            LocalProperty(Symbol("hobby"), Some(BindingId(21)), PropertyConstraint.Any),
           ),
-          nullBindings = Set(Symbol("hobby")),
+          nullBindings = Set(BindingId(21)),
         ),
       )
 
@@ -10345,11 +10390,11 @@ class QueryPlanRuntimeTest
       results should have size 2
 
       val nameHobbyPairs = results.map { ctx =>
-        val name = ctx.bindings(Symbol("name")) match {
+        val name = ctx.bindings(BindingId(19)) match {
           case Value.Text(s) => s
           case other => fail(s"Expected Text for name, got $other")
         }
-        val hobby = ctx.bindings.get(Symbol("hobby")) match {
+        val hobby = ctx.bindings.get(BindingId(21)) match {
           case Some(Value.Null) | None => None
           case Some(other) => fail(s"Expected Null for hobby, got $other")
         }

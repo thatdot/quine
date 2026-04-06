@@ -5,6 +5,7 @@ import cats.implicits._
 
 import com.thatdot.quine.cypher.ast.Query.SingleQuery
 import com.thatdot.quine.cypher.ast._
+import com.thatdot.quine.cypher.phases.MaterializationOutput.AggregationAccessMapping
 import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{PropertyAccessMapping, SymbolTable, TypeEntry}
 import com.thatdot.quine.language.ast.{BindingId, Expression, Operator, Value}
 import com.thatdot.quine.language.diagnostic.Diagnostic
@@ -36,6 +37,7 @@ case class TypeCheckingState(
   freshId: Int,
   freshTypeVarId: Int = 0,
   propertyAccessMapping: PropertyAccessMapping = PropertyAccessMapping.empty,
+  aggregationAccessMapping: AggregationAccessMapping = AggregationAccessMapping.empty,
 ) extends CompilerState
 
 /** Type checking phase for Cypher queries using Hindley-Milner style type inference.

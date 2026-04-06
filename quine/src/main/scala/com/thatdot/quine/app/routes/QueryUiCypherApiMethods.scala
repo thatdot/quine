@@ -319,9 +319,12 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     logger.info(safe"Executing query using QuinePattern interpreter: ${Safe(query.text.take(100))}")
     val (source, planned) = executeQuinePattern(query, namespace, atTime)
     val columnNames: Seq[String] = planned.outputNameMapping.values.map(_.name).toSeq
+    // Build reverse mapping: human-readable column name -> BindingId
+    val nameToBindingId: Map[String, com.thatdot.quine.language.ast.BindingId] =
+      planned.outputNameMapping.map { case (bindingId, sym) => sym.name -> bindingId }
     val rowsSource = source.map { qpCtx =>
       columnNames.map { col =>
-        val patternValue = qpCtx.bindings.getOrElse(Symbol(col), Pattern.Value.Null)
+        val patternValue = nameToBindingId.get(col).flatMap(qpCtx.bindings.get).getOrElse(Pattern.Value.Null)
         val cypherValue = QuinePatternHelpers.patternValueToCypherValue(patternValue)
         CypherValue.toJson(cypherValue)
       }

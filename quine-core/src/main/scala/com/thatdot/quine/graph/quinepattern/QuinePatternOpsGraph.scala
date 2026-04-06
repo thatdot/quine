@@ -4,6 +4,7 @@ import org.apache.pekko.actor.{ActorRef, Props}
 
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.{BaseGraph, NamespaceId, StandingQueryId, StandingQueryOpsGraph, behavior}
+import com.thatdot.quine.language.ast.BindingId
 
 /** Hook interface for node wakeup notifications.
   *
@@ -14,7 +15,7 @@ import com.thatdot.quine.graph.{BaseGraph, NamespaceId, StandingQueryId, Standin
 trait NodeWakeHook {
 
   /** Get info needed to send NodeWake message to the host actor */
-  def getNodeWakeInfo: (StandingQueryId, NamespaceId, Map[Symbol, com.thatdot.quine.language.ast.Value])
+  def getNodeWakeInfo: (StandingQueryId, NamespaceId, Map[BindingId, com.thatdot.quine.language.ast.Value])
 }
 
 /** Trait representing operations related to Quine pattern handling within a graph.

@@ -17,7 +17,7 @@ import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan._
 import com.thatdot.quine.graph.quinepattern.NonNodeActor
 import com.thatdot.quine.graph.{GraphService, NamespaceId, QuineIdLongProvider, StandingQueryId, defaultNamespaceId}
-import com.thatdot.quine.language.ast.{Expression, Source, Value}
+import com.thatdot.quine.language.ast.{BindingId, Expression, Source, Value}
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
@@ -65,8 +65,8 @@ class PropertyAccessTest
       val plan = Anchor(
         AnchorTarget.Computed(param("nodeId")),
         Sequence(
-          LocalProperty(Symbol("name"), aliasAs = Some(Symbol("1.name")), PropertyConstraint.Unconditional),
-          LocalId(Symbol("n")),
+          LocalProperty(Symbol("name"), aliasAs = Some(BindingId(1)), PropertyConstraint.Unconditional),
+          LocalId(BindingId(2)),
         ),
       )
 
@@ -90,18 +90,18 @@ class PropertyAccessTest
       val ctx = results.head
 
       // The property value should be stored under "1.name"
-      ctx.bindings.get(Symbol("1.name")) match {
+      ctx.bindings.get(BindingId(1)) match {
         case Some(Value.Text(s)) =>
           s shouldEqual "Alice"
         case Some(other) => fail(s"Expected Text, got: $other")
-        case None => fail(s"Property binding '1.name' not found. Available: ${ctx.bindings.keys}")
+        case None => fail(s"Property binding BindingId(1) not found. Available: ${ctx.bindings.keys}")
       }
 
-      // The node ID should be stored under "n"
-      ctx.bindings.get(Symbol("n")) match {
+      // The node ID should be stored under binding 2
+      ctx.bindings.get(BindingId(2)) match {
         case Some(Value.NodeId(id)) => id shouldEqual nodeId
         case Some(other) => fail(s"Expected NodeId, got: $other")
-        case None => fail(s"Node ID binding 'n' not found")
+        case None => fail(s"Node ID binding BindingId(2) not found")
       }
 
     } finally Await.result(graph.shutdown(), 5.seconds)

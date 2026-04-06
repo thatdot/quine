@@ -5,6 +5,7 @@ import cats.implicits._
 
 import com.thatdot.quine.cypher.ast.Query.SingleQuery
 import com.thatdot.quine.cypher.ast._
+import com.thatdot.quine.cypher.phases.MaterializationOutput.AggregationAccess
 import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{PropertyAccess, SymbolTable, TypeEntry}
 import com.thatdot.quine.language.ast.{BindingId, Expression}
 import com.thatdot.quine.language.diagnostic.Diagnostic
@@ -31,6 +32,7 @@ private[phases] object MaterializationModule {
     currentFreshId: Int,
     diagnostics: List[Diagnostic],
     propertyAccesses: List[PropertyAccess],
+    aggregationAccesses: List[AggregationAccess],
   )
 
   type MaterializationProgram[A] = State[MaterializationState, A]
@@ -69,6 +71,19 @@ private[phases] object MaterializationModule {
 
   def addPropertyAccess(access: PropertyAccess): MaterializationProgram[Unit] =
     mod(st => st.copy(propertyAccesses = access :: st.propertyAccesses))
+
+  def addAggregationAccess(access: AggregationAccess): MaterializationProgram[Unit] =
+    mod(st => st.copy(aggregationAccesses = access :: st.aggregationAccesses))
+
+  /** Known aggregation function names. */
+  val aggregationFunctions: Set[Symbol] =
+    Set(Symbol("count"), Symbol("sum"), Symbol("avg"), Symbol("min"), Symbol("max"), Symbol("collect"))
+
+  /** Check if an expression is a top-level aggregation function call. */
+  def isAggregation(expr: Expression): Boolean = expr match {
+    case Expression.Apply(_, funcName, _, _) => aggregationFunctions.contains(funcName)
+    case _ => false
+  }
 
   /** Rewrite or reject a field access on a graph element binding, or leave it unchanged. */
   def rewriteGraphElementFieldAccess(
@@ -172,7 +187,17 @@ private[phases] object MaterializationModule {
   def materializeProjection(projection: Projection): MaterializationProgram[Projection] =
     for {
       e <- materializeExpression(projection.expression)
-    } yield projection.copy(expression = e)
+      result <-
+        if (isAggregation(e))
+          for {
+            synthId <- freshId
+            _ <- addAggregationAccess(AggregationAccess(synthId, e))
+          } yield projection.copy(
+            expression = Expression.Ident(projection.source, Right(BindingId(synthId)), None),
+          )
+        else
+          pure(projection.copy(expression = e))
+    } yield result
 
   def materializeNodePattern(np: NodePattern): MaterializationProgram[NodePattern] =
     for {
@@ -303,12 +328,47 @@ private[phases] object MaterializationModule {
   }
 }
 
+/** Data types produced by the materialization phase.
+  *
+  * These record how the materializer rewrote the AST — which property accesses
+  * and aggregation expressions were replaced with synthetic binding references.
+  * The query planner consumes these to wire up LocalProperty watches and Aggregate nodes.
+  */
+object MaterializationOutput {
+
+  import cats.Monoid
+
+  /** A materialized aggregation: an aggregation expression like `count(x)` is
+    * rewritten to a reference to synthetic identifier `synthId`.
+    * The original expression is preserved so the planner can extract the aggregation type.
+    */
+  case class AggregationAccess(synthId: Int, expression: Expression)
+
+  /** Records which synthetic identifiers correspond to which aggregation computations. */
+  case class AggregationAccessMapping(entries: List[AggregationAccess]) {
+    def isEmpty: Boolean = entries.isEmpty
+    def nonEmpty: Boolean = entries.nonEmpty
+  }
+
+  object AggregationAccessMapping {
+    val empty: AggregationAccessMapping = AggregationAccessMapping(Nil)
+  }
+
+  implicit val AggregationAccessMappingMonoid: Monoid[AggregationAccessMapping] =
+    new Monoid[AggregationAccessMapping] {
+      override def empty: AggregationAccessMapping = AggregationAccessMapping.empty
+      override def combine(x: AggregationAccessMapping, y: AggregationAccessMapping): AggregationAccessMapping =
+        AggregationAccessMapping(x.entries ::: y.entries)
+    }
+}
+
 object MaterializationPhase extends SimpleCompilerPhase[TypeCheckingState, Query, Query] {
   override def process(
     query: Query,
   ): SimpleCompilerPhaseEffect[TypeCheckingState, Query] = OptionT {
     IndexedState { tcState =>
       import MaterializationModule._
+      import MaterializationOutput.AggregationAccessMapping
       import SymbolAnalysisModule.PropertyAccessMapping
 
       val initialState = MaterializationState(
@@ -318,6 +378,7 @@ object MaterializationPhase extends SimpleCompilerPhase[TypeCheckingState, Query
         currentFreshId = tcState.freshId,
         diagnostics = Nil,
         propertyAccesses = Nil,
+        aggregationAccesses = Nil,
       )
 
       val (finalState, rewrittenQuery) =
@@ -328,6 +389,7 @@ object MaterializationPhase extends SimpleCompilerPhase[TypeCheckingState, Query
         freshId = finalState.currentFreshId,
         diagnostics = finalState.diagnostics ::: tcState.diagnostics,
         propertyAccessMapping = PropertyAccessMapping(finalState.propertyAccesses),
+        aggregationAccessMapping = AggregationAccessMapping(finalState.aggregationAccesses),
       )
 
       (resultState, Some(rewrittenQuery))

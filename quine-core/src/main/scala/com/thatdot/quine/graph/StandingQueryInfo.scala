@@ -14,6 +14,7 @@ import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLog
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.cypher.quinepattern.{QueryPlan, RuntimeMode}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.language.ast.BindingId
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.util.Log.implicits._
 
@@ -131,8 +132,8 @@ object StandingQueryPattern {
   final case class QuinePatternQueryPattern(
     compiledQuery: QueryPlan,
     mode: RuntimeMode,
-    returnColumns: Option[Set[Symbol]] = None, // Columns from RETURN clause for output filtering
-    outputNameMapping: Map[Symbol, Symbol] = Map.empty, // Maps internal binding IDs to human-readable names
+    returnColumns: Option[Set[BindingId]] = None, // Columns from RETURN clause for output filtering
+    outputNameMapping: Map[BindingId, Symbol] = Map.empty, // Maps internal binding IDs to human-readable names
   ) extends StandingQueryPattern {
     val includeCancellation: Boolean = mode == RuntimeMode.Lazy // Lazy mode supports retractions
     val origin: PatternOrigin = PatternOrigin.DirectSqV4

@@ -8,6 +8,7 @@ import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLog
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, StandingQueryResult}
+import com.thatdot.quine.language.ast.BindingId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue}
 
 /** Logger for QuinePattern warnings and errors */
@@ -766,7 +767,7 @@ trait StateInstantiator {
     descriptor: StateDescriptor,
     graph: StateGraph,
     nodeContext: NodeContext,
-    injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
+    injectedContext: Map[BindingId, com.thatdot.quine.language.ast.Value],
   ): QueryState
 }
 
@@ -804,7 +805,7 @@ object DefaultStateInstantiator extends StateInstantiator {
     descriptor: StateDescriptor,
     stateGraph: StateGraph,
     nodeContext: NodeContext,
-    injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
+    injectedContext: Map[BindingId, com.thatdot.quine.language.ast.Value],
   ): QueryState =
     descriptor match {
 
@@ -978,8 +979,8 @@ class OutputState(
   val target: OutputTarget,
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
     with com.thatdot.quine.graph.StandingQueryOpsGraph,
-  val returnColumns: Option[Set[Symbol]], // Columns to include in output (from RETURN clause)
-  val outputNameMapping: Map[Symbol, Symbol] = Map.empty, // Maps internal binding IDs to human-readable names
+  val returnColumns: Option[Set[BindingId]], // Columns to include in output (from RETURN clause)
+  val outputNameMapping: Map[BindingId, Symbol] = Map.empty, // Maps internal binding IDs to human-readable names
 ) extends QueryState {
 
   import com.thatdot.common.logging.Log.LogConfig
@@ -1014,16 +1015,7 @@ class OutputState(
         ctx.bindings
     }
 
-    // Then apply output name mapping to convert internal binding IDs to human-readable names
-    val renamed = if (outputNameMapping.nonEmpty) {
-      filtered.map { case (k, v) =>
-        outputNameMapping.getOrElse(k, k) -> v
-      }
-    } else {
-      filtered
-    }
-
-    QueryContext(renamed)
+    QueryContext(filtered)
   }
 
   override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit =
@@ -1146,8 +1138,16 @@ class OutputState(
     }
 
   private def convertToQuineValueMap(ctx: QueryContext): Map[String, QuineValue] =
-    ctx.bindings.map { case (sym, patternValue) =>
-      sym.name -> CypherAndQuineHelpers.patternValueToQuineValue(patternValue)
+    ctx.bindings.map { case (bid, patternValue) =>
+      val name = outputNameMapping.get(bid) match {
+        case Some(sym) => sym.name
+        case None =>
+          throw new IllegalStateException(
+            s"BindingId(${bid.id}) has no entry in outputNameMapping — " +
+            "this indicates a bug in the query planner (every output binding must have a display name)",
+          )
+      }
+      name -> CypherAndQuineHelpers.patternValueToQuineValue(patternValue)
     }
 }
 
@@ -1155,7 +1155,10 @@ class UnitState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value], // Context from parent (e.g., Anchor dispatch)
+  val injectedContext: Map[
+    BindingId,
+    com.thatdot.quine.language.ast.Value,
+  ], // Context from parent (e.g., Anchor dispatch)
 ) extends QueryState
     with PublishingState {
 
@@ -1194,9 +1197,9 @@ class WatchIdState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val binding: Symbol,
+  val binding: BindingId,
   val quineId: Option[QuineId],
-  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
+  val injectedContext: Map[BindingId, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState {
   import com.thatdot.quine.language.ast.Value
@@ -1217,7 +1220,7 @@ class WatchPropertyState(
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val property: Symbol,
-  val aliasAs: Option[Symbol],
+  val aliasAs: Option[BindingId],
   val constraint: PropertyConstraint,
 ) extends QueryState
     with PublishingState
@@ -1309,8 +1312,8 @@ class WatchAllPropertiesState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val binding: Symbol,
-  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
+  val binding: BindingId,
+  val injectedContext: Map[BindingId, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState
     with PropertySensitiveState {
@@ -1386,7 +1389,7 @@ class WatchLabelsState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val aliasAs: Option[Symbol],
+  val aliasAs: Option[BindingId],
   val constraint: LabelConstraint,
 ) extends QueryState
     with PublishingState
@@ -1468,8 +1471,8 @@ class WatchNodeState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val binding: Symbol,
-  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value],
+  val binding: BindingId,
+  val injectedContext: Map[BindingId, com.thatdot.quine.language.ast.Value],
 ) extends QueryState
     with PublishingState
     with PropertySensitiveState
@@ -1809,11 +1812,11 @@ class OptionalState(
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val innerPlan: QueryPlan,
-  val nullBindings: Set[Symbol],
+  val nullBindings: Set[BindingId],
   val namespace: NamespaceId,
   val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
   val atTime: Option[Milliseconds],
-  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value] = Map.empty,
+  val injectedContext: Map[BindingId, com.thatdot.quine.language.ast.Value] = Map.empty,
 ) extends QueryState
     with PublishingState {
 
@@ -1838,7 +1841,7 @@ class OptionalState(
   private val senderToContext: mutable.Map[StandingQueryId, QueryContext] = mutable.Map.empty
   private val contextToSender: mutable.Map[QueryContext, StandingQueryId] = mutable.Map.empty
 
-  private val nullValues: Map[Symbol, Value] = nullBindings.map(sym => sym -> Value.Null).toMap
+  private val nullValues: Map[BindingId, Value] = nullBindings.map(bid => bid -> Value.Null).toMap
 
   // Tracks which inner plans have not yet responded (eager mode: expect exactly one response each)
   private val awaitingResponse: mutable.Set[StandingQueryId] = mutable.Set.empty
@@ -1914,7 +1917,7 @@ class OptionalState(
         atTime = atTime,
       )
       QPTrace.log(
-        s"Optional $id: dispatched inner sqid=$sqid for context keys=[${ctx.bindings.keys.map(_.name).mkString(",")}]",
+        s"Optional $id: dispatched inner sqid=$sqid for context keys=[${ctx.bindings.keys.map(_.id.toString).mkString(",")}]",
       )
     }
 
@@ -2041,7 +2044,7 @@ class SequenceState(
               atTime = atTime,
             )
             QPTrace.log(
-              s"Sequence $id: dispatched andThen sqid=$sqid for context keys=[${ctx.bindings.keys.map(_.name).mkString(",")}]",
+              s"Sequence $id: dispatched andThen sqid=$sqid for context keys=[${ctx.bindings.keys.map(_.id.toString).mkString(",")}]",
             )
           }
         }
@@ -2390,7 +2393,7 @@ class AnchorState(
   val fallbackOutput: Option[OutputTarget], // Used when hosted on NonNodeActor (no QuineId for RemoteState)
   val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
   val injectedContext: Map[
-    Symbol,
+    BindingId,
     com.thatdot.quine.language.ast.Value,
   ], // Context from parent (e.g., Anchor dispatch) for evaluating target expressions
   val atTime: Option[Milliseconds],
@@ -2504,7 +2507,7 @@ class AnchorState(
 
         QPTrace.log(s"ANCHOR-KICKSTART id=$id expr=$expr params=[${params.keys
           .map(_.name)
-          .mkString(",")}] injectedContext=[${injectedContext.keys.map(_.name).mkString(",")}]")
+          .mkString(",")}] injectedContext=[${injectedContext.keys.map(_.id.toString).mkString(",")}]")
         params.get(Symbol("that")).foreach { thatVal =>
           QPTrace.log(s"ANCHOR-KICKSTART-THAT id=$id value=$thatVal")
         }
@@ -2577,7 +2580,7 @@ class AnchorState(
         // The node will be created on-demand when it receives the first message
         val freshId = graph.idProvider.newQid()
         QPTrace.log(
-          s"ANCHOR-FRESH-NODE id=$id binding=${binding.name} freshId=${graph.idProvider.qidToPrettyString(freshId)}",
+          s"ANCHOR-FRESH-NODE id=$id binding=${binding.id} freshId=${graph.idProvider.qidToPrettyString(freshId)}",
         )
         // Add the binding to injectedContext so the dispatched plan can reference the new node
         val contextWithBinding = injectedContext + (binding -> Value.NodeId(freshId))
@@ -2589,7 +2592,7 @@ class AnchorState(
   }
 
   // NodeWakeHook implementation - provides info for sending NodeWake messages
-  override def getNodeWakeInfo: (StandingQueryId, com.thatdot.quine.graph.NamespaceId, Map[Symbol, Value]) =
+  override def getNodeWakeInfo: (StandingQueryId, com.thatdot.quine.graph.NamespaceId, Map[BindingId, Value]) =
     (id, namespace, storedContext.getOrElse(Map.empty))
 
   /** Handle NodeWake message (called on the correct actor thread).
@@ -2611,7 +2614,7 @@ class AnchorState(
     * their states on wake. Until then, standing queries may lose coverage of nodes
     * that sleep and wake. See QueryStateHost trait docs for the full vision.
     */
-  def handleNodeWake(nodeId: QuineId, context: Map[Symbol, Value], actor: ActorRef): Unit =
+  def handleNodeWake(nodeId: QuineId, context: Map[BindingId, Value], actor: ActorRef): Unit =
     // Only dispatch if we haven't already dispatched to this node
     // The targetResults check prevents double-dispatch when a node wakes up during
     // initial enumeration (where we dispatch during enumeration, then the wake triggers this hook).
@@ -2632,7 +2635,7 @@ class AnchorState(
         val env = EvalEnvironment(ctx, params)
 
         QPTrace.log(s"Anchor $id: dispatchWithContext expr=$expr ctxBindings=[${ctx.bindings.keys
-          .map(_.name)
+          .map(_.id.toString)
           .mkString(",")}] params=[${params.keys.map(_.name).mkString(",")}]")
 
         eval(expr).run(env) match {
@@ -2687,7 +2690,7 @@ class AnchorState(
               case Some(ref) =>
                 graph.registerNodeHook(this, ref)
                 QPTrace.log(
-                  s"ANCHOR-HOOK-REGISTERED-WITH-CONTEXT id=$id namespace=$namespace contextKeys=${ctx.bindings.keys.map(_.name).mkString(",")}",
+                  s"ANCHOR-HOOK-REGISTERED-WITH-CONTEXT id=$id namespace=$namespace contextKeys=${ctx.bindings.keys.map(_.id.toString).mkString(",")}",
                 )
               case None =>
                 QPLog.warn(
@@ -2704,7 +2707,7 @@ class AnchorState(
         // Generate a fresh node ID and dispatch to that node with context
         val freshId = graph.idProvider.newQid()
         QPTrace.log(
-          s"Anchor $id: FreshNode with context binding=${binding.name} freshId=${graph.idProvider.qidToPrettyString(freshId)}",
+          s"Anchor $id: FreshNode with context binding=${binding.id} freshId=${graph.idProvider.qidToPrettyString(freshId)}",
         )
         // Combine the incoming context with the new binding
         val contextWithBinding = ctx.bindings + (binding -> Value.NodeId(freshId))
@@ -2713,14 +2716,14 @@ class AnchorState(
   }
 
   // Context stored for AllNodes + Lazy mode (to inject into newly waking nodes)
-  private var storedContext: Option[Map[Symbol, Value]] = None
+  private var storedContext: Option[Map[BindingId, Value]] = None
 
   /** Dispatch to target node, optionally with injected context for the onTarget plan.
     *
     * @param qid The target node to dispatch to
     * @param injectedContext Context bindings to seed into the dispatched plan (for LocalEffect to evaluate expressions)
     */
-  private def dispatchToTarget(qid: QuineId, injectedContext: Map[Symbol, Value] = Map.empty): Unit = {
+  private def dispatchToTarget(qid: QuineId, injectedContext: Map[BindingId, Value] = Map.empty): Unit = {
     val sqid = StandingQueryId.fresh()
     targetResults(qid) = (sqid, Delta.empty)
     knownTargetSenders.add(sqid) // Track this sender for notify()
@@ -2729,10 +2732,10 @@ class AnchorState(
     val targetType = target match {
       case AnchorTarget.Computed(_) => "Computed"
       case AnchorTarget.AllNodes => "AllNodes"
-      case AnchorTarget.FreshNode(binding) => s"FreshNode(${binding.name})"
+      case AnchorTarget.FreshNode(binding) => s"FreshNode(${binding.id})"
     }
     QPTrace.dispatchToNode(originNodeId, qid, sqid, s"Anchor($targetType)")
-    QPTrace.log(s"Anchor dispatch: injectedContext keys=[${injectedContext.keys.map(_.name).mkString(",")}]")
+    QPTrace.log(s"Anchor dispatch: injectedContext keys=[${injectedContext.keys.map(_.id.toString).mkString(",")}]")
 
     // Determine the output target for the dispatched plan
     val output = originNodeId match {
@@ -2837,13 +2840,13 @@ class UnwindState(
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val listExpr: com.thatdot.quine.language.ast.Expression,
-  val binding: Symbol,
+  val binding: BindingId,
   val subqueryPlan: QueryPlan,
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
   val namespace: NamespaceId,
   val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
   val atTime: Option[Milliseconds],
-  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value] = Map.empty,
+  val injectedContext: Map[BindingId, com.thatdot.quine.language.ast.Value] = Map.empty,
 ) extends QueryState
     with PublishingState {
 
@@ -2854,7 +2857,7 @@ class UnwindState(
   implicit private val idProvider: com.thatdot.quine.model.QuineIdProvider = graph.idProvider
 
   QPTrace.log(
-    s"UNWIND-CREATED id=$id publishTo=$publishTo injectedContextKeys=[${injectedContext.keys.map(_.name).mkString(",")}]",
+    s"UNWIND-CREATED id=$id publishTo=$publishTo injectedContextKeys=[${injectedContext.keys.map(_.id.toString).mkString(",")}]",
   )
 
   // Track all subquery senders (one per unwound value)
@@ -2953,7 +2956,7 @@ class UnwindState(
                   atTime = atTime,
                 )
                 anyDispatched = true
-                QPTrace.log(s"Unwind $id: dispatched subquery sqid=$sqid for binding ${binding.name}=${value}")
+                QPTrace.log(s"Unwind $id: dispatched subquery sqid=$sqid for binding ${binding.id}=${value}")
               }
             case Right(Value.Null) => ()
             case Right(other) =>
@@ -2997,13 +3000,13 @@ class ProcedureState(
   val mode: RuntimeMode,
   val procedureName: Symbol,
   val arguments: List[com.thatdot.quine.language.ast.Expression],
-  val yields: List[(Symbol, Symbol)],
+  val yields: List[(Symbol, BindingId)],
   val subqueryPlan: QueryPlan,
   val graph: com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph,
   val namespace: NamespaceId,
   val params: Map[Symbol, com.thatdot.quine.language.ast.Value],
   val atTime: Option[Milliseconds],
-  val injectedContext: Map[Symbol, com.thatdot.quine.language.ast.Value] = Map.empty,
+  val injectedContext: Map[BindingId, com.thatdot.quine.language.ast.Value] = Map.empty,
 ) extends QueryState
     with PublishingState {
 
@@ -3029,7 +3032,9 @@ class ProcedureState(
   QuinePatternProcedureRegistry.register(GetFilteredEdgesProcedure)
 
   QPTrace.log(
-    s"PROCEDURE-CREATED id=$id procedure=$procedureName publishTo=$publishTo injectedContextKeys=[${injectedContext.keys.map(_.name).mkString(",")}]",
+    s"PROCEDURE-CREATED id=$id procedure=$procedureName publishTo=$publishTo injectedContextKeys=[${injectedContext.keys
+      .map(_.id.toString)
+      .mkString(",")}]",
   )
 
   // Sentinel sender ID: when the Future callback sends procedure results back to the actor,
@@ -3123,7 +3128,7 @@ class ProcedureState(
               .execute(evaluatedArgs, procContext)
               .map { results =>
                 results.map { resultRow =>
-                  val bindings: Map[Symbol, Value] = yields.flatMap { case (resultField, boundAs) =>
+                  val bindings: Map[BindingId, Value] = yields.flatMap { case (resultField, boundAs) =>
                     resultRow.get(resultField.name).map(boundAs -> _)
                   }.toMap
                   (incomingCtx ++ bindings, mult)
@@ -3259,9 +3264,13 @@ class EffectState(
     /** Update a property in the context for a target binding.
       * Handles both Value.Node (from LocalNode) and Value.Map (from LocalAllProperties).
       */
-    def updatePropertyInContext(targetBindingOpt: Option[Symbol], property: Symbol, newValue: Value): QueryContext = {
+    def updatePropertyInContext(
+      targetBindingOpt: Option[BindingId],
+      property: Symbol,
+      newValue: Value,
+    ): QueryContext = {
       // Determine which binding to update
-      val targetKey: Option[Symbol] = targetBindingOpt.orElse {
+      val targetKey: Option[BindingId] = targetBindingOpt.orElse {
         // Effect is inside an anchor - find a node binding in context
         ctx.bindings
           .collectFirst { case (k, _: Value.Node) => k }
@@ -3289,10 +3298,10 @@ class EffectState(
 
     /** Update multiple properties in the context for a target binding. */
     def updatePropertiesInContext(
-      targetBindingOpt: Option[Symbol],
+      targetBindingOpt: Option[BindingId],
       newProps: SortedMap[Symbol, Value],
     ): QueryContext = {
-      val targetKey: Option[Symbol] = targetBindingOpt.orElse {
+      val targetKey: Option[BindingId] = targetBindingOpt.orElse {
         ctx.bindings
           .collectFirst { case (k, _: Value.Node) => k }
           .orElse(ctx.bindings.collectFirst { case (k, _: Value.Map) => k })
@@ -3334,7 +3343,7 @@ class EffectState(
 
       case LocalQueryEffect.SetLabels(targetBindingOpt, newLabels) =>
         // Update labels in the context's Value.Node
-        val targetKey: Option[Symbol] = targetBindingOpt.orElse {
+        val targetKey: Option[BindingId] = targetBindingOpt.orElse {
           // Effect is inside an anchor - find a node binding in context
           ctx.bindings.collectFirst { case (k, _: Value.Node) => k }
         }
@@ -3504,7 +3513,7 @@ class EffectState(
 
       case LocalQueryEffect.Foreach(binding, listExpr, nestedEffects) =>
         QPTrace.log(
-          s"FOREACH: evaluating listExpr=$listExpr with context bindings=${ctx.bindings.keys.map(_.name).mkString(",")}",
+          s"FOREACH: evaluating listExpr=$listExpr with context bindings=${ctx.bindings.keys.map(_.id.toString).mkString(",")}",
         )
         val evalResult = eval(listExpr).run(env)
         QPTrace.log(s"FOREACH: eval result=$evalResult")
@@ -3528,8 +3537,8 @@ class AggregateState(
   val id: StandingQueryId,
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
-  val aggregations: List[Aggregation],
-  val groupBy: List[Symbol],
+  val aggregations: List[(Aggregation, BindingId)],
+  val groupBy: List[BindingId],
   val inputId: StandingQueryId,
 ) extends QueryState
     with PublishingState {
@@ -3577,9 +3586,8 @@ class AggregateState(
 
     // Compute aggregations for each group
     val results = groups.map { case (groupKey, contexts) =>
-      val aggBindings = aggregations.zipWithIndex.flatMap { case (agg, idx) =>
-        val binding = Symbol(s"agg_$idx") // Default binding name
-        computeSingleAggregation(agg, contexts).map(binding -> _)
+      val aggBindings = aggregations.flatMap { case (agg, outputBinding) =>
+        computeSingleAggregation(agg, contexts).map(outputBinding -> _)
       }.toMap
       QueryContext(groupKey.bindings ++ aggBindings) -> 1
     }
@@ -3795,7 +3803,7 @@ class SubscribeToQueryPartState(
   val publishTo: StandingQueryId,
   val mode: RuntimeMode,
   val queryPartId: QueryPartId,
-  val projection: Map[Symbol, Symbol],
+  val projection: Map[BindingId, BindingId],
 ) extends QueryState
     with PublishingState {
   override def notify(delta: Delta.T, from: StandingQueryId, actor: ActorRef): Unit = {

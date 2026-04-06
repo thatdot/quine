@@ -129,7 +129,16 @@ class QuinePatternOutput(
               // Convert QPQueryContext (pattern values) to QueryContext (cypher values)
               import com.thatdot.quine.graph.cypher.quinepattern.QuinePatternHelpers.patternValueToCypherValue
               val cypherEnv: Map[Symbol, com.thatdot.quine.graph.cypher.Value] =
-                qpCtx.bindings.map { case (k, v) => k -> patternValueToCypherValue(v) }
+                qpCtx.bindings.map { case (k, v) =>
+                  val name = planned.outputNameMapping.getOrElse(
+                    k,
+                    throw new IllegalStateException(
+                      s"BindingId(${k.id}) has no entry in outputNameMapping — " +
+                      "this indicates a bug in the query planner",
+                    ),
+                  )
+                  name -> patternValueToCypherValue(v)
+                }
               val qc = QueryContext(cypherEnv)
               StandingQueryResult.Meta(isPositiveMatch = true) -> qc
             })

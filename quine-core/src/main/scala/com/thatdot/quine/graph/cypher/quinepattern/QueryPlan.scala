@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.cypher.quinepattern
 
-import com.thatdot.quine.language.ast.{Expression, Value}
+import com.thatdot.quine.language.ast.{BindingId, Expression, Value}
 import com.thatdot.quine.model.EdgeDirection
 
 /** Query plan algebra for QuinePattern.
@@ -38,9 +38,9 @@ object QueryPlan {
     *   - LocalAllProperties to bind all properties as a Map
     *   - LocalLabels to watch/constrain node labels
     *
-    * @param binding The symbol to bind the node ID to
+    * @param binding The binding ID to bind the node ID to
     */
-  case class LocalId(binding: Symbol) extends QueryPlan {
+  case class LocalId(binding: BindingId) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq.empty
   }
 
@@ -66,7 +66,7 @@ object QueryPlan {
     */
   case class SubscribeToQueryPart(
     queryPartId: QueryPartId,
-    projection: Map[Symbol, Symbol],
+    projection: Map[BindingId, BindingId],
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq.empty
   }
@@ -82,7 +82,7 @@ object QueryPlan {
     */
   case class LocalProperty(
     property: Symbol,
-    aliasAs: Option[Symbol],
+    aliasAs: Option[BindingId],
     constraint: PropertyConstraint = PropertyConstraint.Any,
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq.empty
@@ -93,14 +93,14 @@ object QueryPlan {
     * Binds all properties as a Map to the given binding.
     */
   case class LocalAllProperties(
-    binding: Symbol,
+    binding: BindingId,
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq.empty
   }
 
   /** Watch labels on the current node */
   case class LocalLabels(
-    aliasAs: Option[Symbol],
+    aliasAs: Option[BindingId],
     constraint: LabelConstraint,
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq.empty
@@ -118,9 +118,9 @@ object QueryPlan {
     *   - LocalAllProperties for properties(n)
     *   - LocalLabels for labels(n)
     *
-    * @param binding The symbol to bind the node value to
+    * @param binding The binding ID to bind the node value to
     */
-  case class LocalNode(binding: Symbol) extends QueryPlan {
+  case class LocalNode(binding: BindingId) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq.empty
   }
 
@@ -189,7 +189,7 @@ object QueryPlan {
     */
   case class Optional(
     inner: QueryPlan,
-    nullBindings: Set[Symbol],
+    nullBindings: Set[BindingId],
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq(inner)
   }
@@ -337,12 +337,12 @@ object QueryPlan {
     *   - `MATCH (b) WHERE id(b) IN [...]` (rewritten to Unwind + Anchor)
     *
     * @param list Expression evaluating to a list
-    * @param binding Symbol to bind each element to
+    * @param binding Binding ID to bind each element to
     * @param subquery Query to run for each element
     */
   case class Unwind(
     list: Expression,
-    binding: Symbol,
+    binding: BindingId,
     subquery: QueryPlan,
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq(subquery)
@@ -374,7 +374,7 @@ object QueryPlan {
   case class Procedure(
     procedureName: Symbol,
     arguments: List[Expression],
-    yields: List[(Symbol, Symbol)],
+    yields: List[(Symbol, BindingId)],
     subquery: QueryPlan,
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq(subquery)
@@ -425,8 +425,8 @@ object QueryPlan {
     * @param input Source of results to aggregate
     */
   case class Aggregate(
-    aggregations: List[Aggregation],
-    groupBy: List[Symbol],
+    aggregations: List[(Aggregation, BindingId)],
+    groupBy: List[BindingId],
     input: QueryPlan,
   ) extends QueryPlan {
     def children: Seq[QueryPlan] = Seq(input)
@@ -489,9 +489,9 @@ object AnchorTarget {
     * The fresh ID is generated via idProvider.newQid() and the binding
     * is added to the context so subsequent operations can reference the node.
     *
-    * @param binding Symbol to bind the new node ID to
+    * @param binding Binding ID to bind the new node ID to
     */
-  case class FreshNode(binding: Symbol) extends AnchorTarget
+  case class FreshNode(binding: BindingId) extends AnchorTarget
 }
 
 // ============================================================
@@ -583,12 +583,12 @@ object LocalQueryEffect {
     * This creates a fresh QuineId and sets up the node with the given labels/properties.
     * The node is bound to `binding` in the context for subsequent effects.
     *
-    * @param binding Symbol to bind the new node to (can be used in subsequent effects)
+    * @param binding Binding ID to bind the new node to (can be used in subsequent effects)
     * @param labels Labels to set on the new node
     * @param properties Optional properties expression to set on the new node
     */
   case class CreateNode(
-    binding: Symbol,
+    binding: BindingId,
     labels: Set[Symbol],
     properties: Option[Expression] = None,
   ) extends LocalQueryEffect
@@ -599,21 +599,21 @@ object LocalQueryEffect {
     * @param property The property name to set
     * @param value Expression for the property value
     */
-  case class SetProperty(target: Option[Symbol], property: Symbol, value: Expression) extends LocalQueryEffect
+  case class SetProperty(target: Option[BindingId], property: Symbol, value: Expression) extends LocalQueryEffect
 
   /** Set multiple properties on a node.
     *
     * @param target Optional node binding to set properties on. If None, uses current node.
     * @param properties Expression evaluating to a map of properties
     */
-  case class SetProperties(target: Option[Symbol], properties: Expression) extends LocalQueryEffect
+  case class SetProperties(target: Option[BindingId], properties: Expression) extends LocalQueryEffect
 
   /** Set labels on a node.
     *
     * @param target Optional node binding to set labels on. If None, uses current node.
     * @param labels Labels to set
     */
-  case class SetLabels(target: Option[Symbol], labels: Set[Symbol]) extends LocalQueryEffect
+  case class SetLabels(target: Option[BindingId], labels: Set[Symbol]) extends LocalQueryEffect
 
   /** Create a half-edge from one node to another.
     *
@@ -622,16 +622,16 @@ object LocalQueryEffect {
     * @param direction Outgoing = source is tail; Incoming = source is head
     * @param other The other node's ID expression (from context)
     */
-  case class CreateHalfEdge(source: Option[Symbol], label: Symbol, direction: EdgeDirection, other: Expression)
+  case class CreateHalfEdge(source: Option[BindingId], label: Symbol, direction: EdgeDirection, other: Expression)
       extends LocalQueryEffect
 
   /** Iterate over a list and apply nested effects for each item.
     *
-    * @param binding The loop variable name
+    * @param binding The loop variable binding ID
     * @param list Expression evaluating to a list
     * @param effects Effects to apply for each item (binding will be set in context)
     */
-  case class Foreach(binding: Symbol, list: Expression, effects: List[LocalQueryEffect]) extends LocalQueryEffect
+  case class Foreach(binding: BindingId, list: Expression, effects: List[LocalQueryEffect]) extends LocalQueryEffect
 }
 
 // ============================================================
@@ -639,7 +639,7 @@ object LocalQueryEffect {
 // ============================================================
 
 /** A single column projection */
-case class Projection(expression: Expression, as: Symbol)
+case class Projection(expression: Expression, as: BindingId)
 
 // ============================================================
 // AGGREGATION

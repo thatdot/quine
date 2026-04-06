@@ -16,7 +16,7 @@ import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher.quinepattern.OutputTarget.LazyResultCollector
 import com.thatdot.quine.graph.quinepattern.NonNodeActor
 import com.thatdot.quine.graph.{GraphService, NamespaceId, QuineIdLongProvider, StandingQueryId, defaultNamespaceId}
-import com.thatdot.quine.language.ast.Value
+import com.thatdot.quine.language.ast.{BindingId, Value}
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
@@ -44,10 +44,10 @@ class PR3981BugRegressionTest
   val namespace: NamespaceId = defaultNamespaceId
   val qidProvider: QuineIdLongProvider = QuineIdLongProvider()
 
-  private def makeCtx(bindings: (Symbol, Value)*): QueryContext =
+  private def makeCtx(bindings: (BindingId, Value)*): QueryContext =
     QueryContext(bindings.toMap)
 
-  private def singletonDelta(bindings: (Symbol, Value)*): Delta.T =
+  private def singletonDelta(bindings: (BindingId, Value)*): Delta.T =
     Map(makeCtx(bindings: _*) -> 1)
 
   /** Collect only QueryUpdate messages from the probe, discarding housekeeping messages
@@ -103,8 +103,8 @@ class PR3981BugRegressionTest
 
     val state = new UnionState(stateId, parentId, RuntimeMode.Eager, lhsId, rhsId)
 
-    val lhsRow1 = singletonDelta(Symbol("x") -> Value.Integer(1))
-    val rhsRow1 = singletonDelta(Symbol("x") -> Value.Integer(2))
+    val lhsRow1 = singletonDelta(BindingId(1) -> Value.Integer(1))
+    val rhsRow1 = singletonDelta(BindingId(1) -> Value.Integer(2))
 
     // LHS notifies first — RHS not yet reported, no emit
     state.notify(lhsRow1, lhsId, probe.ref)
@@ -117,7 +117,7 @@ class PR3981BugRegressionTest
     expectNoQueryUpdate(probe, 100.millis)
 
     // LHS sends a second notification — hasEmitted guard should block a second emit
-    val lhsRow2 = singletonDelta(Symbol("x") -> Value.Integer(3))
+    val lhsRow2 = singletonDelta(BindingId(1) -> Value.Integer(3))
     state.notify(lhsRow2, lhsId, probe.ref)
 
     // Drain all messages for 300ms; no QueryUpdate should arrive
@@ -289,7 +289,7 @@ class PR3981BugRegressionTest
       val contextSenderId = StandingQueryId.fresh()
       val stateId = StandingQueryId.fresh()
 
-      val nullBindings = Set(Symbol("friend"))
+      val nullBindings = Set(BindingId(3))
       // Inner plan is a simple Unit - in this unit test we simulate its results manually
       val state = new OptionalState(
         id = stateId,
@@ -302,11 +302,11 @@ class PR3981BugRegressionTest
         atTime = None,
       )
 
-      val contextRow = makeCtx(Symbol("p") -> Value.Integer(42))
+      val contextRow = makeCtx(BindingId(2) -> Value.Integer(42))
       val contextDelta: Delta.T = Map(contextRow -> 1)
 
-      val innerRow = makeCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Integer(99))
-      val nullPaddedRow = makeCtx(Symbol("p") -> Value.Integer(42), Symbol("friend") -> Value.Null)
+      val innerRow = makeCtx(BindingId(2) -> Value.Integer(42), BindingId(3) -> Value.Integer(99))
+      val nullPaddedRow = makeCtx(BindingId(2) -> Value.Integer(42), BindingId(3) -> Value.Null)
       val innerAdd: Delta.T = Map(innerRow -> 1)
       val innerRetract: Delta.T = Map(innerRow -> -1)
 

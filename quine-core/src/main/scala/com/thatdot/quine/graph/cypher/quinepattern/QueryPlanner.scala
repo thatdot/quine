@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.cypher.quinepattern
 
-import com.thatdot.quine.cypher.phases.SymbolAnalysisModule
+import com.thatdot.quine.cypher.phases.{MaterializationOutput, SymbolAnalysisModule}
 import com.thatdot.quine.cypher.{ast => Cypher}
 import com.thatdot.quine.language.ast.{BindingId, Direction}
 import com.thatdot.quine.language.types.Type
@@ -48,35 +48,23 @@ object QueryPlanner {
       case Left(cypherIdent) => throw new UnresolvedIdentifierException(cypherIdent)
     }
 
-  /** Extract the unique Int identifier for internal planner use.
-    *
-    * After symbol analysis, all identifiers should be Right(BindingId).
-    * The BindingId.id (Int) is a monotonic ID that correctly handles
-    * scoping and shadowing. Use this for all internal planner operations
-    * (dependency tracking, pattern matching, etc.).
-    *
-    * @throws UnresolvedIdentifierException if a Left(CypherIdentifier) is encountered
-    */
-  private def identInt(ident: Either[Pattern.CypherIdentifier, Pattern.BindingId]): Int =
-    getBindingId(ident).id
-
   /** Create an Expression.Ident that references the given binding ID.
     * Use this when creating synthetic expressions that reference a binding.
     */
-  private def makeIdentExpr(bindingId: Int): Pattern.Expression =
+  private def makeIdentExpr(bindingId: BindingId): Pattern.Expression =
     Pattern.Expression.Ident(
       Pattern.Source.NoSource,
-      Right(Pattern.BindingId(bindingId)),
+      Right(Pattern.BindingId(bindingId.id)),
       None,
     )
 
   /** Create an Expression.IdLookup for the given binding ID.
     * Used for diamond join conditions: id(renamed) = id(original)
     */
-  private def makeIdLookupExpr(bindingId: Int): Pattern.Expression =
+  private def makeIdLookupExpr(bindingId: BindingId): Pattern.Expression =
     Pattern.Expression.IdLookup(
       Pattern.Source.NoSource,
-      Right(Pattern.BindingId(bindingId)),
+      Right(Pattern.BindingId(bindingId.id)),
       None,
     )
 
@@ -108,14 +96,6 @@ object QueryPlanner {
           )
         })
     }
-
-  /** Convert an Int binding ID to a Symbol for use in QueryPlan nodes.
-    * This format matches identKey in QuinePatternExpressionInterpreter for consistent lookup.
-    * We use the raw integer from symbol analysis directly - no prefix needed since these
-    * are guaranteed unique within a query. Human-readable names are applied at output
-    * boundaries via outputNameMapping.
-    */
-  private def bindingSymbol(bindingId: Int): Symbol = Symbol(bindingId.toString)
 
   /** Look up the human-readable name for an identifier from the symbol table.
     * Use this for user-facing output (RETURN column names) where users should
@@ -151,7 +131,7 @@ object QueryPlanner {
         "this indicates a bug in the symbol analysis phase",
       )
 
-  /** Extract the binding Int from a node pattern.
+  /** Extract the BindingId from a node pattern.
     *
     * After symbol analysis, all node patterns should have bindings assigned
     * (even anonymous nodes get fresh IDs). This function extracts the binding
@@ -160,9 +140,9 @@ object QueryPlanner {
     * @throws MissingBindingException if maybeBinding is None
     * @throws UnresolvedIdentifierException if the binding is Left(CypherIdentifier)
     */
-  private def nodeBindingInt(pattern: Cypher.NodePattern): Int =
+  private def nodeBinding(pattern: Cypher.NodePattern): BindingId =
     pattern.maybeBinding match {
-      case Some(ident) => identInt(ident)
+      case Some(ident) => getBindingId(ident)
       case None => throw new MissingBindingException(pattern)
     }
 
@@ -180,8 +160,8 @@ object QueryPlanner {
     case object Node extends NodeDep // Full node value (id + labels + properties)
   }
 
-  /** Map from node binding ID (Int) to its dependencies */
-  type NodeDeps = Map[Int, Set[NodeDep]]
+  /** Map from node binding ID to its dependencies */
+  type NodeDeps = Map[BindingId, Set[NodeDep]]
 
   object NodeDeps {
     val empty: NodeDeps = Map.empty
@@ -199,11 +179,11 @@ object QueryPlanner {
     * @param property The property name being accessed
     * @param synthId The synthetic identifier to alias the property value to
     */
-  case class PropertyBinding(nodeBinding: Int, property: Symbol, synthId: Int)
+  case class PropertyBinding(nodeBinding: BindingId, property: Symbol, synthId: BindingId)
 
   /** Extract property bindings from the property access mapping produced by the materialization phase. */
   def extractPropertyBindings(mapping: SymbolAnalysisModule.PropertyAccessMapping): List[PropertyBinding] =
-    mapping.entries.map(pa => PropertyBinding(pa.onBinding, pa.property, pa.synthId))
+    mapping.entries.map(pa => PropertyBinding(BindingId(pa.onBinding), pa.property, BindingId(pa.synthId)))
 
   /** Convert property bindings to NodeDeps format for compatibility.
     * Groups property bindings by their node binding and adds NodeDep.Property entries.
@@ -220,20 +200,20 @@ object QueryPlanner {
   // ============================================================
 
   /** Records an ID constraint from WHERE clause */
-  case class IdLookup(forName: Int, exp: Pattern.Expression) {
+  case class IdLookup(forName: BindingId, exp: Pattern.Expression) {
 
     /** Get the variable references in this lookup's expression.
-      * These are the bindings (as Int IDs) that must be in scope before this lookup can be evaluated.
+      * These are the bindings that must be in scope before this lookup can be evaluated.
       * Note: After symbol analysis, property accesses like `a.x` become `Ident(synthId)`.
       * Use `dependenciesWithPropertyResolution` to resolve synthetic IDs back to source bindings.
       */
-    def dependencies: Set[Int] = extractVariableRefs(exp)
+    def dependencies: Set[BindingId] = extractVariableRefs(exp)
 
     /** Get dependencies with synthetic property IDs resolved to their source node bindings.
       * This is needed because symbol analysis rewrites `a.x` to `Ident(synthId)`, but for
       * dependency analysis we need to know that `synthId` actually depends on binding `a`.
       */
-    def dependenciesWithPropertyResolution(propertyBindings: List[PropertyBinding]): Set[Int] = {
+    def dependenciesWithPropertyResolution(propertyBindings: List[PropertyBinding]): Set[BindingId] = {
       val synthToSource = propertyBindings.map(pb => pb.synthId -> pb.nodeBinding).toMap
       dependencies.flatMap { id =>
         synthToSource.get(id) match {
@@ -245,10 +225,10 @@ object QueryPlanner {
   }
 
   /** Extract variable references from an expression (not parameters).
-    * Returns the set of binding IDs (Int) referenced in the expression.
+    * Returns the set of BindingIds referenced in the expression.
     */
-  def extractVariableRefs(expr: Pattern.Expression): Set[Int] = expr match {
-    case Pattern.Expression.Ident(_, ident, _) => Set(getBindingId(ident).id)
+  def extractVariableRefs(expr: Pattern.Expression): Set[BindingId] = expr match {
+    case Pattern.Expression.Ident(_, ident, _) => Set(getBindingId(ident))
 
     case Pattern.Expression.FieldAccess(_, on, _, _) =>
       extractVariableRefs(on)
@@ -284,7 +264,7 @@ object QueryPlanner {
 
     case _: Pattern.Expression.Parameter => Set.empty
     case _: Pattern.Expression.AtomicLiteral => Set.empty
-    case Pattern.Expression.IdLookup(_, Right(bindingId), _) => Set(bindingId.id)
+    case Pattern.Expression.IdLookup(_, Right(bindingId), _) => Set(BindingId(bindingId.id))
     case Pattern.Expression.IdLookup(_, Left(cypherIdent), _) =>
       throw new IllegalStateException(s"IdLookup for ${cypherIdent.name} was not rewritten by symbol analysis")
   }
@@ -302,7 +282,7 @@ object QueryPlanner {
     * @param part the query part to inspect
     * @return synthetic integer IDs referenced by the part's expressions
     */
-  def extractRefsFromPart(part: Cypher.QueryPart): Set[Int] = part match {
+  def extractRefsFromPart(part: Cypher.QueryPart): Set[BindingId] = part match {
     case Cypher.QueryPart.ReadingClausePart(readingClause) =>
       readingClause match {
         case patterns: Cypher.ReadingClause.FromPatterns =>
@@ -319,7 +299,7 @@ object QueryPlanner {
           proc.args.flatMap(extractVariableRefs).toSet
         case subq: Cypher.ReadingClause.FromSubquery =>
           subq.bindings.flatMap {
-            case Right(bindingId) => Set(bindingId.id)
+            case Right(bindingId) => Set(BindingId(bindingId.id))
             case Left(cypherIdent) =>
               throw new IllegalStateException(
                 s"FromSubquery binding ${cypherIdent.name} was not rewritten by symbol analysis",
@@ -335,19 +315,19 @@ object QueryPlanner {
   }
 
   /** Extract variable references from an Effect's expressions. */
-  private def extractRefsFromEffect(effect: Cypher.Effect): Set[Int] = effect match {
+  private def extractRefsFromEffect(effect: Cypher.Effect): Set[BindingId] = effect match {
     case Cypher.Effect.SetProperty(_, prop, value) =>
       extractVariableRefs(prop) ++ extractVariableRefs(value)
     case Cypher.Effect.SetProperties(_, _, props) =>
       extractVariableRefs(props)
     case Cypher.Effect.SetLabel(_, on, _) =>
-      on.toOption.map(_.id).toSet
+      on.toOption.map(b => BindingId(b.id)).toSet
     case Cypher.Effect.Create(_, patterns) =>
       patterns.flatMap { gp =>
-        val initRef = gp.initial.maybeBinding.flatMap(_.toOption).map(_.id)
+        val initRef = gp.initial.maybeBinding.flatMap(_.toOption).map(b => BindingId(b.id))
         val initProps = gp.initial.maybeProperties.toSet.flatMap(extractVariableRefs)
         val pathRefs = gp.path.flatMap { conn =>
-          val destRef = conn.dest.maybeBinding.flatMap(_.toOption).map(_.id)
+          val destRef = conn.dest.maybeBinding.flatMap(_.toOption).map(b => BindingId(b.id))
           val destProps = conn.dest.maybeProperties.toSet.flatMap(extractVariableRefs)
           destRef.toSet ++ destProps
         }
@@ -372,9 +352,9 @@ object QueryPlanner {
           case (_: Pattern.Expression.IdLookup, _: Pattern.Expression.IdLookup) =>
             Nil
           case (Pattern.Expression.IdLookup(_, nodeId, _), value) =>
-            List(IdLookup(identInt(nodeId), value))
+            List(IdLookup(getBindingId(nodeId), value))
           case (value, Pattern.Expression.IdLookup(_, nodeId, _)) =>
-            List(IdLookup(identInt(nodeId), value))
+            List(IdLookup(getBindingId(nodeId), value))
           case _ => Nil
         }
       case Pattern.Expression.BinOp(_, Pattern.Operator.And, lhs, rhs, _) =>
@@ -414,7 +394,7 @@ object QueryPlanner {
     * stored in the symbol table. Returns the fully resolved type (following type variable bindings).
     */
   private def resolveBindingType(
-    bindingId: Int,
+    bindingId: BindingId,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     typeEnv: Map[Symbol, Type],
   ): Option[Type] = {
@@ -423,7 +403,7 @@ object QueryPlanner {
       case other => other
     }
     symbolTable.typeVars
-      .find(_.identifier == BindingId(bindingId))
+      .find(_.identifier == bindingId)
       .map(entry => resolve(entry.ty))
   }
 
@@ -431,7 +411,7 @@ object QueryPlanner {
     * Only graph elements have properties that can be watched via LocalProperty.
     */
   private def isGraphElementBinding(
-    bindingId: Int,
+    bindingId: BindingId,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     typeEnv: Map[Symbol, Type],
   ): Boolean =
@@ -451,16 +431,16 @@ object QueryPlanner {
     typeEnv: Map[Symbol, Type],
   ): NodeDeps = expr match {
     case Pattern.Expression.IdLookup(_, nodeId, _) =>
-      Map(identInt(nodeId) -> Set[NodeDep](NodeDep.Id))
+      Map(getBindingId(nodeId) -> Set[NodeDep](NodeDep.Id))
 
     case Pattern.Expression.FieldAccess(_, on, fieldName, _) =>
       on match {
         case Pattern.Expression.Ident(_, ident, _) =>
-          val bindingId = identInt(ident)
+          val bid = getBindingId(ident)
           // Always emit NodeDep.Property for field access on an identifier.
           // At runtime, if the identifier is not a node, this will be a no-op.
           // This conservative approach ensures we always watch properties for nodes.
-          Map(bindingId -> Set[NodeDep](NodeDep.Property(fieldName)))
+          Map(bid -> Set[NodeDep](NodeDep.Property(fieldName)))
         case _ => extractDepsFromExpr(on, symbolTable, typeEnv)
       }
 
@@ -498,8 +478,8 @@ object QueryPlanner {
         args.head match {
           case Pattern.Expression.Ident(_, ident, _) =>
             ident match {
-              case Right(bindingId) if isGraphElementBinding(bindingId.id, symbolTable, typeEnv) =>
-                NodeDeps.combine(argDeps, Map(bindingId.id -> Set[NodeDep](NodeDep.Id)))
+              case Right(bindingId) if isGraphElementBinding(BindingId(bindingId.id), symbolTable, typeEnv) =>
+                NodeDeps.combine(argDeps, Map(BindingId(bindingId.id) -> Set[NodeDep](NodeDep.Id)))
               case _ => argDeps
             }
           case _ => argDeps
@@ -536,8 +516,8 @@ object QueryPlanner {
     // This handles RETURN n where n is a node - we need id + labels + properties
     case Pattern.Expression.Ident(_, ident, _) =>
       ident match {
-        case Right(bindingId) if isGraphElementBinding(bindingId.id, symbolTable, typeEnv) =>
-          Map(bindingId.id -> Set[NodeDep](NodeDep.Node))
+        case Right(bindingId) if isGraphElementBinding(BindingId(bindingId.id), symbolTable, typeEnv) =>
+          Map(BindingId(bindingId.id) -> Set[NodeDep](NodeDep.Node))
         case _ => NodeDeps.empty
       }
 
@@ -608,9 +588,9 @@ object QueryPlanner {
       case Cypher.Effect.SetProperty(_, _, value) => extractDepsFromExpr(value, symbolTable, typeEnv)
       case Cypher.Effect.SetProperties(_, _, props) => extractDepsFromExpr(props, symbolTable, typeEnv)
       case Cypher.Effect.Create(_, patterns) =>
-        val bindingIds: List[Int] = patterns.flatMap { pattern =>
-          val initial = pattern.initial.maybeBinding.flatMap(_.toOption).map(_.id)
-          val path = pattern.path.flatMap(conn => conn.dest.maybeBinding.flatMap(_.toOption).map(_.id))
+        val bindingIds: List[BindingId] = patterns.flatMap { pattern =>
+          val initial = pattern.initial.maybeBinding.flatMap(_.toOption).map(b => BindingId(b.id))
+          val path = pattern.path.flatMap(conn => conn.dest.maybeBinding.flatMap(_.toOption).map(b => BindingId(b.id)))
           initial.toList ++ path
         }
         bindingIds.foldLeft(NodeDeps.empty) { (deps, bindingId) =>
@@ -626,8 +606,8 @@ object QueryPlanner {
           def extractIdDeps(expr: Pattern.Expression): NodeDeps = expr match {
             case Pattern.Expression.Ident(_, ident, _) =>
               ident match {
-                case Right(bindingId) if isGraphElementBinding(bindingId.id, symbolTable, typeEnv) =>
-                  Map(bindingId.id -> Set[NodeDep](NodeDep.Id))
+                case Right(bindingId) if isGraphElementBinding(BindingId(bindingId.id), symbolTable, typeEnv) =>
+                  Map(BindingId(bindingId.id) -> Set[NodeDep](NodeDep.Id))
                 case _ => NodeDeps.empty
               }
             case Pattern.Expression.ListLiteral(_, elements, _) =>
@@ -657,16 +637,16 @@ object QueryPlanner {
     query: Cypher.Query,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     typeEnv: Map[Symbol, Type],
-  ): Map[Int, Int] = {
-    def fromProjection(proj: Cypher.Projection): Option[(Int, Int)] =
+  ): Map[BindingId, BindingId] = {
+    def fromProjection(proj: Cypher.Projection): Option[(BindingId, BindingId)] =
       proj.expression match {
         case Pattern.Expression.Ident(_, ident, _) =>
           ident match {
             case Right(sourceId) =>
               proj.as match {
                 case Right(destId) if destId.id != sourceId.id =>
-                  if (isGraphElementBinding(sourceId.id, symbolTable, typeEnv))
-                    Some(destId.id -> sourceId.id)
+                  if (isGraphElementBinding(BindingId(sourceId.id), symbolTable, typeEnv))
+                    Some(BindingId(destId.id) -> BindingId(sourceId.id))
                   else
                     None
                 case _ => None
@@ -676,7 +656,7 @@ object QueryPlanner {
         case _ => None
       }
 
-    def fromQueryPart(part: Cypher.QueryPart): Map[Int, Int] = part match {
+    def fromQueryPart(part: Cypher.QueryPart): Map[BindingId, BindingId] = part match {
       case Cypher.QueryPart.WithClausePart(withClause) =>
         withClause.bindings.flatMap(fromProjection).toMap
       case _ => Map.empty
@@ -701,11 +681,11 @@ object QueryPlanner {
     * If binding 6 has NodeDep.Id and 6 is an alias for 3 which is an alias for 2,
     * then 3 and 2 should also get NodeDep.Id.
     */
-  def propagateIdDepsBackward(deps: NodeDeps, aliases: Map[Int, Int]): NodeDeps = {
+  def propagateIdDepsBackward(deps: NodeDeps, aliases: Map[BindingId, BindingId]): NodeDeps = {
     // For each binding with NodeDep.Id, trace back through aliases
     val idBindings = deps.filter(_._2.contains(NodeDep.Id)).keys.toSet
 
-    def traceBack(binding: Int, visited: Set[Int]): Set[Int] =
+    def traceBack(binding: BindingId, visited: Set[BindingId]): Set[BindingId] =
       if (visited.contains(binding)) visited
       else {
         aliases.get(binding) match {
@@ -731,22 +711,22 @@ object QueryPlanner {
   /** Tree representation of graph pattern for planning */
   sealed trait GraphPatternTree
   object GraphPatternTree {
-    case class Branch(binding: Int, labels: Set[Symbol], children: List[ConnectionInfo]) extends GraphPatternTree
+    case class Branch(binding: BindingId, labels: Set[Symbol], children: List[ConnectionInfo]) extends GraphPatternTree
     case object Empty extends GraphPatternTree
   }
 
   /** Build pattern tree from Cypher graph pattern */
   def buildPatternTree(pattern: Cypher.GraphPattern): GraphPatternTree = {
-    val initBinding = nodeBindingInt(pattern.initial)
+    val initBinding = nodeBinding(pattern.initial)
     val initLabels = pattern.initial.labels
 
-    def loop(binding: Int, labels: Set[Symbol], path: List[Cypher.Connection]): GraphPatternTree =
+    def loop(binding: BindingId, labels: Set[Symbol], path: List[Cypher.Connection]): GraphPatternTree =
       path match {
         case Nil =>
           GraphPatternTree.Branch(binding, labels, Nil)
 
         case head :: tail =>
-          val destBinding = nodeBindingInt(head.dest)
+          val destBinding = nodeBinding(head.dest)
           val destLabels = head.dest.labels
           val edgeLabel = head.edge.edgeType
 
@@ -759,8 +739,8 @@ object QueryPlanner {
     loop(initBinding, initLabels, pattern.path)
   }
 
-  /** Collect all bindings (as Int IDs) from a tree (not just the root) */
-  def collectBindings(tree: GraphPatternTree): Set[Int] = tree match {
+  /** Collect all bindings from a tree (not just the root) */
+  def collectBindings(tree: GraphPatternTree): Set[BindingId] = tree match {
     case GraphPatternTree.Branch(binding, _, children) =>
       Set(binding) ++ children.flatMap(c => collectBindings(c.tree))
     case GraphPatternTree.Empty => Set.empty
@@ -769,7 +749,7 @@ object QueryPlanner {
   /** Records that a binding was renamed to avoid diamond conflicts.
     * The Filter `id(renamed) == id(original)` must be applied.
     */
-  case class BindingRename(original: Int, renamed: Int)
+  case class BindingRename(original: BindingId, renamed: BindingId)
 
   /** Deduplicate bindings within a tree to handle diamond patterns.
     *
@@ -792,14 +772,14 @@ object QueryPlanner {
     */
   def deduplicateBindings(
     tree: GraphPatternTree.Branch,
-    seen: Set[Int] = Set.empty,
-    nextFresh: Int = 10000, // Start high to avoid conflicts with real bindings
-  ): (GraphPatternTree.Branch, Set[Int], Int, List[BindingRename]) = {
+    seen: Set[BindingId] = Set.empty,
+    nextFresh: BindingId = BindingId(10000), // Start high to avoid conflicts with real bindings
+  ): (GraphPatternTree.Branch, Set[BindingId], BindingId, List[BindingRename]) = {
     // Check if this binding is a duplicate
     val (newBinding, newSeen, newFresh, rootRename) =
       if (seen.contains(tree.binding)) {
         // Duplicate! Assign fresh binding and record the rename
-        (nextFresh, seen + nextFresh, nextFresh + 1, List(BindingRename(tree.binding, nextFresh)))
+        (nextFresh, seen + nextFresh, BindingId(nextFresh.id + 1), List(BindingRename(tree.binding, nextFresh)))
       } else {
         // First occurrence - keep the binding
         (tree.binding, seen + tree.binding, nextFresh, Nil)
@@ -811,10 +791,10 @@ object QueryPlanner {
         case ((accChildren, accSeen, accFresh, accRenames), conn) =>
           conn.tree match {
             case branch: GraphPatternTree.Branch =>
-              val (dedupedBranch, nextSeen, nextFreshId, branchRenames) =
+              val (dedupedBranch, nextSeen, nextFreshBid, branchRenames) =
                 deduplicateBindings(branch, accSeen, accFresh)
               val newConn = ConnectionInfo(conn.edgeLabel, conn.direction, dedupedBranch)
-              (accChildren :+ newConn, nextSeen, nextFreshId, accRenames ++ branchRenames)
+              (accChildren :+ newConn, nextSeen, nextFreshBid, accRenames ++ branchRenames)
             case GraphPatternTree.Empty =>
               (accChildren :+ conn, accSeen, accFresh, accRenames)
           }
@@ -838,7 +818,7 @@ object QueryPlanner {
     *
     * Returns None if the binding is not in the tree.
     */
-  def rerootTree(tree: GraphPatternTree.Branch, newRoot: Int): Option[GraphPatternTree.Branch] =
+  def rerootTree(tree: GraphPatternTree.Branch, newRoot: BindingId): Option[GraphPatternTree.Branch] =
     if (tree.binding == newRoot) {
       // Already rooted at the target
       Some(tree)
@@ -850,8 +830,8 @@ object QueryPlanner {
   /** Helper: Find newRoot in tree and reroot, carrying parent info for edge reversal */
   private def findPathAndReroot(
     tree: GraphPatternTree.Branch,
-    newRoot: Int,
-    parentInfo: Option[(Int, Set[Symbol], Symbol, Direction)], // (parentBinding, parentLabels, edgeLabel, edgeDir)
+    newRoot: BindingId,
+    parentInfo: Option[(BindingId, Set[Symbol], Symbol, Direction)], // (parentBinding, parentLabels, edgeLabel, edgeDir)
   ): Option[GraphPatternTree.Branch] =
     if (tree.binding == newRoot) {
       // Found the target - build new tree with this as root
@@ -943,13 +923,13 @@ object QueryPlanner {
     if (trees.size <= 1) return trees
 
     // Collect all bindings from each tree
-    val treeBindings: List[(GraphPatternTree.Branch, Set[Int])] =
+    val treeBindings: List[(GraphPatternTree.Branch, Set[BindingId])] =
       trees.map(t => (t, collectBindings(t)))
 
     // Find bindings that appear in multiple trees
-    val allBindings: List[Int] = treeBindings.flatMap(_._2)
-    val bindingCounts: Map[Int, Int] = allBindings.groupBy(identity).view.mapValues(_.size).toMap
-    val sharedBindings: Set[Int] = bindingCounts.filter(_._2 > 1).keySet
+    val allBindings: List[BindingId] = treeBindings.flatMap(_._2)
+    val bindingCounts: Map[BindingId, Int] = allBindings.groupBy(identity).view.mapValues(_.size).toMap
+    val sharedBindings: Set[BindingId] = bindingCounts.filter(_._2 > 1).keySet
 
     if (sharedBindings.isEmpty) {
       // No shared bindings - return trees as-is (will become CrossProduct)
@@ -961,10 +941,10 @@ object QueryPlanner {
       // 2. Bindings that appear in the most trees (for maximum merging)
       // 3. Smallest binding ID (for deterministic behavior)
       val idLookupBindings = idLookups.map(_.forName).toSet
-      val commonRoot: Int = sharedBindings.toList.sortBy { b =>
+      val commonRoot: BindingId = sharedBindings.toList.sortBy { b =>
         val hasIdLookup = if (idLookupBindings.contains(b)) 0 else 1 // 0 = has lookup (preferred)
         val negCount = -bindingCounts(b) // negative so higher counts sort first
-        (hasIdLookup, negCount, b) // tertiary sort by binding ID for determinism
+        (hasIdLookup, negCount, b.id) // tertiary sort by binding ID for determinism
       }.head
 
       // Partition trees into those containing the shared binding and those that don't
@@ -1013,17 +993,17 @@ object QueryPlanner {
     * @param propertyEqualities Property equality constraints for predicate pushdown
     */
   def generateWatches(
-    binding: Int,
+    binding: BindingId,
     labels: Set[Symbol],
     deps: NodeDeps,
     propertyBindings: List[PropertyBinding] = Nil,
-    isNotNullConstraints: List[(Int, Symbol)] = Nil,
+    isNotNullConstraints: List[(BindingId, Symbol)] = Nil,
     propertyEqualities: List[PropertyEquality] = Nil,
   ): List[QueryPlan] = {
     val myDeps = deps.getOrElse(binding, Set.empty)
 
     // Property bindings for this binding: property -> synthId
-    val myPropertyBindings: Map[Symbol, Int] = propertyBindings.collect {
+    val myPropertyBindings: Map[Symbol, BindingId] = propertyBindings.collect {
       case PropertyBinding(b, prop, synthId) if b == binding => prop -> synthId
     }.toMap
 
@@ -1040,15 +1020,12 @@ object QueryPlanner {
     // All properties accessed in expressions for this binding
     val accessedProperties: Set[Symbol] = myDeps.collect { case NodeDep.Property(name) => name }
 
-    // Convert binding ID to Symbol for QueryPlan nodes
-    val bindingSym = bindingSymbol(binding)
-
     // LocalId binds just the node ID - only emit when needed:
     // 1. Explicit id(n) usage in expressions (NodeDep.Id)
     // 2. Diamond patterns where bindings need identity comparison (added via depsWithRenames)
     // 3. CREATE effects that need node identity for edge creation (added via extractDepsFromEffect)
     val idWatch: List[QueryPlan] =
-      if (myDeps.contains(NodeDep.Id)) List(QueryPlan.LocalId(bindingSym))
+      if (myDeps.contains(NodeDep.Id)) List(QueryPlan.LocalId(binding))
       else Nil
 
     // Label constraints for pattern matching (e.g., MATCH (n:Person))
@@ -1056,7 +1033,7 @@ object QueryPlanner {
       if (labels.nonEmpty) {
         List(QueryPlan.LocalLabels(None, LabelConstraint.Contains(labels)))
       } else if (myDeps.contains(NodeDep.Labels)) {
-        List(QueryPlan.LocalLabels(Some(bindingSym), LabelConstraint.Unconditional))
+        List(QueryPlan.LocalLabels(Some(binding), LabelConstraint.Unconditional))
       } else {
         Nil
       }
@@ -1065,7 +1042,7 @@ object QueryPlanner {
     // This provides just the properties as a Map (excluding labelsProperty)
     val allPropertiesWatch: List[QueryPlan] =
       if (myDeps.contains(NodeDep.AllProperties)) {
-        List(QueryPlan.LocalAllProperties(bindingSym))
+        List(QueryPlan.LocalAllProperties(binding))
       } else {
         Nil
       }
@@ -1074,7 +1051,7 @@ object QueryPlanner {
     // emit LocalNode to provide id + labels + properties as a complete Value.Node
     val nodeWatch: List[QueryPlan] =
       if (myDeps.contains(NodeDep.Node)) {
-        List(QueryPlan.LocalNode(bindingSym))
+        List(QueryPlan.LocalNode(binding))
       } else {
         Nil
       }
@@ -1093,11 +1070,14 @@ object QueryPlanner {
         case None =>
           PropertyConstraint.Unconditional
       }
-      // Alias to the synthetic identifier created by symbol analysis (for Ident lookup)
-      // or fall back to the old format if no property binding exists
+      // Alias to the synthetic identifier created by the materialization phase
       val aliasAs = myPropertyBindings.get(prop) match {
-        case Some(synthId) => Some(Symbol(synthId.toString))
-        case None => Some(Symbol(s"${binding}.${prop.name}"))
+        case Some(synthId) => Some(synthId)
+        case None =>
+          throw new IllegalStateException(
+            s"Property '${prop.name}' on binding ${binding.id} has no PropertyBinding from materialization — " +
+            "this indicates a bug in the materialization phase (all graph-element field accesses must be rewritten)",
+          )
       }
       QueryPlan.LocalProperty(prop, aliasAs = aliasAs, constraint)
     }
@@ -1130,7 +1110,7 @@ object QueryPlanner {
     idLookups: List[IdLookup],
     nodeDeps: NodeDeps,
     propertyBindings: List[PropertyBinding] = Nil,
-    propertyConstraints: List[(Int, Symbol)] = Nil,
+    propertyConstraints: List[(BindingId, Symbol)] = Nil,
     propertyEqualities: List[PropertyEquality] = Nil,
     isRoot: Boolean = true,
   ): QueryPlan = tree match {
@@ -1226,7 +1206,7 @@ object QueryPlanner {
     nodeDeps: NodeDeps,
     propertyBindings: List[PropertyBinding] = Nil,
   ): Option[Pattern.Expression] = {
-    val synthIdToProperty: Map[Int, (Int, Symbol)] =
+    val synthIdToProperty: Map[BindingId, (BindingId, Symbol)] =
       propertyBindings.map(pb => pb.synthId -> (pb.nodeBinding, pb.property)).toMap
 
     // Check if an expression is `node.prop IS NOT NULL` where node.prop is in our watches
@@ -1242,12 +1222,12 @@ object QueryPlanner {
       case Pattern.Expression.FieldAccess(_, on, fieldName, _) =>
         on match {
           case Pattern.Expression.Ident(_, ident, _) =>
-            deps.getOrElse(identInt(ident), Set.empty).contains(NodeDep.Property(fieldName))
+            deps.getOrElse(getBindingId(ident), Set.empty).contains(NodeDep.Property(fieldName))
           case _ => false
         }
       // Ident form (post-rewrite): synthId
       case Pattern.Expression.Ident(_, ident, _) =>
-        synthIdToProperty.get(getBindingId(ident).id) match {
+        synthIdToProperty.get(getBindingId(ident)) match {
           case Some((binding, property)) =>
             deps.getOrElse(binding, Set.empty).contains(NodeDep.Property(property))
           case None => false
@@ -1289,24 +1269,24 @@ object QueryPlanner {
   def extractIsNotNullConstraints(
     expr: Pattern.Expression,
     propertyBindings: List[PropertyBinding] = Nil,
-  ): List[(Int, Symbol)] = {
-    val synthIdToProperty: Map[Int, (Int, Symbol)] =
+  ): List[(BindingId, Symbol)] = {
+    val synthIdToProperty: Map[BindingId, (BindingId, Symbol)] =
       propertyBindings.map(pb => pb.synthId -> (pb.nodeBinding, pb.property)).toMap
 
-    def extractFromExpr(e: Pattern.Expression): List[(Int, Symbol)] = e match {
+    def extractFromExpr(e: Pattern.Expression): List[(BindingId, Symbol)] = e match {
       case Pattern.Expression.UnaryOp(_, Pattern.Operator.Not, Pattern.Expression.IsNull(_, inner, _), _) =>
         inner match {
           // Before materialization: NOT(IsNull(node.prop))
           case Pattern.Expression.FieldAccess(_, on, fieldName, _) =>
             on match {
               case Pattern.Expression.Ident(_, ident, _) =>
-                List((identInt(ident), fieldName))
+                List((getBindingId(ident), fieldName))
               // Target is a computed expression (e.g., foo(x).prop) — can't push down
               case _ => Nil
             }
           // After materialization: NOT(IsNull(synthId)) — look up what property synthId refers to
           case Pattern.Expression.Ident(_, ident, _) =>
-            synthIdToProperty.get(getBindingId(ident).id) match {
+            synthIdToProperty.get(getBindingId(ident)) match {
               case Some((binding, property)) => List((binding, property))
               // Ident isn't a materialized property access — not pushable
               case None => Nil
@@ -1327,14 +1307,14 @@ object QueryPlanner {
     * Constraints like `e1.type = "WRITE"` become (bindingId, property, value) tuples.
     * These will become LocalProperty watches with Equal constraint (predicate pushdown).
     */
-  case class PropertyEquality(binding: Int, property: Symbol, value: Pattern.Value)
+  case class PropertyEquality(binding: BindingId, property: Symbol, value: Pattern.Value)
 
   def extractPropertyEqualities(
     expr: Pattern.Expression,
     propertyBindings: List[PropertyBinding] = Nil,
   ): List[PropertyEquality] = {
     // Build map from synthetic property ID to (nodeBinding, property)
-    val synthIdToProperty: Map[Int, (Int, Symbol)] =
+    val synthIdToProperty: Map[BindingId, (BindingId, Symbol)] =
       propertyBindings.map(pb => pb.synthId -> (pb.nodeBinding, pb.property)).toMap
 
     def extractFromExpr(e: Pattern.Expression): List[PropertyEquality] = e match {
@@ -1345,26 +1325,26 @@ object QueryPlanner {
           case (Pattern.Expression.FieldAccess(_, on, fieldName, _), Pattern.Expression.AtomicLiteral(_, value, _)) =>
             on match {
               case Pattern.Expression.Ident(_, ident, _) =>
-                List(PropertyEquality(identInt(ident), fieldName, value))
+                List(PropertyEquality(getBindingId(ident), fieldName, value))
               case _ => Nil
             }
           // literal = node.prop (FieldAccess form)
           case (Pattern.Expression.AtomicLiteral(_, value, _), Pattern.Expression.FieldAccess(_, on, fieldName, _)) =>
             on match {
               case Pattern.Expression.Ident(_, ident, _) =>
-                List(PropertyEquality(identInt(ident), fieldName, value))
+                List(PropertyEquality(getBindingId(ident), fieldName, value))
               case _ => Nil
             }
           // synthId = literal (Ident form after symbol analysis rewrite)
           case (Pattern.Expression.Ident(_, ident, _), Pattern.Expression.AtomicLiteral(_, value, _)) =>
-            synthIdToProperty.get(getBindingId(ident).id) match {
+            synthIdToProperty.get(getBindingId(ident)) match {
               case Some((nodeBinding, property)) =>
                 List(PropertyEquality(nodeBinding, property, value))
               case None => Nil // Not a synthetic property ID
             }
           // literal = synthId (Ident form after symbol analysis rewrite)
           case (Pattern.Expression.AtomicLiteral(_, value, _), Pattern.Expression.Ident(_, ident, _)) =>
-            synthIdToProperty.get(getBindingId(ident).id) match {
+            synthIdToProperty.get(getBindingId(ident)) match {
               case Some((nodeBinding, property)) =>
                 List(PropertyEquality(nodeBinding, property, value))
               case None => Nil
@@ -1390,7 +1370,7 @@ object QueryPlanner {
 
     def extractFromPattern(pattern: Cypher.GraphPattern): List[PropertyEquality] = {
       def extractFromNode(node: Cypher.NodePattern): List[PropertyEquality] = {
-        val binding = nodeBindingInt(node)
+        val binding = nodeBinding(node)
         node.maybeProperties match {
           case Some(mapLit: Pattern.Expression.MapLiteral) =>
             mapLit.value.toList.flatMap { case (propName, expr) =>
@@ -1427,9 +1407,9 @@ object QueryPlanner {
     equalities: List[PropertyEquality],
     propertyBindings: List[PropertyBinding] = Nil,
   ): Option[Pattern.Expression] = {
-    val equalitySet: Set[(Int, Symbol)] = equalities.map(e => (e.binding, e.property)).toSet
+    val equalitySet: Set[(BindingId, Symbol)] = equalities.map(e => (e.binding, e.property)).toSet
     // Map from synthId to (binding, property) for checking rewritten Ident patterns
-    val synthIdToProperty: Map[Int, (Int, Symbol)] =
+    val synthIdToProperty: Map[BindingId, (BindingId, Symbol)] =
       propertyBindings.map(pb => pb.synthId -> (pb.nodeBinding, pb.property)).toMap
 
     def filter(e: Pattern.Expression): Option[Pattern.Expression] = e match {
@@ -1438,22 +1418,22 @@ object QueryPlanner {
           // FieldAccess pattern (pre-rewrite): node.prop = literal
           case (Pattern.Expression.FieldAccess(_, on, fieldName, _), _: Pattern.Expression.AtomicLiteral) =>
             on match {
-              case Pattern.Expression.Ident(_, ident, _) => equalitySet.contains((identInt(ident), fieldName))
+              case Pattern.Expression.Ident(_, ident, _) => equalitySet.contains((getBindingId(ident), fieldName))
               case _ => false
             }
           case (_: Pattern.Expression.AtomicLiteral, Pattern.Expression.FieldAccess(_, on, fieldName, _)) =>
             on match {
-              case Pattern.Expression.Ident(_, ident, _) => equalitySet.contains((identInt(ident), fieldName))
+              case Pattern.Expression.Ident(_, ident, _) => equalitySet.contains((getBindingId(ident), fieldName))
               case _ => false
             }
           // Ident pattern (post-rewrite): synthId = literal
           case (Pattern.Expression.Ident(_, ident, _), _: Pattern.Expression.AtomicLiteral) =>
-            synthIdToProperty.get(getBindingId(ident).id) match {
+            synthIdToProperty.get(getBindingId(ident)) match {
               case Some((binding, property)) => equalitySet.contains((binding, property))
               case None => false
             }
           case (_: Pattern.Expression.AtomicLiteral, Pattern.Expression.Ident(_, ident, _)) =>
-            synthIdToProperty.get(getBindingId(ident).id) match {
+            synthIdToProperty.get(getBindingId(ident)) match {
               case Some((binding, property)) => equalitySet.contains((binding, property))
               case None => false
             }
@@ -1510,7 +1490,7 @@ object QueryPlanner {
   ): QueryPlan = {
     // Extract IS NOT NULL constraints from the predicate
     // These become LocalProperty watches with Any constraint (requires property to exist)
-    val propertyConstraints: List[(Int, Symbol)] = maybePredicate
+    val propertyConstraints: List[(BindingId, Symbol)] = maybePredicate
       .map(pred => extractIsNotNullConstraints(pred, propertyBindings))
       .getOrElse(Nil)
 
@@ -1560,15 +1540,15 @@ object QueryPlanner {
     }
 
     // Build (tree, binding) pairs from deduplicated trees
-    val treesWithBindings: List[(GraphPatternTree.Branch, Int)] =
+    val treesWithBindings: List[(GraphPatternTree.Branch, BindingId)] =
       dedupedTrees.map(t => (t, t.binding))
 
     // For each pattern, find its ID lookup and dependencies
     case class PatternInfo(
       tree: GraphPatternTree.Branch,
-      binding: Int,
+      binding: BindingId,
       idLookup: Option[IdLookup],
-      dependencies: Set[Int], // bindings this pattern's anchor depends on
+      dependencies: Set[BindingId], // bindings this pattern's anchor depends on
     )
 
     val patternInfos = treesWithBindings.map { case (tree, binding) =>
@@ -1581,7 +1561,7 @@ object QueryPlanner {
     // Topological sort: patterns with no dependencies (or only external deps) come first
     val allBindings = patternInfos.map(_.binding).toSet
 
-    def sortPatterns(remaining: List[PatternInfo], resolved: Set[Int]): List[PatternInfo] =
+    def sortPatterns(remaining: List[PatternInfo], resolved: Set[BindingId]): List[PatternInfo] =
       if (remaining.isEmpty) Nil
       else {
         // Find patterns whose dependencies are all resolved (or external)
@@ -1601,7 +1581,7 @@ object QueryPlanner {
     // Plan patterns in order, using Sequence when there are dependencies
     def planPatternsInOrder(
       infos: List[PatternInfo],
-      inScope: Set[Int],
+      inScope: Set[BindingId],
     ): QueryPlan = infos match {
       case Nil => QueryPlan.Unit
 
@@ -1672,7 +1652,7 @@ object QueryPlanner {
   }
 
   /** Convert Cypher projections to QueryPlan Projections.
-    * Uses Int-based binding format for consistency with expression interpreter lookups.
+    * Uses BindingId-based format for consistency with expression interpreter lookups.
     * Human-readable names are applied at output time via outputNameMapping.
     *
     * @param targetBindings Optional target binding symbols to use instead of the projection's
@@ -1682,7 +1662,7 @@ object QueryPlanner {
   def convertProjections(
     projections: List[Cypher.Projection],
     @scala.annotation.unused symbolTable: SymbolAnalysisModule.SymbolTable,
-    targetBindings: Option[List[Symbol]] = None,
+    targetBindings: Option[List[BindingId]] = None,
   ): List[Projection] =
     targetBindings match {
       case Some(targets) if targets.length == projections.length =>
@@ -1695,61 +1675,29 @@ object QueryPlanner {
           s"UNION target binding count (${targets.length}) does not match projection count (${projections.length}); falling back to original bindings",
         )
         projections.map { p =>
-          Projection(p.expression, bindingSymbol(identInt(p.as)))
+          Projection(p.expression, getBindingId(p.as))
         }
       case _ =>
         projections.map { p =>
-          Projection(p.expression, bindingSymbol(identInt(p.as)))
+          Projection(p.expression, getBindingId(p.as))
         }
     }
 
-  /** Known aggregation function names */
-  private val aggregationFunctions: Set[Symbol] =
-    Set(Symbol("count"), Symbol("sum"), Symbol("avg"), Symbol("min"), Symbol("max"), Symbol("collect"))
-
-  /** Check if an expression contains an aggregation function */
-  private def containsAggregation(expr: Pattern.Expression): Boolean = expr match {
-    case Pattern.Expression.Apply(_, funcName, _, _) =>
-      aggregationFunctions.contains(funcName)
-    case Pattern.Expression.BinOp(_, _, lhs, rhs, _) =>
-      containsAggregation(lhs) || containsAggregation(rhs)
-    case Pattern.Expression.UnaryOp(_, _, operand, _) =>
-      containsAggregation(operand)
-    case Pattern.Expression.FieldAccess(_, on, _, _) =>
-      containsAggregation(on)
-    case Pattern.Expression.CaseBlock(_, cases, alternative, _) =>
-      cases.exists(c => containsAggregation(c.condition) || containsAggregation(c.value)) ||
-        containsAggregation(alternative)
-    case Pattern.Expression.ListLiteral(_, elements, _) =>
-      elements.exists(containsAggregation)
-    case Pattern.Expression.MapLiteral(_, entries, _) =>
-      entries.values.exists(containsAggregation)
-    case _ => false
-  }
-
-  /** Extract aggregation from an expression (returns the Aggregation and the alias) */
-  private def extractAggregation(
-    expr: Pattern.Expression,
-    alias: Symbol,
-  ): Option[(Aggregation, Symbol)] = expr match {
+  /** Convert a materialized aggregation expression back to an Aggregation op. */
+  private def expressionToAggregation(expr: Pattern.Expression): Aggregation = expr match {
     case Pattern.Expression.Apply(_, funcName, args, _) =>
       funcName match {
-        case Symbol("count") =>
-          // count(*) or count(expr) - for now treat both as Count
-          Some((Aggregation.Count(distinct = false), alias))
-        case Symbol("sum") if args.nonEmpty =>
-          Some((Aggregation.Sum(args.head), alias))
-        case Symbol("avg") if args.nonEmpty =>
-          Some((Aggregation.Avg(args.head), alias))
-        case Symbol("min") if args.nonEmpty =>
-          Some((Aggregation.Min(args.head), alias))
-        case Symbol("max") if args.nonEmpty =>
-          Some((Aggregation.Max(args.head), alias))
-        case Symbol("collect") if args.nonEmpty =>
-          Some((Aggregation.Collect(args.head, distinct = false), alias))
-        case _ => None
+        case Symbol("count") => Aggregation.Count(distinct = false)
+        case Symbol("sum") => Aggregation.Sum(args.head)
+        case Symbol("avg") => Aggregation.Avg(args.head)
+        case Symbol("min") => Aggregation.Min(args.head)
+        case Symbol("max") => Aggregation.Max(args.head)
+        case Symbol("collect") => Aggregation.Collect(args.head, distinct = false)
+        case other =>
+          throw new IllegalStateException(s"Unknown aggregation function '${other.name}' in aggregation mapping")
       }
-    case _ => None
+    case other =>
+      throw new IllegalStateException(s"Expected aggregation Apply expression in mapping, got: $other")
   }
 
   /** Plan a RETURN or WITH clause.
@@ -1757,6 +1705,8 @@ object QueryPlanner {
     * @param targetBindings Optional target binding symbols to use instead of the projection's
     *                       original binding IDs. Used by UNION to ensure all sides produce
     *                       the same column names for proper deduplication.
+    * @param aggregationSynthIds Set of synthetic binding IDs assigned by the materializer to aggregation results.
+    *                            Projections referencing these IDs are aggregation outputs.
     */
   def planProjection(
     projections: List[Cypher.Projection],
@@ -1764,58 +1714,50 @@ object QueryPlanner {
     input: QueryPlan,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     dropExisting: Boolean = true,
-    targetBindings: Option[List[Symbol]] = None,
+    targetBindings: Option[List[BindingId]] = None,
+    aggregationSynthIds: Map[BindingId, Pattern.Expression],
   ): QueryPlan = {
-    // Check if any projection contains an aggregation function
-    val hasAggregation = projections.exists(p => containsAggregation(p.expression))
+    // A projection is an aggregation if its expression is Ident(synthId) where synthId is in the aggregation mapping.
+    // After materialization, `RETURN count(x) AS cnt` becomes `Projection(Ident(synthId), as=cnt_binding)`.
+    def isAggregationProjection(p: Cypher.Projection): Boolean = p.expression match {
+      case Pattern.Expression.Ident(_, Right(bindingId), _) => aggregationSynthIds.contains(bindingId)
+      case _ => false
+    }
+
+    val hasAggregation = projections.exists(isAggregationProjection)
 
     val projected = if (hasAggregation) {
-      // Separate aggregations from non-aggregation projections
-      val (aggProjections, nonAggProjections) = projections.partition(p => containsAggregation(p.expression))
+      val (aggProjections, nonAggProjections) = projections.partition(isAggregationProjection)
 
-      // Extract aggregations, keeping original identifier for creating references
-      // Use Int-based format for aliases to match expression interpreter lookups
-      val aggregationsWithIdent: List[(Aggregation, Either[Pattern.CypherIdentifier, Pattern.BindingId], Symbol)] =
-        aggProjections.flatMap { p =>
-          val alias = bindingSymbol(identInt(p.as))
-          extractAggregation(p.expression, alias).map { case (agg, al) =>
-            (agg, p.as, al)
-          }
+      // Extract (Aggregation, outputBindingId) pairs from the mapping
+      val aggregationsWithBindings: List[(Aggregation, BindingId)] = aggProjections.flatMap { p =>
+        p.expression match {
+          case Pattern.Expression.Ident(_, Right(synthId), _) =>
+            aggregationSynthIds.get(synthId).map { originalExpr =>
+              (expressionToAggregation(originalExpr), synthId)
+            }
+          case _ => None
         }
-
-      // Non-aggregation projections become GROUP BY keys
-      // Use Int-based format for consistency with expression interpreter
-      val groupByKeys: List[Symbol] = nonAggProjections.map(p => bindingSymbol(identInt(p.as)))
-
-      if (aggregationsWithIdent.nonEmpty) {
-        // Create Aggregate operator
-        // The aggregations list contains (Aggregation, original ident, alias) tuples
-        // We need to wrap with Project to apply aliases
-        val aggOps = aggregationsWithIdent.map(_._1)
-        val aggregate = QueryPlan.Aggregate(aggOps, groupByKeys, input)
-
-        // Project the results with proper aliases
-        val allColumns = aggregationsWithIdent.map { case (_, originalIdent, alias) =>
-          // After aggregation, the result is available under the alias
-          // Use the original identifier to create a reference expression
-          Projection(
-            Pattern.Expression.Ident(Pattern.Source.NoSource, originalIdent, None),
-            alias,
-          )
-        } ++ nonAggProjections.map { p =>
-          Projection(p.expression, bindingSymbol(identInt(p.as)))
-        }
-
-        if (allColumns.isEmpty) aggregate
-        else QueryPlan.Project(allColumns, dropExisting, aggregate)
-      } else {
-        // Fallback to regular projection
-        val columns = convertProjections(projections, symbolTable, targetBindings)
-        if (columns.isEmpty) input
-        else QueryPlan.Project(columns, dropExisting, input)
       }
+
+      val groupByKeys: List[BindingId] = nonAggProjections.map(p => getBindingId(p.as))
+
+      if (aggregationsWithBindings.isEmpty) {
+        throw new IllegalStateException(
+          s"Projections were identified as aggregations but no aggregation bindings could be resolved — " +
+          "this indicates a bug in the materialization phase",
+        )
+      }
+
+      val aggregate = QueryPlan.Aggregate(aggregationsWithBindings, groupByKeys, input)
+
+      // Project: aggregation results are stored under synthId by AggregateState,
+      // and the projection's `as` binding maps synthId → user-facing alias.
+      val allColumns = convertProjections(projections, symbolTable, targetBindings)
+
+      if (allColumns.isEmpty) aggregate
+      else QueryPlan.Project(allColumns, dropExisting, aggregate)
     } else {
-      // No aggregation - regular projection
       val columns = convertProjections(projections, symbolTable, targetBindings)
       if (columns.isEmpty) input
       else QueryPlan.Project(columns, dropExisting, input)
@@ -1835,22 +1777,22 @@ object QueryPlanner {
     */
   def planEffects(
     effect: Cypher.Effect,
-    existingBindings: Set[Symbol],
+    existingBindings: Set[BindingId],
     symbolTable: SymbolAnalysisModule.SymbolTable,
     idLookups: List[IdLookup] = Nil,
   ): List[LocalQueryEffect] = effect match {
     case Cypher.Effect.SetLabel(_, id, labels) =>
       // id is the target node identifier
-      List(LocalQueryEffect.SetLabels(Some(bindingSymbol(identInt(id))), labels))
+      List(LocalQueryEffect.SetLabels(Some(getBindingId(id)), labels))
 
     case Cypher.Effect.SetProperties(_, id, properties) =>
       // id is the target node identifier
-      List(LocalQueryEffect.SetProperties(Some(bindingSymbol(identInt(id))), properties))
+      List(LocalQueryEffect.SetProperties(Some(getBindingId(id)), properties))
 
     case Cypher.Effect.SetProperty(_, property, value) =>
       // property is a FieldAccess - extract the target node and property name
       val targetBinding = QuinePatternHelpers.getRootId(property).toOption.map { ident =>
-        bindingSymbol(identInt(ident))
+        getBindingId(ident)
       }
       List(LocalQueryEffect.SetProperty(targetBinding, property.fieldName, value))
 
@@ -1862,7 +1804,7 @@ object QueryPlanner {
 
     case Cypher.Effect.Foreach(_, binding, listExpr, nestedEffects) =>
       val nestedPlanned = nestedEffects.flatMap(planEffects(_, existingBindings, symbolTable, idLookups))
-      List(LocalQueryEffect.Foreach(bindingSymbol(identInt(binding)), listExpr, nestedPlanned))
+      List(LocalQueryEffect.Foreach(getBindingId(binding), listExpr, nestedPlanned))
   }
 
   /** Extract CREATE effects from a graph pattern.
@@ -1882,7 +1824,7 @@ object QueryPlanner {
     */
   private def extractCreateEffects(
     pattern: Cypher.GraphPattern,
-    existingBindings: Set[Symbol],
+    existingBindings: Set[BindingId],
     idLookups: List[IdLookup],
   ): List[LocalQueryEffect] = {
 
@@ -1894,20 +1836,19 @@ object QueryPlanner {
       */
     def extractNodeEffect(
       nodePattern: Cypher.NodePattern,
-    ): (Int, Option[LocalQueryEffect.CreateNode]) = {
-      val bindingId = nodeBindingInt(nodePattern)
+    ): (BindingId, Option[LocalQueryEffect.CreateNode]) = {
+      val bid = nodeBinding(nodePattern)
       val labels = nodePattern.labels
       val maybeProperties = nodePattern.maybeProperties
-      val binding = bindingSymbol(bindingId)
       val createEffect =
-        if (!existingBindings.contains(binding))
-          Some(LocalQueryEffect.CreateNode(binding, labels, maybeProperties))
+        if (!existingBindings.contains(bid))
+          Some(LocalQueryEffect.CreateNode(bid, labels, maybeProperties))
         else None
-      (bindingId, createEffect)
+      (bid, createEffect)
     }
 
     val effects = scala.collection.mutable.ListBuffer.empty[LocalQueryEffect]
-    val createdBindings = scala.collection.mutable.Set.empty[Symbol]
+    val createdBindings = scala.collection.mutable.Set.empty[BindingId]
 
     // Handle initial node
     val (initialBindingId, initialCreateOpt) = extractNodeEffect(pattern.initial)
@@ -1917,7 +1858,7 @@ object QueryPlanner {
     }
 
     // Handle connections
-    var currentBindingId: Int = initialBindingId
+    var currentBindingId: BindingId = initialBindingId
     pattern.path.foreach { conn =>
       val (destBindingId, destCreateOpt) = extractNodeEffect(conn.dest)
 
@@ -1940,9 +1881,9 @@ object QueryPlanner {
       val sourceExpr = makeIdentExpr(currentBindingId)
 
       // Half-edge from source to dest
-      effects += LocalQueryEffect.CreateHalfEdge(Some(bindingSymbol(currentBindingId)), label, leftDir, destExpr)
+      effects += LocalQueryEffect.CreateHalfEdge(Some(currentBindingId), label, leftDir, destExpr)
       // Half-edge from dest to source (reciprocal)
-      effects += LocalQueryEffect.CreateHalfEdge(Some(bindingSymbol(destBindingId)), label, rightDir, sourceExpr)
+      effects += LocalQueryEffect.CreateHalfEdge(Some(destBindingId), label, rightDir, sourceExpr)
 
       currentBindingId = destBindingId
     }
@@ -1954,12 +1895,20 @@ object QueryPlanner {
     * This is true if the WITH has aggregation, DISTINCT, ORDER BY, SKIP, or LIMIT.
     * Simple pass-through/rename WITH clauses return false.
     */
-  private def isMaterializingWith(withClause: Cypher.WithClause): Boolean =
+  private def isMaterializingWith(
+    withClause: Cypher.WithClause,
+    aggregationSynthIds: Set[BindingId],
+  ): Boolean =
     withClause.isDistinct ||
     withClause.orderBy.nonEmpty ||
     withClause.maybeSkip.isDefined ||
     withClause.maybeLimit.isDefined ||
-    withClause.bindings.exists(p => containsAggregation(p.expression))
+    withClause.bindings.exists { p =>
+      p.expression match {
+        case Pattern.Expression.Ident(_, Right(bindingId), _) => aggregationSynthIds.contains(bindingId)
+        case _ => false
+      }
+    }
 
   /** Plan a materializing WITH clause by wrapping the input plan with
     * aggregation, DISTINCT, WHERE, ORDER BY, SKIP, and LIMIT operators.
@@ -1973,6 +1922,7 @@ object QueryPlanner {
     symbolTable: SymbolAnalysisModule.SymbolTable,
     nodeDeps: NodeDeps,
     propertyBindings: List[PropertyBinding],
+    aggregationSynthIds: Map[BindingId, Pattern.Expression],
   ): QueryPlan = {
     // Step 1: Apply projection (with aggregation support)
     val projected = planProjection(
@@ -1981,6 +1931,7 @@ object QueryPlanner {
       inputPlan,
       symbolTable,
       dropExisting = !withClause.hasWildCard,
+      aggregationSynthIds = aggregationSynthIds,
     )
 
     // Step 2: Apply WHERE filter
@@ -2020,34 +1971,34 @@ object QueryPlanner {
     * Used to track which bindings exist when processing subsequent parts.
     * Returns Symbols (for QueryPlan output compatibility).
     */
-  def extractBindingsFromPart(part: Cypher.QueryPart): Set[Symbol] = part match {
+  def extractBindingsFromPart(part: Cypher.QueryPart): Set[BindingId] = part match {
     case Cypher.QueryPart.ReadingClausePart(readingClause) =>
       readingClause match {
         case patterns: Cypher.ReadingClause.FromPatterns =>
           // Extract bindings from all graph patterns (nodes and edges)
           patterns.patterns.flatMap { pattern =>
-            val initBinding = Set(bindingSymbol(nodeBindingInt(pattern.initial)))
+            val initBinding = Set(nodeBinding(pattern.initial))
             val pathBindings = pattern.path.flatMap { conn =>
-              val destBinding = Set(bindingSymbol(nodeBindingInt(conn.dest)))
-              val edgeBinding = conn.edge.maybeBinding.map(id => bindingSymbol(identInt(id))).toSet
+              val destBinding = Set(nodeBinding(conn.dest))
+              val edgeBinding = conn.edge.maybeBinding.map(id => getBindingId(id)).toSet
               destBinding ++ edgeBinding
             }
             initBinding ++ pathBindings
           }.toSet
 
         case unwind: Cypher.ReadingClause.FromUnwind =>
-          Set(bindingSymbol(identInt(unwind.as)))
+          Set(getBindingId(unwind.as))
 
         case proc: Cypher.ReadingClause.FromProcedure =>
           // CALL procedure YIELD x, y, z -> binds x, y, z (using the boundAs name)
-          proc.yields.map(yi => bindingSymbol(identInt(yi.boundAs))).toSet
+          proc.yields.map(yi => getBindingId(yi.boundAs)).toSet
 
         case _ => Set.empty
       }
 
     case Cypher.QueryPart.WithClausePart(withClause) =>
       // WITH establishes new bindings from its projections (use the alias name)
-      withClause.bindings.map(p => bindingSymbol(identInt(p.as))).toSet
+      withClause.bindings.map(p => getBindingId(p.as)).toSet
 
     case _ => Set.empty
   }
@@ -2059,7 +2010,7 @@ object QueryPlanner {
     nodeDeps: NodeDeps,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     propertyBindings: List[PropertyBinding] = Nil,
-    existingBindings: Set[Symbol] = Set.empty,
+    existingBindings: Set[BindingId] = Set.empty,
   ): QueryPlan = part match {
     case Cypher.QueryPart.ReadingClausePart(readingClause) =>
       readingClause match {
@@ -2070,17 +2021,17 @@ object QueryPlanner {
             // Extract all bindings introduced by this OPTIONAL MATCH
             // These will be set to null when no match is found
             // IMPORTANT: Only include NEW bindings, not bindings already in scope from previous clauses
-            val patternBindings: Set[Symbol] = patterns.patterns.flatMap { pattern =>
+            val patternBindings: Set[BindingId] = patterns.patterns.flatMap { pattern =>
               // Initial node binding
-              val initBinding = bindingSymbol(nodeBindingInt(pattern.initial))
+              val initBinding = nodeBinding(pattern.initial)
 
               // All path connections (edge and destination node bindings)
               val pathBindings = pattern.path.flatMap { conn =>
                 // Edge binding (if named)
-                val edgeBinding = conn.edge.maybeBinding.map(b => bindingSymbol(identInt(b)))
+                val edgeBinding = conn.edge.maybeBinding.map(b => getBindingId(b))
                 // Destination node binding
-                val nodeBinding = Some(bindingSymbol(nodeBindingInt(conn.dest)))
-                edgeBinding.toList ++ nodeBinding.toList
+                val nb = Some(nodeBinding(conn.dest))
+                edgeBinding.toList ++ nb.toList
               }
 
               initBinding :: pathBindings
@@ -2099,7 +2050,7 @@ object QueryPlanner {
           // Create a Procedure plan with the subquery as Unit (will be wrapped by planQueryParts)
           // Convert YieldItems to (resultField, boundAs) pairs
           val yieldPairs = proc.yields.map { yi =>
-            (yi.resultField, bindingSymbol(identInt(yi.boundAs)))
+            (yi.resultField, getBindingId(yi.boundAs))
           }
           QueryPlan.Procedure(
             procedureName = proc.name,
@@ -2109,8 +2060,8 @@ object QueryPlanner {
           )
 
         case unwind: Cypher.ReadingClause.FromUnwind =>
-          // UNWIND expression AS binding - use Int-based format to match expression interpreter
-          QueryPlan.Unwind(unwind.list, bindingSymbol(identInt(unwind.as)), QueryPlan.Unit)
+          // UNWIND expression AS binding
+          QueryPlan.Unwind(unwind.list, getBindingId(unwind.as), QueryPlan.Unit)
 
         case _: Cypher.ReadingClause.FromSubquery =>
           throw new QuinePatternUnimplementedException("Subqueries not yet supported in planner")
@@ -2194,9 +2145,9 @@ object QueryPlanner {
     nodeDeps: NodeDeps,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     propertyBindings: List[PropertyBinding],
-    existingBindings: Set[Symbol],
+    existingBindings: Set[BindingId],
   ): QueryPlan = {
-    val propertyAccessByBinding: Map[Int, Set[Int]] = propertyBindings
+    val propertyAccessByBinding: Map[BindingId, Set[BindingId]] = propertyBindings
       .map(pb => (pb.nodeBinding, pb.synthId))
       .groupMap(_._1)(_._2)
       .map { case (k, v) => (k, v.toSet) }
@@ -2216,13 +2167,13 @@ object QueryPlanner {
   }
 
   private def planPartGroupImpl(
-    partsWithData: List[(Cypher.QueryPart, Set[Symbol], Set[Int])],
+    partsWithData: List[(Cypher.QueryPart, Set[BindingId], Set[BindingId])],
     idLookups: List[IdLookup],
     nodeDeps: NodeDeps,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     propertyBindings: List[PropertyBinding],
-    existingBindings: Set[Symbol],
-    propertyAccessByBinding: Map[Int, Set[Int]],
+    existingBindings: Set[BindingId],
+    propertyAccessByBinding: Map[BindingId, Set[BindingId]],
   ): QueryPlan = partsWithData match {
     case Nil => QueryPlan.Unit
     case (single, _, _) :: Nil =>
@@ -2242,7 +2193,7 @@ object QueryPlanner {
               accumulatedBindings,
               propertyAccessByBinding,
             )
-          QueryPlan.Unwind(unwind.list, bindingSymbol(identInt(unwind.as)), restPlan)
+          QueryPlan.Unwind(unwind.list, getBindingId(unwind.as), restPlan)
 
         case Cypher.QueryPart.ReadingClausePart(proc: Cypher.ReadingClause.FromProcedure) =>
           val restPlan =
@@ -2256,7 +2207,7 @@ object QueryPlanner {
               propertyAccessByBinding,
             )
           val yieldPairs = proc.yields.map { yi =>
-            (yi.resultField, bindingSymbol(identInt(yi.boundAs)))
+            (yi.resultField, getBindingId(yi.boundAs))
           }
           QueryPlan.Procedure(
             procedureName = proc.name,
@@ -2281,12 +2232,11 @@ object QueryPlanner {
           // Does ANY later part depend on bindings from the first part?
           // Symbol analysis rewrites a.x to Ident(synthId), so we use the pre-computed
           // propertyAccessByBinding map to include synthetic IDs whose onBinding is from first.
-          val nodeBindingIds = bindingsFromFirst.map(_.name.toInt)
-          val propertyAccessIds = nodeBindingIds.flatMap(id => propertyAccessByBinding.getOrElse(id, Set.empty))
-          val allIdsFromFirst = nodeBindingIds ++ propertyAccessIds
+          val propertyAccessIds = bindingsFromFirst.flatMap(id => propertyAccessByBinding.getOrElse(id, Set.empty))
+          val allIdsFromFirst = bindingsFromFirst ++ propertyAccessIds
 
           val anyRestDependsOnFirst = rest.exists { case (_, partBindings, partRefs) =>
-            partBindings.exists(s => allIdsFromFirst.contains(s.name.toInt)) ||
+            partBindings.exists(allIdsFromFirst.contains) ||
               partRefs.exists(allIdsFromFirst.contains)
           }
 
@@ -2320,11 +2270,13 @@ object QueryPlanner {
     nodeDeps: NodeDeps,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     propertyBindings: List[PropertyBinding] = Nil,
-    existingBindings: Set[Symbol] = Set.empty,
+    existingBindings: Set[BindingId] = Set.empty,
+    aggregationSynthIds: Map[BindingId, Pattern.Expression],
   ): QueryPlan = {
     // Find the first materializing WITH clause
+    val aggKeySet = aggregationSynthIds.keySet
     val materializingIdx = parts.indexWhere {
-      case Cypher.QueryPart.WithClausePart(wc) => isMaterializingWith(wc)
+      case Cypher.QueryPart.WithClausePart(wc) => isMaterializingWith(wc, aggKeySet)
       case _ => false
     }
 
@@ -2336,7 +2288,7 @@ object QueryPlanner {
       val withPart = withAndAfter.head.asInstanceOf[Cypher.QueryPart.WithClausePart]
       val afterWith = withAndAfter.tail
 
-      // Plan everything before the WITH as a group
+      // Plan everything before the With as a group
       val inputPlan = planPartGroup(beforeWith, idLookups, nodeDeps, symbolTable, propertyBindings, existingBindings)
 
       // Wrap with the WITH's materializing operations
@@ -2346,19 +2298,28 @@ object QueryPlanner {
         symbolTable,
         nodeDeps,
         propertyBindings,
+        aggregationSynthIds,
       )
 
       // Track accumulated bindings through the WITH
       val bindingsThroughWith = beforeWith.flatMap(extractBindingsFromPart).toSet ++
         existingBindings ++
-        withPart.withClause.bindings.map(p => bindingSymbol(identInt(p.as))).toSet
+        withPart.withClause.bindings.map(p => getBindingId(p.as)).toSet
 
       if (afterWith.isEmpty) {
         withPlan
       } else {
         // Recurse on the remaining parts
         val restPlan =
-          planQueryParts(afterWith, idLookups, nodeDeps, symbolTable, propertyBindings, bindingsThroughWith)
+          planQueryParts(
+            afterWith,
+            idLookups,
+            nodeDeps,
+            symbolTable,
+            propertyBindings,
+            bindingsThroughWith,
+            aggregationSynthIds,
+          )
         QueryPlan.Sequence(withPlan, restPlan)
       }
     }
@@ -2368,9 +2329,9 @@ object QueryPlanner {
   // PLAN POST-PROCESSING
   // ============================================================
 
-  /** Extract binding symbol from an expression (for Anchor targets like Ident(n)) */
-  private def extractBindingFromExpr(expr: Pattern.Expression): Option[Symbol] = expr match {
-    case Pattern.Expression.Ident(_, ident, _) => Some(bindingSymbol(identInt(ident)))
+  /** Extract binding ID from an expression (for Anchor targets like Ident(n)) */
+  private def extractBindingFromExpr(expr: Pattern.Expression): Option[BindingId] = expr match {
+    case Pattern.Expression.Ident(_, ident, _) => Some(getBindingId(ident))
     case _ => None
   }
 
@@ -2378,13 +2339,13 @@ object QueryPlanner {
     * When an Anchor has Computed(expr), this checks if expr matches any IdLookup's expression,
     * and if so returns the binding that IdLookup is for.
     */
-  private def findBindingFromIdLookups(expr: Pattern.Expression, idLookups: List[IdLookup]): Option[Symbol] =
-    idLookups.find(_.exp == expr).map(l => bindingSymbol(l.forName))
+  private def findBindingFromIdLookups(expr: Pattern.Expression, idLookups: List[IdLookup]): Option[BindingId] =
+    idLookups.find(_.exp == expr).map(_.forName)
 
   /** Find the node binding within a plan (to determine what binding an anchor provides).
     * Looks for LocalId, LocalAllProperties, or LocalNode which all bind a node.
     */
-  private def findLocalIdBinding(plan: QueryPlan): Option[Symbol] = plan match {
+  private def findLocalIdBinding(plan: QueryPlan): Option[BindingId] = plan match {
     case QueryPlan.LocalId(binding) => Some(binding)
     case QueryPlan.LocalAllProperties(binding) => Some(binding)
     case QueryPlan.LocalNode(binding) => Some(binding)
@@ -2397,7 +2358,7 @@ object QueryPlanner {
   }
 
   /** Extract target binding from an effect */
-  private def getEffectTarget(e: LocalQueryEffect): Option[Symbol] = e match {
+  private def getEffectTarget(e: LocalQueryEffect): Option[BindingId] = e match {
     case LocalQueryEffect.SetProperty(target, _, _) => target
     case LocalQueryEffect.SetProperties(target, _) => target
     case LocalQueryEffect.SetLabels(target, _) => target
@@ -2440,11 +2401,10 @@ object QueryPlanner {
     case other => other
   }
 
-  /** Create an Ident expression for a binding symbol.
-    * The symbol must have been created by bindingSymbol (i.e., its name is the string form of an Int).
+  /** Create an Ident expression for a BindingId.
     */
-  private def makeBindingExpr(binding: Symbol): Pattern.Expression =
-    makeIdentExpr(binding.name.toInt)
+  private def makeBindingExpr(binding: BindingId): Pattern.Expression =
+    makeIdentExpr(binding)
 
   /** Extract all LocalQueryEffects from a plan (recursively through Sequences and LocalEffects) */
   private def extractEffectsFromPlan(plan: QueryPlan): List[LocalQueryEffect] = plan match {
@@ -2456,15 +2416,15 @@ object QueryPlanner {
   }
 
   /** Extract binding references from an effect's value expression.
-    * Returns the set of bindings (as Symbols) that the effect depends on (reads).
+    * Returns the set of binding IDs that the effect depends on (reads).
     */
-  private def getEffectDependencies(effect: LocalQueryEffect): Set[Symbol] = effect match {
-    case LocalQueryEffect.SetProperty(_, _, value) => extractVariableRefs(value).map(bindingSymbol)
-    case LocalQueryEffect.SetProperties(_, props) => extractVariableRefs(props).map(bindingSymbol)
-    case LocalQueryEffect.CreateHalfEdge(_, _, _, destExpr) => extractVariableRefs(destExpr).map(bindingSymbol)
+  private def getEffectDependencies(effect: LocalQueryEffect): Set[BindingId] = effect match {
+    case LocalQueryEffect.SetProperty(_, _, value) => extractVariableRefs(value)
+    case LocalQueryEffect.SetProperties(_, props) => extractVariableRefs(props)
+    case LocalQueryEffect.CreateHalfEdge(_, _, _, destExpr) => extractVariableRefs(destExpr)
     case LocalQueryEffect.Foreach(binding, listExpr, nested) =>
       // FOREACH binds `binding` from listExpr, so nested effects can use it
-      val listDeps = extractVariableRefs(listExpr).map(bindingSymbol)
+      val listDeps = extractVariableRefs(listExpr)
       val nestedDeps = nested.flatMap(getEffectDependencies).toSet - binding
       listDeps ++ nestedDeps
     case _ => Set.empty
@@ -2499,7 +2459,7 @@ object QueryPlanner {
     */
   def pushIntoAnchors(plan: QueryPlan, idLookups: List[IdLookup] = Nil): QueryPlan = {
     // Inner function that tracks current anchor binding (which node we're "on")
-    def push(plan: QueryPlan, anchorContext: Option[Symbol]): QueryPlan = plan match {
+    def push(plan: QueryPlan, anchorContext: Option[BindingId]): QueryPlan = plan match {
       // Main case: Sequence with Anchor followed by something else
       case QueryPlan.Sequence(QueryPlan.Anchor(target, onTarget), rest) =>
         // Determine binding from this anchor
@@ -2574,7 +2534,7 @@ object QueryPlanner {
 
         if (allEffects.nonEmpty) {
           // Build a map of binding -> anchor index for CrossProduct children
-          val bindingToIndex: Map[Symbol, Int] = children.zipWithIndex.flatMap { case (child, idx) =>
+          val bindingToIndex: Map[BindingId, Int] = children.zipWithIndex.flatMap { case (child, idx) =>
             child match {
               case QueryPlan.Anchor(target, onTarget) =>
                 val binding = target match {
@@ -2594,7 +2554,7 @@ object QueryPlanner {
 
           // Check if an effect can be safely pushed into its target anchor
           // (i.e., its dependencies don't include other CrossProduct bindings)
-          def canPushEffect(effect: LocalQueryEffect, targetBinding: Symbol): Boolean = {
+          def canPushEffect(effect: LocalQueryEffect, targetBinding: BindingId): Boolean = {
             val deps = getEffectDependencies(effect)
             // Effect can be pushed if its dependencies don't include OTHER anchors' bindings
             val crossNodeDeps = deps.intersect(allBindings) - targetBinding
@@ -2602,7 +2562,7 @@ object QueryPlanner {
           }
 
           // Partition effects: pushable vs. needs-separate-anchor
-          val effectsByBinding: Map[Option[Symbol], List[LocalQueryEffect]] =
+          val effectsByBinding: Map[Option[BindingId], List[LocalQueryEffect]] =
             allEffects.groupBy(getEffectTarget)
 
           val (pushableByTarget, needsSeparateAnchor) = effectsByBinding
@@ -2616,7 +2576,7 @@ object QueryPlanner {
                   List((targetOpt, Nil, effects))
               }
             }
-            .foldLeft((Map.empty[Symbol, List[LocalQueryEffect]], List.empty[LocalQueryEffect])) {
+            .foldLeft((Map.empty[BindingId, List[LocalQueryEffect]], List.empty[LocalQueryEffect])) {
               case ((pushMap, separate), (Some(target), pushable, notPushable)) =>
                 val updated = pushMap.updated(target, pushMap.getOrElse(target, Nil) ++ pushable)
                 (updated, separate ++ notPushable)
@@ -2675,7 +2635,7 @@ object QueryPlanner {
 
             // Separate children into "dependency" children (visit first) and "target" children (visit last with effects)
             val (depChildren, targetChildren, otherChildren) = children.foldLeft(
-              (List.empty[(QueryPlan, Symbol)], List.empty[(QueryPlan, Symbol)], List.empty[QueryPlan]),
+              (List.empty[(QueryPlan, BindingId)], List.empty[(QueryPlan, BindingId)], List.empty[QueryPlan]),
             ) { case ((deps, targets, others), child) =>
               child match {
                 case anchor @ QueryPlan.Anchor(target, onTarget) =>
@@ -2821,7 +2781,7 @@ object QueryPlanner {
         var result = push(child, anchorContext)
 
         // Group remote effects by their target binding and wrap in anchors
-        val effectsByTarget: Map[Option[Symbol], List[LocalQueryEffect]] = remoteEffects.groupBy(getEffectTarget)
+        val effectsByTarget: Map[Option[BindingId], List[LocalQueryEffect]] = remoteEffects.groupBy(getEffectTarget)
         effectsByTarget.foreach { case (targetOpt, targetEffects) =>
           targetOpt match {
             case Some(target) =>
@@ -2871,8 +2831,8 @@ object QueryPlanner {
     */
   case class PlannedQuery(
     plan: QueryPlan,
-    returnColumns: Option[Set[Symbol]],
-    outputNameMapping: Map[Symbol, Symbol],
+    returnColumns: Option[Set[BindingId]],
+    outputNameMapping: Map[BindingId, Symbol],
   )
 
   /** Wrap a plan with ORDER BY, SKIP, and LIMIT operators from the RETURN clause. */
@@ -2912,27 +2872,44 @@ object QueryPlanner {
     nodeDeps: NodeDeps,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     propertyBindings: List[PropertyBinding],
-    targetBindings: Option[List[Symbol]],
+    aggregationSynthIds: Map[BindingId, Pattern.Expression],
+    targetBindings: Option[List[BindingId]],
   ): QueryPlan = single match {
     case spq: Cypher.Query.SingleQuery.SinglepartQuery =>
-      val bodyPlan = planQueryParts(spq.queryParts, idLookups, nodeDeps, symbolTable, propertyBindings)
+      val bodyPlan = planQueryParts(
+        spq.queryParts,
+        idLookups,
+        nodeDeps,
+        symbolTable,
+        propertyBindings,
+        aggregationSynthIds = aggregationSynthIds,
+      )
       val projected = planProjection(
         spq.bindings,
         isDistinct = spq.isDistinct,
         bodyPlan,
         symbolTable,
         targetBindings = targetBindings,
+        aggregationSynthIds = aggregationSynthIds,
       )
       wrapWithSortSkipLimit(projected, spq.orderBy, spq.maybeSkip, spq.maybeLimit)
     case mpq: Cypher.Query.SingleQuery.MultipartQuery =>
       val allParts = mpq.queryParts ++ mpq.into.queryParts
-      val bodyPlan = planQueryParts(allParts, idLookups, nodeDeps, symbolTable, propertyBindings)
+      val bodyPlan = planQueryParts(
+        allParts,
+        idLookups,
+        nodeDeps,
+        symbolTable,
+        propertyBindings,
+        aggregationSynthIds = aggregationSynthIds,
+      )
       val projected = planProjection(
         mpq.into.bindings,
         isDistinct = mpq.into.isDistinct,
         bodyPlan,
         symbolTable,
         targetBindings = targetBindings,
+        aggregationSynthIds = aggregationSynthIds,
       )
       wrapWithSortSkipLimit(projected, mpq.into.orderBy, mpq.into.maybeSkip, mpq.into.maybeLimit)
   }
@@ -2951,7 +2928,8 @@ object QueryPlanner {
     nodeDeps: NodeDeps,
     symbolTable: SymbolAnalysisModule.SymbolTable,
     propertyBindings: List[PropertyBinding],
-    targetBindings: Option[List[Symbol]] = None,
+    aggregationSynthIds: Map[BindingId, Pattern.Expression],
+    targetBindings: Option[List[BindingId]] = None,
   ): QueryPlan = {
     // Unfold left-associative Union tree into a flat chain:
     // Union(Union(A, B), C) => (A, [(isAll1, B), (isAll2, C)])
@@ -2966,21 +2944,30 @@ object QueryPlanner {
       }
 
     val (first, rest) = collectUnionChain(query, Nil)
-    val firstPlan = planSingleQuery(first, idLookups, nodeDeps, symbolTable, propertyBindings, targetBindings)
+    val firstPlan =
+      planSingleQuery(first, idLookups, nodeDeps, symbolTable, propertyBindings, aggregationSynthIds, targetBindings)
     rest.foldLeft(firstPlan) { case (lhsPlan, (isAll, rhs)) =>
       val lhsTargetBindings = extractProjectTargets(lhsPlan)
       val rhsPlan =
-        planSingleQuery(rhs, idLookups, nodeDeps, symbolTable, propertyBindings, Some(lhsTargetBindings))
+        planSingleQuery(
+          rhs,
+          idLookups,
+          nodeDeps,
+          symbolTable,
+          propertyBindings,
+          aggregationSynthIds,
+          Some(lhsTargetBindings),
+        )
       val unionPlan = QueryPlan.Union(lhsPlan, rhsPlan)
       if (!isAll) QueryPlan.Distinct(unionPlan) else unionPlan
     }
   }
 
-  /** Extract projection target symbols from a plan's outermost Project.
+  /** Extract projection target binding IDs from a plan's outermost Project.
     * Every planned SingleQuery should end with a Project (from the RETURN clause),
     * optionally wrapped in Distinct. If neither is found, the plan is malformed.
     */
-  private def extractProjectTargets(plan: QueryPlan): List[Symbol] = plan match {
+  private def extractProjectTargets(plan: QueryPlan): List[BindingId] = plan match {
     case QueryPlan.Project(columns, _, _) => columns.map(_.as)
     case QueryPlan.Distinct(child) => extractProjectTargets(child)
     case QueryPlan.Union(lhs, _) => extractProjectTargets(lhs)
@@ -2999,6 +2986,8 @@ object QueryPlanner {
     symbolTable: SymbolAnalysisModule.SymbolTable,
     propertyAccessMapping: SymbolAnalysisModule.PropertyAccessMapping =
       SymbolAnalysisModule.PropertyAccessMapping.empty,
+    aggregationAccessMapping: MaterializationOutput.AggregationAccessMapping =
+      MaterializationOutput.AggregationAccessMapping.empty,
     typeEnv: Map[Symbol, Type],
   ): PlannedQuery = {
     val idLookups = extractIdLookups(cypherAst)
@@ -3016,7 +3005,11 @@ object QueryPlanner {
     // Merge property binding dependencies into nodeDeps
     val nodeDeps = NodeDeps.combine(nodeDepsWithoutProps, propertyBindingsToNodeDeps(propertyBindings))
 
-    val rawPlan = planQuery(cypherAst, idLookups, nodeDeps, symbolTable, propertyBindings)
+    // Build aggregation synth ID map: BindingId → original aggregation expression
+    val aggregationSynthIds: Map[BindingId, Pattern.Expression] =
+      aggregationAccessMapping.entries.map(aa => BindingId(aa.synthId) -> aa.expression).toMap
+
+    val rawPlan = planQuery(cypherAst, idLookups, nodeDeps, symbolTable, propertyBindings, aggregationSynthIds)
 
     // Extract return columns from the raw plan BEFORE pushIntoAnchors transformation
     // This is needed because pushIntoAnchors may push the Project inside an Anchor
@@ -3046,7 +3039,7 @@ object QueryPlanner {
   private def buildOutputNameMapping(
     cypherAst: Cypher.Query,
     symbolTable: SymbolAnalysisModule.SymbolTable,
-  ): Map[Symbol, Symbol] = {
+  ): Map[BindingId, Symbol] = {
     // Helper to extract projections from a SingleQuery
     def getSingleQueryProjections(single: Cypher.Query.SingleQuery): List[Cypher.Projection] = single match {
       case spq: Cypher.Query.SingleQuery.SinglepartQuery => spq.bindings
@@ -3057,11 +3050,11 @@ object QueryPlanner {
     def buildMappingFromProjections(
       projections: List[Cypher.Projection],
       referenceProjections: List[Cypher.Projection],
-    ): Map[Symbol, Symbol] =
+    ): Map[BindingId, Symbol] =
       projections
         .zip(referenceProjections)
         .flatMap { case (p, ref) =>
-          val internalName = bindingSymbol(identInt(p.as))
+          val internalName = getBindingId(p.as)
           val humanReadableName = identDisplayName(ref.as, symbolTable)
           Some(internalName -> humanReadableName)
         }
@@ -3089,7 +3082,7 @@ object QueryPlanner {
     * For UNION queries, each side may have different internal binding IDs,
     * so we collect columns from ALL sides.
     */
-  private def extractReturnColumns(plan: QueryPlan): Option[Set[Symbol]] = plan match {
+  private def extractReturnColumns(plan: QueryPlan): Option[Set[BindingId]] = plan match {
     case QueryPlan.Project(columns, dropExisting, _) if dropExisting =>
       Some(columns.map(_.as).toSet)
     case QueryPlan.Union(lhs, rhs) =>
@@ -3138,7 +3131,15 @@ object QueryPlanner {
     // that don't prevent planning (matching the old behavior)
     result.ast match {
       case Some(q: Cypher.Query) =>
-        Right(planWithMetadata(q, result.symbolTable, result.propertyAccessMapping, result.typeEnv))
+        Right(
+          planWithMetadata(
+            q,
+            result.symbolTable,
+            result.propertyAccessMapping,
+            result.aggregationAccessMapping,
+            result.typeEnv,
+          ),
+        )
       case None =>
         Left(result.diagnostics.map(_.toString).mkString("; "))
     }

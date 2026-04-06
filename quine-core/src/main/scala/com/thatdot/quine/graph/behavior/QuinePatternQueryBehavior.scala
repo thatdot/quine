@@ -18,6 +18,7 @@ import com.thatdot.quine.graph.cypher.quinepattern.{
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineMessage, QuineRefOps}
 import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
 import com.thatdot.quine.graph.{BaseNodeActor, NamespaceId, StandingQueryId, StandingQueryOpsGraph}
+import com.thatdot.quine.language.ast.BindingId
 import com.thatdot.quine.language.{ast => Pattern}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds}
 
@@ -60,9 +61,9 @@ object QuinePatternCommand {
     params: Map[Symbol, Pattern.Value],
     namespace: NamespaceId,
     output: com.thatdot.quine.graph.cypher.quinepattern.OutputTarget,
-    injectedContext: Map[Symbol, Pattern.Value] = Map.empty, // Query context bindings to seed into state graph
-    returnColumns: Option[Set[Symbol]] = None, // Columns to include in output (from RETURN clause)
-    outputNameMapping: Map[Symbol, Symbol] = Map.empty, // Maps internal binding IDs to human-readable output names
+    injectedContext: Map[BindingId, Pattern.Value] = Map.empty, // Query context bindings to seed into state graph
+    returnColumns: Option[Set[BindingId]] = None, // Columns to include in output (from RETURN clause)
+    outputNameMapping: Map[BindingId, Symbol] = Map.empty, // Maps internal binding IDs to human-readable output names
     atTime: Option[Milliseconds] = None,
   ) extends QuinePatternCommand
 
@@ -79,7 +80,7 @@ object QuinePatternCommand {
     anchorStateId: StandingQueryId,
     nodeId: com.thatdot.common.quineid.QuineId,
     namespace: NamespaceId,
-    context: Map[Symbol, Pattern.Value] = Map.empty,
+    context: Map[BindingId, Pattern.Value] = Map.empty,
   ) extends QuinePatternCommand
 }
 
@@ -221,9 +222,9 @@ trait QuinePatternQueryBehavior
     params: Map[Symbol, Pattern.Value],
     namespace: NamespaceId,
     output: com.thatdot.quine.graph.cypher.quinepattern.OutputTarget,
-    injectedContext: Map[Symbol, Pattern.Value],
-    returnColumns: Option[Set[Symbol]],
-    outputNameMapping: Map[Symbol, Symbol],
+    injectedContext: Map[BindingId, Pattern.Value],
+    returnColumns: Option[Set[BindingId]],
+    outputNameMapping: Map[BindingId, Symbol],
     atTime: Option[Milliseconds],
   ): Unit =
     try {
