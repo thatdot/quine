@@ -31,7 +31,7 @@ object Dependencies {
   val flatbuffersV = "25.2.10"
   val graalV = "25.0.2"
   val ioniconsV = "2.0.1"
-  val jnrPosixV = "3.1.21"
+  val jnrPosixV = "3.1.22"
   val jqueryV = "3.6.3"
   val jwtV = "0.13.0"
   val jwtScalaV = "11.0.3"
