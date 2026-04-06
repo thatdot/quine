@@ -24,6 +24,7 @@ import com.thatdot.quine.webapp.components.{
   ContextMenuItem,
   CypherResultsTable,
   Loader,
+  ToolbarButton,
   VisData,
   VisIndirectMouseEvent,
   VisNetwork,
@@ -1357,6 +1358,10 @@ object QueryUi {
 
     def stepBackMany(): Unit = updateHistory(_.stepBack(), () => stepBackToCheckpoint())
     def stepForwardMany(): Unit = updateHistory(_.stepForward(), () => stepForwardToCheckpoint())
+    def stepBackAll(): Unit =
+      if (stateVar.now().history.canStepBackward) updateHistory(_.stepBack(), () => stepBackAll())
+    def stepForwardAll(): Unit =
+      if (stateVar.now().history.canStepForward) updateHistory(_.stepForward(), () => stepForwardAll())
 
     div(
       height := "100%",
@@ -1429,20 +1434,22 @@ object QueryUi {
             canStepBackward = stateVar.signal.map(_.history.canStepBackward),
             canStepForward = stateVar.signal.map(_.history.canStepForward),
             isAnimating = stateVar.signal.map(_.animating),
-            undoMany = () => stepBackMany(),
             undo = () => updateHistory(_.stepBack()),
+            undoMany = () => stepBackMany(),
+            undoAll = () => stepBackAll(),
             animate = () => stateVar.update(s => s.copy(animating = !s.animating)),
             redo = () => updateHistory(_.stepForward()),
             redoMany = () => stepForwardMany(),
+            redoAll = () => stepForwardAll(),
             makeCheckpoint = () => {
               Option(window.prompt("Name your checkpoint")).foreach { name =>
                 networkLayout(() => updateHistory(hist => Some(hist.observe(QueryUiEvent.Checkpoint(name)))))
               }
             },
-            checkpointContextMenu = (e: dom.MouseEvent) => {
-              e.preventDefault()
-              contextMenuVar.set(Some(ContextMenuState(e.pageX, e.pageY, checkpointContextMenuItems())))
-            },
+            checkpointMenuItems = () =>
+              checkpointContextMenuItems().map { item =>
+                ToolbarButton.MenuAction(item.item, item.title, item.action)
+              },
             downloadHistory = (snapshotOnly: Boolean) => {
               networkLayout { () =>
                 val history = if (snapshotOnly) makeSnapshot() else stateVar.now().history

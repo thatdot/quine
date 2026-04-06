@@ -1,6 +1,5 @@
 package com.thatdot.quine.webapp.queryui
 
-import scala.scalajs.js
 import scala.scalajs.js.Date
 import scala.util.Try
 import scala.util.matching.Regex
@@ -9,40 +8,8 @@ import com.raquo.laminar.api.L._
 import org.scalajs.dom
 import org.scalajs.dom.{console, window}
 
-import com.thatdot.quine.webapp.{Styles, Sugar}
-
-/** Button on the history navigation bar */
-object HistoryNavButton {
-
-  /** Standard button with a reactively-toggled enabled state */
-  def apply(
-    ionClass: String,
-    tooltipTitle: String,
-    enabled: Signal[Boolean] = Val(true),
-    onClickAction: dom.MouseEvent => Unit = _ => (),
-    onContextMenuAction: Option[dom.MouseEvent => Unit] = None,
-  ): HtmlElement =
-    htmlTag("i")(
-      cls <-- enabled.map { e =>
-        s"$ionClass ${Styles.navBarButton} ${if (e) Styles.clickable else Styles.disabled}"
-      },
-      title := tooltipTitle,
-      onClick.compose(_.withCurrentValueOf(enabled).collect { case (e, true) => e }) --> onClickAction,
-      onContextMenu --> (e => onContextMenuAction.foreach(_(e))),
-    )
-
-  /** Button with a dynamically changing icon (for play/pause) */
-  def dynamic(
-    ionClass: Signal[String],
-    tooltipTitle: Signal[String],
-    onClickAction: dom.MouseEvent => Unit,
-  ): HtmlElement =
-    htmlTag("i")(
-      cls <-- ionClass.map(icon => s"$icon ${Styles.navBarButton} ${Styles.clickable}"),
-      title <-- tooltipTitle,
-      onClick --> onClickAction,
-    )
-}
+import com.thatdot.quine.webapp.Sugar
+import com.thatdot.quine.webapp.components.ToolbarButton
 
 /** Bar of buttons for adjusting history */
 object HistoryNavigationButtons {
@@ -88,13 +55,15 @@ object HistoryNavigationButtons {
     canStepBackward: Signal[Boolean],
     canStepForward: Signal[Boolean],
     isAnimating: Signal[Boolean],
-    undoMany: () => Unit,
     undo: () => Unit,
+    undoMany: () => Unit,
+    undoAll: () => Unit,
     animate: () => Unit,
     redo: () => Unit,
     redoMany: () => Unit,
+    redoAll: () => Unit,
     makeCheckpoint: () => Unit,
-    checkpointContextMenu: dom.MouseEvent => Unit,
+    checkpointMenuItems: () => Seq[ToolbarButton.MenuAction],
     downloadHistory: Boolean => Unit,
     downloadGraphJsonLd: () => Unit,
     uploadHistory: dom.FileList => Unit,
@@ -104,108 +73,67 @@ object HistoryNavigationButtons {
     toggleLayout: () => Unit,
     recenterViewport: () => Unit,
   ): HtmlElement = {
-    val confirmCheckpointVar = Var(false)
-    val confirmDownloadVar = Var(false)
-    val downloadMenuOpenVar = Var(false)
-
-    var downloadWrapperEl: Option[dom.html.Element] = None
     var uploadInputEl: Option[dom.html.Input] = None
-
-    val handleDocumentClick: js.Function1[dom.MouseEvent, Unit] = { (event: dom.MouseEvent) =>
-      if (downloadMenuOpenVar.now()) {
-        val target = event.target.asInstanceOf[dom.Node]
-        val clickedInside = downloadWrapperEl.exists(_.contains(target))
-        if (!clickedInside) downloadMenuOpenVar.set(false)
-      }
-    }
-
-    def downloadMenuItem(label: String, action: () => Unit): HtmlElement =
-      li(
-        onClick --> { _ =>
-          confirmDownloadVar.set(true)
-          downloadMenuOpenVar.set(false)
-          window.setTimeout(() => confirmDownloadVar.set(false), 2000)
-          action()
-        },
-        label,
-      )
 
     div(
       flexGrow := "1",
       display := "flex",
-      onMountCallback(_ => dom.document.addEventListener("click", handleDocumentClick)),
-      onUnmountCallback(_ => dom.document.removeEventListener("click", handleDocumentClick)),
-      HistoryNavButton(
-        "ion-ios-rewind",
-        "Undo until previous checkpoint",
-        enabled = canStepBackward,
-        onClickAction = _ => undoMany(),
-      ),
-      HistoryNavButton(
+      // Back button: left-click = previous, right-click = {Previous, Previous Checkpoint, Beginning}
+      ToolbarButton(
         "ion-ios-skipbackward",
-        "Undo previous change",
+        "Undo previous change (right-click for more options)",
         enabled = canStepBackward,
         onClickAction = _ => undo(),
+        menuActions = () =>
+          Seq(
+            ToolbarButton.MenuAction("Previous", "Undo previous change", undo),
+            ToolbarButton.MenuAction("Previous Checkpoint", "Undo until previous checkpoint", undoMany),
+            ToolbarButton.MenuAction("Beginning", "Undo all changes", undoAll),
+          ),
       ),
-      HistoryNavButton.dynamic(
+      // Play/Pause
+      ToolbarButton.dynamic(
         ionClass = isAnimating.map(a => if (a) "ion-ios-pause" else "ion-ios-play"),
         tooltipTitle = isAnimating.map(a => if (a) "Stop animating graph" else "Animate graph"),
         onClickAction = _ => animate(),
       ),
-      HistoryNavButton(
+      // Forward button: left-click = next, right-click = {Next, Next Checkpoint, End}
+      ToolbarButton(
         "ion-ios-skipforward",
-        "Redo or apply next change",
+        "Redo or apply next change (right-click for more options)",
         enabled = canStepForward,
         onClickAction = _ => redo(),
+        menuActions = () =>
+          Seq(
+            ToolbarButton.MenuAction("Next", "Redo or apply next change", redo),
+            ToolbarButton.MenuAction("Next Checkpoint", "Redo until next checkpoint", redoMany),
+            ToolbarButton.MenuAction("End", "Redo all changes", redoAll),
+          ),
       ),
-      HistoryNavButton(
-        "ion-ios-fastforward",
-        "Redo until next checkpoint",
-        enabled = canStepForward,
-        onClickAction = _ => redoMany(),
+      // Checkpoint button: left-click = create, right-click = navigate to checkpoint
+      ToolbarButton(
+        "ion-ios-location-outline",
+        "Create a checkpoint (right-click to navigate checkpoints)",
+        onClickAction = _ => makeCheckpoint(),
+        menuActions = checkpointMenuItems,
       ),
-      // Checkpoint button
-      htmlTag("i")(
-        cls <-- confirmCheckpointVar.signal.map { confirmed =>
-          s"ion-ios-location${if (confirmed) "" else "-outline"} ${Styles.navBarButton} ${Styles.clickable}"
-        },
-        title := "Create a checkpoint",
-        onClick --> { _ =>
-          confirmCheckpointVar.set(true)
-          window.setTimeout(() => confirmCheckpointVar.set(false), 2000)
-          makeCheckpoint()
-        },
-        onContextMenu --> (e => checkpointContextMenu(e)),
+      // Data button: left-click = download history, right-click = {History Log, Snapshot, Graph, Upload}
+      ToolbarButton(
+        "ion-ios-cloud-download-outline",
+        "Download history log (right-click for more options)",
+        onClickAction = _ => downloadHistory(false),
+        menuActions = () =>
+          Seq(
+            ToolbarButton.MenuAction("History Log", "Download the full history log", () => downloadHistory(false)),
+            ToolbarButton
+              .MenuAction("History Snapshot", "Download the current history snapshot", () => downloadHistory(true)),
+            ToolbarButton
+              .MenuAction("Current Graph", "Download the current graph as JSON-LD", () => downloadGraphJsonLd()),
+            ToolbarButton
+              .MenuAction("Upload History", "Upload a history log file", () => uploadInputEl.foreach(_.click())),
+          ),
       ),
-      // Download wrapper
-      div(
-        position := "relative",
-        display := "flex",
-        alignItems := "center",
-        onMountCallback(ctx => downloadWrapperEl = Some(ctx.thisNode.ref)),
-        htmlTag("i")(
-          cls <-- confirmDownloadVar.signal.map { confirmed =>
-            val icon = if (confirmed) "ion-checkmark-round" else "ion-ios-cloud-download-outline"
-            s"$icon ${Styles.navBarButton} ${Styles.clickable}"
-          },
-          title := "Download options",
-          onClick --> { _ => downloadMenuOpenVar.update(!_) },
-        ),
-        ul(
-          cls <-- downloadMenuOpenVar.signal.map { open =>
-            s"download-dropdown-menu${if (open) " open" else ""}"
-          },
-          downloadMenuItem("History Log", () => downloadHistory(false)),
-          downloadMenuItem("History Snapshot", () => downloadHistory(true)),
-          downloadMenuItem("Current Graph", () => downloadGraphJsonLd()),
-        ),
-      ),
-      // Upload button
-      HistoryNavButton(
-        "ion-ios-cloud-upload-outline",
-        "Upload a history log.",
-        onClickAction = _ => uploadInputEl.foreach(_.click()),
-      ),
+      // Hidden file input for upload
       input(
         typ := "file",
         nameAttr := "file",
@@ -219,7 +147,7 @@ object HistoryNavigationButtons {
       // Time button
       child <-- atTime.combineWith(canSetTime).map { case (atTimeOpt, canSet) =>
         val timeStr = currentTime(atTimeOpt)
-        HistoryNavButton(
+        ToolbarButton.simple(
           "ion-ios-time-outline",
           s"Querying for time: $timeStr",
           enabled = Val(canSet),
@@ -264,12 +192,14 @@ object HistoryNavigationButtons {
           },
         )
       },
-      HistoryNavButton(
+      // Layout toggle
+      ToolbarButton.simple(
         "ion-android-share-alt",
         "Toggle between a tree and graph layout of nodes",
         onClickAction = _ => toggleLayout(),
       ),
-      HistoryNavButton(
+      // Recenter viewport
+      ToolbarButton.simple(
         "ion-pinpoint",
         "Recenter the viewport to the initial location",
         onClickAction = _ => recenterViewport(),
