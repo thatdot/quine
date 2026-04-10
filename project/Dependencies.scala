@@ -88,7 +88,7 @@ object Dependencies {
   // On update, check whether any NPM Override Versions (below) are removable
   val stoplightElementsV = "9.0.1"
   val sugarV = "2.0.6"
-  val tapirV = "1.13.14"
+  val tapirV = "1.13.15"
   val ujsonCirceV = "3.3.1"
   val circeV = "0.14.15"
   val circeGenericExtrasV = "0.14.4"
