@@ -34,7 +34,7 @@ object Dependencies {
   val jnrPosixV = "3.1.22"
   val jqueryV = "3.6.3"
   val jwtV = "0.13.0"
-  val jwtScalaV = "11.0.3"
+  val jwtScalaV = "11.0.4"
   // On update, keep lz4JavaV in sync
   val kafkaClientsV = "3.9.2"
   val kindProjectorV = "0.13.4"
