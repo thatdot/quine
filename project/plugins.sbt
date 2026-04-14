@@ -21,5 +21,5 @@ addSbtPlugin("com.simplytyped" % "sbt-antlr4" % "0.8.3")
 
 // 👇 IMPORTANT: When updating this version, also update the NVD cache key in
 //    .github/workflows/dependency-check.yml (search for "nvd-db-")
-addSbtPlugin("net.nmoncho" % "sbt-dependency-check" % "1.8.5")
+addSbtPlugin("net.nmoncho" % "sbt-dependency-check" % "1.9.0")
 // ☝️ If updating sbt-dependency-check version, update NVD cache key, too!
