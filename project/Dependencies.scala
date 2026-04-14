@@ -70,7 +70,7 @@ object Dependencies {
   val munitV = "1.2.4"
   val quineCommonV = "0.0.4"
   val reactV = "17.0.2"
-  val rocksdbV = "10.10.1"
+  val rocksdbV = "10.10.1.1"
   val scaffeineV = "5.3.0"
   val scalaCheckV = "1.19.0"
   val scalaJavaTimeV = "2.6.0"
