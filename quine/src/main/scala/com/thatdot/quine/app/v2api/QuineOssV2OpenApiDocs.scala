@@ -7,7 +7,9 @@ import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
 import sttp.tapir.{EndpointInput, query}
 
 import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.quine.app.v2api.definitions.CommonParameters
 import com.thatdot.quine.app.v2api.endpoints.Visibility
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
 
@@ -23,8 +25,8 @@ trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
 
   def memberIdxParameter: EndpointInput[Option[Int]] =
     query[Option[Int]]("memberIdx").schema(_.hidden(true))
-  def namespaceParameter: EndpointInput[Option[String]] =
-    query[Option[String]]("namespace").schema(_.hidden(true))
+  def namespaceParameter: EndpointInput[Option[NamespaceParameter]] =
+    CommonParameters.hiddenValidatingNamespaceQuery
 
   private lazy val allRawEndpoints = V2ApiInfo.endpointSequences(this)
 

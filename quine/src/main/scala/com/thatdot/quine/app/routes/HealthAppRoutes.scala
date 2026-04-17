@@ -15,9 +15,10 @@ import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig}
 import com.thatdot.quine.app.QuineApp
 import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.v2api.OssApiMethods
-import com.thatdot.quine.app.v2api.definitions.TapirRoutes
+import com.thatdot.quine.app.v2api.definitions.{CommonParameters, TapirRoutes}
 import com.thatdot.quine.app.v2api.endpoints.V2QuineAdministrationEndpoints
 import com.thatdot.quine.graph.GraphService
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 /** Health endpoint routes for Quine
   *
@@ -62,8 +63,8 @@ class HealthAppRoutes(
   override def memberIdxParameter: EndpointInput[Option[Int]] =
     query[Option[Int]]("memberIdx").schema(_.hidden(true))
 
-  override def namespaceParameter: EndpointInput[Option[String]] =
-    query[Option[String]]("namespace").schema(_.hidden(true))
+  override def namespaceParameter: EndpointInput[Option[NamespaceParameter]] =
+    CommonParameters.hiddenValidatingNamespaceQuery
 
   override lazy val staticFilesRoute: Route = reject
 

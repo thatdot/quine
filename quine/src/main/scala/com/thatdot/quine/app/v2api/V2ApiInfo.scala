@@ -10,6 +10,7 @@ import sttp.tapir.{EndpointInput, server}
 
 import com.thatdot.quine.app.BuildInfo
 import com.thatdot.quine.app.v2api.endpoints._
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 object V2ApiInfo {
   val info: Info = Info(
@@ -72,5 +73,5 @@ trait V2OssEndpointProvider
     with V2IngestEndpoints
     with V2QueryWebSocketEndpoints {
   def memberIdxParameter: EndpointInput[Option[Int]]
-  def namespaceParameter: EndpointInput[Option[String]]
+  def namespaceParameter: EndpointInput[Option[NamespaceParameter]]
 }

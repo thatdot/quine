@@ -20,6 +20,7 @@ import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities._
 import com.thatdot.quine.routes._
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 /** Objects mapping to endpoints4s-annotated objects appearing in [[com.thatdot.quine.routes.AdministrationRoutes]].
   *  These objects require parallel Tapir annotations.
@@ -233,7 +234,9 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     configE.serverLogic[Future](configLogic)
 
   protected[endpoints] val graphHashCode
-    : Endpoint[Unit, (Option[AtTime], Option[String]), ServerError, SuccessEnvelope.Ok[TGraphHashCode], Any] =
+    : Endpoint[Unit, (Option[AtTime], Option[NamespaceParameter]), ServerError, SuccessEnvelope.Ok[
+      TGraphHashCode,
+    ], Any] =
     adminBase("graph-hash-code")
       .description(
         "Generate a hash of the state of the graph at the provided timestamp.\n\n" +
@@ -251,18 +254,18 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[TGraphHashCode]])
 
-  protected[endpoints] val graphHashCodeLogic
-    : ((Option[AtTime], Option[String])) => Future[Either[ServerError, SuccessEnvelope.Ok[TGraphHashCode]]] = {
-    case (atime, ns: Option[String]) =>
-      recoverServerError(appMethods.graphHashCode(atime, namespaceFromParam(ns)))((inp: TGraphHashCode) =>
-        SuccessEnvelope.Ok(inp),
-      )
+  protected[endpoints] val graphHashCodeLogic: ((Option[AtTime], Option[NamespaceParameter])) => Future[
+    Either[ServerError, SuccessEnvelope.Ok[TGraphHashCode]],
+  ] = { case (atime, ns) =>
+    recoverServerError(appMethods.graphHashCode(atime, namespaceFromParam(ns)))((inp: TGraphHashCode) =>
+      SuccessEnvelope.Ok(inp),
+    )
   }
 
   private val graphHashCodeServerEndpoint: Full[
     Unit,
     Unit,
-    (Option[AtTime], Option[String]),
+    (Option[AtTime], Option[NamespaceParameter]),
     ServerError,
     SuccessEnvelope.Ok[TGraphHashCode],
     Any,
@@ -501,7 +504,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
   ] = updateShardSizes.serverLogic[Future](updateShardSizesLogic)
 
   protected[endpoints] val requestNodeSleep
-    : Endpoint[Unit, (QuineId, Option[String]), ServerError, SuccessEnvelope.Accepted, Any] =
+    : Endpoint[Unit, (QuineId, Option[NamespaceParameter]), ServerError, SuccessEnvelope.Accepted, Any] =
     adminBase("nodes").post
       .name("sleep-node")
       .summary("Sleep Node")
@@ -517,7 +520,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
       .out(jsonBody[SuccessEnvelope.Accepted])
 
   protected[endpoints] val requestNodeSleepLogic
-    : ((QuineId, Option[String])) => Future[Either[ServerError, SuccessEnvelope.Accepted]] = {
+    : ((QuineId, Option[NamespaceParameter])) => Future[Either[ServerError, SuccessEnvelope.Accepted]] = {
     case (nodeId, namespace) =>
       recoverServerError(appMethods.requestNodeSleep(nodeId, namespaceFromParam(namespace)))(_ =>
         SuccessEnvelope.Accepted(),
@@ -527,7 +530,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
   private val requestNodeSleepServerEndpoint: Full[
     Unit,
     Unit,
-    (QuineId, Option[String]),
+    (QuineId, Option[NamespaceParameter]),
     ServerError,
     SuccessEnvelope.Accepted,
     Any,

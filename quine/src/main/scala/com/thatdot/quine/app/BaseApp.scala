@@ -257,6 +257,43 @@ abstract class BaseApp(graph: BaseGraph) {
   def invalidIfNoNamespace[A](namespace: NamespaceId)(f: => ValidatedNel[BaseError, A]): ValidatedNel[BaseError, A] =
     if (getNamespaces.contains(namespace)) f
     else invalidNel(exceptions.NamespaceNotFoundException(namespace))
+
+  /** Validate that all persisted namespace names conform to the canonical rules
+    * (1-16 lowercase alphanumeric characters starting with a letter). If any name is
+    * non-conforming, log the offending names and shut down. This prevents startup with
+    * namespace data that was created under older, looser validation rules.
+    */
+  protected def validateNamespaceNames(names: Iterable[String]): Unit =
+    BaseApp.findNonConformingNamespaces(names) match {
+      case Nil => ()
+      case nonConforming =>
+        throw new IllegalStateException(
+          s"Cannot start: namespace(s) ${nonConforming.mkString("'", "', '", "'")} do not match the required format " +
+          "(1-16 characters, must start with a letter, lowercase letters and digits only). " +
+          "Rename the storage artifacts before starting.",
+        )
+    }
+}
+
+object BaseApp {
+
+  /** Identify namespace names that don't conform to canonical rules.
+    *
+    * A conforming name must:
+    *   - Be 1-16 characters
+    *   - Start with a letter
+    *   - Contain only lowercase letters and digits
+    *   - Already be lowercased (no uppercase characters)
+    *
+    * @return the list of non-conforming names, empty if all are valid
+    */
+  def findNonConformingNamespaces(names: Iterable[String]): List[String] = {
+    import com.thatdot.quine.routes.exts.NamespaceParameter
+    names.filter { s =>
+      val normalized = s.toLowerCase
+      !NamespaceParameter.isValidNamespaceParameter(normalized) || s != normalized
+    }.toList
+  }
 }
 
 class MetaDataDeserializationException(msg: String) extends RuntimeException(msg)

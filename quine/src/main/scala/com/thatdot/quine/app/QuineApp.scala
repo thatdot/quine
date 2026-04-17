@@ -1178,6 +1178,7 @@ final class QuineApp(
   def restoreNonDefaultNamespacesFromMetaData(implicit ec: ExecutionContext): Future[Unit] =
     getOrDefaultGlobalMetaData(NonDefaultNamespacesKey, List.empty[String])
       .flatMap { nss =>
+        validateNamespaceNames(nss)
         Future.traverse(nss)(n => createNamespace(namespaceFromString(n), shouldWriteToPersistor = false))
       }
       .map(rs => require(rs.forall(identity), "Some namespaces could not be restored from persistence."))

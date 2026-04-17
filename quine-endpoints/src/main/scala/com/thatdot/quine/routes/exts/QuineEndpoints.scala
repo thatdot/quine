@@ -29,9 +29,16 @@ object NamespaceParameter {
     validNamespacePattern.matches(s)
   }
 
+  /** Human-readable error message for an invalid namespace name.
+    * Used in 400 Bad Request responses when namespace validation fails.
+    */
+  def invalidNamespaceMessage(s: String): String =
+    s"'$s' is not a valid namespace. " +
+    "Namespaces must be 1-16 characters, start with a letter, and contain only letters and digits."
+
   val namespaceCodec: Codec[String, NamespaceParameter] = new Codec[String, NamespaceParameter] {
     override def decode(s: String): Validated[NamespaceParameter] =
-      Validated.fromOption(NamespaceParameter(s))(s"'$s' is not a valid namespace name")
+      Validated.fromOption(NamespaceParameter(s))(invalidNamespaceMessage(s))
 
     override def encode(from: NamespaceParameter): String = from.namespaceId
   }

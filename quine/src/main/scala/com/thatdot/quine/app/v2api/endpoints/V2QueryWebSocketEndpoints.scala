@@ -20,6 +20,7 @@ import com.thatdot.quine.app.v2api.definitions.{
   QuineApiMethods,
   V2QueryWebSocketFlow,
 }
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 /** V2 Tapir WebSocket endpoint for the explorer UI query protocol (OSS version, no auth). */
 trait V2QueryWebSocketEndpoints extends V2EndpointDefinitions with CommonParameters {
@@ -32,7 +33,7 @@ trait V2QueryWebSocketEndpoints extends V2EndpointDefinitions with CommonParamet
 
   private val v2QueryWebSocket: Endpoint[
     Unit,
-    Option[String],
+    Option[NamespaceParameter],
     ServerError,
     PekkoStreams.Pipe[WebSocketFrame, WebSocketFrame],
     WebSockets with PekkoStreams,
@@ -45,7 +46,7 @@ trait V2QueryWebSocketEndpoints extends V2EndpointDefinitions with CommonParamet
     .out(webSocketBodyRaw(PekkoStreams).autoPongOnPing(true))
     .errorOut(serverError())
 
-  private val v2QueryWebSocketLogic: Option[String] => Future[
+  private val v2QueryWebSocketLogic: Option[NamespaceParameter] => Future[
     Either[ServerError, PekkoStreams.Pipe[WebSocketFrame, WebSocketFrame]],
   ] = namespaceParam => {
     val namespaceId = namespaceFromParam(namespaceParam)

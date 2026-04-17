@@ -9,6 +9,7 @@ import sttp.tapir.{EndpointInput, query}
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.v2api.definitions._
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 /** Gathering of Quine OSS tapir-defined routes.
   */
@@ -21,8 +22,8 @@ class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfi
 
   def memberIdxParameter: EndpointInput[Option[Int]] =
     query[Option[Int]]("memberIdx").schema(_.hidden(true))
-  def namespaceParameter: EndpointInput[Option[String]] =
-    query[Option[String]]("namespace").schema(_.hidden(true))
+  def namespaceParameter: EndpointInput[Option[NamespaceParameter]] =
+    CommonParameters.hiddenValidatingNamespaceQuery
 
   val apiInfo: Info = V2ApiInfo.info
 

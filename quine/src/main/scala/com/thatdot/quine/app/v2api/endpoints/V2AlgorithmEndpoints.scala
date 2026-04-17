@@ -30,6 +30,7 @@ import com.thatdot.quine.app.v2api.definitions.{
   ParallelismParameter,
 }
 import com.thatdot.quine.graph.{AlgorithmGraph, BaseGraph, CypherOpsGraph, LiteralOpsGraph}
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 object V2AlgorithmEndpointEntities extends StringOps {
 
@@ -156,7 +157,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Option[Double],
       Option[Double],
       Option[String],
-      Option[String],
+      Option[NamespaceParameter],
       Option[AtTime],
       Int,
       TSaveLocation,
@@ -220,7 +221,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Option[Double],
       Option[Double],
       Option[String],
-      Option[String],
+      Option[NamespaceParameter],
       Option[AtTime],
       Int,
       TSaveLocation,
@@ -267,7 +268,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Option[Double],
       Option[Double],
       Option[String],
-      Option[String],
+      Option[NamespaceParameter],
       Option[AtTime],
       Int,
       TSaveLocation,
@@ -287,7 +288,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Option[Double],
       Option[Double],
       Option[String],
-      Option[String],
+      Option[NamespaceParameter],
       Option[AtTime],
     ),
     Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
@@ -320,7 +321,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Option[Double],
       Option[Double],
       Option[String],
-      Option[String],
+      Option[NamespaceParameter],
       Option[AtTime],
     ),
   ) => Future[Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], SuccessEnvelope.Ok[List[String]]]] = {
@@ -350,7 +351,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Option[Double],
       Option[Double],
       Option[String],
-      Option[String],
+      Option[NamespaceParameter],
       Option[AtTime],
     ),
     Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],

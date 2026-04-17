@@ -15,6 +15,7 @@ import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.Oss
 import com.thatdot.quine.app.v2api.definitions.{CommonParameters, QuineApiMethods, V2QuineEndpointDefinitions}
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters with StringOps {
   import com.thatdot.quine.app.v2api.converters.ApiToIngest.OssConversions._
@@ -48,7 +49,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
   implicit private val ec: ExecutionContext = ExecutionContext.parasitic
 
   protected[endpoints] val createIngest
-    : Endpoint[Unit, (Option[String], Option[Int], Oss.QuineIngestConfiguration), Either[
+    : Endpoint[Unit, (Option[NamespaceParameter], Option[Int], Oss.QuineIngestConfiguration), Either[
       ServerError,
       BadRequest,
     ], SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName], Any] = ingestBase
@@ -74,9 +75,10 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
       ),
     )
 
-  protected[endpoints] val createIngestLogic: ((Option[String], Option[Int], Oss.QuineIngestConfiguration)) => Future[
-    Either[Either[ServerError, BadRequest], SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName]],
-  ] = { case (ns, memberIdx, ingestStreamConfig) =>
+  protected[endpoints] val createIngestLogic
+    : ((Option[NamespaceParameter], Option[Int], Oss.QuineIngestConfiguration)) => Future[
+      Either[Either[ServerError, BadRequest], SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName]],
+    ] = { case (ns, memberIdx, ingestStreamConfig) =>
     recoverServerErrorEitherWithServerError {
       appMethods.createIngestStream(ingestStreamConfig.name, namespaceFromParam(ns), ingestStreamConfig, memberIdx)
     } { case (stream, warnings) =>
@@ -87,7 +89,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
   private val createIngestServerEndpoint: Full[
     Unit,
     Unit,
-    (Option[String], Option[Int], Oss.QuineIngestConfiguration),
+    (Option[NamespaceParameter], Option[Int], Oss.QuineIngestConfiguration),
     Either[ServerError, BadRequest],
     SuccessEnvelope.Created[ApiIngest.IngestStreamInfoWithName],
     Any,
@@ -96,7 +98,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
 
   protected[endpoints] val pauseIngest: Endpoint[
     Unit,
-    (String, Option[String], Option[Int]),
+    (String, Option[NamespaceParameter], Option[Int]),
     Either[ServerError, Either[NotFound, BadRequest]],
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
@@ -116,7 +118,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
 
-  protected[endpoints] val pauseIngestLogic: ((String, Option[String], Option[Int])) => Future[
+  protected[endpoints] val pauseIngestLogic: ((String, Option[NamespaceParameter], Option[Int])) => Future[
     Either[Either[ServerError, Either[NotFound, BadRequest]], SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]],
   ] = { case (ingestStreamName, ns, maybeMemberIdx) =>
     recoverServerErrorEither(
@@ -141,7 +143,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
   private val pauseIngestServerEndpoint: Full[
     Unit,
     Unit,
-    (String, Option[String], Option[Int]),
+    (String, Option[NamespaceParameter], Option[Int]),
     Either[ServerError, Either[NotFound, BadRequest]],
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
@@ -150,7 +152,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
 
   protected[endpoints] val unpauseIngest: Endpoint[
     Unit,
-    (String, Option[String], Option[Int]),
+    (String, Option[NamespaceParameter], Option[Int]),
     Either[ServerError, Either[NotFound, BadRequest]],
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
@@ -170,7 +172,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
 
-  protected[endpoints] val unpauseIngestLogic: ((String, Option[String], Option[Int])) => Future[
+  protected[endpoints] val unpauseIngestLogic: ((String, Option[NamespaceParameter], Option[Int])) => Future[
     Either[Either[ServerError, Either[NotFound, BadRequest]], SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]],
   ] = { case (ingestStreamName, ns, maybeMemberIdx) =>
     recoverServerErrorEither(
@@ -193,7 +195,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
   private val unpauseIngestServerEndpoint: Full[
     Unit,
     Unit,
-    (String, Option[String], Option[Int]),
+    (String, Option[NamespaceParameter], Option[Int]),
     Either[ServerError, Either[NotFound, BadRequest]],
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
@@ -202,7 +204,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
 
   protected[endpoints] val deleteIngest: Endpoint[
     Unit,
-    (String, Option[String], Option[Int]),
+    (String, Option[NamespaceParameter], Option[Int]),
     Either[ServerError, NotFound],
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
@@ -222,7 +224,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
 
-  protected[endpoints] val deleteIngestLogic: ((String, Option[String], Option[Int])) => Future[
+  protected[endpoints] val deleteIngestLogic: ((String, Option[NamespaceParameter], Option[Int])) => Future[
     Either[Either[ServerError, NotFound], SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]],
   ] = { case (ingestStreamName, ns, memberIdx) =>
     recoverServerErrorEither(
@@ -235,14 +237,16 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     )((inp: ApiIngest.IngestStreamInfoWithName) => SuccessEnvelope.Ok(inp))
   }
 
-  private val deleteIngestServerEndpoint
-    : Full[Unit, Unit, (String, Option[String], Option[Int]), Either[ServerError, NotFound], SuccessEnvelope.Ok[
-      ApiIngest.IngestStreamInfoWithName,
-    ], Any, Future] = deleteIngest.serverLogic[Future](deleteIngestLogic)
+  private val deleteIngestServerEndpoint: Full[Unit, Unit, (String, Option[NamespaceParameter], Option[Int]), Either[
+    ServerError,
+    NotFound,
+  ], SuccessEnvelope.Ok[
+    ApiIngest.IngestStreamInfoWithName,
+  ], Any, Future] = deleteIngest.serverLogic[Future](deleteIngestLogic)
 
   protected[endpoints] val ingestStatus: Endpoint[
     Unit,
-    (String, Option[String], Option[Int]),
+    (String, Option[NamespaceParameter], Option[Int]),
     Either[ServerError, NotFound],
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
@@ -258,7 +262,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]])
 
-  protected[endpoints] val ingestStatusLogic: ((String, Option[String], Option[Int])) => Future[
+  protected[endpoints] val ingestStatusLogic: ((String, Option[NamespaceParameter], Option[Int])) => Future[
     Either[Either[ServerError, NotFound], SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName]],
   ] = { case (ingestStreamName, ns, memberIdx) =>
     recoverServerErrorEither(
@@ -277,7 +281,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
   private val ingestStatusServerEndpoint: Full[
     Unit,
     Unit,
-    (String, Option[String], Option[Int]),
+    (String, Option[NamespaceParameter], Option[Int]),
     Either[ServerError, NotFound],
     SuccessEnvelope.Ok[ApiIngest.IngestStreamInfoWithName],
     Any,
@@ -286,7 +290,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
 
   protected[endpoints] val listIngest: Endpoint[
     Unit,
-    (Option[String], Option[Int]),
+    (Option[NamespaceParameter], Option[Int]),
     ServerError,
     SuccessEnvelope.Ok[Seq[ApiIngest.IngestStreamInfoWithName]],
     Any,
@@ -304,7 +308,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[SuccessEnvelope.Ok[Seq[ApiIngest.IngestStreamInfoWithName]]])
 
-  protected[endpoints] val listIngestLogic: ((Option[String], Option[Int])) => Future[
+  protected[endpoints] val listIngestLogic: ((Option[NamespaceParameter], Option[Int])) => Future[
     Either[ServerError, SuccessEnvelope.Ok[Seq[ApiIngest.IngestStreamInfoWithName]]],
   ] = { case (ns, memberIdx) =>
     recoverServerError(appMethods.listIngestStreams(namespaceFromParam(ns), memberIdx))(SuccessEnvelope.Ok.apply(_))
@@ -313,7 +317,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
   private val listIngestServerEndpoint: Full[
     Unit,
     Unit,
-    (Option[String], Option[Int]),
+    (Option[NamespaceParameter], Option[Int]),
     ServerError,
     SuccessEnvelope.Ok[Seq[ApiIngest.IngestStreamInfoWithName]],
     Any,

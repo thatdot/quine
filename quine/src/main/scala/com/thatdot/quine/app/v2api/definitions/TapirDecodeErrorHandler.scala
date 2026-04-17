@@ -80,7 +80,15 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
             )
 
           // -----------------------------------------------------------------
-          // 3. Otherwise: lift the error body into our [[ErrorResponse]] based around status code
+          // 3. Non-Circe decode errors with a descriptive exception message
+          //    (e.g., invalid namespace, invalid QuineId, bad edge direction)
+          // -----------------------------------------------------------------
+          case DecodeResult.Error(_, ex) if ex.getMessage != null =>
+            val failureSource = DefaultDecodeFailureHandler.FailureMessages.failureSourceMessage(ctx.failingInput)
+            decodeFailureResponse(headers, s"$failureSource: ${ex.getMessage}")
+
+          // -----------------------------------------------------------------
+          // 4. Otherwise: lift the error body into our [[ErrorResponse]] based around status code
           // -----------------------------------------------------------------
           case _ =>
             code match {

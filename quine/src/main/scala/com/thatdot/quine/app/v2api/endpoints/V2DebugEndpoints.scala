@@ -19,6 +19,7 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 object V2DebugEndpointEntities {
   import com.thatdot.quine.app.util.StringOps.syntax._
@@ -149,7 +150,7 @@ trait V2DebugEndpoints
 
   protected[endpoints] val debugOpsPropertyGet: Endpoint[
     Unit,
-    (QuineId, String, Option[AtTime], Option[String]),
+    (QuineId, String, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
     SuccessEnvelope.Ok[Option[Json]],
     Any,
@@ -172,9 +173,10 @@ trait V2DebugEndpoints
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[Option[Json]]])
 
-  protected[endpoints] val debugOpsPropertyGetLogic: ((QuineId, String, Option[AtTime], Option[String])) => Future[
-    Either[ServerError, SuccessEnvelope.Ok[Option[Json]]],
-  ] = { case (id, propKey, atime, ns) =>
+  protected[endpoints] val debugOpsPropertyGetLogic
+    : ((QuineId, String, Option[AtTime], Option[NamespaceParameter])) => Future[
+      Either[ServerError, SuccessEnvelope.Ok[Option[Json]]],
+    ] = { case (id, propKey, atime, ns) =>
     recoverServerError(appMethods.debugOpsPropertyGet(id, propKey, atime, namespaceFromParam(ns)))(
       (inp: Option[Json]) => SuccessEnvelope.Ok.apply(inp),
     )
@@ -183,7 +185,7 @@ trait V2DebugEndpoints
   private val debugOpsPropertyGetServerEndpoint: Full[
     Unit,
     Unit,
-    (QuineId, String, Option[AtTime], Option[String]),
+    (QuineId, String, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
     SuccessEnvelope.Ok[Option[Json]],
     Any,
@@ -192,7 +194,7 @@ trait V2DebugEndpoints
 
   protected[endpoints] val debugOpsGet: Endpoint[
     Unit,
-    (QuineId, Option[AtTime], Option[String]),
+    (QuineId, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
     SuccessEnvelope.Ok[TLiteralNode[QuineId]],
     Any,
@@ -208,7 +210,7 @@ trait V2DebugEndpoints
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[TLiteralNode[QuineId]]])
 
-  protected[endpoints] val debugOpsGetLogic: ((QuineId, Option[AtTime], Option[String])) => Future[
+  protected[endpoints] val debugOpsGetLogic: ((QuineId, Option[AtTime], Option[NamespaceParameter])) => Future[
     Either[ServerError, SuccessEnvelope.Ok[TLiteralNode[QuineId]]],
   ] = { case (id, atime, ns) =>
     recoverServerError(appMethods.debugOpsGet(id, atime, namespaceFromParam(ns)))(
@@ -219,7 +221,7 @@ trait V2DebugEndpoints
   private val debugOpsGetServerEndpoint: Full[
     Unit,
     Unit,
-    (QuineId, Option[AtTime], Option[String]),
+    (QuineId, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
     SuccessEnvelope.Ok[TLiteralNode[QuineId]],
     Any,
@@ -229,7 +231,7 @@ trait V2DebugEndpoints
   //TODO temporarily outputs string
   protected[endpoints] val debugOpsVerbose: Endpoint[
     Unit,
-    (QuineId, Option[AtTime], Option[String]),
+    (QuineId, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
     SuccessEnvelope.Ok[String],
     Any,
@@ -246,16 +248,16 @@ trait V2DebugEndpoints
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[SuccessEnvelope.Ok[String]])
 
-  protected[endpoints] val debugOpsVerboseLogic
-    : ((QuineId, Option[AtTime], Option[String])) => Future[Either[ServerError, SuccessEnvelope.Ok[String]]] = {
-    case (id, atime, ns) =>
-      recoverServerError(appMethods.debugOpsVerbose(id, atime, namespaceFromParam(ns)))(SuccessEnvelope.Ok(_))
+  protected[endpoints] val debugOpsVerboseLogic: ((QuineId, Option[AtTime], Option[NamespaceParameter])) => Future[
+    Either[ServerError, SuccessEnvelope.Ok[String]],
+  ] = { case (id, atime, ns) =>
+    recoverServerError(appMethods.debugOpsVerbose(id, atime, namespaceFromParam(ns)))(SuccessEnvelope.Ok(_))
   }
 
   private val debugOpsVerboseServerEndpoint: Full[
     Unit,
     Unit,
-    (QuineId, Option[AtTime], Option[String]),
+    (QuineId, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
     SuccessEnvelope.Ok[String],
     Any,
@@ -272,7 +274,7 @@ trait V2DebugEndpoints
       Option[QuineId],
       Option[String],
       Option[Boolean],
-      Option[String],
+      Option[NamespaceParameter],
     ),
     ServerError,
     SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]],
@@ -305,7 +307,7 @@ trait V2DebugEndpoints
       Option[QuineId],
       Option[String],
       Option[Boolean],
-      Option[String],
+      Option[NamespaceParameter],
     ),
   ) => Future[Either[ServerError, SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]]]] = {
     case (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, fullOnly, ns) =>
@@ -328,7 +330,7 @@ trait V2DebugEndpoints
       Option[QuineId],
       Option[String],
       Option[Boolean],
-      Option[String],
+      Option[NamespaceParameter],
     ),
     ServerError,
     SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]],
