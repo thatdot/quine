@@ -82,6 +82,7 @@ object Dependencies {
   val scalajsMacroTaskExecutorV = "1.1.1"
   val scoptV = "4.1.0"
   val shapelessV = "2.3.13"
+  // On update, check whether bouncycastleOverrideV is removable
   val ayzaV = "10.0.4"
   // On update, check whether com.datastax.oss exclusion in quine-cassandra-persistor is removable
   val sigv4AuthCassandraPluginV = "4.0.9"
@@ -110,11 +111,15 @@ object Dependencies {
   // Parent: AWS SDK (awsSdkV) via transitive Netty dependency
   val nettyOverrideV = "4.1.132.Final" // CVE-2026-33871
 
+  // Parent: io.github.hakky54:ayza-for-pem (ayzaV)
+  val bouncycastleOverrideV = "1.84" // CVE-2026-5598
+
   val jvmDependencyOverrides: Seq[ModuleID] = Seq(
     "io.netty" % "netty-handler" % nettyOverrideV,
     "io.netty" % "netty-codec-http" % nettyOverrideV,
     "io.netty" % "netty-codec-http2" % nettyOverrideV,
     "io.netty" % "netty-transport-classes-epoll" % nettyOverrideV,
+    "org.bouncycastle" % "bcpkix-jdk18on" % bouncycastleOverrideV,
   )
 
   // === NPM Override Versions ===
