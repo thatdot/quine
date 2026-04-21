@@ -1269,6 +1269,8 @@ object QueryUi {
     def stepBackToCheckpoint(name: Option[String] = None): Unit =
       stateVar.now().history.past match {
         case Nil =>
+        case QueryUiEvent.Checkpoint(n) :: (layout: QueryUiEvent.Layout) :: _ if name.forall(_ == n) =>
+          val _ = window.setTimeout(() => queryUiEvent.applyEvent(layout), 0)
         case QueryUiEvent.Checkpoint(n) :: _ if name.forall(_ == n) =>
         case _ => updateHistory(_.stepBack(), () => stepBackToCheckpoint(name))
       }
