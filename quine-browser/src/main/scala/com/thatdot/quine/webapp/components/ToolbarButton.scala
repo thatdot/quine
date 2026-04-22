@@ -9,7 +9,6 @@ import com.thatdot.quine.webapp.Styles
 
 /** A toolbar button that supports left-click for the default action and
   * right-click or long-press to reveal a context menu of alternative actions.
-  * A small chevron indicator is shown on buttons that have a context menu.
   */
 object ToolbarButton {
 
@@ -31,8 +30,6 @@ object ToolbarButton {
     *
     * Left-click performs the default action. Right-click (desktop) or
     * long-press (touch) opens a dropdown menu of alternative actions.
-    * A small chevron indicator is rendered beside buttons that have
-    * menu actions, providing a tap target to open the menu on any device.
     *
     * @param ionClass Ionicons CSS class for the button icon
     * @param tooltipTitle tooltip text shown on hover
@@ -124,15 +121,6 @@ object ToolbarButton {
         onTouchEnd --> { _ => cancelLongPress() },
         onTouchMove --> { _ => cancelLongPress() },
         onTouchCancel --> { _ => cancelLongPress() },
-      ),
-      // Chevron indicator — tap target to open the context menu on any device
-      htmlTag("i")(
-        cls <-- enabled.map { e =>
-          s"ion-arrow-down-b toolbar-menu-indicator ${if (e) Styles.clickable else Styles.disabled}"
-        },
-        onClick.compose(_.withCurrentValueOf(enabled).collect { case (e, true) => e }) --> { _ =>
-          toggleMenu()
-        },
       ),
       // Context menu dropdown
       ul(

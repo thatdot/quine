@@ -170,26 +170,6 @@ pre.wrap {
   margin-right: .5em;
   margin-left: 0em;
 }
-/* Chevron indicator for toolbar buttons with context menus */
-.toolbar-menu-indicator {
-  font-size: 0.55em;
-  color: var(--thatdot-gradient-end);
-  padding: 0 0.3em;
-  margin-left: -0.5em;
-  cursor: pointer;
-  transition: color .15s ease-in-out;
-  -webkit-user-select: none;
-  user-select: none;
-  touch-action: manipulation;
-}
-.toolbar-menu-indicator.clickable:hover {
-  color: var(--cui-body-color);
-}
-.toolbar-menu-indicator.disabled {
-  color: var(--cui-tertiary-color);
-  cursor: default;
-}
-
 /* Cypher results table */
 table.cypher-results {
   border: 1px solid black;
