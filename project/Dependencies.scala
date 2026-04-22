@@ -13,6 +13,7 @@ object Dependencies {
   val bootstrapV = "5.3.6"
   val coreuiV = "5.4.3"
   val coreuiIconsV = "3.0.1"
+  val fontsourceInterV = "5.2.8"
   val caffeineV = "3.2.3"
   val cassandraClientV = "4.19.2"
   val catsV = "2.13.0"

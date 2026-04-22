@@ -15,7 +15,14 @@
   --thatdot-gradient-end: #f4f4f9;
 
   /* Brand color extensions — unofficial */
-  --thatdot-gradient-middle: #ebebf3
+  --thatdot-gradient-middle: #ebebf3;
+
+  /* Primary typeface — Inter with system-font fallback. Overrides CoreUI's
+     default. Keep the "Inter Variable, Inter, system-ui, ..., sans-serif"
+     prefix in sync with the inline `.fullsize` font-family in the served HTML
+     (quine-ui.html and dev/index.html); the emoji fonts are CSS-only since
+     the pre-bundle window renders no emoji UI. */
+  --cui-font-sans-serif: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
 
   /* Map brand colors to CoreUI taxonomy */
   --cui-body-bg: var(--thatdot-gradient-end);
@@ -114,6 +121,7 @@ pre.wrap {
   flex-grow: 1;
   padding: .2em;
   margin: .4em 0 .4em .4em;
+  font-family: inherit;
   font-size: 1.2em;
   border: none;
   float: left;
@@ -121,10 +129,14 @@ pre.wrap {
   background-color: white;
   border-radius: .2em 0 0 .2em;
 }
+.query-input-input::placeholder {
+  font-family: inherit;
+}
 .query-input-button {
   float: left;
   padding: .2em .6em;
   margin: .4em .4em .4em 0;
+  font-family: inherit;
   font-size: 1.2em;
   border: none;
   border-radius: 0 .2em .2em 0;

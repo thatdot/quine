@@ -369,6 +369,7 @@ lazy val `quine-browser`: Project = project
       "mkdirp" -> "1.0.0",
       "@coreui/coreui" -> coreuiV,
       "@coreui/icons" -> coreuiIconsV,
+      "@fontsource-variable/inter" -> fontsourceInterV,
       "@popperjs/core" -> "2.11.8",
     ),
     // Force patched dependency versions via yarn resolutions (see NPM Override Versions in Dependencies.scala)

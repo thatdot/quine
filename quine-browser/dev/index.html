@@ -33,12 +33,15 @@
   <style>
     .swagger-ui .code,
     .swagger-ui code {
-      font-family: Ionicons, Consolas, monaco, monospace;
+      font-family: Consolas, monaco, monospace;
     }
 
+    /* Pre-bundle fallback. Keep the stack in sync with --cui-font-sans-serif
+       in index.css (this copy omits the emoji fonts since no emoji UI renders
+       before the bundle loads). */
     .fullsize {
       margin: 0;
-      font-family: sans-serif;
+      font-family: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       height: 100%;
     }
   </style>

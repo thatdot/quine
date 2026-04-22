@@ -15,6 +15,11 @@ import com.thatdot.{visnetwork => vis}
 
 package object webapp {
 
+  @JSImport("@fontsource-variable/inter/index.css", JSImport.Namespace)
+  @js.native
+  object InterFontCSS extends js.Object
+  InterFontCSS
+
   @JSImport("@coreui/coreui/dist/css/coreui.min.css", JSImport.Namespace)
   @js.native
   object CoreuiCSS extends js.Object
