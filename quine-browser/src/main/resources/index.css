@@ -17,6 +17,9 @@
   /* Brand color extensions — unofficial */
   --thatdot-gradient-middle: #ebebf3;
 
+  /* Layout tokens */
+  --topbar-height: 4rem;
+
   /* Primary typeface — Inter with system-font fallback. Overrides CoreUI's
      default. Keep the "Inter Variable, Inter, system-ui, ..., sans-serif"
      prefix in sync with the inline `.fullsize` font-family in the served HTML
@@ -186,6 +189,9 @@ pre.wrap {
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.28);
   position: relative;
   z-index: 5;
+  min-height: var(--topbar-height);
+  box-sizing: border-box;
+  align-items: center;
 }
 .nav-bar-button {
   float: left;
@@ -385,6 +391,15 @@ div.vis-tooltip {
 .sidebar.sidebar-light {
   --cui-sidebar-bg: var(--cui-body-bg);
   --cui-sidebar-color: var(--cui-body-color);
+}
+
+/* Align the sidebar header's height with the top nav-bar (.nav-bar) so the
+   header's bottom border lines up with the nav-bar's bottom edge, giving one
+   continuous horizontal rule across the app. Both read from the shared
+   --topbar-height var so any future change stays coordinated. */
+.sidebar-header {
+  height: var(--topbar-height);
+  box-sizing: border-box;
 }
 
 /* Sidebar brand logo */
