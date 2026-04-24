@@ -37,7 +37,7 @@ final case class QuineConfig(
   metricsReporters: List[MetricsReporter] = List(MetricsReporter.Jmx),
   metrics: MetricsConfig = MetricsConfig(),
   helpMakeQuineBetter: Boolean = true,
-  defaultApiVersion: String = "v1",
+  defaultApiVersion: String = "v2",
   logConfig: LogConfig = LogConfig.permissive,
   fileIngest: FileIngestConfig = FileIngestConfig(),
 ) extends BaseConfig {

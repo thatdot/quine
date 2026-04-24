@@ -146,6 +146,9 @@ class QuineAppRoutes(
     ).v2Routes(ingestOnly = false)
 
     logger.info(safe"API V1 and V2 endpoints available (UI default: ${Safe(config.defaultApiVersion)})")
+    logger.warn(
+      safe"API V1 is planned for deprecation and will be removed in a future release.",
+    )
     v1Routes ~ v2Route
   }
 }
