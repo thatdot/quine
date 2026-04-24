@@ -18,6 +18,11 @@ object Styles {
   val queryInput = "query-input"
   val queryInputInput = "query-input-input"
   val queryInputButton = "query-input-button"
+  val sampleQueryDropdown = "sample-query-dropdown"
+  val sampleQueryItem = "sample-query-item"
+  val sampleQueryItemHighlighted = "highlighted"
+  val sampleQueryName = "sample-query-name"
+  val sampleQueryText = "sample-query-text"
 
   // Query result sentiment
   val queryResultError = "query-result-error"
