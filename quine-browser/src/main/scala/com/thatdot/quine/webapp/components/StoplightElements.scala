@@ -46,7 +46,6 @@ object StoplightElements {
   ): HtmlElement = {
     val specVar = Var(Option.empty[String])
 
-    // Fetch the spec and replace the placeholder
     val fetchFuture = for {
       response <- dom.fetch(apiDescriptionUrl).toFuture
       text <- response.text().toFuture
@@ -59,6 +58,7 @@ object StoplightElements {
 
     div(
       cls := "sl-elements-wrapper",
+      padding := "1rem 2rem",
       height := "100%",
       child <-- specVar.signal.map {
         case Some(spec) =>

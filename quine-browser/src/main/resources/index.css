@@ -443,12 +443,79 @@ div.vis-tooltip {
    Stoplight Elements overrides
    ========================================================================== */
 
-/* Add padding to the Stoplight Elements content */
-.sl-elements-wrapper > div {
-  padding: 8px;
-}
-
 /* Hide "powered by Stoplight" branding link */
 .HttpService a[href*="stoplight.io"][href*="utm_source=elements"][href*="utm_campaign=powered_by"] {
   display: none;
+}
+
+/* Inherit app typography + body color */
+.sl-elements-wrapper,
+.sl-elements-wrapper .sl-elements {
+  font-family: inherit;
+  color: var(--cui-body-color);
+}
+
+/* Drop Stoplight's internal max-width so content uses the full page width */
+.sl-elements-wrapper .sl-max-w-4xl {
+  max-width: none;
+}
+
+/* Trim bottom margin + align border colors to our token */
+.sl-elements-wrapper .HttpService {
+  margin-bottom: 0;
+}
+.sl-elements-wrapper [class*="sl-border"] {
+  border-color: var(--cui-border-color);
+}
+
+/* Link color uses the brand accent */
+.sl-elements-wrapper a {
+  color: var(--thatdot-brite-blue);
+}
+.sl-elements-wrapper a:hover {
+  color: var(--thatdot-dark-blue);
+}
+
+/* Match the overview H1 ("Quine API") to the Metrics-page H2 typography so
+ * top-of-page headings share the same visual weight across the app. */
+.sl-elements-wrapper .HttpService h1 {
+  font-size: 32px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+/* Soften inputs and the Send API Request button inside Stoplight's dark
+ * "Try It" / inverted panels. Stoplight's defaults give them near-white
+ * borders that read as harsh against the dark navy background; we drop
+ * the border entirely at rest and reveal a subtle darker-grey outline
+ * only on hover/focus so the field and button blend with the panel until
+ * the user aims at them. */
+.sl-elements-wrapper .sl-inverted input,
+.sl-elements-wrapper .sl-inverted textarea {
+  border-color: transparent;
+  background-color: transparent;
+}
+.sl-elements-wrapper .sl-inverted input:hover,
+.sl-elements-wrapper .sl-inverted textarea:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.sl-elements-wrapper .sl-inverted input:focus,
+.sl-elements-wrapper .sl-inverted textarea:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+  outline: none;
+  box-shadow: none;
+}
+/* The Send API Request button keeps its fill; we only tone its border. */
+.sl-elements-wrapper .sl-inverted .sl-button {
+  border-color: transparent;
+}
+.sl-elements-wrapper .sl-inverted .sl-button:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.sl-elements-wrapper .sl-inverted .sl-button:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+  outline: none;
+  box-shadow: none;
 }
