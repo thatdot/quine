@@ -14,6 +14,7 @@ class QuineOssNavItems(apiV1: Boolean) {
 
   private val navItems =
     List(
+      NavItemData[QuineOssPage](name = "Dashboard", icon = "cil-home", page = Landing),
       NavItemData[QuineOssPage](name = "Exploration UI", icon = "cil-search", page = ExplorerUi),
       docsNavItem,
       NavItemData[QuineOssPage](name = "Metrics", icon = "cil-speedometer", page = Metrics),

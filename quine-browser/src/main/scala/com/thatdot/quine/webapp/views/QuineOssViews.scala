@@ -22,6 +22,7 @@ class QuineOssViews(
     .collectStatic(DocsV1)(DocsV1View(options))
     .collectStatic(DocsV2)(DocsV2View(options))
     .collectStatic(Metrics)(MetricsView(routes, queryMethod))
+    .collectStatic(Landing)(LandingView(routes))
     .signal
 
   val views: HtmlElement =

@@ -45,6 +45,11 @@ module.exports = {
         alias: {
             "NodeModules": path.resolve(__dirname, "../../scalajs-bundler/main/node_modules"),
             "resources": path.resolve(__dirname, "../../../../src/main/resources"),
+            // Shared browser assets (SVG/PNG icons, etc.) consumed by every browser
+            // module — see `public/shared-browser-resources/`. From this bundler
+            // working dir (`<module>/target/scala-2.13/scalajs-bundler/main/`) that's
+            // 5 levels up from public/quine-browser, landing at `public/`.
+            "shared-resources": path.resolve(__dirname, "../../../../../shared-browser-resources"),
         },
         extensions: ['.js', '.jsx', '.ts', '.tsx']
     },

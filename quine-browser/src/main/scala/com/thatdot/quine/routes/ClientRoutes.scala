@@ -35,7 +35,7 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
       ),
     )
 
-  protected val baseUrlOpt: Option[String] = baseUrl.toOption
+  val baseUrlOpt: Option[String] = baseUrl.toOption
   protected val baseWsUrl: String = baseUrlOpt
     .getOrElse(window.location.origin) // websocket URLs must be absolute... :/
     .replaceFirst("^http", "ws") // turns `http` into `ws` and `https` into `wss`

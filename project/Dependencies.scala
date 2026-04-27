@@ -12,6 +12,7 @@ object Dependencies {
   val boopickleV = "1.5.0"
   val bootstrapV = "5.3.6"
   val coreuiV = "5.4.3"
+  val d3V = "7.9.0"
   val coreuiIconsV = "3.0.1"
   val fontsourceInterV = "5.2.8"
   val caffeineV = "3.2.3"

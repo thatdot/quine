@@ -11,6 +11,7 @@ object QuineOssPage {
   case object DocsV1 extends QuineOssPage("Interactive Documentation V1")
   case object DocsV2 extends QuineOssPage("Interactive Documentation V2")
   case object Metrics extends QuineOssPage("Metrics")
+  case object Landing extends QuineOssPage("Dashboard")
 
   implicit val ExplorerUiPageDecoder: Decoder[ExplorerUi.type] = deriveDecoder
   implicit val ExplorerUiPageEncoder: Encoder[ExplorerUi.type] = deriveEncoder
@@ -24,12 +25,16 @@ object QuineOssPage {
   implicit val metricsPageDecoder: Decoder[Metrics.type] = deriveDecoder
   implicit val metricsPageEncoder: Encoder[Metrics.type] = deriveEncoder
 
+  implicit val landingPageDecoder: Decoder[Landing.type] = deriveDecoder
+  implicit val landingPageEncoder: Encoder[Landing.type] = deriveEncoder
+
   implicit val PageDecoder: Decoder[QuineOssPage] =
     List[Decoder[QuineOssPage]](
       Decoder[ExplorerUi.type].widen,
       Decoder[DocsV1.type].widen,
       Decoder[DocsV2.type].widen,
       Decoder[Metrics.type].widen,
+      Decoder[Landing.type].widen,
     ).reduceLeft(_ or _)
 
   implicit val PageEncoder: Encoder[QuineOssPage] = Encoder.instance {
@@ -37,5 +42,6 @@ object QuineOssPage {
     case DocsV1 => DocsV1.asJson
     case DocsV2 => DocsV2.asJson
     case Metrics => Metrics.asJson
+    case Landing => Landing.asJson
   }
 }
