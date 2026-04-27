@@ -116,6 +116,7 @@ object QueryUi {
     var layout: NetworkLayout = props.initialLayout
     val visualization: GraphVisualization = new VisNetworkVisualization(props.graphData, () => network)
     val pinTracker = new PinTracker(visualization)
+    var physicsRequestCount: Int = 0
     var webSocketClientFut: Future[WebSocketQueryClient] =
       Future.failed(new Exception("Client not initialized"))
     var webSocketClientV2Fut: Future[V2WebSocketQueryClient] =
@@ -280,24 +281,24 @@ object QueryUi {
 
       def applyEvent(event: QueryUiEvent): Unit = event match {
         case Add(nodes, edges, updateNodes, syntheticEdges, explodeFromId) =>
-          window.setTimeout(() => animateNetwork(1000), 0)
+          withPhysics() {
+            val posOpt: Option[(Double, Double)] = explodeFromId.map { startingId =>
+              val bb = network.get.getBoundingBox(startingId)
+              ((bb.left + bb.right) / 2, (bb.top + bb.bottom) / 2)
+            }
 
-          val posOpt: Option[(Double, Double)] = explodeFromId.map { startingId =>
-            val bb = network.get.getBoundingBox(startingId)
-            ((bb.left + bb.right) / 2, (bb.top + bb.bottom) / 2)
-          }
+            props.graphData.nodeSet.add(nodes.map(nodeUi2Vis(_, posOpt)).toJSArray)
+            props.graphData.edgeSet.add(edges.map(edgeUi2Vis(_, isSynEdge = false)).toJSArray)
+            props.graphData.edgeSet.add(syntheticEdges.map(edgeUi2Vis(_, isSynEdge = true)).toJSArray)
+            props.graphData.nodeSet.update(updateNodes.map(nodeUi2Vis(_, None)).toJSArray)
 
-          props.graphData.nodeSet.add(nodes.map(nodeUi2Vis(_, posOpt)).toJSArray)
-          props.graphData.edgeSet.add(edges.map(edgeUi2Vis(_, isSynEdge = false)).toJSArray)
-          props.graphData.edgeSet.add(syntheticEdges.map(edgeUi2Vis(_, isSynEdge = true)).toJSArray)
-          props.graphData.nodeSet.update(updateNodes.map(nodeUi2Vis(_, None)).toJSArray)
-
-          if (layout == NetworkLayout.Tree) {
-            network.get.setOptions(new vis.Network.Options {
-              override val nodes = new vis.NodeOptions {
-                override val shape = "icon"
-              }
-            })
+            if (layout == NetworkLayout.Tree) {
+              network.get.setOptions(new vis.Network.Options {
+                override val nodes = new vis.NodeOptions {
+                  override val shape = "icon"
+                }
+              })
+            }
           }
 
         case Remove(nodes, edges, _, syntheticEdges, _) =>
@@ -309,40 +310,42 @@ object QueryUi {
 
         case Collapse(nodes, clusterId, name) =>
           val nodeIds: Set[vis.IdType] = nodes.map(id => id: vis.IdType).toSet
-          window.setTimeout(() => animateNetwork(1000), 0)
-          network.get.cluster(new vis.ClusterOptions {
-            override val joinCondition = Some[js.Function1[js.Any, Boolean]]((n: js.Any) =>
-              nodeIds.contains(n.asInstanceOf[vis.Node].id),
-            ).orUndefined
+          withPhysics() {
+            network.get.cluster(new vis.ClusterOptions {
+              override val joinCondition = Some[js.Function1[js.Any, Boolean]]((n: js.Any) =>
+                nodeIds.contains(n.asInstanceOf[vis.Node].id),
+              ).orUndefined
 
-            override val processProperties = Some[js.Function3[js.Any, js.Any, js.Any, js.Any]] {
-              (clusterOptionsAny: js.Any, childNodes: js.Any, childEdges: js.Any) =>
-                trait MutableClusterOptions extends js.Object {
-                  var id: js.UndefOr[vis.IdType]
-                  var label: js.UndefOr[String]
-                  var title: js.UndefOr[String]
-                  var collapsedNodes: js.UndefOr[js.Array[String]]
+              override val processProperties = Some[js.Function3[js.Any, js.Any, js.Any, js.Any]] {
+                (clusterOptionsAny: js.Any, childNodes: js.Any, childEdges: js.Any) =>
+                  trait MutableClusterOptions extends js.Object {
+                    var id: js.UndefOr[vis.IdType]
+                    var label: js.UndefOr[String]
+                    var title: js.UndefOr[String]
+                    var collapsedNodes: js.UndefOr[js.Array[String]]
+                  }
+
+                  val clusterOptions = clusterOptionsAny.asInstanceOf[MutableClusterOptions]
+                  clusterOptions.id = clusterId
+                  clusterOptions.label = name
+                  clusterOptions.collapsedNodes = nodes.toJSArray
+
+                  clusterOptions
+              }.orUndefined
+
+              override val clusterNodeProperties = new vis.NodeOptions {
+                override val icon = new vis.NodeOptions.Icon {
+                  override val code = "\uf413"
+                  override val size = 54
                 }
-
-                val clusterOptions = clusterOptionsAny.asInstanceOf[MutableClusterOptions]
-                clusterOptions.id = clusterId
-                clusterOptions.label = name
-                clusterOptions.collapsedNodes = nodes.toJSArray
-
-                clusterOptions
-            }.orUndefined
-
-            override val clusterNodeProperties = new vis.NodeOptions {
-              override val icon = new vis.NodeOptions.Icon {
-                override val code = "\uf413"
-                override val size = 54
               }
-            }
-          })
+            })
+          }
 
         case Expand(_, clusterId, _) =>
-          window.setTimeout(() => animateNetwork(1000), 0)
-          network.get.openCluster(clusterId)
+          withPhysics() {
+            network.get.openCluster(clusterId)
+          }
 
         case Checkpoint(_) =>
         case Layout(positions) =>
@@ -987,39 +990,40 @@ object QueryUi {
     }
 
     lazy val toggleNetworkLayout: () => Unit = { () =>
-      layout match {
-        case NetworkLayout.Graph =>
-          layout = NetworkLayout.Tree
-          network.get.setOptions(
-            new vis.Network.Options {
-              override val layout = new vis.Network.Options.Layout {
-                override val hierarchical = jsObj(
-                  enabled = true,
-                  sortMethod = "directed",
-                  shakeTowards = "roots",
-                )
-              }
-            },
-          )
+      withPhysics() {
+        layout match {
+          case NetworkLayout.Graph =>
+            layout = NetworkLayout.Tree
+            network.get.setOptions(
+              new vis.Network.Options {
+                override val layout = new vis.Network.Options.Layout {
+                  override val hierarchical = jsObj(
+                    enabled = true,
+                    sortMethod = "directed",
+                    shakeTowards = "roots",
+                  )
+                }
+              },
+            )
 
-        case NetworkLayout.Tree =>
-          layout = NetworkLayout.Graph
-          network.get.setOptions(
-            new vis.Network.Options {
-              override val layout = new vis.Network.Options.Layout {
-                override val hierarchical = false: js.Any
-              }
-            },
-          )
+          case NetworkLayout.Tree =>
+            layout = NetworkLayout.Graph
+            network.get.setOptions(
+              new vis.Network.Options {
+                override val layout = new vis.Network.Options.Layout {
+                  override val hierarchical = false: js.Any
+                }
+              },
+            )
 
-          network.get.setOptions(new vis.Network.Options {
-            override val edges = new vis.EdgeOptions {
-              override val smooth = false
-              override val arrows = "to"
-            }
-          })
+            network.get.setOptions(new vis.Network.Options {
+              override val edges = new vis.EdgeOptions {
+                override val smooth = false
+                override val arrows = "to"
+              }
+            })
+        }
       }
-      animateNetwork()
     }
 
     lazy val recenterNetworkViewport: () => Unit =
@@ -1038,9 +1042,33 @@ object QueryUi {
           },
         )
 
-    def animateNetwork(millis: Double = 1000): Unit = {
-      stateVar.update(_.copy(animating = true))
-      window.setTimeout(() => stateVar.update(_.copy(animating = false)), millis)
+    /** Enable physics synchronously, run `body`, then schedule physics disable.
+      * Physics is enabled *before* the body executes so vis.js initializes
+      * node positions immediately when they are added to the DataSet.
+      * Uses a counter so overlapping calls keep physics alive until the last
+      * one expires. The disable is also skipped if the user has manually
+      * toggled physics on via the toolbar.
+      */
+    def withPhysics(millis: Double = 1000)(body: => Unit): Unit = {
+      physicsRequestCount += 1
+      val physicsOn = new vis.Network.Options {
+        override val physics = new vis.Network.Options.Physics { override val enabled = true }
+      }
+      network.foreach(_.setOptions(physicsOn))
+      body
+      window.setTimeout(
+        () => {
+          physicsRequestCount -= 1
+          if (physicsRequestCount <= 0 && !stateVar.now().animating) {
+            physicsRequestCount = 0
+            val physicsOff = new vis.Network.Options {
+              override val physics = new vis.Network.Options.Physics { override val enabled = false }
+            }
+            network.foreach(_.setOptions(physicsOff))
+          }
+        },
+        millis,
+      )
       ()
     }
 

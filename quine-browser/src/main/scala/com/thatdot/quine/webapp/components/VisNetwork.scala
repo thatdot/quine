@@ -81,9 +81,15 @@ object VisNetwork {
       onContextMenu --> (e => contextMenuHandler(e)),
       onKeyDown --> (e => keyDownHandler(e)),
       onMountCallback { ctx =>
-        val network = new vis.Network(ctx.thisNode.ref, data.raw, options)
-        networkOpt = Some(network)
-        afterNetworkInit(network)
+        // Defer so the browser has calculated layout and the container has
+        // non-zero dimensions. vis.js binds a one-shot resize handler that
+        // sets the view translation from the container size; if it fires
+        // at 0x0 the coordinate origin lands at the upper-left instead of center.
+        val _ = dom.window.requestAnimationFrame { (_: Double) =>
+          val network = new vis.Network(ctx.thisNode.ref, data.raw, options)
+          networkOpt = Some(network)
+          afterNetworkInit(network)
+        }
       },
       onUnmountCallback { _ =>
         for (network <- networkOpt) {
