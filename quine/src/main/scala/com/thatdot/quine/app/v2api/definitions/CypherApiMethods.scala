@@ -45,7 +45,8 @@ trait CypherApiMethods {
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
     query: TCypherQuery,
-  ): Future[Either[BadRequest, TCypherQueryResult]] =
+  ): Future[Either[BadRequest, TCypherQueryResult]] = {
+    if (query.text.isBlank) return Future.successful(Left(BadRequest("Query text must not be blank")))
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
         val (columns, results, isReadOnly, _) =
@@ -61,13 +62,15 @@ trait CypherApiMethods {
           .map(TCypherQueryResult(columns, _))(ExecutionContext.parasitic)
       }
     }
+  }
 
   def cypherNodesPost(
     atTime: Option[Milliseconds],
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
     query: TCypherQuery,
-  ): Future[Either[BadRequest, Seq[TUiNode]]] =
+  ): Future[Either[BadRequest, Seq[TUiNode]]] = {
+    if (query.text.isBlank) return Future.successful(Left(BadRequest("Query text must not be blank")))
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
         val (results, isReadOnly, _) =
@@ -83,13 +86,15 @@ trait CypherApiMethods {
           .runWith(Sink.seq)(graph.materializer)
       }
     }
+  }
 
   def cypherEdgesPost(
     atTime: Option[Milliseconds],
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
     query: TCypherQuery,
-  ): Future[Either[BadRequest, Seq[TUiEdge]]] =
+  ): Future[Either[BadRequest, Seq[TUiEdge]]] = {
+    if (query.text.isBlank) return Future.successful(Left(BadRequest("Query text must not be blank")))
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
         val (results, isReadOnly, _) =
@@ -105,5 +110,6 @@ trait CypherApiMethods {
           .runWith(Sink.seq)(graph.materializer)
       }
     }
+  }
 
 }

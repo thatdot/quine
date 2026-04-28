@@ -759,6 +759,8 @@ object QueryUi {
         case other =>
           other
       }
+      if (query.isBlank) return
+
       val language = guessQueryLanguage(query)
 
       if (state.pendingTextQueries.nonEmpty) {
