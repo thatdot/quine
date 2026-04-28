@@ -262,7 +262,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     (source, planned)
   }
 
-  private[app] def quinePatternQueryNodes(
+  private[thatdot] def quinePatternQueryNodes(
     query: CypherQuery,
     namespace: NamespaceId,
     atTime: Option[Milliseconds],
@@ -289,7 +289,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     (results, false, true)
   }
 
-  private[app] def quinePatternQueryEdges(
+  private[thatdot] def quinePatternQueryEdges(
     query: CypherQuery,
     namespace: NamespaceId,
     atTime: Option[Milliseconds],
@@ -311,7 +311,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     (results, false, true)
   }
 
-  private[app] def quinePatternQueryGeneric(
+  private[thatdot] def quinePatternQueryGeneric(
     query: CypherQuery,
     namespace: NamespaceId,
     atTime: Option[Milliseconds],

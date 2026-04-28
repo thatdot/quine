@@ -57,8 +57,10 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
       stringCodec(codec).encode(a)
     }
 
-  def queryProtocolClient(): WebSocketQueryClient =
-    new WebSocketQueryClient(new WebSocket(s"$baseWsUrl/api/v1/query"))
+  def queryProtocolClient(namespace: Option[String] = None): WebSocketQueryClient = {
+    val nsParam = namespace.fold("")(ns => s"?namespace=$ns")
+    new WebSocketQueryClient(new WebSocket(s"$baseWsUrl/api/v1/query$nsParam"))
+  }
 
   def queryProtocolClientV2(namespace: Option[String] = None): V2WebSocketQueryClient = {
     val nsParam = namespace.fold("")(ns => s"?namespace=$ns")

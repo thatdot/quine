@@ -65,6 +65,8 @@ object QueryUi {
     queryMethod: QueryMethod = QueryMethod.WebSocket,
     initialNamespace: NamespaceParameter = NamespaceParameter.defaultNamespaceParameter,
     permissions: Option[Set[String]] = None,
+    namespaceSignal: Option[Signal[NamespaceParameter]] = None,
+    refreshSignal: Option[EventStream[Unit]] = None,
   )
 
   case class State(
@@ -117,21 +119,35 @@ object QueryUi {
     val visualization: GraphVisualization = new VisNetworkVisualization(props.graphData, () => network)
     val pinTracker = new PinTracker(visualization)
     var physicsRequestCount: Int = 0
-    var webSocketClientFut: Future[WebSocketQueryClient] =
-      Future.failed(new Exception("Client not initialized"))
-    var webSocketClientV2Fut: Future[V2WebSocketQueryClient] =
-      Future.failed(new Exception("V2 client not initialized"))
+    // Websocket clients keyed by namespace — each namespace gets its own independent connection,
+    // so switching namespaces never disrupts in-flight queries on the previous namespace.
+    val wsClients = mutable.Map.empty[String, Future[WebSocketQueryClient]]
+    val wsClientsV2 = mutable.Map.empty[String, Future[V2WebSocketQueryClient]]
+    var uiDataLoaded: Boolean = false
 
     def selectedInterpreter: QueryInterpreter = QueryInterpreter.Cypher
 
     // --- WebSocket client management ---
 
-    def getWebSocketClient(): Future[WebSocketQueryClient] = {
-      webSocketClientFut.value match {
+    def namespaceKeyFor(ns: NamespaceParameter): String =
+      Option(ns.namespaceId).filterNot(_ == "default").getOrElse("__default__")
+
+    def namespaceOptFor(ns: NamespaceParameter): Option[String] =
+      Option(ns.namespaceId).filterNot(_ == "default")
+
+    /** Get or create a V1 websocket client for the given namespace.
+      * The namespace is passed explicitly to avoid reading stale values from
+      * stateVar.now() inside Laminar transaction callbacks (see Airstream #39).
+      */
+    def getWebSocketClient(namespace: NamespaceParameter): Future[WebSocketQueryClient] = {
+      val nsKey = namespaceKeyFor(namespace)
+      val nsOpt = namespaceOptFor(namespace)
+      val existing = wsClients.getOrElse(nsKey, Future.failed(new Exception("Client not initialized")))
+      existing.value match {
         case Some(Success(client)) if client.webSocket.readyState == dom.WebSocket.OPEN => ()
-        case None => ()
+        case None => () // still connecting
         case Some(_) =>
-          val client = props.routes.queryProtocolClient()
+          val client = props.routes.queryProtocolClient(nsOpt)
           val clientReady = Promise[WebSocketQueryClient]()
           val webSocket = client.webSocket
 
@@ -148,23 +164,23 @@ object QueryUi {
               clientReady.tryFailure(new Exception(s"WebSocket connection to `${webSocket.url}` was closed")),
           )
 
-          webSocketClientFut = clientReady.future
+          wsClients(nsKey) = clientReady.future
       }
-      webSocketClientFut
+      wsClients.getOrElse(nsKey, existing)
     }
 
-    /** Get a V2 websocket client
-      *
-      * Same reconnection logic as [[getWebSocketClient]] but creates a [[V2WebSocketQueryClient]]
-      * connected to `/api/v2/query/ws`. Unlike V1, the V2 endpoint supports a namespace parameter.
+    /** Get or create a V2 websocket client for the given namespace.
+      * See [[getWebSocketClient]] for why the namespace is passed explicitly.
       */
-    def getWebSocketClientV2(): Future[V2WebSocketQueryClient] = {
-      webSocketClientV2Fut.value match {
+    def getWebSocketClientV2(namespace: NamespaceParameter): Future[V2WebSocketQueryClient] = {
+      val nsKey = namespaceKeyFor(namespace)
+      val nsOpt = namespaceOptFor(namespace)
+      val existing = wsClientsV2.getOrElse(nsKey, Future.failed(new Exception("V2 client not initialized")))
+      existing.value match {
         case Some(Success(client)) if client.webSocket.readyState == dom.WebSocket.OPEN => ()
-        case None => ()
+        case None => () // still connecting
         case Some(_) =>
-          val ns = Option(stateVar.now().namespace.namespaceId).filterNot(_ == "default")
-          val client = props.routes.queryProtocolClientV2(ns)
+          val client = props.routes.queryProtocolClientV2(nsOpt)
           val clientReady = Promise[V2WebSocketQueryClient]()
           val webSocket = client.webSocket
 
@@ -180,9 +196,37 @@ object QueryUi {
               clientReady.tryFailure(new Exception(s"WebSocket connection to `${webSocket.url}` was closed")),
           )
 
-          webSocketClientV2Fut = clientReady.future
+          wsClientsV2(nsKey) = clientReady.future
       }
-      webSocketClientV2Fut
+      wsClientsV2.getOrElse(nsKey, existing)
+    }
+
+    /** Load UI configuration (appearances, sample queries, quick queries).
+      * Called once, either from onMountCallback or the first setNamespace call.
+      */
+    def loadUiData(): Unit = {
+      val canView = props.permissions match {
+        case Some(perms) => Set("StoredQueryRead", "NodeAppearanceRead").subsetOf(perms)
+        case None => true
+      }
+      if (canView) {
+        props.queryMethod match {
+          case QueryMethod.WebSocket | QueryMethod.Restful =>
+            props.routes.queryUiAppearance(()).future.foreach(nas => stateVar.update(_.copy(uiNodeAppearances = nas)))
+            props.routes.queryUiSampleQueries(()).future.foreach(sqs => stateVar.update(_.copy(sampleQueries = sqs)))
+            props.routes
+              .queryUiQuickQueries(())
+              .future
+              .foreach(qqs => stateVar.update(_.copy(uiNodeQuickQueries = qqs)))
+          case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 =>
+            props.routes.queryUiAppearanceV2(()).future.foreach(nas => stateVar.update(_.copy(uiNodeAppearances = nas)))
+            props.routes.queryUiSampleQueriesV2(()).future.foreach(sqs => stateVar.update(_.copy(sampleQueries = sqs)))
+            props.routes
+              .queryUiQuickQueriesV2(())
+              .future
+              .foreach(qqs => stateVar.update(_.copy(uiNodeQuickQueries = qqs)))
+        }
+      }
     }
 
     // --- Node appearance and quick queries ---
@@ -520,7 +564,7 @@ object QueryUi {
           val nodeCallback = new QueryCallbacks.CollectNodesToFuture()
           val streamingQuery = StreamingQuery(query, parameters, language, atTime, None, Some(100))
           for {
-            client <- getWebSocketClient()
+            client <- getWebSocketClient(namespace)
             _ <- Future.fromTry(client.query(streamingQuery, nodeCallback).toTry)
             results <- nodeCallback.future
           } yield results
@@ -531,7 +575,7 @@ object QueryUi {
           val sq =
             V2StreamingQuery(query, parameters, interpreter = interpreter, atTime = atTime, maxResultBatch = Some(100))
           for {
-            client <- getWebSocketClientV2()
+            client <- getWebSocketClientV2(namespace)
             _ <- Future.fromTry(client.query(sq, cb).toTry)
             results <- cb.future
           } yield results.map(_.map(n => UiNode(n.id, n.hostIndex, n.label, n.properties)))
@@ -565,7 +609,7 @@ object QueryUi {
           val edgeCallback = new QueryCallbacks.CollectEdgesToFuture()
           val streamingQuery = StreamingQuery(query, parameters, language, atTime, None, Some(100))
           for {
-            client <- getWebSocketClient()
+            client <- getWebSocketClient(namespace)
             _ <- Future.fromTry(client.query(streamingQuery, edgeCallback).toTry)
             results <- edgeCallback.future
           } yield results
@@ -576,7 +620,7 @@ object QueryUi {
           val sq =
             V2StreamingQuery(query, parameters, interpreter = interpreter, atTime = atTime, maxResultBatch = Some(100))
           for {
-            client <- getWebSocketClientV2()
+            client <- getWebSocketClientV2(namespace)
             _ <- Future.fromTry(client.query(sq, cb).toTry)
             results <- cb.future
           } yield results.map(_.map(e => UiEdge(e.from, e.edgeType, e.to, e.isDirected)))
@@ -682,7 +726,7 @@ object QueryUi {
           }
           val streamingQuery = StreamingQuery(query, parameters, language, atTime, Some(1000), Some(100))
           for {
-            client <- getWebSocketClient()
+            client <- getWebSocketClient(namespace)
             queryId <- Future.fromTry(client.query(streamingQuery, textCallback).toTry)
             _ = {
               stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries + queryId))
@@ -734,7 +778,7 @@ object QueryUi {
             resultsWithinMillis = Some(100),
           )
           for {
-            client <- getWebSocketClientV2()
+            client <- getWebSocketClientV2(namespace)
             queryId <- Future.fromTry(client.query(sq, textCallback).toTry)
             _ = {
               stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries + queryId))
@@ -748,10 +792,15 @@ object QueryUi {
 
     lazy val ObserveStandingQuery = "(?:OBSERVE|observe) [\"']?(.*)[\"']?".r
 
-    def submitQuery(uiQueryType: UiQueryType): Unit = {
+    def submitQuery(
+      uiQueryType: UiQueryType,
+      queryOverride: Option[String] = None,
+      namespaceOverride: Option[NamespaceParameter] = None,
+    ): Unit = {
       val state = stateVar.now()
+      val namespace = namespaceOverride.getOrElse(state.namespace)
 
-      val query = state.query match {
+      val query = queryOverride.getOrElse(state.query) match {
         case ObserveStandingQuery(sqName) =>
           val amendedQuery = s"CALL standing.wiretap({ name: '$sqName' })"
           stateVar.update(_.copy(query = amendedQuery))
@@ -795,7 +844,7 @@ object QueryUi {
           bottomBarVar.set(Some(MessageBarContent(rendered, Styles.queryResultSuccess)))
         }
 
-        textQuery(query, state.atTime, state.namespace, language, Map.empty, updateResults).onComplete {
+        textQuery(query, state.atTime, namespace, language, Map.empty, updateResults).onComplete {
           case Success(outcome) =>
             val outcomeColor = if (outcome.isEmpty) Styles.queryResultEmpty else Styles.queryResultSuccess
             stateVar.update(s =>
@@ -828,7 +877,7 @@ object QueryUi {
       } else {
 
         val nodesEdgesFut = for {
-          rawNodesOpt <- nodeQuery(query, state.namespace, state.atTime, language, Map.empty)
+          rawNodesOpt <- nodeQuery(query, namespace, state.atTime, language, Map.empty)
           dedupedNodesOpt = rawNodesOpt.map { rawNodes =>
             val dedupedIds = mutable.Set.empty[String]
             rawNodes.filter(n => dedupedIds.add(n.id))
@@ -874,7 +923,7 @@ object QueryUi {
                 "new" -> Json.fromValues(newNodes.map(Json.fromString)),
                 "all" -> Json.fromValues((existingNodes ++ newNodes).map(Json.fromString)),
               )
-              edgeQuery(edgeQueryStr, state.atTime, state.namespace, props.edgeQueryLanguage, queryParameters)
+              edgeQuery(edgeQueryStr, state.atTime, namespace, props.edgeQueryLanguage, queryParameters)
             }
           edges = edgesOpt match {
             case Some(edges) =>
@@ -926,7 +975,7 @@ object QueryUi {
                 cls := "btn btn-link",
                 onClick --> { _ =>
                   stateVar.update(_.copy(query = failedQuery))
-                  submitQuery(UiQueryType.Text)
+                  submitQuery(UiQueryType.Text, queryOverride = None, namespaceOverride = None)
                 },
                 "Run again as text query",
               )
@@ -1291,7 +1340,21 @@ object QueryUi {
       net.onDragEnd(networkDragEnd)
       net.onClick(networkClick)
 
-      if (props.initialLayout != NetworkLayout.Graph) toggleNetworkLayout()
+      if (props.initialLayout == NetworkLayout.Tree) {
+        // Network initializes in graph mode; switch to tree layout.
+        // Can't use toggleNetworkLayout() because the `layout` var already says Tree.
+        network.get.setOptions(
+          new vis.Network.Options {
+            override val layout = new vis.Network.Options.Layout {
+              override val hierarchical = jsObj(
+                enabled = true,
+                sortMethod = "directed",
+                shakeTowards = "roots",
+              )
+            }
+          },
+        )
+      }
     }
 
     // --- Checkpoint navigation ---
@@ -1364,10 +1427,51 @@ object QueryUi {
         contextMenuVar.set(None)
       }
 
-    def cancelQueries(queryIds: Option[Iterable[QueryId]] = None): Unit =
+    def setNamespace(namespace: NamespaceParameter): Unit = {
+      if (!uiDataLoaded) {
+        uiDataLoaded = true
+        loadUiData()
+      }
+      if (namespace != stateVar.now().namespace) {
+        // Close websockets for the old namespace — the new namespace gets
+        // its own connection lazily via getWebSocketClient/getWebSocketClientV2
+        val oldNs = stateVar.now().namespace
+        val oldKey = namespaceKeyFor(oldNs)
+        wsClients.remove(oldKey).foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
+        wsClientsV2.remove(oldKey).foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
+        // Clear graph and update state
+        props.graphData.nodeSet.remove(props.graphData.nodeSet.getIds())
+        props.graphData.edgeSet.remove(props.graphData.edgeSet.getIds())
+        stateVar.set(
+          stateVar
+            .now()
+            .copy(
+              query = props.initialQuery,
+              queryBarColor = None,
+              history = History.empty,
+              animating = false,
+              foundNodesCount = None,
+              foundEdgesCount = None,
+              namespace = namespace,
+            ),
+        )
+        bottomBarVar.set(None)
+        contextMenuVar.set(None)
+        // Re-run the initial query against the new namespace
+        if (props.initialQuery.nonEmpty)
+          submitQuery(
+            UiQueryType.Node,
+            queryOverride = Some(props.initialQuery),
+            namespaceOverride = Some(namespace),
+          )
+      }
+    }
+
+    def cancelQueries(queryIds: Option[Iterable[QueryId]] = None): Unit = {
+      val namespace = stateVar.now().namespace
       props.queryMethod match {
         case QueryMethod.WebSocket =>
-          getWebSocketClient().value.flatMap(_.toOption).foreach { (client: WebSocketQueryClient) =>
+          getWebSocketClient(namespace).value.flatMap(_.toOption).foreach { (client: WebSocketQueryClient) =>
             val queries = queryIds.getOrElse(client.activeQueries.keys).toList
             if (queries.nonEmpty && window.confirm(s"Cancel ${queries.size} running query execution(s)?")) {
               queries.foreach(queryId => client.cancelQuery(queryId))
@@ -1375,7 +1479,7 @@ object QueryUi {
           }
 
         case QueryMethod.WebSocketV2 =>
-          getWebSocketClientV2().value.flatMap(_.toOption).foreach { (client: V2WebSocketQueryClient) =>
+          getWebSocketClientV2(namespace).value.flatMap(_.toOption).foreach { (client: V2WebSocketQueryClient) =>
             val queries = queryIds.getOrElse(client.activeQueries.keys).toList
             if (queries.nonEmpty && window.confirm(s"Cancel ${queries.size} running query execution(s)?")) {
               queries.foreach(queryId => client.cancelQuery(queryId))
@@ -1385,6 +1489,7 @@ object QueryUi {
         case QueryMethod.Restful | QueryMethod.RestfulV2 =>
           window.alert("You cannot cancel queries when issuing queries through the REST api")
       }
+    }
 
     // --- Build the UI ---
 
@@ -1400,55 +1505,31 @@ object QueryUi {
       width := "100%",
       overflow := "hidden",
       position := "relative",
+      // Subscribe to external namespace changes (if provided).
+      // Using signal --> (not _.updates) so we receive the current value on mount,
+      // avoiding a race where fetchNamespaces completes before the subscription is active.
+      props.namespaceSignal.map(_ --> { ns => setNamespace(ns) }).getOrElse(emptyMod),
+      // Subscribe to external refresh trigger (if provided) — re-runs initial query
+      props.refreshSignal
+        .map(_ --> { _ =>
+          if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node, queryOverride = Some(props.initialQuery))
+        })
+        .getOrElse(emptyMod),
       onMountCallback { _ =>
-        // componentDidMount equivalent
-        props.queryMethod match {
-          case QueryMethod.WebSocket => getWebSocketClient()
-          case QueryMethod.WebSocketV2 => getWebSocketClientV2()
-          case _ => ()
-        }
-
-        val canView = props.permissions match {
-          case Some(perms) => Set("StoredQueryRead", "NodeAppearanceRead").subsetOf(perms)
-          case None => true
-        }
-        if (!canView) () // skip data loading if user lacks permissions
-        else
+        // When a namespaceSignal is provided, the signal --> subscription above handles
+        // initialization (including the initial value on mount). Otherwise, initialize directly.
+        if (props.namespaceSignal.isDefined) () // signal --> handles everything
+        else {
+          val namespace = stateVar.now().namespace
           props.queryMethod match {
-            case QueryMethod.WebSocket | QueryMethod.Restful =>
-              props.routes
-                .queryUiAppearance(())
-                .future
-                .map(nas => stateVar.update(_.copy(uiNodeAppearances = nas)))
-                .onComplete(_ => if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node))
-
-              props.routes
-                .queryUiSampleQueries(())
-                .future
-                .foreach(sqs => stateVar.update(_.copy(sampleQueries = sqs)))
-
-              props.routes
-                .queryUiQuickQueries(())
-                .future
-                .foreach(qqs => stateVar.update(_.copy(uiNodeQuickQueries = qqs)))
-
-            case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 =>
-              props.routes
-                .queryUiAppearanceV2(())
-                .future
-                .map(nas => stateVar.update(_.copy(uiNodeAppearances = nas)))
-                .onComplete(_ => if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node))
-
-              props.routes
-                .queryUiSampleQueriesV2(())
-                .future
-                .foreach(sqs => stateVar.update(_.copy(sampleQueries = sqs)))
-
-              props.routes
-                .queryUiQuickQueriesV2(())
-                .future
-                .foreach(qqs => stateVar.update(_.copy(uiNodeQuickQueries = qqs)))
+            case QueryMethod.WebSocket => getWebSocketClient(namespace)
+            case QueryMethod.WebSocketV2 => getWebSocketClientV2(namespace)
+            case _ => ()
           }
+          uiDataLoaded = true
+          loadUiData()
+          if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node)
+        }
       },
       // TopBar
       if (props.isQueryBarVisible) {
@@ -1543,6 +1624,9 @@ object QueryUi {
     options: QueryUiOptions,
     routes: ClientRoutes,
     permissions: Option[Set[String]] = None,
+    namespaceSignal: Option[Signal[NamespaceParameter]] = None,
+    initialNamespace: NamespaceParameter = NamespaceParameter.defaultNamespaceParameter,
+    refreshSignal: Option[EventStream[Unit]] = None,
   ): HtmlElement = {
     val nodeSet = options.visNodeSet.getOrElse(new vis.DataSet(js.Array[vis.Node]()))
     val edgeSet = options.visEdgeSet.getOrElse(new vis.DataSet(js.Array[vis.Edge]()))
@@ -1570,6 +1654,9 @@ object QueryUi {
         },
         queryMethod = queryMethod,
         permissions = permissions,
+        namespaceSignal = namespaceSignal,
+        initialNamespace = initialNamespace,
+        refreshSignal = refreshSignal,
       ),
     )
   }

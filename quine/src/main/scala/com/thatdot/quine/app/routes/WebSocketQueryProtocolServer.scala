@@ -7,7 +7,7 @@ import scala.util.Random
 import scala.util.control.NonFatal
 
 import org.apache.pekko.http.scaladsl.model.ws
-import org.apache.pekko.http.scaladsl.server.Directives.handleWebSocketMessages
+import org.apache.pekko.http.scaladsl.server.Directives.{extractRequest, handleWebSocketMessages}
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.stream._
 import org.apache.pekko.stream.scaladsl._
@@ -19,7 +19,7 @@ import io.circe.{Decoder, Encoder}
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.cypher.CypherException
-import com.thatdot.quine.graph.{GraphNotReadyException, defaultNamespaceId}
+import com.thatdot.quine.graph.{GraphNotReadyException, NamespaceId, defaultNamespaceId, namespaceFromString}
 import com.thatdot.quine.gremlin.QuineGremlinException
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.{
@@ -71,9 +71,10 @@ trait WebSocketQueryProtocolServer
 
   /** Protocol flow
     *
+    * @param namespace which namespace to run queries in
     * @return a flow which materializes into the map of running queries
     */
-  val queryProtocol: Flow[ws.Message, ws.Message, concurrent.Map[Int, RunningQuery]] = {
+  def queryProtocol(queryNamespace: NamespaceId): Flow[ws.Message, ws.Message, concurrent.Map[Int, RunningQuery]] = {
 
     /* The merge hub lets us combine results from dynamically added queries.
      *
@@ -128,7 +129,7 @@ trait WebSocketQueryProtocolServer
                     state -> Some(
                       msg
                         .map(clientMessage =>
-                          try processClientMessage(clientMessage, runningQueries, sink)
+                          try processClientMessage(clientMessage, runningQueries, sink, queryNamespace)
                           catch {
                             case NonFatal(err) => MessageError(serverExceptionMessage(err))
                           },
@@ -196,6 +197,7 @@ trait WebSocketQueryProtocolServer
     message: ClientMessage,
     queries: concurrent.Map[Int, RunningQuery],
     sink: Sink[ServerMessage[Id], NotUsed],
+    queryNamespace: NamespaceId,
   ): ServerResponseMessage = {
     graph.requiredGraphIsReady()
     message match {
@@ -211,7 +213,7 @@ trait WebSocketQueryProtocolServer
               input.groupedWithin(batchOpt.getOrElse(Int.MaxValue), maxMillis.millis)
           }
         val atTime = run.atTime.map(Milliseconds.apply)
-        val namespace = defaultNamespaceId // TODO: allow access to non-default namespaces
+        val namespace = queryNamespace
         // Depending on the sort of query and query language, build up different server messages
         val (results, isReadOnly, canContainAllNodeScan, columns): (
           Source[ServerMessage[Id], UniqueKillSwitch],
@@ -322,5 +324,11 @@ trait WebSocketQueryProtocolServer
   }
 
   final val queryProtocolWS: Route =
-    query.directive(_ => handleWebSocketMessages(queryProtocol.named("ui-query-protocol-websocket")))
+    query.directive { _ =>
+      extractRequest { req =>
+        val nsOpt = req.uri.query().get("namespace")
+        val namespaceId = nsOpt.map(namespaceFromString).getOrElse(defaultNamespaceId)
+        handleWebSocketMessages(queryProtocol(namespaceId).named("ui-query-protocol-websocket"))
+      }
+    }
 }
