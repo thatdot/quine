@@ -69,6 +69,7 @@ object VisNetwork {
     options: vis.Network.Options = new vis.Network.Options {},
   ): HtmlElement = {
     var networkOpt: Option[vis.Network] = None
+    var resizeObserverOpt: Option[dom.ResizeObserver] = None
 
     div(
       position := "absolute",
@@ -81,17 +82,40 @@ object VisNetwork {
       onContextMenu --> (e => contextMenuHandler(e)),
       onKeyDown --> (e => keyDownHandler(e)),
       onMountCallback { ctx =>
+        val element = ctx.thisNode.ref
+
         // Defer so the browser has calculated layout and the container has
         // non-zero dimensions. vis.js binds a one-shot resize handler that
         // sets the view translation from the container size; if it fires
         // at 0x0 the coordinate origin lands at the upper-left instead of center.
         val _ = dom.window.requestAnimationFrame { (_: Double) =>
-          val network = new vis.Network(ctx.thisNode.ref, data.raw, options)
+          val network = new vis.Network(element, data.raw, options)
           networkOpt = Some(network)
           afterNetworkInit(network)
+
+          // The container may live inside a display:none ancestor (e.g.
+          // Novelty's alwaysMounted explorer when the user starts on Upload).
+          // In that case the rAF callback above runs while dimensions are
+          // 0×0 and vis.js's one-shot resize handler binds with bad coords.
+          // Watch for the transition to non-zero and recenter once.
+          if (element.clientWidth == 0 || element.clientHeight == 0) {
+            val obs = new dom.ResizeObserver((entries, observer) => {
+              val rect = entries(0).contentRect
+              if (rect.width > 0 && rect.height > 0) {
+                observer.disconnect()
+                resizeObserverOpt = None
+                network.redraw()
+                network.fit()
+              }
+            })
+            obs.observe(element)
+            resizeObserverOpt = Some(obs)
+          }
         }
       },
       onUnmountCallback { _ =>
+        resizeObserverOpt.foreach(_.disconnect())
+        resizeObserverOpt = None
         for (network <- networkOpt) {
           network.storePositions()
           network.destroy()
