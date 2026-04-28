@@ -77,7 +77,7 @@ class QuineAppRoutes(
     Directives.pathEndOrSingleSlash {
       getFromResource("web/quine-ui.html")
     } ~
-    Directives.path("dashboard" | "docs" | "v2docs" | "home") {
+    Directives.path("dashboard" | "docs" | "v2docs" | "home" | "streams") {
       getFromResource("web/quine-ui.html")
     } ~
     Directives.path("quine-ui-startup.js") {

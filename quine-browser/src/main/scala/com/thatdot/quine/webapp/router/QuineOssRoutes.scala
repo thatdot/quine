@@ -16,9 +16,13 @@ class QuineOssRoutes(apiV1: Boolean) {
   private val metricsRoute: Route.Total[Metrics.type, Unit] =
     Route.static(staticPage = Metrics, pattern = root / "dashboard")
 
+  private val streamsRoute: Route.Total[Streams.type, Unit] =
+    Route.static(staticPage = Streams, pattern = root / "streams")
+
   private val landingRoute: Route.Total[Landing.type, Unit] =
     Route.static(staticPage = Landing, pattern = root / "home")
 
   val routes: List[Route.Total[_ <: QuineOssPage, Unit]] =
-    List(explorationUiRoute, docsV1Route, docsV2Route, metricsRoute, landingRoute)
+    List(explorationUiRoute, docsV1Route, docsV2Route, metricsRoute, landingRoute) ++
+    (if (!apiV1) List(streamsRoute) else Nil)
 }

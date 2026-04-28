@@ -246,6 +246,20 @@ lazy val `data`: Project = project
     ),
   )
 
+/** OpenAPI spec parsing types and utilities shared between server (JVM) and browser (ScalaJS).
+  * Pure parsing logic — no browser APIs, no UI framework dependencies.
+  */
+lazy val `openapi-schema` = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("openapi-schema"))
+  .settings(commonSettings)
+  .settings(
+    libraryDependencies ++= Seq(
+      "io.circe" %%% "circe-core" % circeV,
+      "io.circe" %%% "circe-parser" % circeV,
+    ),
+  )
+
 /** V2 API type definitions shared between server (JVM) and browser (ScalaJS). */
 lazy val `quine-endpoints2` = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Pure)
@@ -335,7 +349,7 @@ lazy val `model-converters`: Project = project
 // Quine web application
 lazy val `quine-browser`: Project = project
   .settings(commonSettings, visNetworkSettings)
-  .dependsOn(`quine-endpoints`.js, `visnetwork-facade`, `quine-endpoints2`.js)
+  .dependsOn(`quine-endpoints`.js, `visnetwork-facade`, `quine-endpoints2`.js, `openapi-schema`.js)
   .enablePlugins(ScalaJSBundlerPlugin)
   .settings(
     libraryDependencies ++= Seq(

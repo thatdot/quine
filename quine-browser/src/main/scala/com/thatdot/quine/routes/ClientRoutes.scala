@@ -35,12 +35,16 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
       ),
     )
 
-  val baseUrlOpt: Option[String] = baseUrl.toOption
-  protected val baseWsUrl: String = baseUrlOpt
-    .getOrElse(window.location.origin) // websocket URLs must be absolute... :/
+  // Treat an empty string the same as undefined — the startup script passes `serverUrl: ""`
+  // to mean "same origin", which would otherwise leave the base URL blank and cause every
+  // request to be resolved relative to the current page path (broken on sub-routes like
+  // `/streams`, where relative URLs get a `/streams/` prefix).
+  val baseUrlOpt: Option[String] = baseUrl.toOption.filter(_.nonEmpty)
+  private val effectiveBaseUrl: String = baseUrlOpt.getOrElse(window.location.origin)
+  protected val baseWsUrl: String = effectiveBaseUrl
     .replaceFirst("^http", "ws") // turns `http` into `ws` and `https` into `wss`
 
-  val settings: EndpointsSettings = EndpointsSettings().withBaseUri(baseUrlOpt)
+  val settings: EndpointsSettings = EndpointsSettings().withBaseUri(Some(effectiveBaseUrl))
 
   lazy val csvRequest: RequestEntity[List[List[String]]] = (body, xhr) => {
     xhr.setRequestHeader("Content-type", "text/plain; charset=utf8")

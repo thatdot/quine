@@ -18,6 +18,7 @@ class QuineOssNavItems(apiV1: Boolean) {
       NavItemData[QuineOssPage](name = "Exploration UI", icon = "cil-search", page = ExplorerUi),
       docsNavItem,
       NavItemData[QuineOssPage](name = "Metrics", icon = "cil-speedometer", page = Metrics),
+      NavItemData[QuineOssPage](name = "Streams", icon = "cil-stream", page = Streams, hidden = apiV1),
     )
 }
 

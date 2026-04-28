@@ -10,8 +10,8 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationEncoder,
 }
 import io.circe.{Decoder, Encoder}
-import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
+import sttp.tapir.{Schema, Validator}
 
 import com.thatdot.api.codec.SecretCodecs
 import com.thatdot.api.codec.SecretCodecs._
@@ -177,11 +177,20 @@ object ApiIngest {
 
     case object DoubleQuote extends CsvCharacter
 
-    val values: Seq[CsvCharacter] = Seq(Backslash, Comma, Semicolon, Colon, Tab, Pipe)
+    val values: Seq[CsvCharacter] = Seq(Backslash, Comma, Semicolon, Colon, Tab, Pipe, DoubleQuote)
 
     implicit val encoder: Encoder[CsvCharacter] = deriveEnumerationEncoder
     implicit val decoder: Decoder[CsvCharacter] = deriveEnumerationDecoder
-    implicit lazy val schema: Schema[CsvCharacter] = Schema.derived
+
+    // Schema.derived generates a oneOf of $ref objects in the OpenAPI spec, which
+    // means the CSV fields (delimiter, quoteChar, escapeChar) render as dropdowns
+    // with opaque object options and no visible defaults. This string-enum schema
+    // instead produces `{"type": "string", "enum": ["Comma", "Backslash", ...]}`,
+    // which lets the @default annotations on CSV's fields emit properly and causes
+    // the Streams UI to show a simple dropdown pre-filled with the default.
+    implicit lazy val schema: Schema[CsvCharacter] = Schema.string.validate(
+      Validator.enumeration(values.toList, v => Option(v.toString)),
+    )
   }
 
   @title("Kafka Auto Offset Reset")
@@ -479,6 +488,7 @@ object ApiIngest {
     ) extends IngestSource
 
     @title("File Ingest")
+    @description("An active stream of data being ingested from a file on this Quine host.")
     case class File(
       @description("format used to decode each incoming line from a file")
       format: IngestFormat.FileFormat,
@@ -509,6 +519,11 @@ object ApiIngest {
     ) extends IngestSource
 
     @title("S3 Ingest")
+    @description(
+      """An ingest stream from a file in S3, newline delimited. This ingest source is experimental and is subject to
+        |change without warning. In particular, there are known issues with durability when the stream is inactive for
+        |at least 1 minute.""".asOneLine,
+    )
     case class S3(
       @description("format used to decode each incoming line from a file in S3")
       format: IngestFormat.FileFormat,
@@ -539,6 +554,7 @@ object ApiIngest {
     ) extends IngestSource
 
     @title("Standard Input Ingest")
+    @description("An active stream of data being ingested from standard input to this Quine process.")
     case class StdInput(
       @description("format used to decode each incoming line from stdIn")
       format: IngestFormat.FileFormat,
@@ -1194,19 +1210,28 @@ object ApiIngest {
             |fields.""".asOneLine +
           "\nDefault: `false`.",
         )
-        @default(Left(false))
+        // @default uses the wire-format value (false) instead of the Scala value (Left(false))
+        // so that Tapir emits "default": false in the OpenAPI spec. The Scala default on the
+        // field itself (= Left(false)) is unchanged — this only affects spec metadata.
+        @default(false)
         headers: Either[Boolean, List[String]] = Left(false),
         @description("CSV row delimiter character.")
-        @default(CsvCharacter.Comma)
+        // @default uses the wire-format string ("Comma") instead of the Scala value
+        // (CsvCharacter.Comma) so that Tapir emits "default": "Comma" in the OpenAPI spec.
+        // This lets the Streams UI pre-select the correct default in the dropdown.
+        // The Scala default on the field itself is unchanged.
+        @default("Comma")
         delimiter: CsvCharacter = CsvCharacter.Comma,
         @description(
           """Character used to quote values in a field. Special characters (like new lines) inside of a quoted
             |section will be a part of the CSV value.""".asOneLine,
         )
-        @default(CsvCharacter.DoubleQuote)
+        // See delimiter comment above for why this uses the wire-format string.
+        @default("DoubleQuote")
         quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
         @description("Character used to escape special characters.")
-        @default(CsvCharacter.Backslash)
+        // See delimiter comment above for why this uses the wire-format string.
+        @default("Backslash")
         escapeChar: CsvCharacter = CsvCharacter.Backslash,
       ) extends FileFormat
 
