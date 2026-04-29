@@ -143,6 +143,7 @@ class QuineAppRoutes(
     // Always serve both V1 and V2 routes
     val v2Route = new V2OssRoutes(
       new OssApiMethods(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
+      openApiServerUrl = uri.toString,
     ).v2Routes(ingestOnly = false)
 
     logger.info(safe"API V1 and V2 endpoints available (UI default: ${Safe(config.defaultApiVersion)})")

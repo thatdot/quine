@@ -12,6 +12,6 @@ object QuineOssRouter {
     def deserializePage(pageStr: String): QuineOssPage = decode[QuineOssPage](pageStr).getOrElse(ExplorerUi)
   }
 
-  def apply(apiV1: Boolean): AppRouter[QuineOssPage] =
-    new AppRouter[QuineOssPage](new QuineOssRoutes(apiV1).routes)
+  def apply(apiV1: Boolean, basePath: String): AppRouter[QuineOssPage] =
+    new AppRouter[QuineOssPage](new QuineOssRoutes(apiV1, basePath).routes)
 }

@@ -29,7 +29,7 @@ object HttpClient {
     pathParams: Map[String, String] = Map.empty,
     queryParams: Map[String, String] = Map.empty,
     body: Option[Json] = None,
-    baseUrl: String = "",
+    baseUrl: String,
   )(implicit ec: ExecutionContext): Future[Either[String, Json]] = {
     val resolvedPath = pathParams.foldLeft(path) { case (p, (k, v)) =>
       p.replace(s"{$k}", js.URIUtils.encodeURIComponent(v))
@@ -105,7 +105,7 @@ object HttpClient {
     pathParams: Map[String, String] = Map.empty,
     queryParams: Map[String, String] = Map.empty,
     body: Option[Json] = None,
-    baseUrl: String = "",
+    baseUrl: String,
   )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
     execute(
       method = endpoint.method,

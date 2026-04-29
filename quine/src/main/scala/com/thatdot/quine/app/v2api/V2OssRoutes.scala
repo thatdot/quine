@@ -13,8 +13,9 @@ import com.thatdot.quine.routes.exts.NamespaceParameter
 
 /** Gathering of Quine OSS tapir-defined routes.
   */
-class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfig: LogConfig)
-    extends TapirRoutes
+class V2OssRoutes(val appMethods: OssApiMethods, override val openApiServerUrl: String = "/")(implicit
+  protected val logConfig: LogConfig,
+) extends TapirRoutes
     with V2OssEndpointProvider {
 
   override val apiEndpoints: List[ServerEndpoint[TapirRoutes.Requirements, Future]] =

@@ -34,6 +34,8 @@ abstract class TapirRoutes extends FailFastCirceSupport with TypeDiscriminatorCo
 
   val globalTags: List[Tag]
 
+  val openApiServerUrl: String = "/"
+
   protected def openApiSpec(ingestOnly: Boolean): OpenAPI = OpenAPIDocsInterpreter()
     .toOpenAPI(
       (if (ingestOnly) ingestEndpoints else apiEndpoints)
@@ -41,12 +43,19 @@ abstract class TapirRoutes extends FailFastCirceSupport with TypeDiscriminatorCo
         .map(_.endpoint),
       apiInfo,
     )
-    .copy(tags = globalTags, servers = List(Server("/")))
+    .copy(tags = globalTags, servers = List(Server(openApiServerUrl)))
 
   protected def v2DocsRoute(ingestOnly: Boolean): Route =
     pathPrefix("api" / "v2" / "openapi.json") {
       get {
-        complete(200, openApiSpec(ingestOnly).asJson)
+        val spec = openApiSpec(ingestOnly).asJson.deepMerge(
+          io.circe.Json.obj(
+            "servers" -> io.circe.Json.arr(
+              io.circe.Json.obj("url" -> io.circe.Json.fromString(openApiServerUrl)),
+            ),
+          ),
+        )
+        complete(200, spec)
       }
     }
 

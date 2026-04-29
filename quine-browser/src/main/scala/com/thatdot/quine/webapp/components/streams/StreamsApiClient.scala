@@ -44,12 +44,12 @@ object StreamsApiClient {
     * Internally discovers endpoints via V2 path pattern matching and
     * makes HTTP calls via dom.fetch.
     */
-  def apply(parsedSpec: ParsedSpec): StreamsApiClient = new Impl(parsedSpec)
+  def apply(parsedSpec: ParsedSpec, baseUrl: String): StreamsApiClient = new Impl(parsedSpec, baseUrl)
 
-  private class Impl(val spec: ParsedSpec) extends StreamsApiClient {
+  private class Impl(val spec: ParsedSpec, baseUrl: String) extends StreamsApiClient {
     import com.thatdot.quine.webapp.openapi.{ApiOperationRegistry, HttpClient, StreamOp}
 
-    private val registry = new ApiOperationRegistry(spec)
+    private val registry = new ApiOperationRegistry(spec, baseUrl)
 
     def ingestCreateSchema: Option[SchemaNode] = registry.requestSchema(StreamOp.CreateIngest)
     def sqCreateSchema: Option[SchemaNode] = registry.requestSchema(StreamOp.CreateStandingQuery)
@@ -87,7 +87,7 @@ object StreamsApiClient {
       registry.findEndpoint(StreamOp.AddSQOutput) match {
         case Some(ep) =>
           val params = ep.pathParams.headOption.map(_ -> sqName).toMap
-          HttpClient.call(ep, pathParams = params, body = Some(body))
+          HttpClient.call(ep, pathParams = params, body = Some(body), baseUrl = baseUrl)
         case None =>
           Future.successful(Left("Add output endpoint not found in API spec."))
       }
@@ -99,7 +99,7 @@ object StreamsApiClient {
       op: StreamOp,
     )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.findEndpoint(op) match {
-        case Some(ep) => HttpClient.call(ep).map(_.map(HttpClient.unwrapV2Envelope))
+        case Some(ep) => HttpClient.call(ep, baseUrl = baseUrl).map(_.map(HttpClient.unwrapV2Envelope))
         case None => Future.successful(Left(s"Endpoint for $op not found in API spec."))
       }
 
@@ -108,7 +108,7 @@ object StreamsApiClient {
       body: Json,
     )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.findEndpoint(op) match {
-        case Some(ep) => HttpClient.call(ep, body = Some(body))
+        case Some(ep) => HttpClient.call(ep, body = Some(body), baseUrl = baseUrl)
         case None => Future.successful(Left(s"Endpoint for $op not found in API spec."))
       }
   }

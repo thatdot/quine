@@ -48,7 +48,7 @@ object StreamsPage {
           div(cls := "alert alert-danger", s"Failed to load API specification: $msg")
 
         case Pot.Ready(spec) =>
-          val client = StreamsApiClient(spec)
+          val client = StreamsApiClient(spec, options.serverUrl.getOrElse(""))
           div(
             IngestStreamPanel(client),
             div(cls := "mt-4"),

@@ -58,7 +58,8 @@ package object webapp {
       case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 => false
     }
 
-    val router = QuineOssRouter(apiV1)
+    val basePath = options.baseURI.replaceAll("/$", "")
+    val router = QuineOssRouter(apiV1, basePath)
     val laminarRoot = LaminarRoot(
       LaminarRootProps(
         productName = "Quine",

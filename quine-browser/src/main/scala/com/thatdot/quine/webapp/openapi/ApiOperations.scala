@@ -30,7 +30,7 @@ object StreamOp {
 /** Discovers and maps logical [[StreamOp]] operations to concrete [[ApiEndpoint]] definitions
   * found in a parsed OpenAPI spec. Works with V2 API paths.
   */
-class ApiOperationRegistry(spec: ParsedSpec) {
+class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
 
   private val v2IngestBase = """/api/v2/ingests/?$""".r
   private val v2IngestNamed = """/api/v2/ingests/\{[^}]+\}$""".r
@@ -66,7 +66,7 @@ class ApiOperationRegistry(spec: ParsedSpec) {
     findEndpoint(op) match {
       case Some(ep) =>
         val params = ep.pathParams.zip(pathValues).toMap
-        HttpClient.call(ep, pathParams = params)
+        HttpClient.call(ep, pathParams = params, baseUrl = baseUrl)
       case None =>
         Future.successful(Left(s"Endpoint for $op not found in API spec."))
     }
