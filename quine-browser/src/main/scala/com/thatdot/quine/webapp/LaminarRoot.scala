@@ -66,7 +66,7 @@ object LaminarRoot {
         sidebarStateVar = sidebarStateVar,
       ),
       div(
-        cls := "d-flex flex-column p-3",
+        cls := "d-flex flex-column",
         transition := "margin-left .15s ease, width .15s ease",
         marginLeft <-- marginLeftSignal,
         width <-- mainContentWidthSignal,
