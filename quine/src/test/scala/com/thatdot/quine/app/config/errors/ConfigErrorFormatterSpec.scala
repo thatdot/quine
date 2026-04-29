@@ -34,9 +34,9 @@ class ConfigErrorFormatterSpec
         context match {
           case StartupContext(Some(file), _) =>
             message should include(file)
-          case StartupContext(None, true) =>
+          case StartupContext(None, Some(_)) =>
             message should include("Running from JAR")
-          case StartupContext(None, false) =>
+          case StartupContext(None, None) =>
             message should include("application.conf")
         }
       }
@@ -52,18 +52,33 @@ class ConfigErrorFormatterSpec
 
         val message = formatter.messageFor(failures)
 
+        val defaultJarName = "<" + config.productName.toLowerCase.replace(' ', '-') + ".jar>"
+        val jar = context.jarPathHint.getOrElse(defaultJarName)
+        val configGuidance = context.configFile match {
+          case Some(file) =>
+            s"""Add it to your configuration file ($file):
+               |  ${config.expectedRootKey} {
+               |    $kebabField = "<your-value>"
+               |  }""".stripMargin
+          case None =>
+            s"""Create a configuration file (e.g., ${config.expectedRootKey}.conf) with the following:
+               |  ${config.expectedRootKey} {
+               |    $kebabField = "<your-value>"
+               |  }
+               |
+               |Then start ${config.productName} with:
+               |  java -Dconfig.file=${config.expectedRootKey}.conf -jar $jar""".stripMargin
+        }
+
         message shouldBe
         s"""Configuration error: Missing required '$kebabField'.
            |
            |${config.productName} requires a valid $kebabField to start.
            |
-           |Add it to your configuration file:
-           |  ${config.expectedRootKey} {
-           |    $kebabField = "<your-value>"
-           |  }
+           |$configGuidance
            |
-           |Or set it as a system property:
-           |  -D${config.expectedRootKey}.$kebabField=<your-value>
+           |Or pass it to Java as a system property. For example:
+           |  java -D${config.expectedRootKey}.$kebabField=<your-value> -jar $jar
            |
            |For more details, see: ${config.docsUrl}""".stripMargin
       }
@@ -255,18 +270,33 @@ class ConfigErrorFormatterSpec
           val failure = createKeyNotFoundFailure(kebabField, testRootKey)
           val message = formatter.messageFor(ConfigReaderFailures(failure))
 
+          val defaultJarName = "<" + testProductName.toLowerCase.replace(' ', '-') + ".jar>"
+          val jar = context.jarPathHint.getOrElse(defaultJarName)
+          val configGuidance = context.configFile match {
+            case Some(file) =>
+              s"""Add it to your configuration file ($file):
+                 |  $testRootKey {
+                 |    $kebabField = "<your-value>"
+                 |  }""".stripMargin
+            case None =>
+              s"""Create a configuration file (e.g., $testRootKey.conf) with the following:
+                 |  $testRootKey {
+                 |    $kebabField = "<your-value>"
+                 |  }
+                 |
+                 |Then start $testProductName with:
+                 |  java -Dconfig.file=$testRootKey.conf -jar $jar""".stripMargin
+          }
+
           message shouldBe
           s"""Configuration error: Missing required '$kebabField'.
                |
                |$testProductName requires a valid $kebabField to start.
                |
-               |Add it to your configuration file:
-               |  $testRootKey {
-               |    $kebabField = "<your-value>"
-               |  }
+               |$configGuidance
                |
-               |Or set it as a system property:
-               |  -D$testRootKey.$kebabField=<your-value>
+               |Or pass it to Java as a system property. For example:
+               |  java -D$testRootKey.$kebabField=<your-value> -jar $jar
                |
                |For more details, see: $testDocsUrl""".stripMargin
         }
@@ -302,10 +332,11 @@ class ConfigErrorFormatterSpec
     "handle all StartupContext variations appropriately" in {
       import ScalaPrimitiveGenerators.Gens.nonEmptyAlphaStr
       forAll(errorFormatterConfigGen, nonEmptyAlphaStr) { (config, confFile) =>
-        val formatter1 = new ConfigErrorFormatter(config, StartupContext(None, isJar = false))
-        val formatter2 = new ConfigErrorFormatter(config, StartupContext(None, isJar = true))
-        val formatter3 = new ConfigErrorFormatter(config, StartupContext(Some(confFile), isJar = false))
-        val formatter4 = new ConfigErrorFormatter(config, StartupContext(Some(confFile), isJar = true))
+        val formatter1 = new ConfigErrorFormatter(config, StartupContext(None, jarPathHint = None))
+        val formatter2 = new ConfigErrorFormatter(config, StartupContext(None, jarPathHint = Some("quine.jar")))
+        val formatter3 = new ConfigErrorFormatter(config, StartupContext(Some(confFile), jarPathHint = None))
+        val formatter4 =
+          new ConfigErrorFormatter(config, StartupContext(Some(confFile), jarPathHint = Some("quine.jar")))
 
         val failure = createKeyNotFoundFailure(config.expectedRootKey, "")
         val failures = ConfigReaderFailures(failure)
@@ -385,8 +416,8 @@ protected trait ConfigErrorFormatterGen {
 
   val startupContextGen: Gen[StartupContext] = for {
     configFile <- Gen.option(filePathGen)
-    isJar <- Gen.oneOf(true, false)
-  } yield StartupContext(configFile, isJar)
+    jarPathHint <- Gen.option(nonEmptyAlphaStr.map(_ + ".jar"))
+  } yield StartupContext(configFile, jarPathHint)
 
   val errorFormatterConfigGen: Gen[ErrorFormatterConfig] = for {
     expectedRootKey <- kebabCaseStr

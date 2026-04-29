@@ -15,9 +15,14 @@ object ErrorFormatterConfig {
 
   /** Format configuration errors with automatically detected startup context */
   def formatErrors(config: ErrorFormatterConfig, failures: ConfigReaderFailures): String = {
+    val cpEntries = sys.props.get("java.class.path").getOrElse("").split(java.io.File.pathSeparator)
+    val jarPathHint = cpEntries match {
+      case Array(single) if single.endsWith(".jar") && !single.contains("sbt-launch") => Some(single)
+      case _ => None
+    }
     val context = StartupContext(
       configFile = sys.props.get("config.file"),
-      isJar = !sys.props.get("java.class.path").exists(_.contains("sbt-launch")),
+      jarPathHint = jarPathHint,
     )
     new ConfigErrorFormatter(config, context).messageFor(failures)
   }
@@ -45,7 +50,7 @@ object ConfigError {
              |    # your configuration here
              |  }""".stripMargin
 
-        case StartupContext(None, true) =>
+        case StartupContext(None, Some(_)) =>
           s"""
              |Running from JAR without a config file.
              |
@@ -53,7 +58,7 @@ object ConfigError {
              |  1. Provide a config file: -Dconfig.file=<path-to-config.conf>
              |  2. Set required properties: -D${config.expectedRootKey}.license-key=<your-key>""".stripMargin
 
-        case StartupContext(None, false) =>
+        case StartupContext(None, None) =>
           s"""
              |Provide configuration via:
              |  1. application.conf in your classpath
@@ -68,18 +73,33 @@ object ConfigError {
   final case class MissingRequiredField(fieldName: String) extends ConfigError {
     override def format(config: ErrorFormatterConfig, context: StartupContext): String = {
       val kebabFieldName = toKebabCase(fieldName)
+      val jar = context.jarPathHint.getOrElse(
+        "<" + config.productName.toLowerCase.replace(' ', '-') + ".jar>",
+      )
+      val configFileGuidance = context.configFile match {
+        case Some(file) =>
+          s"""Add it to your configuration file ($file):
+             |  ${config.expectedRootKey} {
+             |    $kebabFieldName = "<your-value>"
+             |  }""".stripMargin
+        case None =>
+          s"""Create a configuration file (e.g., ${config.expectedRootKey}.conf) with the following:
+             |  ${config.expectedRootKey} {
+             |    $kebabFieldName = "<your-value>"
+             |  }
+             |
+             |Then start ${config.productName} with:
+             |  java -Dconfig.file=${config.expectedRootKey}.conf -jar $jar""".stripMargin
+      }
 
       s"""Configuration error: Missing required '$kebabFieldName'.
          |
          |${config.productName} requires a valid $kebabFieldName to start.
          |
-         |Add it to your configuration file:
-         |  ${config.expectedRootKey} {
-         |    $kebabFieldName = "<your-value>"
-         |  }
+         |$configFileGuidance
          |
-         |Or set it as a system property:
-         |  -D${config.expectedRootKey}.$kebabFieldName=<your-value>
+         |Or pass it to Java as a system property. For example:
+         |  java -D${config.expectedRootKey}.$kebabFieldName=<your-value> -jar $jar
          |
          |For more details, see: ${config.docsUrl}""".stripMargin
     }
@@ -133,10 +153,13 @@ object ConfigError {
     camelCase.replaceAll("([a-z])([A-Z])", "$1-$2").toLowerCase
 }
 
-/** Context about how the app was started */
+/** Context about how the app was started
+  * @param jarPathHint the file path of the Quine/Novelty JAR as determined from
+  *        the classpath, or None if running a different way (e.g., via sbt).
+  */
 final case class StartupContext(
   configFile: Option[String],
-  isJar: Boolean,
+  jarPathHint: Option[String],
 )
 
 /** Formats config errors with context. */
