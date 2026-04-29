@@ -44,7 +44,7 @@ object IngestStreamTable {
     onResume: Observer[String],
   ): HtmlElement = {
     val statusSignal = jsonSignal.map { json =>
-      json.hcursor.downField("status").get[String]("type").toOption.getOrElse("Unknown")
+      json.hcursor.get[String]("status").toOption.getOrElse("Unknown")
     }
     val messageSignal = jsonSignal.map { json =>
       json.hcursor.get[String]("message").toOption.filter(_.nonEmpty)
