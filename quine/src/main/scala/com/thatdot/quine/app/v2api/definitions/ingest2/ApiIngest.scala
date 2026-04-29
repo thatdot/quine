@@ -3,6 +3,8 @@ package com.thatdot.quine.app.v2api.definitions.ingest2
 import java.nio.charset.{Charset, StandardCharsets}
 import java.time.Instant
 
+import scala.concurrent.duration._
+
 import io.circe.generic.extras.semiauto.{
   deriveConfiguredDecoder,
   deriveConfiguredEncoder,
@@ -20,7 +22,9 @@ import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.codec.DisjointEither.syntax._
 import com.thatdot.api.v2.codec.DisjointEvidence._
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEncoder, instantDecoder, instantEncoder}
+import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, finiteDurationEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.{charsetSchema, instantSchema}
+import com.thatdot.api.v2.schema.ThirdPartySchemas.scala.finiteDurationSchema
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary, SaslJaasConfig}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.{routes => V1}
@@ -55,7 +59,9 @@ object ApiIngest {
     @description("Records/second over different time periods.") rates: RatesSummary,
     @description("Bytes/second over different time periods.") byteRates: RatesSummary,
     @description("Time (in ISO-8601 UTC time) when the ingestion was started.") startTime: Instant,
-    @description("Time (in milliseconds) that that the ingest has been running.") totalRuntime: Long,
+    @description("How long the ingest has been running.")
+    @encodedExample("5h30m")
+    totalRuntime: FiniteDuration,
   )
 
   object IngestStreamStats {
@@ -155,9 +161,12 @@ object ApiIngest {
     @description("The stream has been stopped by a failure during processing.")
     case object Failed extends TerminalStatus
 
-    implicit val encoder: Encoder[IngestStreamStatus] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[IngestStreamStatus] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[IngestStreamStatus] = Schema.derived
+    val values: Seq[IngestStreamStatus] = Seq(Running, Paused, Restored, Completed, Terminated, Failed)
+
+    implicit val encoder: Encoder[IngestStreamStatus] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[IngestStreamStatus] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[IngestStreamStatus] =
+      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
   }
 
   sealed trait CsvCharacter
@@ -209,9 +218,10 @@ object ApiIngest {
     @default(Seq(Latest, Earliest, None))
     val values: Seq[KafkaAutoOffsetReset] = Seq(Latest, Earliest, None)
 
-    implicit val encoder: Encoder[KafkaAutoOffsetReset] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[KafkaAutoOffsetReset] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[KafkaAutoOffsetReset] = Schema.derived
+    implicit val encoder: Encoder[KafkaAutoOffsetReset] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[KafkaAutoOffsetReset] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[KafkaAutoOffsetReset] =
+      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
   }
 
   @title("Kafka offset tracking mechanism")
@@ -231,9 +241,9 @@ object ApiIngest {
       @description("Maximum number of messages in a single commit batch.")
       @default(1000)
       maxBatch: Long = 1000,
-      @description("Maximum interval between commits in milliseconds.")
-      @default(10000)
-      maxIntervalMillis: Int = 10000,
+      @description("Maximum interval between commits.")
+      @encodedExample("10s")
+      maxInterval: FiniteDuration = 10.seconds,
       @description("Parallelism for async committing.")
       @default(100)
       parallelism: Int = 100,
@@ -280,12 +290,13 @@ object ApiIngest {
     }
 
     @title("Ping/Pong on interval")
-    @description("Send empty websocket messages at the specified interval (in milliseconds).")
-    final case class PingPongInterval(@default(5000) intervalMillis: Int = 5000) extends KeepaliveProtocol
+    @description("Send empty websocket messages at the specified interval.")
+    final case class PingPongInterval(@encodedExample("5s") interval: FiniteDuration = 5.seconds)
+        extends KeepaliveProtocol
 
     @title("Text Keepalive Message on Interval")
-    @description("Send the same text-based Websocket message at the specified interval (in milliseconds).")
-    final case class SendMessageInterval(message: String, @default(5000) intervalMillis: Int = 5000)
+    @description("Send the same text-based Websocket message at the specified interval.")
+    final case class SendMessageInterval(message: String, @encodedExample("5s") interval: FiniteDuration = 5.seconds)
         extends KeepaliveProtocol
 
     @title("No Keepalive")
@@ -308,9 +319,10 @@ object ApiIngest {
     @default(Seq(Zlib, Gzip, Base64))
     val values: Seq[RecordDecodingType] = Seq(Zlib, Gzip, Base64)
 
-    implicit val encoder: Encoder[RecordDecodingType] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[RecordDecodingType] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[RecordDecodingType] = Schema.derived
+    implicit val encoder: Encoder[RecordDecodingType] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[RecordDecodingType] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[RecordDecodingType] =
+      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
   }
 
   sealed abstract class FileIngestMode
@@ -325,9 +337,10 @@ object ApiIngest {
     @default(Seq(Regular, NamedPipe))
     val values: Seq[FileIngestMode] = Seq(Regular, NamedPipe)
 
-    implicit val encoder: Encoder[FileIngestMode] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[FileIngestMode] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[FileIngestMode] = Schema.derived
+    implicit val encoder: Encoder[FileIngestMode] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[FileIngestMode] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[FileIngestMode] =
+      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
   }
 
   sealed trait Transformation
@@ -657,10 +670,9 @@ object ApiIngest {
         @description("All records starting after the provided sequence number.")
         final case class AfterSequenceNumber(sequenceNumber: String) extends Parameterized
 
-        // JS-safe long gives ms until the year 287396-ish
         @title("AtTimestamp")
-        @description("All records starting from the provided unix millisecond timestamp.")
-        final case class AtTimestamp(millisSinceEpoch: Long) extends Parameterized
+        @description("All records starting from the provided RFC 3339 timestamp.")
+        final case class AtTimestamp(@encodedExample("2026-04-27T15:30:00Z") at: Instant) extends Parameterized
 
         implicit val encoder: Encoder[IteratorType] = deriveConfiguredEncoder
         implicit val decoder: Decoder[IteratorType] = deriveConfiguredDecoder
@@ -735,9 +747,10 @@ object ApiIngest {
     @description("Maximum checkpoint batch size.")
     @default(None)
     maxBatchSize: Option[Int] = None,
-    @description("Maximum checkpoint batch wait time in ms.")
+    @description("Maximum checkpoint batch wait time.")
     @default(None)
-    maxBatchWaitMillis: Option[Long] = None,
+    @encodedExample("1s")
+    maxBatchWait: Option[FiniteDuration] = None,
   )
 
   object KinesisCheckpointSettings {
@@ -752,8 +765,9 @@ object ApiIngest {
         |stage buffering.""".asOneLine,
     )
     bufferSize: Option[Int] = None,
-    @description("Sets the KinesisSchedulerSourceSettings backpressureTimeout in milliseconds")
-    backpressureTimeoutMillis: Option[Long] = None,
+    @description("Sets the KinesisSchedulerSourceSettings backpressureTimeout.")
+    @encodedExample("30s")
+    backpressureTimeout: Option[FiniteDuration] = None,
   )
 
   object KinesisSchedulerSourceSettings {
@@ -824,9 +838,12 @@ object ApiIngest {
       val value = "UNKNOWN_TO_SDK_VERSION"
     }
 
-    implicit val encoder: Encoder[BillingMode] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[BillingMode] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[BillingMode] = Schema.derived
+    val values: Seq[BillingMode] = Seq(PROVISIONED, PAY_PER_REQUEST, UNKNOWN_TO_SDK_VERSION)
+
+    implicit val encoder: Encoder[BillingMode] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[BillingMode] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[BillingMode] =
+      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
   }
 
   sealed trait InitialPosition
@@ -853,13 +870,15 @@ object ApiIngest {
 
   case class LeaseManagementConfig(
     @description(
-      """The number of milliseconds that must pass before you can consider a lease owner to have failed.
+      """The amount of time that must pass before you can consider a lease owner to have failed.
         |For applications that have a large number of shards, this may be set to a higher number to reduce the number
         |of DynamoDB IOPS required for tracking leases.""".asOneLine,
     )
-    failoverTimeMillis: Option[Long],
+    @encodedExample("10s")
+    failoverTime: Option[FiniteDuration],
     @description("The time between shard sync calls.")
-    shardSyncIntervalMillis: Option[Long],
+    @encodedExample("60s")
+    shardSyncInterval: Option[FiniteDuration],
     @description("When set, leases are removed as soon as the child leases have started processing.")
     cleanupLeasesUponShardCompletion: Option[Boolean],
     @description("When set, child shards that have an open shard are ignored. This is primarily for DynamoDB Streams.")
@@ -935,13 +954,14 @@ object ApiIngest {
     )
     isGracefulLeaseHandoffEnabled: Option[Boolean],
     @description(
-      """Specifies the minimum time (in milliseconds) to wait for the current shard's RecordProcessor to gracefully
+      """Specifies the minimum time to wait for the current shard's RecordProcessor to gracefully
         |shut down before forcefully transferring the lease to the next owner.
         |If your processRecords method typically runs longer than the default value, consider increasing this setting.
         |This ensures the RecordProcessor has sufficient time to complete its processing before the lease transfer occurs.
         |This is a new configuration introduced in KCL 3.x.""".stripMargin,
     )
-    gracefulLeaseHandoffTimeoutMillis: Option[Long],
+    @encodedExample("30s")
+    gracefulLeaseHandoffTimeout: Option[FiniteDuration],
   )
 
   object LeaseManagementConfig {
@@ -975,22 +995,22 @@ object ApiIngest {
           |Once exhausted the consumer creation/retrieval will fail.""".asOneLine,
       )
       registerStreamConsumerRetries: Option[Int],
-      @description("The maximum amount of time that will be made between failed calls.")
-      retryBackoffMillis: Option[Long],
+      @description("The maximum amount of time between failed calls.")
+      @encodedExample("500ms")
+      retryBackoff: Option[FiniteDuration],
     ) extends RetrievalSpecificConfig
 
     case class PollingConfig(
       @description("Allows setting the maximum number of records that Kinesis returns.")
       maxRecords: Option[Int],
       @description("Configures the delay between GetRecords attempts for failures.")
-      retryGetRecordsInSeconds: Option[Int],
+      @encodedExample("1s")
+      retryGetRecordsAfter: Option[FiniteDuration],
       @description("The thread pool size used for GetRecords.")
       maxGetRecordsThreadPool: Option[Int],
-      @description(
-        """Determines how long KCL waits between GetRecords calls to poll the data from data streams.
-          |The unit is milliseconds.""".asOneLine,
-      )
-      idleTimeBetweenReadsInMillis: Option[Long],
+      @description("Determines how long KCL waits between GetRecords calls to poll the data from data streams.")
+      @encodedExample("1s")
+      idleTimeBetweenReads: Option[FiniteDuration],
     ) extends RetrievalSpecificConfig
 
     implicit val encoder: Encoder[RetrievalSpecificConfig] = deriveConfiguredEncoder
@@ -1029,17 +1049,18 @@ object ApiIngest {
 
     case object CLIENT_VERSION_CONFIG_3X extends ClientVersionConfig
 
-    implicit val encoder: Encoder[ClientVersionConfig] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[ClientVersionConfig] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[ClientVersionConfig] = Schema.derived
+    val values: Seq[ClientVersionConfig] = Seq(CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X, CLIENT_VERSION_CONFIG_3X)
+
+    implicit val encoder: Encoder[ClientVersionConfig] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[ClientVersionConfig] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[ClientVersionConfig] =
+      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
   }
 
   case class CoordinatorConfig(
-    @description(
-      """How often a record processor should poll to see if the parent shard has been completed.
-        |The unit is milliseconds.""".asOneLine,
-    )
-    parentShardPollIntervalMillis: Option[Long],
+    @description("How often a record processor should poll to see if the parent shard has been completed.")
+    @encodedExample("10s")
+    parentShardPollInterval: Option[FiniteDuration],
     @description("Disable synchronizing shard data if the lease table contains existing leases.")
     skipShardSyncAtWorkerInitializationIfLeasesExist: Option[Boolean],
     @description("Which shard prioritization to use.")
@@ -1060,10 +1081,12 @@ object ApiIngest {
   }
 
   case class LifecycleConfig(
-    @description("The time to wait to retry failed KCL tasks. The unit is milliseconds.")
-    taskBackoffTimeMillis: Option[Long],
+    @description("The time to wait before retrying failed KCL tasks.")
+    @encodedExample("500ms")
+    taskBackoffTime: Option[FiniteDuration],
     @description("How long to wait before a warning is logged if a task hasn't completed.")
-    logWarningForTaskAfterMillis: Option[Long],
+    @encodedExample("30s")
+    logWarningForTaskAfter: Option[FiniteDuration],
   )
 
   object LifecycleConfig {
@@ -1073,10 +1096,9 @@ object ApiIngest {
   }
 
   case class RetrievalConfig(
-    @description(
-      "The number of milliseconds to wait between calls to `ListShards` when failures occur. The unit is milliseconds.",
-    )
-    listShardsBackoffTimeInMillis: Option[Long],
+    @description("The amount of time to wait between calls to `ListShards` when failures occur.")
+    @encodedExample("500ms")
+    listShardsBackoffTime: Option[FiniteDuration],
     @description("The maximum number of times that `ListShards` retries before giving up.")
     maxListShardsRetryAttempts: Option[Int],
   )
@@ -1098,9 +1120,12 @@ object ApiIngest {
     /** DETAILED metrics level can be used to emit all metrics. */
     case object DETAILED extends MetricsLevel
 
-    implicit val encoder: Encoder[MetricsLevel] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[MetricsLevel] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[MetricsLevel] = Schema.derived
+    val values: Seq[MetricsLevel] = Seq(NONE, SUMMARY, DETAILED)
+
+    implicit val encoder: Encoder[MetricsLevel] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[MetricsLevel] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[MetricsLevel] =
+      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
   }
 
   @title("Dimensions that may be attached to CloudWatch metrics.")
@@ -1126,16 +1151,19 @@ object ApiIngest {
       val value = "WorkerIdentifier"
     }
 
-    implicit val encoder: Encoder[MetricsDimension] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[MetricsDimension] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[MetricsDimension] = Schema.derived
+    val values: Seq[MetricsDimension] =
+      Seq(OPERATION_DIMENSION_NAME, SHARD_ID_DIMENSION_NAME, STREAM_IDENTIFIER, WORKER_IDENTIFIER)
+
+    implicit val encoder: Encoder[MetricsDimension] = deriveEnumerationEncoder
+    implicit val decoder: Decoder[MetricsDimension] = deriveEnumerationDecoder
+    implicit lazy val schema: Schema[MetricsDimension] =
+      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
   }
 
   case class MetricsConfig(
-    @description(
-      "Specifies the maximum duration (in milliseconds) to buffer metrics before publishing them to CloudWatch.",
-    )
-    metricsBufferTimeMillis: Option[Long],
+    @description("Specifies the maximum duration to buffer metrics before publishing them to CloudWatch.")
+    @encodedExample("10s")
+    metricsBufferTime: Option[FiniteDuration],
     @description("Specifies the maximum number of metrics to buffer before publishing to CloudWatch.")
     metricsMaxQueueSize: Option[Int],
     @description("Specifies the granularity level of CloudWatch metrics to be enabled and published.")

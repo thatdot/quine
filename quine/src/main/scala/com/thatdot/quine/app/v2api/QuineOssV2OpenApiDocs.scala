@@ -4,10 +4,10 @@ import scala.annotation.nowarn
 
 import sttp.apispec.openapi.{OpenAPI, Server}
 import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
-import sttp.tapir.{EndpointInput, query}
+import sttp.tapir.{EndpointInput, header}
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.v2api.definitions.CommonParameters
+import com.thatdot.quine.app.v2api.definitions.{CommonParameters, CustomMethod}
 import com.thatdot.quine.app.v2api.endpoints.Visibility
 import com.thatdot.quine.routes.exts.NamespaceParameter
 
@@ -24,7 +24,7 @@ trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
     )
 
   def memberIdxParameter: EndpointInput[Option[Int]] =
-    query[Option[Int]]("memberIdx").schema(_.hidden(true))
+    header[Option[Int]]("Quine-Member-Idx").schema(_.hidden(true))
   def namespaceParameter: EndpointInput[Option[NamespaceParameter]] =
     CommonParameters.hiddenValidatingNamespaceQuery
 
@@ -38,7 +38,7 @@ trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
     if (hiddenEndpoints.isEmpty) Set.empty
     else {
       val hiddenApi = OpenAPIDocsInterpreter().toOpenAPI(hiddenEndpoints, sttp.apispec.openapi.Info("", ""))
-      hiddenApi.paths.pathItems.keys.toSet
+      CustomMethod.rewriteOpenAPI(hiddenApi).paths.pathItems.keys.toSet
     }
   }
 
@@ -47,8 +47,10 @@ trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
       .filterNot(_.attribute(Visibility.attributeKey).contains(Visibility.Hidden))
       .map(_.endpoint)
 
-    OpenAPIDocsInterpreter()
+    val raw = OpenAPIDocsInterpreter()
       .toOpenAPI(visibleEndpoints, V2ApiInfo.info)
       .copy(tags = V2ApiInfo.globalTags, servers = List(Server("/")))
+
+    CustomMethod.rewriteOpenAPI(raw)
   }
 }

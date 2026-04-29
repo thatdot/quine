@@ -20,13 +20,14 @@ import sttp.tapir.server.ServerEndpoint.Full
 
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
-import com.thatdot.api.v2.{ErrorResponse, SuccessEnvelope, V2EndpointDefinitions}
+import com.thatdot.api.v2.{ErrorResponse, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.{
   AlgorithmApiMethods,
   ApplicationApiMethods,
   CommonParameters,
+  CustomMethod,
   ParallelismParameter,
 }
 import com.thatdot.quine.graph.{AlgorithmGraph, BaseGraph, CypherOpsGraph, LiteralOpsGraph}
@@ -69,7 +70,7 @@ object V2AlgorithmEndpointEntities extends StringOps {
     )
     .default(Some(1))
 
-  val inOutQs: EndpointInput.Query[Option[Double]] = query[Option[Double]]("in-out")
+  val inOutQs: EndpointInput.Query[Option[Double]] = query[Option[Double]]("inOut")
     .description(
       """The `q` parameter to determine likelihood of visiting a node outside the neighborhood of the starting node: `1/q`.
         |Lower is more likely; but if `0`, never visit the neighborhood.""".asOneLine,
@@ -148,6 +149,11 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
     .description("High-level operations on the graph to support graph AI, ML, and other algorithms.")
     .errorOut(serverError())
 
+  private val algorithmSaveWalksBase: EndpointBase = rawEndpoint("algorithm:saveWalks")
+    .tag("Graph Algorithms")
+    .description("High-level operations on the graph to support graph AI, ML, and other algorithms.")
+    .errorOut(serverError())
+
   protected[endpoints] val saveRandomWalks: Endpoint[
     Unit,
     (
@@ -163,9 +169,9 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       TSaveLocation,
     ),
     Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
-    SuccessEnvelope.Accepted,
+    Unit,
     Any,
-  ] = algorithmBase
+  ] = algorithmSaveWalksBase
     .name("save-random-walks")
     .summary("Save Random Walks")
     .description(
@@ -184,12 +190,12 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
         |or a custom file name can be specified in the API request body. If no custom name is specified,
         |the following values are concatenated to produce the final file name:""".asOneLine + "\n\n" +
       """ - the constant prefix: `graph-walk-`
-        | - the timestamp provided in `at-time` or else the current time when run. A trailing `_T` is appended if no timestamp was specified.
+        | - the timestamp provided in `atTime` or else the current time when run. A trailing `_T` is appended if no timestamp was specified.
         | - the `length` parameter followed by the constant `x`
         | - the `count` parameter
         | - the constant `-q` follow by the number of characters in the supplied `query` (`0` if not specified)
         | - the `return` parameter followed by the constant `x`
-        | - the `in-out` parameter
+        | - the `inOut` parameter
         | - the `seed` parameter or `_` if none was supplied
         | - the constant suffix `.csv`
         |
@@ -197,7 +203,6 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
         |
         |The name of the actual file being written is returned in the API response body.""".stripMargin,
     )
-    .in("save-walk")
     .in(walkLengthQs)
     .in(numberOfWalksQs)
     .in(onNodeQueryQs)
@@ -211,8 +216,6 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
     .post
     .errorOutEither(badRequestError("Invalid Query", "Invalid Argument", "Invalid file name"))
     .out(statusCode(StatusCode.Accepted))
-    .out(jsonBody[SuccessEnvelope.Accepted])
-
   protected[endpoints] val saveRandomWalksLogic: (
     (
       Option[Int],
@@ -226,7 +229,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Int,
       TSaveLocation,
     ),
-  ) => Future[Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], SuccessEnvelope.Accepted]] = {
+  ) => Future[Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], Unit]] = {
     case (
           walkLengthOpt,
           numWalksOpt,
@@ -255,7 +258,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
               saveLocation,
             ),
         ),
-      )(_ => SuccessEnvelope.Accepted())
+      )(_ => ())
   }
 
   private def saveRandomWalksServerEndpoint: Full[
@@ -274,7 +277,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       TSaveLocation,
     ),
     Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
-    SuccessEnvelope.Accepted,
+    Unit,
     Any,
     Future,
   ] = saveRandomWalks.serverLogic[Future](saveRandomWalksLogic)
@@ -292,7 +295,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Option[AtTime],
     ),
     Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
-    SuccessEnvelope.Ok[List[String]],
+    List[String],
     Any,
   ] = algorithmBase
     .name("generate-random-walk")
@@ -300,8 +303,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
     .description("Generate a random walk from a node in the graph and return the results.")
     .post
     .in("nodes")
-    .in(path[QuineId]("id").description("Node id"))
-    .in("walk")
+    .in(CustomMethod.colonVerbPath[QuineId]("id", "generateRandomWalk").description("Node id"))
     .in(walkLengthQs)
     .in(onNodeQueryQs)
     .in(returnQs)
@@ -311,7 +313,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
     .in(atTimeParameter)
     .errorOutEither(badRequestError("Invalid Query", "Invalid Argument"))
     .out(statusCode(StatusCode.Ok))
-    .out(jsonBody[SuccessEnvelope.Ok[List[String]]])
+    .out(jsonBody[List[String]])
 
   protected[endpoints] val generateRandomWalkLogic: (
     (
@@ -324,7 +326,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Option[NamespaceParameter],
       Option[AtTime],
     ),
-  ) => Future[Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], SuccessEnvelope.Ok[List[String]]]] = {
+  ) => Future[Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], List[String]]] = {
     case (id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespace, atTimeOpt) =>
       recoverServerErrorEitherWithServerError(
         appMethods
@@ -338,7 +340,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
             namespaceFromParam(namespace),
             atTimeOpt,
           ),
-      )(SuccessEnvelope.Ok(_))
+      )(identity)
   }
 
   private def generateRandomWalkServerEndpoint: Full[
@@ -355,7 +357,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
       Option[AtTime],
     ),
     Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
-    SuccessEnvelope.Ok[List[String]],
+    List[String],
     Any,
     Future,
   ] = generateRandomWalk.serverLogic[Future](generateRandomWalkLogic)

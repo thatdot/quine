@@ -2,14 +2,18 @@ package com.thatdot.quine.app.v2api.definitions.query.standing
 
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
+
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
-import sttp.tapir.Schema.annotations.{description, title}
+import sttp.tapir.Schema.annotations.{description, encodedExample, title}
 
 import com.thatdot.api.v2.RatesSummary
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
+import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, finiteDurationEncoder}
+import com.thatdot.api.v2.schema.ThirdPartySchemas.scala.finiteDurationSchema
 
 @title(StandingQueryStats.title)
 final case class StandingQueryStats(
@@ -17,8 +21,9 @@ final case class StandingQueryStats(
   rates: RatesSummary,
   @description("Time (in ISO-8601 UTC time) when the Standing Query was started.")
   startTime: Instant,
-  @description("Time (in milliseconds) that that the Standing Query has been running.")
-  totalRuntime: Long,
+  @description("How long the Standing Query has been running.")
+  @encodedExample("5h30m")
+  totalRuntime: FiniteDuration,
   @description("How many Standing Query Results are buffered and waiting to be emitted.")
   bufferSize: Int,
   @description("Accumulated output hash code.")

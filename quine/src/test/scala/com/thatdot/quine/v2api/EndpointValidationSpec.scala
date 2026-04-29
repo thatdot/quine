@@ -152,4 +152,26 @@ class EndpointValidationSpec
     }
   }
 
+  "GET /api/v2/openapi.json" should "serve the V2 spec with AIP-136 colon-verb paths rewritten" in {
+    // First spec request triggers tapir's full OpenAPI generation; that exceeds the
+    // default 1-second test timeout under CI load.
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    HttpRequest(HttpMethods.GET, "/api/v2/openapi.json") ~> routes ~> check {
+      status.intValue() shouldEqual 200
+      val body = entityAs[String]
+      body should include(""""/api/v2/cypher:query"""")
+      body should include(""""/api/v2/ingests/{name}:pause"""")
+      // Synthetic marker should never appear in the served spec.
+      body should not include "__colonVerb__"
+    }
+  }
+
+  "GET /openapi.json" should "alias the V2 spec" in {
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    HttpRequest(HttpMethods.GET, "/openapi.json") ~> routes ~> check {
+      status.intValue() shouldEqual 200
+      val body = entityAs[String]
+      body should include(""""/api/v2/cypher:query"""")
+    }
+  }
 }

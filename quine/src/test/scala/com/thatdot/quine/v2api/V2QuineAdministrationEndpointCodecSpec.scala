@@ -16,7 +16,7 @@ class V2QuineAdministrationEndpointCodecSpec extends AnyFunSpec with Matchers wi
       forAll { (hashCode: TGraphHashCode) =>
         val json = hashCode.asJson
         json.hcursor.downField("value").as[String] shouldBe Right(hashCode.value)
-        json.hcursor.downField("atTime").as[Long] shouldBe Right(hashCode.atTime)
+        json.hcursor.downField("atTime").as[String] shouldBe Right(hashCode.atTime.toString)
       }
     }
   }

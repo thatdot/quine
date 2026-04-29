@@ -14,7 +14,7 @@ import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, path, q
 import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
-import com.thatdot.api.v2.{SuccessEnvelope, V2EndpointDefinitions}
+import com.thatdot.api.v2.V2EndpointDefinitions
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._
@@ -152,7 +152,7 @@ trait V2DebugEndpoints
     Unit,
     (QuineId, String, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
-    SuccessEnvelope.Ok[Option[Json]],
+    Option[Json],
     Any,
   ] = debugBase
     .name("get-node-property")
@@ -171,14 +171,14 @@ trait V2DebugEndpoints
     .in(namespaceParameter)
     .get
     .out(statusCode(StatusCode.Ok))
-    .out(jsonBody[SuccessEnvelope.Ok[Option[Json]]])
+    .out(jsonBody[Option[Json]])
 
   protected[endpoints] val debugOpsPropertyGetLogic
     : ((QuineId, String, Option[AtTime], Option[NamespaceParameter])) => Future[
-      Either[ServerError, SuccessEnvelope.Ok[Option[Json]]],
+      Either[ServerError, Option[Json]],
     ] = { case (id, propKey, atime, ns) =>
     recoverServerError(appMethods.debugOpsPropertyGet(id, propKey, atime, namespaceFromParam(ns)))(
-      (inp: Option[Json]) => SuccessEnvelope.Ok.apply(inp),
+      (inp: Option[Json]) => identity(inp),
     )
   }
 
@@ -187,7 +187,7 @@ trait V2DebugEndpoints
     Unit,
     (QuineId, String, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
-    SuccessEnvelope.Ok[Option[Json]],
+    Option[Json],
     Any,
     Future,
   ] = debugOpsPropertyGet.serverLogic[Future](debugOpsPropertyGetLogic)
@@ -196,7 +196,7 @@ trait V2DebugEndpoints
     Unit,
     (QuineId, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
-    SuccessEnvelope.Ok[TLiteralNode[QuineId]],
+    TLiteralNode[QuineId],
     Any,
   ] = debugBase
     .name("get-node")
@@ -208,13 +208,13 @@ trait V2DebugEndpoints
     .in(namespaceParameter)
     .get
     .out(statusCode(StatusCode.Ok))
-    .out(jsonBody[SuccessEnvelope.Ok[TLiteralNode[QuineId]]])
+    .out(jsonBody[TLiteralNode[QuineId]])
 
   protected[endpoints] val debugOpsGetLogic: ((QuineId, Option[AtTime], Option[NamespaceParameter])) => Future[
-    Either[ServerError, SuccessEnvelope.Ok[TLiteralNode[QuineId]]],
+    Either[ServerError, TLiteralNode[QuineId]],
   ] = { case (id, atime, ns) =>
     recoverServerError(appMethods.debugOpsGet(id, atime, namespaceFromParam(ns)))(
-      SuccessEnvelope.Ok.apply(_: TLiteralNode[QuineId]),
+      identity(_: TLiteralNode[QuineId]),
     )
   }
 
@@ -223,7 +223,7 @@ trait V2DebugEndpoints
     Unit,
     (QuineId, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
-    SuccessEnvelope.Ok[TLiteralNode[QuineId]],
+    TLiteralNode[QuineId],
     Any,
     Future,
   ] = debugOpsGet.serverLogic[Future](debugOpsGetLogic)
@@ -233,7 +233,7 @@ trait V2DebugEndpoints
     Unit,
     (QuineId, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
-    SuccessEnvelope.Ok[String],
+    String,
     Any,
   ] = debugBase
     .name("get-node-verbose")
@@ -246,12 +246,12 @@ trait V2DebugEndpoints
     .in(namespaceParameter)
     .get
     .out(statusCode(StatusCode.Ok))
-    .out(jsonBody[SuccessEnvelope.Ok[String]])
+    .out(jsonBody[String])
 
   protected[endpoints] val debugOpsVerboseLogic: ((QuineId, Option[AtTime], Option[NamespaceParameter])) => Future[
-    Either[ServerError, SuccessEnvelope.Ok[String]],
+    Either[ServerError, String],
   ] = { case (id, atime, ns) =>
-    recoverServerError(appMethods.debugOpsVerbose(id, atime, namespaceFromParam(ns)))(SuccessEnvelope.Ok(_))
+    recoverServerError(appMethods.debugOpsVerbose(id, atime, namespaceFromParam(ns)))(identity)
   }
 
   private val debugOpsVerboseServerEndpoint: Full[
@@ -259,7 +259,7 @@ trait V2DebugEndpoints
     Unit,
     (QuineId, Option[AtTime], Option[NamespaceParameter]),
     ServerError,
-    SuccessEnvelope.Ok[String],
+    String,
     Any,
     Future,
   ] = debugOpsVerbose.serverLogic[Future](debugOpsVerboseLogic)
@@ -277,7 +277,7 @@ trait V2DebugEndpoints
       Option[NamespaceParameter],
     ),
     ServerError,
-    SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]],
+    Vector[TRestHalfEdge[QuineId]],
     Any,
   ] =
     debugBase
@@ -296,7 +296,7 @@ trait V2DebugEndpoints
       .in(namespaceParameter)
       .get
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]]])
+      .out(jsonBody[Vector[TRestHalfEdge[QuineId]]])
 
   protected[endpoints] val debugOpsEdgesGetLogic: (
     (
@@ -309,14 +309,14 @@ trait V2DebugEndpoints
       Option[Boolean],
       Option[NamespaceParameter],
     ),
-  ) => Future[Either[ServerError, SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]]]] = {
+  ) => Future[Either[ServerError, Vector[TRestHalfEdge[QuineId]]]] = {
     case (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, fullOnly, ns) =>
       recoverServerError(
         if (fullOnly.getOrElse(true))
           appMethods.debugOpsEdgesGet(id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns))
         else
           appMethods.debugOpsHalfEdgesGet(id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
-      )((inp: Vector[TRestHalfEdge[QuineId]]) => SuccessEnvelope.Ok.apply(inp))
+      )((inp: Vector[TRestHalfEdge[QuineId]]) => identity(inp))
   }
 
   private val debugOpsEdgesGetServerEndpoint: Full[
@@ -333,7 +333,7 @@ trait V2DebugEndpoints
       Option[NamespaceParameter],
     ),
     ServerError,
-    SuccessEnvelope.Ok[Vector[TRestHalfEdge[QuineId]]],
+    Vector[TRestHalfEdge[QuineId]],
     Any,
     Future,
   ] = debugOpsEdgesGet.serverLogic[Future](debugOpsEdgesGetLogic)

@@ -1,11 +1,13 @@
 package com.thatdot.api.v2
 
 import java.nio.charset.{Charset, StandardCharsets}
+import java.time.Instant
+import java.time.format.DateTimeParseException
 import java.util.concurrent.TimeUnit
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 import io.circe.{Decoder, Encoder}
 import shapeless.ops.coproduct.{Basis, CoproductToEither, Inject}
@@ -17,6 +19,7 @@ import sttp.tapir._
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, ServerError}
 import com.thatdot.api.v2.ErrorResponseHelpers.{toBadRequest, toServerError}
 import com.thatdot.api.v2.schema.TapirJsonConfig
+import com.thatdot.api.v2.schema.ThirdPartySchemas.scala.finiteDurationCodec
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
@@ -39,33 +42,52 @@ trait V2EndpointDefinitions extends TapirJsonConfig with LazySafeLogging {
   implicit val quineIdCodec: Codec[String, QuineId, TextPlain] =
     Codec.string.mapDecode(toQuineId)(idProvider.qidToPrettyString)
 
-  /** Since timestamps get encoded as milliseconds since 1970 in the REST API,
-    * it is necessary to define the serialization/deserialization to/from a long.
+  /** Validate that a timestamp is not in the future, then convert to the internal
+    * `Milliseconds` representation. Times after `now` are rejected with a 400.
     */
-  protected def toAtTime(rawTime: Long): DecodeResult[AtTime] = {
-    val now = System.currentTimeMillis
-    if (rawTime > now)
-      DecodeResult.Error(rawTime.toString, new IllegalArgumentException(s"Times in the future are not supported."))
-    else Value(Milliseconds(rawTime))
+  protected def toAtTime(instant: Instant): DecodeResult[AtTime] = {
+    val nowMillis = System.currentTimeMillis
+    val rawMillis = instant.toEpochMilli
+    if (rawMillis > nowMillis)
+      DecodeResult.Error(instant.toString, new IllegalArgumentException("Times in the future are not supported."))
+    else Value(Milliseconds(rawMillis))
   }
 
-  /** Schema for an at time */
-  implicit val atTimeEndpointCodec: Codec[String, AtTime, TextPlain] = Codec.long.mapDecode(toAtTime)(_.millis)
+  /** Codec for the `atTime` query parameter.
+    *
+    * Wire format is **RFC 3339** (e.g. `2026-04-27T15:30:00Z`); internally we keep the
+    * existing `Milliseconds` type. AIP-142 specifies RFC 3339 strings for timestamps —
+    * self-describing, timezone-explicit, and round-trips losslessly through standard
+    * JSON tooling that expects ISO 8601.
+    */
+  implicit val atTimeEndpointCodec: Codec[String, AtTime, TextPlain] =
+    Codec.string.mapDecode { raw =>
+      Try(Instant.parse(raw)) match {
+        case Success(instant) => toAtTime(instant)
+        case Failure(e: DateTimeParseException) =>
+          DecodeResult.Error(raw, new IllegalArgumentException(s"Invalid RFC 3339 timestamp: $raw", e))
+        case Failure(e) => DecodeResult.Error(raw, e)
+      }
+    }(millis => Instant.ofEpochMilli(millis.millis).toString)
 
   val atTimeParameter: EndpointInput.Query[Option[AtTime]] =
     query[Option[AtTime]]("atTime")
       .description(
-        "An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query.",
+        "An RFC 3339 timestamp representing the historical moment to query " +
+        "(e.g. `2026-04-27T15:30:00Z`). Must not be in the future.",
       )
 
   // ------ timeout -------------
 
-  implicit val timeoutCodec: Codec[String, FiniteDuration, TextPlain] =
-    Codec.long.mapDecode(l => DecodeResult.Value(FiniteDuration(l, TimeUnit.MILLISECONDS)))(_.toMillis)
-
+  /** Codec for the `timeout` query parameter — Go-style duration string per AIP-142
+    * (`finiteDurationCodec` from [[com.thatdot.api.v2.schema.ThirdPartySchemas]]).
+    */
   val timeoutParameter: EndpointInput.Query[FiniteDuration] =
     query[FiniteDuration]("timeout")
-      .description("Milliseconds to wait before the HTTP request times out.")
+      .description(
+        "Maximum time to wait before the HTTP request times out, as an AIP-142 duration " +
+        "string (e.g. `20s`, `500ms`, `1.5m`).",
+      )
       .default(FiniteDuration.apply(20, TimeUnit.SECONDS))
 
   type EndpointBase = Endpoint[Unit, Unit, ServerError, Unit, Any]

@@ -8,10 +8,13 @@ class QuineOssRoutes(apiV1: Boolean, basePath: String) {
   private val explorationUiRoute: Route.Total[ExplorerUi.type, Unit] =
     Route.static(staticPage = ExplorerUi, pattern = root, basePath = basePath)
 
-  private val docsV1Route: Route.Total[DocsV1.type, Unit] =
-    Route.static(staticPage = DocsV1, pattern = root / "docs", basePath = basePath)
+  // `/docs` always points at the active API version's interactive docs (V2 once V2 ships).
+  // V1 docs remain reachable at the explicit version-prefixed URL so any deployment still
+  // running V1 alongside V2 can link to either.
   private val docsV2Route: Route.Total[DocsV2.type, Unit] =
-    Route.static(staticPage = DocsV2, pattern = root / "v2docs", basePath = basePath)
+    Route.static(staticPage = DocsV2, pattern = root / "docs", basePath = basePath)
+  private val docsV1Route: Route.Total[DocsV1.type, Unit] =
+    Route.static(staticPage = DocsV1, pattern = root / "v1docs", basePath = basePath)
 
   private val metricsRoute: Route.Total[Metrics.type, Unit] =
     Route.static(staticPage = Metrics, pattern = root / "dashboard", basePath = basePath)

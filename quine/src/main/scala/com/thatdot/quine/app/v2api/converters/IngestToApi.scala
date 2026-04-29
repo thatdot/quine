@@ -1,5 +1,9 @@
 package com.thatdot.quine.app.v2api.converters
 
+import java.time.Instant
+
+import scala.concurrent.duration._
+
 import com.thatdot.quine.app.model.ingest2._
 import com.thatdot.quine.app.model.ingest2.{V2IngestEntities => Ingest}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
@@ -35,7 +39,7 @@ object IngestToApi {
       rates = ConvertCore.Model1ToApi2.apply(stats.rates),
       byteRates = ConvertCore.Model1ToApi2.apply(stats.byteRates),
       startTime = stats.startTime,
-      totalRuntime = stats.totalRuntime,
+      totalRuntime = stats.totalRuntime.millis,
     )
 
   def apply(c: V1.CsvCharacter): Api.CsvCharacter = c match {
@@ -72,9 +76,9 @@ object IngestToApi {
     proto: V1.WebsocketSimpleStartupIngest.KeepaliveProtocol,
   ): Api.WebSocketClient.KeepaliveProtocol = proto match {
     case V1.WebsocketSimpleStartupIngest.PingPongInterval(intervalMillis) =>
-      Api.WebSocketClient.PingPongInterval(intervalMillis)
+      Api.WebSocketClient.PingPongInterval(intervalMillis.millis)
     case V1.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis) =>
-      Api.WebSocketClient.SendMessageInterval(message, intervalMillis)
+      Api.WebSocketClient.SendMessageInterval(message, intervalMillis.millis)
     case V1.WebsocketSimpleStartupIngest.NoKeepalive => Api.WebSocketClient.NoKeepalive
   }
   def apply(it: V1.KinesisIngest.IteratorType): Api.IngestSource.Kinesis.IteratorType = it match {
@@ -85,7 +89,7 @@ object IngestToApi {
     case V1.KinesisIngest.IteratorType.AfterSequenceNumber(sequenceNumber) =>
       Api.IngestSource.Kinesis.IteratorType.AfterSequenceNumber(sequenceNumber)
     case V1.KinesisIngest.IteratorType.AtTimestamp(millisSinceEpoch) =>
-      Api.IngestSource.Kinesis.IteratorType.AtTimestamp(millisSinceEpoch)
+      Api.IngestSource.Kinesis.IteratorType.AtTimestamp(Instant.ofEpochMilli(millisSinceEpoch))
   }
   def apply(proto: V1.KafkaSecurityProtocol): Api.KafkaSecurityProtocol = proto match {
     case V1.KafkaSecurityProtocol.PlainText => Api.KafkaSecurityProtocol.PlainText
@@ -111,7 +115,12 @@ object IngestToApi {
 
   def apply(c: V1.KafkaOffsetCommitting): Api.KafkaOffsetCommitting = c match {
     case V1.KafkaOffsetCommitting.ExplicitCommit(maxBatch, maxIntervalMillis, parallelism, waitForCommitConfirmation) =>
-      Api.KafkaOffsetCommitting.ExplicitCommit(maxBatch, maxIntervalMillis, parallelism, waitForCommitConfirmation)
+      Api.KafkaOffsetCommitting.ExplicitCommit(
+        maxBatch,
+        maxIntervalMillis.millis,
+        parallelism,
+        waitForCommitConfirmation,
+      )
   }
 
   /* ---------- enums / sealed‑traits ---------- */
@@ -155,15 +164,15 @@ object IngestToApi {
   }
 
   def apply(kcs: KinesisCheckpointSettings): Api.KinesisCheckpointSettings =
-    Api.KinesisCheckpointSettings(kcs.disableCheckpointing, kcs.maxBatchSize, kcs.maxBatchWaitMillis)
+    Api.KinesisCheckpointSettings(kcs.disableCheckpointing, kcs.maxBatchSize, kcs.maxBatchWaitMillis.map(_.millis))
 
   def apply(ksss: KinesisSchedulerSourceSettings): Api.KinesisSchedulerSourceSettings =
-    Api.KinesisSchedulerSourceSettings(ksss.bufferSize, ksss.backpressureTimeoutMillis)
+    Api.KinesisSchedulerSourceSettings(ksss.bufferSize, ksss.backpressureTimeoutMillis.map(_.millis))
 
   def apply(lmc: LeaseManagementConfig): Api.LeaseManagementConfig =
     Api.LeaseManagementConfig(
-      failoverTimeMillis = lmc.failoverTimeMillis,
-      shardSyncIntervalMillis = lmc.shardSyncIntervalMillis,
+      failoverTime = lmc.failoverTimeMillis.map(_.millis),
+      shardSyncInterval = lmc.shardSyncIntervalMillis.map(_.millis),
       cleanupLeasesUponShardCompletion = lmc.cleanupLeasesUponShardCompletion,
       ignoreUnexpectedChildShards = lmc.ignoreUnexpectedChildShards,
       maxLeasesForWorker = lmc.maxLeasesForWorker,
@@ -177,7 +186,7 @@ object IngestToApi {
       disableWorkerMetrics = lmc.disableWorkerMetrics,
       maxThroughputPerHostKBps = lmc.maxThroughputPerHostKBps,
       isGracefulLeaseHandoffEnabled = lmc.isGracefulLeaseHandoffEnabled,
-      gracefulLeaseHandoffTimeoutMillis = lmc.gracefulLeaseHandoffTimeoutMillis,
+      gracefulLeaseHandoffTimeout = lmc.gracefulLeaseHandoffTimeoutMillis.map(_.millis),
     )
 
   def apply(rsc: RetrievalSpecificConfig): Api.RetrievalSpecificConfig = rsc match {
@@ -192,15 +201,15 @@ object IngestToApi {
       maxDescribeStreamSummaryRetries = foc.maxDescribeStreamSummaryRetries,
       maxDescribeStreamConsumerRetries = foc.maxDescribeStreamConsumerRetries,
       registerStreamConsumerRetries = foc.registerStreamConsumerRetries,
-      retryBackoffMillis = foc.retryBackoffMillis,
+      retryBackoff = foc.retryBackoffMillis.map(_.millis),
     )
 
   def apply(pc: RetrievalSpecificConfig.PollingConfig): Api.RetrievalSpecificConfig.PollingConfig =
     Api.RetrievalSpecificConfig.PollingConfig(
       maxRecords = pc.maxRecords,
-      retryGetRecordsInSeconds = pc.retryGetRecordsInSeconds,
+      retryGetRecordsAfter = pc.retryGetRecordsInSeconds.map(_.seconds),
       maxGetRecordsThreadPool = pc.maxGetRecordsThreadPool,
-      idleTimeBetweenReadsInMillis = pc.idleTimeBetweenReadsInMillis,
+      idleTimeBetweenReads = pc.idleTimeBetweenReadsInMillis.map(_.millis),
     )
 
   def apply(prc: ProcessorConfig): Api.ProcessorConfig =
@@ -208,21 +217,21 @@ object IngestToApi {
 
   def apply(cc: CoordinatorConfig): Api.CoordinatorConfig =
     Api.CoordinatorConfig(
-      parentShardPollIntervalMillis = cc.parentShardPollIntervalMillis,
+      parentShardPollInterval = cc.parentShardPollIntervalMillis.map(_.millis),
       skipShardSyncAtWorkerInitializationIfLeasesExist = cc.skipShardSyncAtWorkerInitializationIfLeasesExist,
       shardPrioritization = cc.shardPrioritization.map(apply),
       clientVersionConfig = cc.clientVersionConfig.map(apply),
     )
 
   def apply(lc: LifecycleConfig): Api.LifecycleConfig =
-    Api.LifecycleConfig(lc.taskBackoffTimeMillis, lc.logWarningForTaskAfterMillis)
+    Api.LifecycleConfig(lc.taskBackoffTimeMillis.map(_.millis), lc.logWarningForTaskAfterMillis.map(_.millis))
 
   def apply(rc: RetrievalConfig): Api.RetrievalConfig =
-    Api.RetrievalConfig(rc.listShardsBackoffTimeInMillis, rc.maxListShardsRetryAttempts)
+    Api.RetrievalConfig(rc.listShardsBackoffTimeInMillis.map(_.millis), rc.maxListShardsRetryAttempts)
 
   def apply(mc: MetricsConfig): Api.MetricsConfig =
     Api.MetricsConfig(
-      metricsBufferTimeMillis = mc.metricsBufferTimeMillis,
+      metricsBufferTime = mc.metricsBufferTimeMillis.map(_.millis),
       metricsMaxQueueSize = mc.metricsMaxQueueSize,
       metricsLevel = mc.metricsLevel.map(apply),
       metricsEnabledDimensions = mc.metricsEnabledDimensions.map(_.map(apply)),
@@ -256,7 +265,7 @@ object IngestToApi {
     rates = apply(stats.rates),
     byteRates = apply(stats.byteRates),
     startTime = stats.startTime,
-    totalRuntime = stats.totalRuntime,
+    totalRuntime = stats.totalRuntime.millis,
   )
 
   def apply(ratesSummary: Ingest.RatesSummary): com.thatdot.api.v2.RatesSummary =

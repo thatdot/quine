@@ -13,13 +13,20 @@ import io.circe.{Decoder, HCursor}
   */
 object V2ApiTypes {
 
-  /** Mirrors `com.thatdot.api.v2.SuccessEnvelope.Ok`.
-    * @see [[public/api/src/main/scala/com/thatdot/api/v2/SuccessEnvelope.scala]]
+  /** Mirrors `com.thatdot.api.v2.Page` — the AIP-158 pagination envelope.
+    *
+    * `nextPageToken` is currently always empty server-side; we keep it as a field for
+    * forward compatibility but the landing page just consumes `.items`.
+    *
+    * @see [[public/api/src/main/scala/com/thatdot/api/v2/Page.scala]]
     */
-  final case class V2Response[A](content: A)
-  object V2Response {
-    implicit def decoder[A: Decoder]: Decoder[V2Response[A]] = (c: HCursor) =>
-      c.downField("content").as[A].map(V2Response(_))
+  final case class V2Page[A](items: List[A], nextPageToken: String)
+  object V2Page {
+    implicit def decoder[A: Decoder]: Decoder[V2Page[A]] = (c: HCursor) =>
+      for {
+        items <- c.downField("items").as[List[A]]
+        token <- c.downField("nextPageToken").as[Option[String]].map(_.getOrElse(""))
+      } yield V2Page(items, token)
   }
 
   /** Mirrors `com.thatdot.api.v2.RatesSummary` (fields subset).

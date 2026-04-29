@@ -9,6 +9,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.api.v2.AwsCredentials
+import com.thatdot.api.v2.codec.DurationFormat
 import com.thatdot.api.v2.outputs.OutputFormat
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
@@ -38,7 +39,7 @@ class V2StandingEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaChe
         val json = stats.asJson
         json.hcursor.downField("rates").succeeded shouldBe true
         json.hcursor.downField("startTime").succeeded shouldBe true
-        json.hcursor.downField("totalRuntime").as[Long] shouldBe Right(stats.totalRuntime)
+        json.hcursor.downField("totalRuntime").as[String] shouldBe Right(DurationFormat.render(stats.totalRuntime))
         json.hcursor.downField("bufferSize").as[Int] shouldBe Right(stats.bufferSize)
       }
     }

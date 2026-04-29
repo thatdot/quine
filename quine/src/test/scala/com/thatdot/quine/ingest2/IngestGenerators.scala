@@ -1,7 +1,9 @@
 package com.thatdot.quine.ingest2
 
 import java.nio.charset.Charset
+import java.time.Instant
 
+import scala.concurrent.duration._
 import scala.jdk.CollectionConverters._
 
 import org.scalacheck.{Arbitrary, Gen}
@@ -29,9 +31,9 @@ object IngestGenerators {
 
     val keepAliveProtocol: Gen[KeepaliveProtocol] =
       Gen.oneOf[KeepaliveProtocol](
-        Gen.posNum[Int].map(WebSocketClient.PingPongInterval(_)),
-        Gen.zip(Gen.asciiPrintableStr, Gen.posNum[Int]).map { case (message, intervalMillis) =>
-          WebSocketClient.SendMessageInterval(message, intervalMillis)
+        Gen.posNum[Int].map(ms => WebSocketClient.PingPongInterval(ms.millis)),
+        Gen.zip(Gen.asciiPrintableStr, Gen.posNum[Int]).map { case (message, ms) =>
+          WebSocketClient.SendMessageInterval(message, ms.millis)
         },
         Gen.const(WebSocketClient.NoKeepalive),
       )
@@ -55,7 +57,7 @@ object IngestGenerators {
         Gen.const(IngestSource.Kinesis.IteratorType.TrimHorizon),
         Gen.numStr.map(IngestSource.Kinesis.IteratorType.AtSequenceNumber(_)),
         Gen.numStr.map(IngestSource.Kinesis.IteratorType.AfterSequenceNumber(_)),
-        Gen.posNum[Long].map(IngestSource.Kinesis.IteratorType.AtTimestamp(_)),
+        Gen.posNum[Long].map(ms => IngestSource.Kinesis.IteratorType.AtTimestamp(Instant.ofEpochMilli(ms))),
       )
 
     val kafkaOffsetCommitting: Gen[KafkaOffsetCommitting] = for {
@@ -63,7 +65,7 @@ object IngestGenerators {
       maxIntervalMillis <- Gen.posNum[Int]
       parallelism <- Gen.posNum[Int]
       waitForCommitConfirmation <- bool
-    } yield ExplicitCommit(maxBatch, maxIntervalMillis, parallelism, waitForCommitConfirmation)
+    } yield ExplicitCommit(maxBatch, maxIntervalMillis.millis, parallelism, waitForCommitConfirmation)
 
     val kafkaSecurityProtocol: Gen[KafkaSecurityProtocol] = Gen.oneOf(
       KafkaSecurityProtocol.PlainText,
@@ -100,21 +102,21 @@ object IngestGenerators {
     val kinesisCheckpointSettings: Gen[KinesisCheckpointSettings] = for {
       disableCheckpointing <- bool
       maxBatchSize <- Gen.option(Gen.posNum[Int])
-      maxBatchWaitMillis <- Gen.option(Gen.posNum[Long])
-    } yield KinesisCheckpointSettings(disableCheckpointing, maxBatchSize, maxBatchWaitMillis)
+      maxBatchWait <- Gen.option(Gen.posNum[Long].map(_.millis))
+    } yield KinesisCheckpointSettings(disableCheckpointing, maxBatchSize, maxBatchWait)
 
     val kinesisSchedulerSourceSettings: Gen[KinesisSchedulerSourceSettings] = for {
       bufferSize <- Gen.option(Gen.posNum[Int])
-      backpressureTimeoutMillis <- Gen.option(Gen.posNum[Long])
-    } yield KinesisSchedulerSourceSettings(bufferSize, backpressureTimeoutMillis)
+      backpressureTimeout <- Gen.option(Gen.posNum[Long].map(_.millis))
+    } yield KinesisSchedulerSourceSettings(bufferSize, backpressureTimeout)
 
     val configsBuilder: Gen[ConfigsBuilder] = Gen.const(ConfigsBuilder(None, None))
 
     val leaseManagementConfig: Gen[LeaseManagementConfig] =
       Gen.const(
         LeaseManagementConfig(
-          failoverTimeMillis = None,
-          shardSyncIntervalMillis = None,
+          failoverTime = None,
+          shardSyncInterval = None,
           cleanupLeasesUponShardCompletion = None,
           ignoreUnexpectedChildShards = None,
           maxLeasesForWorker = None,
@@ -128,7 +130,7 @@ object IngestGenerators {
           disableWorkerMetrics = None,
           maxThroughputPerHostKBps = None,
           isGracefulLeaseHandoffEnabled = None,
-          gracefulLeaseHandoffTimeoutMillis = None,
+          gracefulLeaseHandoffTimeout = None,
         ),
       )
 

@@ -1,14 +1,16 @@
 package com.thatdot.quine.app.routes
 
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 
 import scala.concurrent.ExecutionContext
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
-import org.apache.pekko.http.scaladsl.server.{Directives, Route}
+import org.apache.pekko.http.scaladsl.server.{Directive0, Directives, Route, RouteResult}
 import org.apache.pekko.util.Timeout
 
 import org.webjars.WebJarAssetLocator
@@ -75,9 +77,12 @@ class QuineAppRoutes(
 
   lazy val staticFilesRoute: Route = {
     Directives.pathEndOrSingleSlash {
-      getFromResource("web/quine-ui.html")
+      // RFC 8631 — point clients (including AI agents) at the OpenAPI spec for the latest API version.
+      Directives.respondWithHeader(RawHeader("Link", "</openapi.json>; rel=\"service-desc\"")) {
+        getFromResource("web/quine-ui.html")
+      }
     } ~
-    Directives.path("dashboard" | "docs" | "v2docs" | "home" | "streams") {
+    Directives.path("dashboard" | "docs" | "v1docs" | "home" | "streams") {
       getFromResource("web/quine-ui.html")
     } ~
     Directives.path("quine-ui-startup.js") {
@@ -122,12 +127,31 @@ class QuineAppRoutes(
   private val namespacesUnsupportedRoute =
     parameter("namespace")(_ => complete(StatusCodes.BadRequest, HttpEntity("Namespaces not supported")))
 
+  /** Set on the first request that an actual V1 route handles, so the deprecation warning fires
+    * once per process when V1 is genuinely in use rather than on every startup.
+    */
+  private val v1DeprecationWarned: AtomicBoolean = new AtomicBoolean(false)
+
+  private val warnFirstV1Use: Directive0 = extractRequest.flatMap { req =>
+    mapRouteResult { result =>
+      result match {
+        case _: RouteResult.Complete if v1DeprecationWarned.compareAndSet(false, true) =>
+          logger.warn(
+            safe"API V1 is in use (first hit on ${Safe(req.uri.path.toString)}); " +
+            safe"it is planned for deprecation and will be removed in a future release.",
+          )
+        case _ =>
+      }
+      result
+    }
+  }
+
   /** Rest API route */
   lazy val apiRoute: Route = {
 
     val enableLanguageServerRoute: Boolean = sys.props.get("ls.enabled").flatMap(_.toBooleanOption).getOrElse(false)
 
-    val v1Routes = {
+    val v1Routes = warnFirstV1Use {
       namespacesUnsupportedRoute ~
       queryUiRoutes ~
       queryProtocolWS ~
@@ -147,9 +171,6 @@ class QuineAppRoutes(
     ).v2Routes(ingestOnly = false)
 
     logger.info(safe"API V1 and V2 endpoints available (UI default: ${Safe(config.defaultApiVersion)})")
-    logger.warn(
-      safe"API V1 is planned for deprecation and will be removed in a future release.",
-    )
     v1Routes ~ v2Route
   }
 }

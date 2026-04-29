@@ -1,5 +1,7 @@
 package com.thatdot.quine.v2api
 
+import scala.concurrent.duration._
+
 import org.scalacheck.{Arbitrary, Gen}
 
 import com.thatdot.api.v2.RatesSummary
@@ -27,10 +29,11 @@ object V2StandingEndpointGenerators {
     val standingQueryStats: Gen[StandingQueryStats] = for {
       rates <- ratesSummary
       startTime <- instant
-      totalRuntime <- Gen.posNum[Long]
+      // Bound the runtime so .millis doesn't overflow when converting Long ms to FiniteDuration nanos.
+      totalRuntimeMs <- Gen.choose(0L, 365L * 24 * 3600 * 1000)
       bufferSize <- Gen.posNum[Int]
       outputHashCode <- Gen.posNum[Long]
-    } yield StandingQueryStats(rates, startTime, totalRuntime, bufferSize, outputHashCode)
+    } yield StandingQueryStats(rates, startTime, totalRuntimeMs.millis, bufferSize, outputHashCode)
 
     val standingQueryMode: Gen[StandingQueryMode] = Gen.oneOf(
       StandingQueryMode.DistinctId,

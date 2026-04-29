@@ -44,7 +44,7 @@ object Api2ToOutputs2 {
       OutputModels.destination.Slack(
         hookUrl = s.hookUrl,
         onlyPositiveMatchData = s.onlyPositiveMatchData,
-        intervalSeconds = s.intervalSeconds,
+        intervalSeconds = s.interval.toSeconds.toInt,
       ),
     )
 

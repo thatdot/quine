@@ -32,14 +32,17 @@ object StreamOp {
   */
 class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
 
+  // V2 release URL patterns: lowerCamelCase per AIP-122, `:verb` colon-method per AIP-136.
+  // Note `\{[^}]+\}` matches an OpenAPI path-template parameter like `{name}` or
+  // `{standingQueryName}` — the parameter name varies between OSS and Enterprise definitions.
   private val v2IngestBase = """/api/v2/ingests/?$""".r
   private val v2IngestNamed = """/api/v2/ingests/\{[^}]+\}$""".r
-  private val v2IngestPause = """/api/v2/ingests/\{[^}]+\}/pause$""".r
-  private val v2IngestResume = """/api/v2/ingests/\{[^}]+\}/(start|unpause)$""".r
-  private val v2SqBase = """/api/v2/standing-queries/?$""".r
-  private val v2SqNamed = """/api/v2/standing-queries/\{[^}]+\}$""".r
-  private val v2SqOutputBase = """/api/v2/standing-queries/\{[^}]+\}/output(s?)/?$""".r
-  private val v2SqOutputNamed = """/api/v2/standing-queries/\{[^}]+\}/output(s?)/\{[^}]+\}$""".r
+  private val v2IngestPause = """/api/v2/ingests/\{[^}]+\}:pause$""".r
+  private val v2IngestResume = """/api/v2/ingests/\{[^}]+\}:resume$""".r
+  private val v2SqBase = """/api/v2/standingQueries/?$""".r
+  private val v2SqNamed = """/api/v2/standingQueries/\{[^}]+\}$""".r
+  private val v2SqOutputBase = """/api/v2/standingQueries/\{[^}]+\}/outputs/?$""".r
+  private val v2SqOutputNamed = """/api/v2/standingQueries/\{[^}]+\}/outputs/\{[^}]+\}$""".r
 
   private def matches(path: String, pattern: scala.util.matching.Regex): Boolean =
     pattern.findFirstIn(path).isDefined
@@ -91,9 +94,9 @@ class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
       case StreamOp.GetIngest =>
         m == "GET" && matches(p, v2IngestNamed)
       case StreamOp.PauseIngest =>
-        (m == "PUT" || m == "POST") && matches(p, v2IngestPause)
+        m == "POST" && matches(p, v2IngestPause)
       case StreamOp.ResumeIngest =>
-        (m == "PUT" || m == "POST") && matches(p, v2IngestResume)
+        m == "POST" && matches(p, v2IngestResume)
 
       case StreamOp.ListStandingQueries =>
         m == "GET" && matches(p, v2SqBase)

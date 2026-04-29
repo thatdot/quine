@@ -9,7 +9,8 @@ import org.scalajs.dom
 import com.thatdot.quine.openapi.ApiEndpoint
 
 /** Thin wrapper around dom.fetch() for making API calls discovered from the OpenAPI spec.
-  * Handles path parameter substitution, JSON request/response bodies, and V2 response unwrapping.
+  * Handles path parameter substitution, JSON request/response bodies, AIP-193 error envelope
+  * parsing, and AIP-158 pagination unwrapping for list responses.
   */
 object HttpClient {
 
@@ -67,32 +68,28 @@ object HttpClient {
             case Left(err) => Left(s"Failed to parse response: ${err.getMessage}")
           }
       } else {
-        val parsed = io.circe.parser.parse(text).toOption
+        // AIP-193 envelope: {"error": {"code", "status", "message", "details": [...]}}.
+        // Pull the primary message and any user-facing Help details; ignore RequestInfo/ErrorInfo
+        // (those are operator-facing — see ShowShort on the server side for the audit-log version).
+        val fromAip193: Option[String] = io.circe.parser.parse(text).toOption.flatMap { json =>
+          val errorCursor = json.hcursor.downField("error")
+          errorCursor.get[String]("message").toOption.map { msg =>
+            val helpHints: List[String] = errorCursor
+              .downField("details")
+              .focus
+              .flatMap(_.asArray)
+              .map(_.toList.flatMap { d =>
+                d.hcursor.get[String]("type").toOption.flatMap {
+                  case "Help" => d.hcursor.get[String]("message").toOption
+                  case _ => None
+                }
+              })
+              .getOrElse(Nil)
+            if (helpHints.isEmpty) msg else s"$msg (${helpHints.mkString("; ")})"
+          }
+        }
 
-        // V2 errors: {"errors": [{"message": "...", "type": "..."}, ...]}
-        val fromErrorsArray: Option[List[String]] = parsed
-          .flatMap(_.hcursor.downField("errors").focus)
-          .flatMap(_.asArray)
-          .map(_.toList.flatMap(_.hcursor.get[String]("message").toOption))
-          .filter(_.nonEmpty)
-
-        // Top-level message field
-        val fromTopMessage: Option[List[String]] = parsed
-          .flatMap(_.hcursor.get[String]("message").toOption)
-          .map(List(_))
-
-        // Array of strings
-        val fromStringArray: Option[List[String]] = parsed
-          .flatMap(_.asArray)
-          .map(_.toList.flatMap(_.asString))
-          .filter(_.nonEmpty)
-
-        val messages = fromErrorsArray
-          .orElse(fromTopMessage)
-          .orElse(fromStringArray)
-          .getOrElse(List(text.take(500)))
-
-        Left(s"HTTP ${response.status}: ${messages.mkString("; ")}")
+        Left(s"HTTP ${response.status}: ${fromAip193.getOrElse(text.take(500))}")
       }).recover { case ex: Throwable =>
       dom.console.error("HTTP request failed:", ex.getMessage)
       Left("Could not connect to the server. Please check that Quine is running and try again.")
@@ -116,9 +113,12 @@ object HttpClient {
       baseUrl = baseUrl,
     )
 
-  /** Unwrap a V2 SuccessEnvelope.Ok/Created response: {"content": ..., "warnings": [...], "message": ...} → the content field.
-    * Falls back to the raw JSON for envelopes without a `content` field (e.g. Accepted, NoContent).
+  /** Unwrap the AIP-158 pagination envelope on V2 list responses:
+    * `{"items": [...], "nextPageToken": "..."}` → the items array.
+    *
+    * Non-paginated responses (single resources, NoContent) have no `items` field, so this
+    * falls back to returning the raw JSON unchanged.
     */
-  def unwrapV2Envelope(json: Json): Json =
-    json.hcursor.downField("content").focus.getOrElse(json)
+  def unwrapPageItems(json: Json): Json =
+    json.hcursor.downField("items").focus.getOrElse(json)
 }

@@ -3,12 +3,15 @@ package com.thatdot.api.v2.schema
 import java.nio.charset.Charset
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
 import scala.util.{Failure, Success, Try}
 
 import cats.data.NonEmptyList
 import io.circe.Json
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.{Codec, DecodeResult, Schema}
+
+import com.thatdot.api.v2.codec.DurationFormat
 
 /** Tapir schemas for third-party types that cannot have implicits in their companion objects.
   *
@@ -17,6 +20,7 @@ import sttp.tapir.{Codec, DecodeResult, Schema}
   * import com.thatdot.api.v2.schema.ThirdPartySchemas.cats._
   * import com.thatdot.api.v2.schema.ThirdPartySchemas.circe._
   * import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk._
+  * import com.thatdot.api.v2.schema.ThirdPartySchemas.scala._
   * }}}
   *
   * @see [[com.thatdot.api.v2.codec.ThirdPartyCodecs]] for Circe codecs (JSON serialization)
@@ -56,5 +60,26 @@ object ThirdPartySchemas {
     )(_.toString)
 
     implicit lazy val instantSchema: Schema[Instant] = instantCodec.schema
+  }
+
+  /** Schemas for Scala stdlib types */
+  object scala {
+
+    /** Tapir codec for Go-style duration strings (`"20s"`, `"500ms"`, `"1.5m"`, `"2h45m"`)
+      * per AIP-142. Used for both URL-encoded query params and JSON body fields.
+      */
+    implicit val finiteDurationCodec: Codec[String, FiniteDuration, TextPlain] = Codec.string.mapDecode { s =>
+      DurationFormat.parse(s) match {
+        case Right(d) => DecodeResult.Value(d)
+        case Left(msg) => DecodeResult.Error(s, new IllegalArgumentException(msg))
+      }
+    }(DurationFormat.render)
+
+    implicit lazy val finiteDurationSchema: Schema[FiniteDuration] = finiteDurationCodec.schema
+      .description(
+        "AIP-142 duration string. One or more `<number><unit>` segments concatenated; " +
+        "units are `ns`, `us`, `ms`, `s`, `m`, `h`. Examples: `20s`, `500ms`, `1.5m`, `2h45m`.",
+      )
+      .encodedExample("20s")
   }
 }

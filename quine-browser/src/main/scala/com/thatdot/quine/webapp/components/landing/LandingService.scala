@@ -36,10 +36,10 @@ final class LandingService(routes: ClientRoutes) {
   }
 
   def fetchIngests(): Future[Seq[V2IngestInfo]] =
-    fetchV2[Seq[V2IngestInfo]]("api/v2/ingests")
+    fetchV2[V2Page[V2IngestInfo]]("api/v2/ingests").map(_.items)
 
   def fetchStandingQueries(): Future[Seq[V2StandingQueryInfo]] =
-    fetchV2[Seq[V2StandingQueryInfo]]("api/v2/standing-queries")
+    fetchV2[V2Page[V2StandingQueryInfo]]("api/v2/standingQueries").map(_.items)
 
   /** Enterprise-only: fetch cluster status (members + hot spares). */
   def fetchClusterStatus(): Future[V2ServiceStatus] =
@@ -65,8 +65,8 @@ final class LandingService(routes: ClientRoutes) {
       .toFuture
       .flatMap(_.text().toFuture)
       .flatMap { body =>
-        io.circe.parser.decode[V2Response[A]](body) match {
-          case Right(response) => Future.successful(response.content)
+        io.circe.parser.decode[A](body) match {
+          case Right(value) => Future.successful(value)
           case Left(err) => Future.failed(new RuntimeException(s"Failed to decode $path: ${err.getMessage}"))
         }
       }

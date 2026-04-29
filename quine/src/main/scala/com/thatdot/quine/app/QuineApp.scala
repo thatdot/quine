@@ -4,7 +4,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit.MILLIS
 import java.util.UUID
 
-import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import scala.concurrent.duration.{DurationInt, DurationLong, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future, blocking}
 import scala.util.{Failure, Success, Try}
 
@@ -1699,7 +1699,7 @@ object QuineApp {
             overall = meter.getMeanRate,
           ),
           startTime = startTime,
-          totalRuntime = MILLIS.between(startTime, Instant.now()),
+          totalRuntime = MILLIS.between(startTime, Instant.now()).millis,
           bufferSize = bufferSize,
           outputHashCode = outputHashCode.sum,
         ),

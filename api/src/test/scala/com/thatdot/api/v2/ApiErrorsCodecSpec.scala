@@ -1,88 +1,109 @@
 package com.thatdot.api.v2
 
+import io.circe.parser
 import io.circe.syntax.EncoderOps
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 class ApiErrorsCodecSpec extends AnyFunSuite with Matchers with ScalaCheckDrivenPropertyChecks {
-  import ErrorTypeGenerators.Arbs._
   import ErrorResponseGenerators.Arbs._
 
-  test("ErrorType.ApiError encodes message field") {
-    forAll { (error: ErrorType) =>
-      val json = error.asJson
-      json.hcursor.get[String]("message") shouldBe Right(error.message)
+  private def errorObj(json: io.circe.Json) = json.hcursor.downField("error")
+
+  test("ServerError encodes AIP-193 envelope: {error: {code:500, status:'INTERNAL', message, details}}") {
+    forAll { (e: ErrorResponse.ServerError) =>
+      val json = e.asJson
+      errorObj(json).get[Int]("code") shouldBe Right(500)
+      errorObj(json).get[String]("status") shouldBe Right("INTERNAL")
+      errorObj(json).get[String]("message") shouldBe Right(e.message)
+      errorObj(json).downField("details").focus.flatMap(_.asArray).map(_.size) shouldBe Some(e.details.size)
     }
   }
 
-  test("ErrorType.DecodeError encodes optional help field") {
-    forAll { (error: ErrorType.DecodeError) =>
-      val json = error.asJson
-      error.help match {
-        case Some(h) => json.hcursor.get[String]("help") shouldBe Right(h)
-        case None => json.hcursor.get[String]("help").isLeft shouldBe true
-      }
+  test("BadRequest encodes AIP-193 envelope with code 400 and status INVALID_ARGUMENT") {
+    forAll { (e: ErrorResponse.BadRequest) =>
+      val json = e.asJson
+      errorObj(json).get[Int]("code") shouldBe Right(400)
+      errorObj(json).get[String]("status") shouldBe Right("INVALID_ARGUMENT")
+      errorObj(json).get[String]("message") shouldBe Right(e.message)
     }
   }
 
-  test("ErrorType encodes with type discriminator") {
-    (ErrorType.ApiError("msg"): ErrorType).asJson.hcursor.get[String]("type") shouldBe Right("ApiError")
-    (ErrorType.DecodeError("msg"): ErrorType).asJson.hcursor.get[String]("type") shouldBe Right("DecodeError")
-    (ErrorType.CypherError("msg"): ErrorType).asJson.hcursor.get[String]("type") shouldBe Right("CypherError")
-  }
-
-  test("ErrorResponse.ServerError encodes errors list") {
-    forAll { (error: ErrorResponse.ServerError) =>
-      val json = error.asJson
-      val errorsArray = json.hcursor.downField("errors").focus.flatMap(_.asArray)
-      errorsArray.isDefined shouldBe true
-      errorsArray.get.size shouldBe error.errors.size
+  test("NotFound encodes AIP-193 envelope with code 404 and status NOT_FOUND") {
+    forAll { (e: ErrorResponse.NotFound) =>
+      val json = e.asJson
+      errorObj(json).get[Int]("code") shouldBe Right(404)
+      errorObj(json).get[String]("status") shouldBe Right("NOT_FOUND")
     }
   }
 
-  test("ErrorResponse.BadRequest encodes errors list") {
-    forAll { (error: ErrorResponse.BadRequest) =>
-      val json = error.asJson
-      val errorsArray = json.hcursor.downField("errors").focus.flatMap(_.asArray)
-      errorsArray.get.size shouldBe error.errors.size
+  test("Unauthorized encodes AIP-193 envelope with code 401 and status UNAUTHENTICATED") {
+    forAll { (e: ErrorResponse.Unauthorized) =>
+      val json = e.asJson
+      errorObj(json).get[Int]("code") shouldBe Right(401)
+      errorObj(json).get[String]("status") shouldBe Right("UNAUTHENTICATED")
     }
   }
 
-  test("ErrorResponse.NotFound encodes errors list") {
-    forAll { (error: ErrorResponse.NotFound) =>
-      val json = error.asJson
-      val errorsArray = json.hcursor.downField("errors").focus.flatMap(_.asArray)
-      errorsArray.get.size shouldBe error.errors.size
+  test("ServiceUnavailable encodes AIP-193 envelope with code 503 and status UNAVAILABLE") {
+    forAll { (e: ErrorResponse.ServiceUnavailable) =>
+      val json = e.asJson
+      errorObj(json).get[Int]("code") shouldBe Right(503)
+      errorObj(json).get[String]("status") shouldBe Right("UNAVAILABLE")
     }
   }
 
-  test("ErrorResponse.Unauthorized encodes errors list") {
-    forAll { (error: ErrorResponse.Unauthorized) =>
-      val json = error.asJson
-      val errorsArray = json.hcursor.downField("errors").focus.flatMap(_.asArray)
-      errorsArray.get.size shouldBe error.errors.size
+  test("ErrorDetail variants carry the discriminator type field") {
+    (ErrorDetail.Help("h"): ErrorDetail).asJson.hcursor.get[String]("type") shouldBe Right("Help")
+    (ErrorDetail.RequestInfo("rid"): ErrorDetail).asJson.hcursor.get[String]("type") shouldBe Right("RequestInfo")
+    (ErrorDetail.ErrorInfo("CYPHER_ERROR"): ErrorDetail).asJson.hcursor.get[String]("type") shouldBe Right("ErrorInfo")
+  }
+
+  test("cypherError convenience preserves CypherError reason for clients") {
+    val br = ErrorResponse.BadRequest("syntax err", List(ErrorDetail.cypherError))
+    val json = br.asJson
+    val firstDetail = errorObj(json).downField("details").downArray
+    firstDetail.get[String]("type") shouldBe Right("ErrorInfo")
+    firstDetail.get[String]("reason") shouldBe Right("CYPHER_ERROR")
+    firstDetail.get[String]("domain") shouldBe Right("quine.io")
+  }
+
+  test("ErrorInfo.metadata round-trips with all entries preserved") {
+    val info = ErrorDetail.ErrorInfo(
+      reason = "PARSE_ERROR",
+      domain = "quine.io",
+      metadata = Map("line" -> "42", "column" -> "7", "token" -> "MATCH"),
+    )
+    val br = ErrorResponse.BadRequest("syntax err at 42:7", List(info))
+    // Round-trip through encode → decode → re-extract
+    val decoded = parser.parse(br.asJson.noSpaces).flatMap(_.as[ErrorResponse.BadRequest])
+    decoded shouldBe Right(br)
+    decoded.toOption.get.details.head match {
+      case ei: ErrorDetail.ErrorInfo =>
+        ei.metadata shouldBe Map("line" -> "42", "column" -> "7", "token" -> "MATCH")
+      case other => fail(s"Expected ErrorInfo, got: $other")
     }
   }
 
-  test("ErrorResponse.ServiceUnavailable encodes errors list") {
-    forAll { (error: ErrorResponse.ServiceUnavailable) =>
-      val json = error.asJson
-      val errorsArray = json.hcursor.downField("errors").focus.flatMap(_.asArray)
-      errorsArray.get.size shouldBe error.errors.size
+  test("ErrorInfo with empty metadata round-trips and encodes the field") {
+    val info = ErrorDetail.ErrorInfo("REASON")
+    val json = (info: ErrorDetail).asJson
+    json.hcursor.downField("metadata").focus.flatMap(_.asObject).map(_.size) shouldBe Some(0)
+    json.as[ErrorDetail] shouldBe Right(info)
+  }
+
+  test("ServerError round-trips through encode/decode") {
+    forAll { (e: ErrorResponse.ServerError) =>
+      val decoded = parser.parse(e.asJson.noSpaces).flatMap(_.as[ErrorResponse.ServerError])
+      decoded shouldBe Right(e)
     }
   }
 
-  test("ErrorResponse types preserve error content when encoded") {
-    val errorList = List(ErrorType.ApiError("error1"), ErrorType.CypherError("error2"))
-    val serverError = ErrorResponse.ServerError(errorList)
-    val json = serverError.asJson
-
-    val errorsArray = json.hcursor.downField("errors").focus.flatMap(_.asArray).get
-    errorsArray.size shouldBe 2
-    errorsArray.head.hcursor.get[String]("message") shouldBe Right("error1")
-    errorsArray.head.hcursor.get[String]("type") shouldBe Right("ApiError")
-    errorsArray(1).hcursor.get[String]("message") shouldBe Right("error2")
-    errorsArray(1).hcursor.get[String]("type") shouldBe Right("CypherError")
+  test("BadRequest round-trips through encode/decode") {
+    forAll { (e: ErrorResponse.BadRequest) =>
+      val decoded = parser.parse(e.asJson.noSpaces).flatMap(_.as[ErrorResponse.BadRequest])
+      decoded shouldBe Right(e)
+    }
   }
 }

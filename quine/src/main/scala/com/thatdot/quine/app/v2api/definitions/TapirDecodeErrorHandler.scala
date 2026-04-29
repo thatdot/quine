@@ -10,9 +10,8 @@ import sttp.tapir.server.interceptor.exception.DefaultExceptionHandler
 import sttp.tapir.server.model.ValuedEndpointOutput
 import sttp.tapir.{DecodeResult, headers, statusCode, stringBody}
 
-import com.thatdot.api.v2.ErrorType.{ApiError, DecodeError}
 import com.thatdot.api.v2.schema.TapirJsonConfig.jsonBody
-import com.thatdot.api.v2.{ErrorResponse, TypeDiscriminatorConfig}
+import com.thatdot.api.v2.{ErrorDetail, ErrorResponse, TypeDiscriminatorConfig}
 
 trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
 
@@ -30,35 +29,34 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
     if (path.nonEmpty) s"${df.message} at '$path'" else df.message
   }
 
-  /** Drop‑in replacement for Tapir's default [[DecodeFailureHandler]] using [[DefaultDecodeFailureHandler]] functions:
-    * [[DefaultDecodeFailureHandler.respond]] and message: [[DefaultDecodeFailureHandler.FailureMessages.failureMessage]].
-    * Uses [[pretty]] to print the DecodingFailure resulting from, in our case, a YAML decode failure.  This Default
-    * is needed because the default pekko behavior is to drop information about this type of failure.
+  /** Drop-in replacement for Tapir's default [[DecodeFailureHandler]]. Reuses
+    * [[DefaultDecodeFailureHandler.respond]] for status-code routing and
+    * [[DefaultDecodeFailureHandler.FailureMessages]] for default messaging, then
+    * lifts the result into our [[ErrorResponse]] envelope so every decode failure
+    * comes back wearing the AIP-193 shape.
     *
-    * Attach this to [[PekkoHttpServerOptions]]
-    * Behavior:
-    * 1. Capture YAML errors and produce tapir style message with them.  Add help text for `type` field being wrong.
-    *    Circe Decodes to CNil and reports an unhelpful message in this case:
-    *     `JSON decoding to CNil should never happen at 'source')`
-    * 2. Add help text for `type` field being wrong.
-    *    Circe Decodes to CNil and reports an unhelpful message in this case:
-    *     `(JSON decoding to CNil should never happen at 'source')`
-    * 3. Otherwise: lift the error body into our [[ErrorResponse]] based around status code
+    * Attach this to [[PekkoHttpServerOptions]].
+    *
+    * Cases, in order:
+    *   1. Circe `DecodingFailure` (YAML body): pekko's default drops the message,
+    *      so reconstruct it via [[pretty]]. If the error mentions `CNil`, attach a
+    *      help hint pointing at the `type` discriminator.
+    *   2. Circe `JsonDecodeException` with `CNil` in the default message (JSON
+    *      body): same `type`-field hint, default message is sufficient.
+    *   3. Any other decode error with a usable `getMessage` (e.g. invalid namespace,
+    *      invalid QuineId, bad edge direction): include the exception message in
+    *      the response body.
+    *   4. Otherwise: dispatch on the status code Tapir picked
+    *      (400 → BadRequest, 404 → NotFound, 500 → ServerError; fall back to the
+    *      default handler for anything else we haven't modelled).
     */
   protected val customHandler: DecodeFailureHandler[Future] = DecodeFailureHandler.apply { ctx =>
     Future.successful {
-      /* Delegate to the default response handler and update messages and Response Body Type.
-         [[respond]] is responsible for:
-         - Determine response based around the ctx(Some) or skip and check other endpoints for a successful match(None)
-       */
       DefaultDecodeFailureHandler.respond(ctx).map { case (code, headers) =>
         val defaultMsg = DefaultDecodeFailureHandler.FailureMessages.failureMessage(ctx)
 
-        // Lift into our response code
         ctx.failure match {
-          // -----------------------------------------------------------------
           // 1. Circe decoding failures (YAML)
-          // -----------------------------------------------------------------
           case DecodeResult.Error(_, df: DecodingFailure) =>
             val failureSource = DefaultDecodeFailureHandler.FailureMessages.failureSourceMessage(ctx.failingInput)
             val msg = s"$failureSource (${pretty(df)})"
@@ -69,9 +67,7 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
                 None
             decodeFailureResponse(headers, msg, advise)
 
-          // -----------------------------------------------------------------
-          // 1. Circe decoding failures (JSON) CNil appears in message
-          // -----------------------------------------------------------------
+          // 2. Circe decoding failures (JSON) — CNil appears in the default message
           case DecodeResult.Error(_, _: JsonDecodeException) if defaultMsg.contains("CNil") =>
             decodeFailureResponse(
               headers,
@@ -79,17 +75,13 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
               Some("unknown or unsupported one of selection (check the 'type' field)"),
             )
 
-          // -----------------------------------------------------------------
           // 3. Non-Circe decode errors with a descriptive exception message
           //    (e.g., invalid namespace, invalid QuineId, bad edge direction)
-          // -----------------------------------------------------------------
           case DecodeResult.Error(_, ex) if ex.getMessage != null =>
             val failureSource = DefaultDecodeFailureHandler.FailureMessages.failureSourceMessage(ctx.failingInput)
             decodeFailureResponse(headers, s"$failureSource: ${ex.getMessage}")
 
-          // -----------------------------------------------------------------
-          // 4. Otherwise: lift the error body into our [[ErrorResponse]] based around status code
-          // -----------------------------------------------------------------
+          // 4. Otherwise: dispatch on the status code Tapir picked
           case _ =>
             code match {
               case StatusCode.BadRequest => decodeFailureResponse(headers, defaultMsg)
@@ -113,7 +105,7 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
   ): ValuedEndpointOutput[_] =
     ValuedEndpointOutput(
       statusCode(StatusCode.BadRequest).and(headers).and(jsonBody[ErrorResponse.BadRequest]),
-      (headerList, ErrorResponse.BadRequest(DecodeError(m, help))),
+      (headerList, ErrorResponse.BadRequest(m, help.map(ErrorDetail.Help(_)).toList)),
     )
 
   private def serverErrorFailureResponse(
@@ -122,7 +114,7 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
   ): ValuedEndpointOutput[_] =
     ValuedEndpointOutput(
       statusCode(StatusCode.InternalServerError).and(headers).and(jsonBody[ErrorResponse.ServerError]),
-      (headerList, ErrorResponse.ServerError(ApiError(m))),
+      (headerList, ErrorResponse.ServerError(m)),
     )
 
   private def notFoundFailureResponse(
@@ -131,7 +123,7 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
   ): ValuedEndpointOutput[_] =
     ValuedEndpointOutput(
       statusCode(StatusCode.NotFound).and(headers).and(jsonBody[ErrorResponse.NotFound]),
-      (headerList, ErrorResponse.NotFound(ApiError(m))),
+      (headerList, ErrorResponse.NotFound(m)),
     )
 
 }

@@ -14,8 +14,8 @@ object V2QuineAdministrationEndpointGenerators {
   object Gens {
     val tGraphHashCode: Gen[TGraphHashCode] = for {
       value <- nonEmptyAlphaNumStr
-      atTime <- Gen.posNum[Long]
-    } yield TGraphHashCode(value, atTime)
+      atTimeMillis <- Gen.posNum[Long]
+    } yield TGraphHashCode(value, Instant.ofEpochMilli(atTimeMillis))
 
     val tQuineInfo: Gen[TQuineInfo] = for {
       version <- nonEmptyAlphaNumStr

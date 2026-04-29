@@ -6,7 +6,6 @@ export { createScalaJSBundlePlugin, type ScalaJSBundleOptions } from './plugins/
 export {
   createMockApiPlugin,
   respondJson,
-  wrapV2Response,
   type MockApiHandler,
   type MockApiHandlerMap,
   type MockApiOptions,

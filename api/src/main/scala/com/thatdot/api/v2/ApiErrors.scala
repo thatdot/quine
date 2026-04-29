@@ -3,6 +3,7 @@ package com.thatdot.api.v2
 import java.util.UUID
 
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.{EndpointOutput, Schema, statusCode}
@@ -12,144 +13,216 @@ import com.thatdot.api.v2.schema.TapirJsonConfig.jsonBody
 import com.thatdot.common.logging.Log._
 import com.thatdot.quine.util.BaseError
 
-/** Errors that api v2 cares to distinguish for reporting */
-sealed trait ErrorType {
-  val message: String
-}
-
-/** The types of errors that the api knows how to distinguish and report
+/** Supplementary detail entries on an error response.
   *
-  *  Should be extended for all errors we want to be distinguished in an api response.
-  *  See: [[BaseError]] for future extension.
+  * Wire format follows AIP-193 / `google.rpc.Status.details[]` — each entry carries a
+  * `type` discriminator alongside its content. New variants can be added as the API
+  * evolves; existing clients ignore types they don't recognize.
   */
-object ErrorType {
+sealed trait ErrorDetail
+object ErrorDetail {
 
-  /** General Api error that we don't have any extra information about */
-  case class ApiError(message: String) extends ErrorType
-  object ApiError {
-    implicit lazy val schema: Schema[ApiError] = Schema.derived
-    implicit val encoder: Encoder[ApiError] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[ApiError] = deriveConfiguredDecoder
-  }
-
-  /** Api error type for any sort of Decode Failure
-    *
-    * Used currently for a custom decode failure handler passed to Pekko Server Options.
+  /** Server-assigned correlation ID for support to look up server-side context. Replaces
+    * the previous practice of embedding the ID inside the human-readable `message` string.
     */
-  case class DecodeError(message: String, help: Option[String] = None) extends ErrorType
-  object DecodeError {
-    implicit lazy val schema: Schema[DecodeError] = Schema.derived
-    implicit val encoder: Encoder[DecodeError] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[DecodeError] = deriveConfiguredDecoder
+  final case class RequestInfo(requestId: String) extends ErrorDetail
+  object RequestInfo {
+    implicit lazy val schema: Schema[RequestInfo] = Schema.derived
   }
 
-  /** Api error type for any Cypher Error
+  /** Free-form supplementary text — hints, secondary error messages, decode-failure help. */
+  final case class Help(message: String) extends ErrorDetail
+  object Help {
+    implicit lazy val schema: Schema[Help] = Schema.derived
+  }
+
+  /** Machine-readable error classification, modelled on `google.rpc.ErrorInfo`.
     *
-    *  This could be further broken down based upon CypherException later.
+    *   - `reason` is a stable SCREAMING_SNAKE_CASE code (e.g. `CYPHER_ERROR`); clients
+    *     should switch on this rather than parsing `message`.
+    *   - `domain` namespaces the reason so codes from different sources don't collide
+    *     (we always use `quine.io`).
+    *   - `metadata` carries optional structured context (line/column for parse errors, etc.).
     */
-  case class CypherError(message: String) extends ErrorType
-  object CypherError {
-    implicit lazy val schema: Schema[CypherError] = Schema.derived
-    implicit val encoder: Encoder[CypherError] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[CypherError] = deriveConfiguredDecoder
+  final case class ErrorInfo(
+    reason: String,
+    domain: String = "quine.io",
+    metadata: Map[String, String] = Map.empty,
+  ) extends ErrorDetail
+  object ErrorInfo {
+    implicit lazy val schema: Schema[ErrorInfo] = Schema.derived
   }
 
-  implicit lazy val schema: Schema[ErrorType] = Schema.derived
-  implicit val encoder: Encoder[ErrorType] = deriveConfiguredEncoder
-  implicit val decoder: Decoder[ErrorType] = deriveConfiguredDecoder
+  /** Convenience: classify a `BadRequest` as a Cypher syntax/compilation error. */
+  val cypherError: ErrorInfo = ErrorInfo(reason = "CYPHER_ERROR")
+
+  implicit lazy val schema: Schema[ErrorDetail] = Schema.derived
+  implicit val encoder: Encoder[ErrorDetail] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[ErrorDetail] = deriveConfiguredDecoder
 }
 
-trait HasErrors extends Product with Serializable {
-  def errors: List[ErrorType]
-
-}
-
-/** Provides the types of error codes that the api can give back to a user.
+/** Body of an error response, per AIP-193 / `google.rpc.Status`.
   *
-  *  Maps directly to http error codes (400s to 500s)
-  *  They are combined with Coproduct from shapeless where used. This should be updated to Union in scala 3.
+  *   - `code` mirrors the HTTP status code (also sent in the HTTP layer; included here so
+  *     the body is self-contained when extracted from the response).
+  *   - `status` is the canonical status name (e.g. `INVALID_ARGUMENT`, `NOT_FOUND`).
+  *   - `message` is the primary human-readable error.
+  *   - `details` carries additional structured context (correlation IDs, hints, etc.).
+  */
+final case class ErrorBody(
+  code: Int,
+  status: String,
+  message: String,
+  details: List[ErrorDetail] = Nil,
+)
+object ErrorBody {
+  implicit lazy val schema: Schema[ErrorBody] = Schema.derived
+  implicit val encoder: Encoder[ErrorBody] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[ErrorBody] = deriveConfiguredDecoder
+}
+
+/** Top-level error envelope. Every error response is `{"error": <ErrorBody>}` per AIP-193. */
+final case class ApiError(error: ErrorBody)
+object ApiError {
+  implicit lazy val schema: Schema[ApiError] = Schema.derived
+  implicit val encoder: Encoder[ApiError] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[ApiError] = deriveConfiguredDecoder
+}
+
+/** Common interface for all error-response types: every variant has a primary
+  * `message` and an optional list of structured `details`.
+  */
+trait HasError {
+  def message: String
+  def details: List[ErrorDetail]
+}
+
+/** Per-HTTP-status error types, used for Tapir `oneOf` output dispatch.
+  *
+  * Each is a thin wrapper around the underlying [[ErrorBody]]: the case classes carry
+  * only `message` + `details`, while the canonical `code` and `status` for the type are
+  * fixed in their JSON encoders. Calling code constructs them with bare-message helpers
+  * (`BadRequest("…")`) and the wire format comes out as `{"error": {"code": 400, …}}`.
   */
 object ErrorResponse {
 
-  case class ServerError(errors: List[ErrorType]) extends HasErrors
-  case class BadRequest(errors: List[ErrorType]) extends HasErrors
-  case class NotFound(errors: List[ErrorType]) extends HasErrors
-  case class Unauthorized(errors: List[ErrorType]) extends HasErrors
-  case class ServiceUnavailable(errors: List[ErrorType]) extends HasErrors
+  private def envelopeEncoder[A](toBody: A => ErrorBody): Encoder[A] =
+    Encoder.instance(a => ApiError(toBody(a)).asJson)
 
-  implicit private val errorListSchema: Schema[List[ErrorType]] = ErrorType.schema.asIterable[List]
+  private def envelopeDecoder[A](expectedCode: Int, build: (String, List[ErrorDetail]) => A): Decoder[A] =
+    Decoder[ApiError].emap { ae =>
+      if (ae.error.code == expectedCode) Right(build(ae.error.message, ae.error.details))
+      else Left(s"Expected error.code=$expectedCode, got ${ae.error.code}")
+    }
 
+  /** 500 INTERNAL */
+  final case class ServerError(message: String, details: List[ErrorDetail] = Nil) extends HasError
   object ServerError {
-    def apply(error: String): ServerError = ServerError(List(ErrorType.ApiError(error)))
-    def apply(error: ErrorType): ServerError = ServerError(List(error))
-    def apply(error: BaseError): ServerError = ServerError(
-      List(ErrorType.ApiError(error.getMessage)),
-    )
-    def ofErrors(errors: List[BaseError]): ServerError = ServerError(
-      errors.map(err => ErrorType.ApiError(err.getMessage)),
-    )
-    implicit lazy val schema: Schema[ServerError] = Schema.derived
-    implicit val encoder: Encoder[ServerError] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[ServerError] = deriveConfiguredDecoder
+    val httpCode: Int = 500
+    val canonicalStatus: String = "INTERNAL"
+
+    def apply(error: BaseError): ServerError = ServerError(error.getMessage)
+    def ofErrors(errors: List[BaseError]): ServerError =
+      fromMessages(errors.map(_.getMessage))
+
+    def fromMessages(messages: List[String]): ServerError = messages match {
+      case Nil => ServerError("An internal error occurred.")
+      case head :: tail => ServerError(head, tail.map(ErrorDetail.Help(_)))
+    }
+
+    private def toBody(e: ServerError): ErrorBody = ErrorBody(httpCode, canonicalStatus, e.message, e.details)
+    implicit val encoder: Encoder[ServerError] = envelopeEncoder(toBody)
+    implicit val decoder: Decoder[ServerError] = envelopeDecoder(httpCode, ServerError(_, _))
+    implicit val schema: Schema[ServerError] = ApiError.schema.as[ServerError]
   }
 
-  // It would be nice to take away the below methods once we have our errors properly coded.
+  /** 400 INVALID_ARGUMENT */
+  final case class BadRequest(message: String, details: List[ErrorDetail] = Nil) extends HasError
   object BadRequest {
-    def apply(error: String): BadRequest = BadRequest(List(ErrorType.ApiError(error)))
-    def apply(error: ErrorType): BadRequest = BadRequest(List(error))
-    def apply(error: BaseError): BadRequest = BadRequest(List(ErrorType.ApiError(error.getMessage)))
-    def ofErrorStrings(errors: List[String]): BadRequest = BadRequest(errors.map(err => ErrorType.ApiError(err)))
-    def ofErrors(errors: List[BaseError]): BadRequest = BadRequest(
-      errors.map(err => ErrorType.ApiError(err.getMessage)),
-    )
-    implicit lazy val schema: Schema[BadRequest] = Schema.derived
-    implicit val encoder: Encoder[BadRequest] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[BadRequest] = deriveConfiguredDecoder
+    val httpCode: Int = 400
+    val canonicalStatus: String = "INVALID_ARGUMENT"
+
+    def apply(error: BaseError): BadRequest = BadRequest(error.getMessage)
+    def ofErrorStrings(errors: List[String]): BadRequest = fromMessages(errors)
+    def ofErrors(errors: List[BaseError]): BadRequest = fromMessages(errors.map(_.getMessage))
+
+    def fromMessages(messages: List[String]): BadRequest = messages match {
+      case Nil => BadRequest("Bad request.")
+      case head :: tail => BadRequest(head, tail.map(ErrorDetail.Help(_)))
+    }
+
+    private def toBody(e: BadRequest): ErrorBody = ErrorBody(httpCode, canonicalStatus, e.message, e.details)
+    implicit val encoder: Encoder[BadRequest] = envelopeEncoder(toBody)
+    implicit val decoder: Decoder[BadRequest] = envelopeDecoder(httpCode, BadRequest(_, _))
+    implicit val schema: Schema[BadRequest] = ApiError.schema.as[BadRequest]
   }
 
+  /** 404 NOT_FOUND */
+  final case class NotFound(message: String, details: List[ErrorDetail] = Nil) extends HasError
   object NotFound {
-    def apply(error: String): NotFound = NotFound(List(ErrorType.ApiError(error)))
-    def apply(error: ErrorType): NotFound = NotFound(List(error))
-    def apply(error: BaseError): NotFound = NotFound(List(ErrorType.ApiError(error.getMessage)))
-    def ofErrors(errors: List[BaseError]): NotFound = NotFound(errors.map(err => ErrorType.ApiError(err.getMessage)))
-    implicit lazy val schema: Schema[NotFound] = Schema.derived
-    implicit val encoder: Encoder[NotFound] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[NotFound] = deriveConfiguredDecoder
+    val httpCode: Int = 404
+    val canonicalStatus: String = "NOT_FOUND"
+
+    def apply(error: BaseError): NotFound = NotFound(error.getMessage)
+    def ofErrors(errors: List[BaseError]): NotFound = fromMessages(errors.map(_.getMessage))
+
+    def fromMessages(messages: List[String]): NotFound = messages match {
+      case Nil => NotFound("Not found.")
+      case head :: tail => NotFound(head, tail.map(ErrorDetail.Help(_)))
+    }
+
+    private def toBody(e: NotFound): ErrorBody = ErrorBody(httpCode, canonicalStatus, e.message, e.details)
+    implicit val encoder: Encoder[NotFound] = envelopeEncoder(toBody)
+    implicit val decoder: Decoder[NotFound] = envelopeDecoder(httpCode, NotFound(_, _))
+    implicit val schema: Schema[NotFound] = ApiError.schema.as[NotFound]
   }
 
+  /** 401 UNAUTHENTICATED */
+  final case class Unauthorized(message: String, details: List[ErrorDetail] = Nil) extends HasError
   object Unauthorized {
-    def apply(reason: String): Unauthorized = Unauthorized(List(ErrorType.ApiError(reason)))
-    def apply(reason: ErrorType) = new Unauthorized(List(reason))
-    implicit lazy val schema: Schema[Unauthorized] = Schema.derived
-    implicit val encoder: Encoder[Unauthorized] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[Unauthorized] = deriveConfiguredDecoder
-    implicit val loggable: AlwaysSafeLoggable[Unauthorized] = unauthorized =>
-      s"Unauthorized: ${unauthorized.errors.mkString("[", ", ", "]")}"
+    val httpCode: Int = 401
+    val canonicalStatus: String = "UNAUTHENTICATED"
+
+    private def toBody(e: Unauthorized): ErrorBody = ErrorBody(httpCode, canonicalStatus, e.message, e.details)
+    implicit val encoder: Encoder[Unauthorized] = envelopeEncoder(toBody)
+    implicit val decoder: Decoder[Unauthorized] = envelopeDecoder(httpCode, Unauthorized(_, _))
+    implicit val schema: Schema[Unauthorized] = ApiError.schema.as[Unauthorized]
+    implicit val loggable: AlwaysSafeLoggable[Unauthorized] = u => s"Unauthorized: ${u.message}"
   }
 
+  /** 503 UNAVAILABLE */
+  final case class ServiceUnavailable(message: String, details: List[ErrorDetail] = Nil) extends HasError
   object ServiceUnavailable {
-    def apply(error: String): ServiceUnavailable = ServiceUnavailable(List(ErrorType.ApiError(error)))
-    def apply(error: ErrorType): ServiceUnavailable = ServiceUnavailable(List(error))
-    def apply(error: BaseError): ServiceUnavailable = ServiceUnavailable(List(ErrorType.ApiError(error.getMessage)))
-    def ofErrors(errors: List[BaseError]): ServiceUnavailable = ServiceUnavailable(
-      errors.map(err => ErrorType.ApiError(err.getMessage)),
-    )
-    implicit lazy val schema: Schema[ServiceUnavailable] = Schema.derived
-    implicit val encoder: Encoder[ServiceUnavailable] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[ServiceUnavailable] = deriveConfiguredDecoder
-  }
+    val httpCode: Int = 503
+    val canonicalStatus: String = "UNAVAILABLE"
 
+    def apply(error: BaseError): ServiceUnavailable = ServiceUnavailable(error.getMessage)
+    def ofErrors(errors: List[BaseError]): ServiceUnavailable = fromMessages(errors.map(_.getMessage))
+
+    def fromMessages(messages: List[String]): ServiceUnavailable = messages match {
+      case Nil => ServiceUnavailable("Service unavailable.")
+      case head :: tail => ServiceUnavailable(head, tail.map(ErrorDetail.Help(_)))
+    }
+
+    private def toBody(e: ServiceUnavailable): ErrorBody = ErrorBody(httpCode, canonicalStatus, e.message, e.details)
+    implicit val encoder: Encoder[ServiceUnavailable] = envelopeEncoder(toBody)
+    implicit val decoder: Decoder[ServiceUnavailable] = envelopeDecoder(httpCode, ServiceUnavailable(_, _))
+    implicit val schema: Schema[ServiceUnavailable] = ApiError.schema.as[ServiceUnavailable]
+  }
 }
 
 object ErrorResponseHelpers extends LazySafeLogging {
 
-  /** Default error catching for server logic.  Could use a second look once more errors are codified */
+  /** Default error catching for server logic. The correlation ID is now a structured
+    * `RequestInfo` detail entry (machine-extractable) rather than embedded in the message.
+    */
   def toServerError(e: Throwable)(implicit logConfig: LogConfig): ErrorResponse.ServerError = {
     val correlationId = UUID.randomUUID().toString
     logger.error(log"Internal server error [correlationId=${Safe(correlationId)}]" withException e)
 
     ErrorResponse.ServerError(
-      s"An internal error occurred. Reference ID: $correlationId",
+      message = "An internal error occurred.",
+      details = List(ErrorDetail.RequestInfo(correlationId)),
     )
   }
 
@@ -196,7 +269,6 @@ object ErrorResponseHelpers extends LazySafeLogging {
       jsonBody[ErrorResponse.Unauthorized]
         .description(ErrorText.unauthorizedErrorDescription(possibleReasons: _*))
     }
-
 }
 
 object ErrorText {

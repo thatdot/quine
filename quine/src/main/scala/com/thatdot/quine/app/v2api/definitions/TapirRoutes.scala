@@ -36,28 +36,32 @@ abstract class TapirRoutes extends FailFastCirceSupport with TypeDiscriminatorCo
 
   val openApiServerUrl: String = "/"
 
-  protected def openApiSpec(ingestOnly: Boolean): OpenAPI = OpenAPIDocsInterpreter()
-    .toOpenAPI(
-      (if (ingestOnly) ingestEndpoints else apiEndpoints)
-        .filterNot(_.attribute(Visibility.attributeKey).contains(Visibility.Hidden))
-        .map(_.endpoint),
-      apiInfo,
-    )
-    .copy(tags = globalTags, servers = List(Server(openApiServerUrl)))
+  protected def openApiSpec(ingestOnly: Boolean): OpenAPI = {
+    val raw = OpenAPIDocsInterpreter()
+      .toOpenAPI(
+        (if (ingestOnly) ingestEndpoints else apiEndpoints)
+          .filterNot(_.attribute(Visibility.attributeKey).contains(Visibility.Hidden))
+          .map(_.endpoint),
+        apiInfo,
+      )
+      .copy(tags = globalTags, servers = List(Server(openApiServerUrl)))
+    CustomMethod.rewriteOpenAPI(raw)
+  }
 
   protected def v2DocsRoute(ingestOnly: Boolean): Route =
-    pathPrefix("api" / "v2" / "openapi.json") {
-      get {
-        val spec = openApiSpec(ingestOnly).asJson.deepMerge(
-          io.circe.Json.obj(
-            "servers" -> io.circe.Json.arr(
-              io.circe.Json.obj("url" -> io.circe.Json.fromString(openApiServerUrl)),
-            ),
-          ),
-        )
-        complete(200, spec)
-      }
-    }
+    concat(
+      path("api" / "v2" / "openapi.json") {
+        get {
+          complete(200, openApiSpec(ingestOnly).asJson)
+        }
+      },
+      // Top-level alias for the latest (V2) spec; AIP-4 service-discovery convention.
+      path("openapi.json") {
+        get {
+          complete(200, openApiSpec(ingestOnly).asJson)
+        }
+      },
+    )
 
   /** Uses a custom decode failure handler, [[customHandler]] that we define in order to capture special cases, like
     * YAML, and augment errors messages with help text in hard to understand cases, `type` has a wrong value.

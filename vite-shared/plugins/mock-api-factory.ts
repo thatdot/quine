@@ -48,17 +48,6 @@ export function respondJson(res: ServerResponse, data: unknown, status = 200): v
 }
 
 /**
- * Wrap v1 response data in v2 envelope format.
- */
-export function wrapV2Response(content: unknown): unknown {
-  return {
-    content,
-    message: null,
-    warnings: [],
-  };
-}
-
-/**
  * Parse JSON request body.
  */
 function parseRequestBody(req: IncomingMessage): Promise<unknown> {
@@ -97,24 +86,24 @@ function createBaseHandlers(fixtures: MockApiOptions['fixtures']): MockApiHandle
     'GET /api/v1/query-ui/sample-queries': (_req, res) => {
       respondJson(res, sampleQueries);
     },
-    'GET /api/v2/query-ui/sample-queries': (_req, res) => {
-      respondJson(res, wrapV2Response(sampleQueries));
+    'GET /api/v2/queryUi/sampleQueries': (_req, res) => {
+      respondJson(res, sampleQueries);
     },
 
     // Node appearances
     'GET /api/v1/query-ui/node-appearances': (_req, res) => {
       respondJson(res, nodeAppearances);
     },
-    'GET /api/v2/query-ui/node-appearances': (_req, res) => {
-      respondJson(res, wrapV2Response(nodeAppearances));
+    'GET /api/v2/queryUi/nodeAppearances': (_req, res) => {
+      respondJson(res, nodeAppearances);
     },
 
     // Quick queries
     'GET /api/v1/query-ui/quick-queries': (_req, res) => {
       respondJson(res, quickQueries);
     },
-    'GET /api/v2/query-ui/quick-queries': (_req, res) => {
-      respondJson(res, wrapV2Response(quickQueries));
+    'GET /api/v2/queryUi/quickQueries': (_req, res) => {
+      respondJson(res, quickQueries);
     },
 
     // Metrics
@@ -122,15 +111,15 @@ function createBaseHandlers(fixtures: MockApiOptions['fixtures']): MockApiHandle
       respondJson(res, metrics);
     },
     'GET /api/v2/admin/metrics': (_req, res) => {
-      respondJson(res, wrapV2Response(metrics));
+      respondJson(res, metrics);
     },
 
     // Shard sizes
     'POST /api/v1/admin/shard-sizes': (_req, res) => {
       respondJson(res, {});
     },
-    'GET /api/v2/admin/shards/size-limits': (_req, res) => {
-      respondJson(res, wrapV2Response({}));
+    'GET /api/v2/admin/shardSizeLimits': (_req, res) => {
+      respondJson(res, {});
     },
 
     // Query endpoints (v1)
@@ -158,19 +147,19 @@ function createBaseHandlers(fixtures: MockApiOptions['fixtures']): MockApiHandle
     },
 
     // Query endpoints (v2)
-    'POST /api/v2/cypher-queries/query-graph': (_req, res, body) => {
+    'POST /api/v2/cypher:query': (_req, res, body) => {
       console.log('[Mock API] Cypher query (v2):', body);
-      respondJson(res, wrapV2Response(sampleQueryResult));
+      respondJson(res, sampleQueryResult);
     },
-    'POST /api/v2/cypher-queries/query-nodes': (_req, res, body) => {
+    'POST /api/v2/cypher:queryNodes': (_req, res, body) => {
       console.log('[Mock API] Cypher nodes query (v2):', body);
       console.log(`[Mock API] Returning ${sampleNodes.length} nodes`);
-      respondJson(res, wrapV2Response(sampleNodes));
+      respondJson(res, sampleNodes);
     },
-    'POST /api/v2/cypher-queries/query-edges': (_req, res, body) => {
+    'POST /api/v2/cypher:queryEdges': (_req, res, body) => {
       console.log('[Mock API] Cypher edges query (v2):', body);
       console.log(`[Mock API] Returning ${sampleEdges.length} edges`);
-      respondJson(res, wrapV2Response(sampleEdges));
+      respondJson(res, sampleEdges);
     },
   };
 }

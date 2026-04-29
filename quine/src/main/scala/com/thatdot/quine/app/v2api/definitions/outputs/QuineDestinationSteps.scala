@@ -1,5 +1,7 @@
 package com.thatdot.quine.app.v2api.definitions.outputs
 
+import scala.concurrent.duration._
+
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
@@ -8,8 +10,10 @@ import sttp.tapir.Schema.annotations.{default, description, encodedExample, titl
 import com.thatdot.api.codec.SecretCodecs._
 import com.thatdot.api.schema.SecretSchemas._
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, finiteDurationEncoder}
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.{DestinationSteps, Format, OutputFormat}
+import com.thatdot.api.v2.schema.ThirdPartySchemas.scala.finiteDurationSchema
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, SaslJaasConfig}
 import com.thatdot.common.security.Secret
 
@@ -188,9 +192,9 @@ object QuineDestinationSteps {
     hookUrl: String,
     @default(false)
     onlyPositiveMatchData: Boolean = false,
-    @description("Number of seconds to wait between messages; minimum 1.")
-    @default(20)
-    intervalSeconds: Int = 20,
+    @description("Time to wait between messages; minimum 1 second.")
+    @encodedExample("20s")
+    interval: FiniteDuration = 20.seconds,
   ) extends QuineDestinationSteps
 
   implicit val encoder: Encoder[QuineDestinationSteps] = deriveConfiguredEncoder

@@ -10,9 +10,9 @@ import org.apache.pekko.util.Timeout
 
 import shapeless.{:+:, CNil, Coproduct}
 
+import com.thatdot.api.v2.ErrorDetail
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, ServerError}
 import com.thatdot.api.v2.ErrorResponseHelpers.toServerError
-import com.thatdot.api.v2.ErrorType
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.routes.AlgorithmMethods
@@ -79,7 +79,7 @@ trait AlgorithmApiMethods extends AlgorithmMethods {
             ) // Return a Bad Request Error
           case e: CypherException =>
             Coproduct[ServerError :+: BadRequest :+: CNil](
-              BadRequest(ErrorType.CypherError(s"Invalid query: ${e.getMessage}")),
+              BadRequest(s"Invalid query: ${e.getMessage}", List(ErrorDetail.cypherError)),
             )
           case e: IllegalArgumentException =>
             Coproduct[ServerError :+: BadRequest :+: CNil](BadRequest(e.getMessage))

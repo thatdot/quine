@@ -93,10 +93,11 @@ object IngestStreamTable {
             .toOption
             .map(r => f"$r%.1f/s")
             .getOrElse("-")
+          // `totalRuntime` is an AIP-142 duration string (e.g. "5h30m45s"); display verbatim.
           val uptime = stats.hcursor
-            .get[Long]("totalRuntime")
+            .get[String]("totalRuntime")
             .toOption
-            .map(formatDuration)
+            .filter(_.nonEmpty)
             .getOrElse("-")
           List(td(ingestedCount), td(rate), td(uptime))
       },
@@ -159,24 +160,4 @@ object IngestStreamTable {
     if (n >= 1000000) f"${n / 1000000.0}%.1fM"
     else if (n >= 1000) f"${n / 1000.0}%.1fK"
     else n.toString
-
-  private def formatDuration(millis: Long): String = {
-    val totalSeconds = millis / 1000
-    if (totalSeconds < 60) s"${totalSeconds}s"
-    else {
-      val minutes = totalSeconds / 60
-      val seconds = totalSeconds % 60
-      if (minutes < 60) f"${minutes}m ${seconds}s"
-      else {
-        val hours = minutes / 60
-        val mins = minutes % 60
-        if (hours < 24) f"${hours}h ${mins}m"
-        else {
-          val days = hours / 24
-          val hrs = hours % 24
-          f"${days}d ${hrs}h"
-        }
-      }
-    }
-  }
 }

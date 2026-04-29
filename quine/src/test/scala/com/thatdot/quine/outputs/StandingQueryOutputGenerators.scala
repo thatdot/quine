@@ -1,5 +1,7 @@
 package com.thatdot.quine.outputs
 
+import scala.concurrent.duration._
+
 import cats.data.NonEmptyList
 import org.scalacheck.{Arbitrary, Gen}
 
@@ -108,7 +110,7 @@ object StandingQueryOutputGenerators {
       hookUrl <- Gen.const("https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX")
       onlyPositiveMatchData <- bool
       intervalSeconds <- Gen.chooseNum(1, 60)
-    } yield QuineDestinationSteps.Slack(hookUrl, onlyPositiveMatchData, intervalSeconds)
+    } yield QuineDestinationSteps.Slack(hookUrl, onlyPositiveMatchData, intervalSeconds.seconds)
 
     val quineDestinationSteps: Gen[QuineDestinationSteps] = Gen.oneOf(
       Gen.const(QuineDestinationSteps.Drop),

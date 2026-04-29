@@ -3,6 +3,7 @@ package com.thatdot.api.v2.codec
 import java.nio.charset.Charset
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
 
 import io.circe.{Decoder, Encoder}
@@ -12,6 +13,7 @@ import io.circe.{Decoder, Encoder}
   * Usage:
   * {{{
   * import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk._
+  * import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala._
   * }}}
   *
   * @see [[com.thatdot.api.v2.schema.ThirdPartySchemas]] for Tapir schemas (OpenAPI documentation)
@@ -25,5 +27,13 @@ object ThirdPartyCodecs {
 
     implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
     implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.emapTry(s => Try(Instant.parse(s)))
+  }
+
+  /** Circe codecs for Scala stdlib types */
+  object scala {
+    implicit val finiteDurationEncoder: Encoder[FiniteDuration] =
+      Encoder.encodeString.contramap(DurationFormat.render)
+    implicit val finiteDurationDecoder: Decoder[FiniteDuration] =
+      Decoder.decodeString.emap(DurationFormat.parse)
   }
 }

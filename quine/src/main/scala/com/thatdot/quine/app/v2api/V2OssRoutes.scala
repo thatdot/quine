@@ -5,7 +5,7 @@ import scala.concurrent.Future
 import sttp.apispec.Tag
 import sttp.apispec.openapi.Info
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.{EndpointInput, query}
+import sttp.tapir.{EndpointInput, header}
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.v2api.definitions._
@@ -22,7 +22,7 @@ class V2OssRoutes(val appMethods: OssApiMethods, override val openApiServerUrl: 
     V2ApiInfo.endpointSequences(this)
 
   def memberIdxParameter: EndpointInput[Option[Int]] =
-    query[Option[Int]]("memberIdx").schema(_.hidden(true))
+    header[Option[Int]]("Quine-Member-Idx").schema(_.hidden(true))
   def namespaceParameter: EndpointInput[Option[NamespaceParameter]] =
     CommonParameters.hiddenValidatingNamespaceQuery
 

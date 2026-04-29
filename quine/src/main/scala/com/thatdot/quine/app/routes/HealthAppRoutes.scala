@@ -9,7 +9,7 @@ import org.apache.pekko.util.Timeout
 import sttp.apispec.openapi.Info
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.pekkohttp.PekkoHttpServerInterpreter
-import sttp.tapir.{EndpointInput, query}
+import sttp.tapir.{EndpointInput, header}
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig}
 import com.thatdot.quine.app.QuineApp
@@ -61,7 +61,7 @@ class HealthAppRoutes(
   )
 
   override def memberIdxParameter: EndpointInput[Option[Int]] =
-    query[Option[Int]]("memberIdx").schema(_.hidden(true))
+    header[Option[Int]]("Quine-Member-Idx").schema(_.hidden(true))
 
   override def namespaceParameter: EndpointInput[Option[NamespaceParameter]] =
     CommonParameters.hiddenValidatingNamespaceQuery

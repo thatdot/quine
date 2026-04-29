@@ -7,7 +7,7 @@ import io.circe.Json
 import com.thatdot.quine.openapi.{OpenApiParser, ParsedSpec, SchemaNode}
 
 /** Typed API client for the Streams page. Hides endpoint discovery, path param
-  * substitution, HTTP methods, and V2 response envelope unwrapping behind
+  * substitution, HTTP methods, and AIP-158 page-envelope unwrapping behind
   * named CRUD methods.
   *
   * Components receive this trait (or Signals/Observers derived from it) and
@@ -60,7 +60,7 @@ object StreamsApiClient {
         .map(OpenApiParser.resolveNode(_, spec.schemas))
 
     def listIngests()(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      callAndUnwrap(StreamOp.ListIngests)
+      callListAndUnwrapItems(StreamOp.ListIngests)
 
     def createIngest(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       callWithBody(StreamOp.CreateIngest, body)
@@ -75,7 +75,7 @@ object StreamsApiClient {
       registry.executeAction(StreamOp.ResumeIngest, name)
 
     def listStandingQueries()(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      callAndUnwrap(StreamOp.ListStandingQueries)
+      callListAndUnwrapItems(StreamOp.ListStandingQueries)
 
     def createStandingQuery(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       callWithBody(StreamOp.CreateStandingQuery, body)
@@ -95,11 +95,11 @@ object StreamsApiClient {
     def removeOutput(sqName: String, outputName: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.executeAction(StreamOp.RemoveSQOutput, Seq(sqName, outputName))
 
-    private def callAndUnwrap(
+    private def callListAndUnwrapItems(
       op: StreamOp,
     )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.findEndpoint(op) match {
-        case Some(ep) => HttpClient.call(ep, baseUrl = baseUrl).map(_.map(HttpClient.unwrapV2Envelope))
+        case Some(ep) => HttpClient.call(ep, baseUrl = baseUrl).map(_.map(HttpClient.unwrapPageItems))
         case None => Future.successful(Left(s"Endpoint for $op not found in API spec."))
       }
 

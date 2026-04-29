@@ -24,8 +24,8 @@ final case class V2QuickQuery(name: String, querySuffix: String, sort: V2QuerySo
 final case class V2UiNodeQuickQuery(predicate: V2UiNodePredicate, quickQuery: V2QuickQuery)
 
 trait V2QueryUiConfigurationRoutesConverters {
-  def convertToV1UiNodeQuickQuery(v2: V2SuccessResponse[Vector[V2UiNodeQuickQuery]]): Vector[UiNodeQuickQuery] =
-    v2.content.map(v1NodeQuickQuery =>
+  def convertToV1UiNodeQuickQuery(v2: Vector[V2UiNodeQuickQuery]): Vector[UiNodeQuickQuery] =
+    v2.map(v1NodeQuickQuery =>
       UiNodeQuickQuery(
         predicate = UiNodePredicate(
           propertyKeys = v1NodeQuickQuery.predicate.propertyKeys,
@@ -57,16 +57,15 @@ trait V2QueryUiConfigurationRoutesSchemas extends AnySchema with JsonSchemas {
 trait V2QueryUiConfigurationRoutes
     extends QueryUiConfigurationSchemas
     with V2QueryUiConfigurationRoutesSchemas
-    with V2SuccessResponseSchema
     with V2QueryUiConfigurationRoutesConverters
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with exts.QuineEndpoints {
 
   private val v2Api = path / "api" / "v2"
-  private val v2QueryUi = v2Api / "query-ui"
-  private val v2SampleQueries = v2QueryUi / "sample-queries"
-  private val v2NodeAppearances = v2QueryUi / "node-appearances"
-  private val v2QuickQueries = v2QueryUi / "quick-queries"
+  private val v2QueryUi = v2Api / "queryUi"
+  private val v2SampleQueries = v2QueryUi / "sampleQueries"
+  private val v2NodeAppearances = v2QueryUi / "nodeAppearances"
+  private val v2QuickQueries = v2QueryUi / "quickQueries"
 
   private[this] val v2QueryUiTag = endpoints4s.algebra
     .Tag("UI Styling V2")
@@ -84,9 +83,7 @@ trait V2QueryUiConfigurationRoutes
       request = get(
         url = v2SampleQueries,
       ),
-      response = ok(
-        jsonResponse[V2SuccessResponse[Vector[SampleQuery]]],
-      ).xmap(response => response.content)(content => V2SuccessResponse(content)),
+      response = ok(jsonResponse[Vector[SampleQuery]]),
       docs = EndpointDocs()
         .withSummary(Some("List Sample Queries V2"))
         .withDescription(
@@ -103,9 +100,7 @@ trait V2QueryUiConfigurationRoutes
         url = v2SampleQueries,
         entity = jsonOrYamlRequestWithExample[Vector[SampleQuery]](SampleQuery.defaults),
       ),
-      response = ok(
-        jsonResponse[V2SuccessResponse[Unit]],
-      ).xmap(response => response.content)(_ => V2SuccessResponse(())),
+      response = ok(jsonResponse[Unit]),
       docs = EndpointDocs()
         .withSummary(Some("Replace Sample Queries V2"))
         .withDescription(
@@ -123,9 +118,7 @@ trait V2QueryUiConfigurationRoutes
       request = get(
         url = v2NodeAppearances,
       ),
-      response = ok(
-        jsonResponse[V2SuccessResponse[Vector[UiNodeAppearance]]],
-      ).xmap(response => response.content)(content => V2SuccessResponse(content)),
+      response = ok(jsonResponse[Vector[UiNodeAppearance]]),
       docs = EndpointDocs()
         .withSummary(Some("List Node Appearances V2"))
         .withDescription(
@@ -144,9 +137,7 @@ trait V2QueryUiConfigurationRoutes
         url = v2NodeAppearances,
         entity = jsonOrYamlRequestWithExample[Vector[UiNodeAppearance]](UiNodeAppearance.defaults),
       ),
-      response = ok(
-        jsonResponse[V2SuccessResponse[Unit]],
-      ).xmap(response => response.content)(_ => V2SuccessResponse(())),
+      response = ok(jsonResponse[Unit]),
       docs = EndpointDocs()
         .withSummary(Some("Replace Node Appearances V2"))
         .withDescription(
@@ -162,13 +153,12 @@ trait V2QueryUiConfigurationRoutes
       request = get(
         url = v2QuickQueries,
       ),
-      response = ok(
-        jsonResponse[V2SuccessResponse[Vector[V2UiNodeQuickQuery]]],
-      ).xmap[Vector[UiNodeQuickQuery]](convertToV1UiNodeQuickQuery)(_ =>
-        throw new UnsupportedOperationException(
-          "Client-endpoint only, not needed",
+      response = ok(jsonResponse[Vector[V2UiNodeQuickQuery]])
+        .xmap[Vector[UiNodeQuickQuery]](convertToV1UiNodeQuickQuery)(_ =>
+          throw new UnsupportedOperationException(
+            "Client-endpoint only, not needed",
+          ),
         ),
-      ),
     )
 
   final val updateQueryUiQuickQueriesV2: Endpoint[Vector[UiNodeQuickQuery], Unit] =
@@ -177,9 +167,7 @@ trait V2QueryUiConfigurationRoutes
         url = v2QuickQueries,
         entity = jsonOrYamlRequestWithExample[Vector[UiNodeQuickQuery]](UiNodeQuickQuery.defaults),
       ),
-      response = ok(
-        jsonResponse[V2SuccessResponse[Unit]],
-      ).xmap(response => response.content)(_ => V2SuccessResponse(())),
+      response = ok(jsonResponse[Unit]),
       docs = EndpointDocs()
         .withSummary(Some("Replace Quick Queries V2"))
         .withDescription(Some("""Quick queries are queries that appear when right-clicking

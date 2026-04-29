@@ -14,8 +14,8 @@ import cats.data.{EitherT, NonEmptyList}
 import cats.implicits._
 import shapeless.{:+:, CNil, Coproduct}
 
+import com.thatdot.api.v2.ErrorDetail
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
-import com.thatdot.api.v2.ErrorType
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
@@ -86,7 +86,7 @@ trait ApplicationApiMethods {
       val at = atTime.getOrElse(Milliseconds.currentTime())
       graph
         .getGraphHashCode(namespace, Some(at))
-        .map(elt => TGraphHashCode(elt.toString, at.millis))(ExecutionContext.parasitic)
+        .map(elt => TGraphHashCode(elt.toString, java.time.Instant.ofEpochMilli(at.millis)))(ExecutionContext.parasitic)
     }
 
   def buildInfo: TQuineInfo = {
@@ -278,7 +278,7 @@ trait QuineApiMethods
 
   private type ErrSq = BadRequest :+: NotFound :+: CNil
   private def asBadRequest(msg: String): ErrSq = Coproduct[ErrSq](BadRequest(msg))
-  private def asBadRequest(msg: ErrorType): ErrSq = Coproduct[ErrSq](BadRequest(msg))
+  private def asBadRequest(br: BadRequest): ErrSq = Coproduct[ErrSq](br)
   private def asNotFound(msg: String): ErrSq = Coproduct[ErrSq](NotFound(msg))
 
   def addSQOutput(
@@ -353,7 +353,7 @@ trait QuineApiMethods
           } catch {
           case iqp: InvalidQueryPattern => Future.successful(Left(asBadRequest(iqp.message)))
           case cypherException: CypherException =>
-            Future.successful(Left(asBadRequest(ErrorType.CypherError(cypherException.pretty))))
+            Future.successful(Left(asBadRequest(BadRequest(cypherException.pretty, List(ErrorDetail.cypherError)))))
         }
       }
       .recoverWith { case _: NamespaceNotFoundException =>

@@ -6,8 +6,8 @@ import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.stream.scaladsl.Sink
 
+import com.thatdot.api.v2.ErrorDetail
 import com.thatdot.api.v2.ErrorResponse.BadRequest
-import com.thatdot.api.v2.ErrorType
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.routes.{OSSQueryUiCypherMethods, Util}
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
@@ -32,7 +32,7 @@ trait CypherApiMethods {
       .flatten
       .transform {
         case Success(a) => Success(Right(a))
-        case Failure(qce: CypherException) => Success(Left(BadRequest(ErrorType.CypherError(qce.pretty))))
+        case Failure(qce: CypherException) => Success(Left(BadRequest(qce.pretty, List(ErrorDetail.cypherError))))
         case Failure(err) => Failure(err)
       }(ExecutionContext.parasitic)
 

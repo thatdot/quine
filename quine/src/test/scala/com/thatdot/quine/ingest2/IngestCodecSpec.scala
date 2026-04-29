@@ -2,6 +2,8 @@ package com.thatdot.quine.ingest2
 
 import java.nio.charset.Charset
 
+import scala.concurrent.duration._
+
 import io.circe.Decoder.Result
 import io.circe.Json
 import io.circe.syntax.EncoderOps
@@ -105,7 +107,7 @@ class IngestCodecSpec
         format = IngestFormat.StreamingFormat.Json,
         url = "url",
         initMessages = Seq("A", "B", "C"),
-        keepAlive = WebSocketClient.SendMessageInterval("message", 5001),
+        keepAlive = WebSocketClient.SendMessageInterval("message", 5001.millis),
         characterEncoding = Charset.forName("UTF-16"),
       ),
     )
@@ -155,7 +157,7 @@ class IngestCodecSpec
     val offsetCommitting = Some(
       KafkaOffsetCommitting.ExplicitCommit(
         maxBatch = 1001,
-        maxIntervalMillis = 10001,
+        maxInterval = 10001.millis,
         parallelism = 101,
         waitForCommitConfirmation = false,
       ),
@@ -180,7 +182,7 @@ class IngestCodecSpec
     val offsetCommitting = Some(
       KafkaOffsetCommitting.ExplicitCommit(
         maxBatch = 1001,
-        maxIntervalMillis = 10001,
+        maxInterval = 10001.millis,
         parallelism = 101,
         waitForCommitConfirmation = false,
       ),
@@ -271,7 +273,7 @@ class IngestCodecSpec
       val minimalJson = settings.asJson.deepDropNullValues.asObject.get
         .remove("disableCheckpointing")
         .remove("maxBatchSize")
-        .remove("maxBatchWaitMillis")
+        .remove("maxBatchWait")
         .toJson
       val expectedMinimalDecoded = KinesisCheckpointSettings()
 
@@ -287,7 +289,7 @@ class IngestCodecSpec
       // Drop fields with defaults to simulate minimal client payloads
       val minimalJson = settings.asJson.deepDropNullValues.asObject.get
         .remove("bufferSize")
-        .remove("backpressureTimeoutMillis")
+        .remove("backpressureTimeout")
         .toJson
       val expectedMinimalDecoded = KinesisSchedulerSourceSettings()
 
@@ -348,53 +350,53 @@ class IngestCodecSpec
     }
   }
 
-  test("RecordDecodingType encodes with type discriminator") {
-    (RecordDecodingType.Zlib: RecordDecodingType).asJson shouldEqual Json.obj("type" -> Json.fromString("Zlib"))
-    (RecordDecodingType.Gzip: RecordDecodingType).asJson shouldEqual Json.obj("type" -> Json.fromString("Gzip"))
-    (RecordDecodingType.Base64: RecordDecodingType).asJson shouldEqual Json.obj("type" -> Json.fromString("Base64"))
+  // Pure-enum sealed traits encode as bare strings (per AIP-style enum convention) rather
+  // than as a one-field object with a `type` discriminator. The discriminated-object form
+  // is reserved for unions whose variants carry payloads.
+
+  test("RecordDecodingType encodes as a bare string") {
+    (RecordDecodingType.Zlib: RecordDecodingType).asJson shouldEqual Json.fromString("Zlib")
+    (RecordDecodingType.Gzip: RecordDecodingType).asJson shouldEqual Json.fromString("Gzip")
+    (RecordDecodingType.Base64: RecordDecodingType).asJson shouldEqual Json.fromString("Base64")
   }
 
-  test("FileIngestMode encodes with type discriminator") {
-    (FileIngestMode.Regular: FileIngestMode).asJson shouldEqual Json.obj("type" -> Json.fromString("Regular"))
-    (FileIngestMode.NamedPipe: FileIngestMode).asJson shouldEqual Json.obj("type" -> Json.fromString("NamedPipe"))
+  test("FileIngestMode encodes as a bare string") {
+    (FileIngestMode.Regular: FileIngestMode).asJson shouldEqual Json.fromString("Regular")
+    (FileIngestMode.NamedPipe: FileIngestMode).asJson shouldEqual Json.fromString("NamedPipe")
   }
 
-  test("KafkaAutoOffsetReset encodes with type discriminator") {
-    (KafkaAutoOffsetReset.Latest: KafkaAutoOffsetReset).asJson shouldEqual Json.obj("type" -> Json.fromString("Latest"))
-    (KafkaAutoOffsetReset.Earliest: KafkaAutoOffsetReset).asJson shouldEqual
-    Json.obj("type" -> Json.fromString("Earliest"))
-    (KafkaAutoOffsetReset.None: KafkaAutoOffsetReset).asJson shouldEqual Json.obj("type" -> Json.fromString("None"))
+  test("KafkaAutoOffsetReset encodes as a bare string") {
+    (KafkaAutoOffsetReset.Latest: KafkaAutoOffsetReset).asJson shouldEqual Json.fromString("Latest")
+    (KafkaAutoOffsetReset.Earliest: KafkaAutoOffsetReset).asJson shouldEqual Json.fromString("Earliest")
+    (KafkaAutoOffsetReset.None: KafkaAutoOffsetReset).asJson shouldEqual Json.fromString("None")
   }
 
-  test("BillingMode encodes with type discriminator") {
-    (BillingMode.PROVISIONED: BillingMode).asJson shouldEqual Json.obj("type" -> Json.fromString("PROVISIONED"))
-    (BillingMode.PAY_PER_REQUEST: BillingMode).asJson shouldEqual Json.obj("type" -> Json.fromString("PAY_PER_REQUEST"))
-    (BillingMode.UNKNOWN_TO_SDK_VERSION: BillingMode).asJson shouldEqual
-    Json.obj("type" -> Json.fromString("UNKNOWN_TO_SDK_VERSION"))
+  test("BillingMode encodes as a bare string") {
+    (BillingMode.PROVISIONED: BillingMode).asJson shouldEqual Json.fromString("PROVISIONED")
+    (BillingMode.PAY_PER_REQUEST: BillingMode).asJson shouldEqual Json.fromString("PAY_PER_REQUEST")
+    (BillingMode.UNKNOWN_TO_SDK_VERSION: BillingMode).asJson shouldEqual Json.fromString("UNKNOWN_TO_SDK_VERSION")
   }
 
-  test("MetricsLevel encodes with type discriminator") {
-    (MetricsLevel.NONE: MetricsLevel).asJson shouldEqual Json.obj("type" -> Json.fromString("NONE"))
-    (MetricsLevel.SUMMARY: MetricsLevel).asJson shouldEqual Json.obj("type" -> Json.fromString("SUMMARY"))
-    (MetricsLevel.DETAILED: MetricsLevel).asJson shouldEqual Json.obj("type" -> Json.fromString("DETAILED"))
+  test("MetricsLevel encodes as a bare string") {
+    (MetricsLevel.NONE: MetricsLevel).asJson shouldEqual Json.fromString("NONE")
+    (MetricsLevel.SUMMARY: MetricsLevel).asJson shouldEqual Json.fromString("SUMMARY")
+    (MetricsLevel.DETAILED: MetricsLevel).asJson shouldEqual Json.fromString("DETAILED")
   }
 
-  test("MetricsDimension encodes with type discriminator") {
+  test("MetricsDimension encodes as a bare string") {
     (MetricsDimension.OPERATION_DIMENSION_NAME: MetricsDimension).asJson shouldEqual
-    Json.obj("type" -> Json.fromString("OPERATION_DIMENSION_NAME"))
+    Json.fromString("OPERATION_DIMENSION_NAME")
     (MetricsDimension.SHARD_ID_DIMENSION_NAME: MetricsDimension).asJson shouldEqual
-    Json.obj("type" -> Json.fromString("SHARD_ID_DIMENSION_NAME"))
-    (MetricsDimension.STREAM_IDENTIFIER: MetricsDimension).asJson shouldEqual
-    Json.obj("type" -> Json.fromString("STREAM_IDENTIFIER"))
-    (MetricsDimension.WORKER_IDENTIFIER: MetricsDimension).asJson shouldEqual
-    Json.obj("type" -> Json.fromString("WORKER_IDENTIFIER"))
+    Json.fromString("SHARD_ID_DIMENSION_NAME")
+    (MetricsDimension.STREAM_IDENTIFIER: MetricsDimension).asJson shouldEqual Json.fromString("STREAM_IDENTIFIER")
+    (MetricsDimension.WORKER_IDENTIFIER: MetricsDimension).asJson shouldEqual Json.fromString("WORKER_IDENTIFIER")
   }
 
-  test("ClientVersionConfig encodes with type discriminator") {
+  test("ClientVersionConfig encodes as a bare string") {
     (ClientVersionConfig.CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X: ClientVersionConfig).asJson shouldEqual
-    Json.obj("type" -> Json.fromString("CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X"))
+    Json.fromString("CLIENT_VERSION_CONFIG_COMPATIBLE_WITH_2X")
     (ClientVersionConfig.CLIENT_VERSION_CONFIG_3X: ClientVersionConfig).asJson shouldEqual
-    Json.obj("type" -> Json.fromString("CLIENT_VERSION_CONFIG_3X"))
+    Json.fromString("CLIENT_VERSION_CONFIG_3X")
   }
 
 }

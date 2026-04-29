@@ -5,6 +5,7 @@ import scala.scalajs.js.annotation._
 
 import com.raquo.laminar.api.L._
 import com.raquo.laminar.codecs.Codec
+import io.circe.{Json, JsonObject, Printer, parser}
 import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
@@ -51,7 +52,7 @@ object StoplightElements {
       text <- response.text().toFuture
     } yield {
       val linkUrl = apiDescriptionUrl.takeWhile(_ != '?')
-      text.replace(placeholder, linkUrl)
+      stripPathParameterExamples(text.replace(placeholder, linkUrl))
     }
 
     fetchFuture.foreach(processed => specVar.set(Some(processed)))
@@ -76,4 +77,52 @@ object StoplightElements {
       },
     )
   }
+
+  // Stoplight Elements pre-fills required path-parameter inputs in its TryIt panel from
+  // OpenAPI `parameter.example` / `parameter.examples`. For path parameters that name real
+  // resources, that means a click on "Send API Request" silently dispatches a call against
+  // the example identifier instead of one the user typed. Strip path-parameter examples
+  // here so the docs UI starts each input empty; the public OpenAPI spec served at
+  // /api/v2/openapi.json is unaffected and still carries the examples for other consumers.
+  private val httpMethodKeys: Set[String] =
+    Set("get", "post", "put", "delete", "patch", "options", "head", "trace")
+
+  private def stripPathParameterExamples(jsonText: String): String =
+    parser.parse(jsonText) match {
+      case Right(json) => stripExamplesInPaths(json).printWith(Printer.noSpaces)
+      case Left(_) => jsonText
+    }
+
+  private def stripExamplesInPaths(spec: Json): Json =
+    spec.hcursor
+      .downField("paths")
+      .withFocus(_.mapObject(_.mapValues(rewritePathItem)))
+      .top
+      .getOrElse(spec)
+
+  private def rewritePathItem(item: Json): Json =
+    item.mapObject(obj =>
+      JsonObject.fromIterable(obj.toIterable.map {
+        case ("parameters", v) => "parameters" -> stripExamplesInParamArray(v)
+        case (k, v) if httpMethodKeys.contains(k) => k -> rewriteOperation(v)
+        case other => other
+      }),
+    )
+
+  private def rewriteOperation(op: Json): Json =
+    op.mapObject(obj =>
+      JsonObject.fromIterable(obj.toIterable.map {
+        case ("parameters", v) => "parameters" -> stripExamplesInParamArray(v)
+        case other => other
+      }),
+    )
+
+  private def stripExamplesInParamArray(arr: Json): Json =
+    arr.mapArray(_.map(stripExampleIfPathParam))
+
+  private def stripExampleIfPathParam(param: Json): Json =
+    if (param.hcursor.downField("in").as[String].contains("path"))
+      param.mapObject(_.remove("example").remove("examples"))
+    else
+      param
 }

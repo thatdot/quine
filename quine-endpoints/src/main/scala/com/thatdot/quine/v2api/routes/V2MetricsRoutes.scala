@@ -14,13 +14,7 @@ trait V2MetricsRoutes extends AdministrationRoutes with V2QuerySchemas {
     endpoint(
       request = get(v2Admin / "metrics"),
       response = customBadRequest("runtime error accessing metrics")
-        .orElse(
-          wheneverFound(
-            ok(
-              jsonResponse[V2SuccessResponse[MetricsReport]],
-            ).xmap(response => response.content)(result => V2SuccessResponse(result)),
-          ),
-        ),
+        .orElse(wheneverFound(ok(jsonResponse[MetricsReport]))),
     )
 
   val shardSizesV2: Endpoint[Unit, Either[ClientErrors, Option[Map[Int, ShardInMemoryLimit]]]] = {
@@ -34,16 +28,10 @@ trait V2MetricsRoutes extends AdministrationRoutes with V2QuerySchemas {
 
     endpoint(
       request = get(
-        url = v2Admin / "shards" / "size-limits",
+        url = v2Admin / "shardSizeLimits",
       ),
       response = customBadRequest("runtime error updating shard sizes")
-        .orElse(
-          wheneverFound(
-            ok(
-              jsonResponse[V2SuccessResponse[Map[Int, ShardInMemoryLimit]]],
-            ).xmap(response => response.content)(result => V2SuccessResponse(result)),
-          ),
-        ),
+        .orElse(wheneverFound(ok(jsonResponse[Map[Int, ShardInMemoryLimit]]))),
     )
   }
 }

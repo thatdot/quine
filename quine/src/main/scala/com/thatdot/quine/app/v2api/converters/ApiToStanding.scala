@@ -126,7 +126,7 @@ object ApiToStanding {
     standing.StandingQueryStats(
       rates = stats.rates,
       startTime = stats.startTime,
-      totalRuntime = stats.totalRuntime,
+      totalRuntime = stats.totalRuntime.toMillis,
       bufferSize = stats.bufferSize,
       outputHashCode = stats.outputHashCode,
     )

@@ -10,11 +10,12 @@ import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{Endpoint, Schema, emptyOutputAs, path, statusCode}
+import sttp.tapir.{Endpoint, Schema, emptyOutputAs, statusCode}
 
 import com.thatdot.api.v2.ErrorResponse.{ServerError, ServiceUnavailable}
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
-import com.thatdot.api.v2.SuccessEnvelope
+import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
+import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.instantSchema
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._
@@ -35,8 +36,8 @@ object V2AdministrationEndpointEntities {
   case class TGraphHashCode(
     @description("Hash value derived from the state of the graph (nodes, properties, and edges).")
     value: String,
-    @description("Time value used to derive the graph hash code.")
-    atTime: Long,
+    @description("RFC 3339 timestamp at which the graph hash was computed.")
+    atTime: java.time.Instant,
   )
   object TGraphHashCode {
     implicit val encoder: Encoder[TGraphHashCode] = deriveEncoder
@@ -167,7 +168,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     Schema
       .derived[TGraphHashCode]
       .description("Graph Hash Code")
-      .encodedExample(TGraphHashCode(1000L.toString, 12345L).asJson)
+      .encodedExample(TGraphHashCode(1000L.toString, java.time.Instant.parse("2026-04-27T15:30:00Z")).asJson)
 
   val exampleShardMap: Map[Int, TShardInMemoryLimit] = (0 to 3).map(_ -> TShardInMemoryLimit(10000, 75000)).toMap
 
@@ -188,8 +189,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     .tag("Administration")
     .errorOut(serverError())
 
-  protected[endpoints] val systemInfo: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Ok[TQuineInfo], Any] =
-    adminBase("system-info")
+  protected[endpoints] val systemInfo: Endpoint[Unit, Unit, ServerError, TQuineInfo, Any] =
+    adminBase("systemInfo")
       .name("get-system-info")
       .summary("System Information")
       .description(
@@ -197,22 +198,22 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
       )
       .get
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[TQuineInfo]])
+      .out(jsonBody[TQuineInfo])
 
-  protected[endpoints] val systemInfoLogic: Unit => Future[Either[ServerError, SuccessEnvelope.Ok[TQuineInfo]]] =
-    _ => recoverServerError(Future.successful(appMethods.buildInfo))(inp => SuccessEnvelope.Ok(inp))
+  protected[endpoints] val systemInfoLogic: Unit => Future[Either[ServerError, TQuineInfo]] =
+    _ => recoverServerError(Future.successful(appMethods.buildInfo))(inp => inp)
 
   private val systemInfoServerEndpoint: Full[
     Unit,
     Unit,
     Unit,
     ServerError,
-    SuccessEnvelope.Ok[TQuineInfo],
+    TQuineInfo,
     Any,
     Future,
   ] = systemInfo.serverLogic[Future](systemInfoLogic)
 
-  protected[endpoints] val configE: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Ok[Json], Any] =
+  protected[endpoints] val configE: Endpoint[Unit, Unit, ServerError, Json, Any] =
     adminBase("config")
       .name("get-config")
       .summary("Running Configuration")
@@ -225,19 +226,17 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
           |REST API, but it won't show up in the response of this endpoint.""".asOneLine,
       )
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[Json]])
+      .out(jsonBody[Json])
 
-  protected[endpoints] val configLogic: Unit => Future[Either[ServerError, SuccessEnvelope.Ok[Json]]] = _ =>
-    recoverServerError(Future.successful(appMethods.config.loadedConfigJson))((inp: Json) => SuccessEnvelope.Ok(inp))
+  protected[endpoints] val configLogic: Unit => Future[Either[ServerError, Json]] = _ =>
+    recoverServerError(Future.successful(appMethods.config.loadedConfigJson))((inp: Json) => inp)
 
-  private val configServerEndpoint: Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[Json], Any, Future] =
+  private val configServerEndpoint: Full[Unit, Unit, Unit, ServerError, Json, Any, Future] =
     configE.serverLogic[Future](configLogic)
 
   protected[endpoints] val graphHashCode
-    : Endpoint[Unit, (Option[AtTime], Option[NamespaceParameter]), ServerError, SuccessEnvelope.Ok[
-      TGraphHashCode,
-    ], Any] =
-    adminBase("graph-hash-code")
+    : Endpoint[Unit, (Option[AtTime], Option[NamespaceParameter]), ServerError, TGraphHashCode, Any] =
+    adminBase("graphHashCode")
       .description(
         "Generate a hash of the state of the graph at the provided timestamp.\n\n" +
         """This is done by materializing readonly/historical versions of all nodes at a particular timestamp and
@@ -252,14 +251,12 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
       .in(namespaceParameter)
       .get
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[TGraphHashCode]])
+      .out(jsonBody[TGraphHashCode])
 
   protected[endpoints] val graphHashCodeLogic: ((Option[AtTime], Option[NamespaceParameter])) => Future[
-    Either[ServerError, SuccessEnvelope.Ok[TGraphHashCode]],
+    Either[ServerError, TGraphHashCode],
   ] = { case (atime, ns) =>
-    recoverServerError(appMethods.graphHashCode(atime, namespaceFromParam(ns)))((inp: TGraphHashCode) =>
-      SuccessEnvelope.Ok(inp),
-    )
+    recoverServerError(appMethods.graphHashCode(atime, namespaceFromParam(ns)))((inp: TGraphHashCode) => inp)
   }
 
   private val graphHashCodeServerEndpoint: Full[
@@ -267,12 +264,12 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     Unit,
     (Option[AtTime], Option[NamespaceParameter]),
     ServerError,
-    SuccessEnvelope.Ok[TGraphHashCode],
+    TGraphHashCode,
     Any,
     Future,
   ] = graphHashCode.serverLogic[Future](graphHashCodeLogic)
 
-  protected[endpoints] val liveness: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.NoContent.type, Any] =
+  protected[endpoints] val liveness: Endpoint[Unit, Unit, ServerError, Unit, Any] =
     adminBase("liveness")
       .name("get-liveness")
       .summary("Process Liveness")
@@ -283,17 +280,17 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
           |Returns a 204 response.""".asOneLine,
       )
       .get
-      .out(statusCode(StatusCode.NoContent).description("System is live").and(emptyOutputAs(SuccessEnvelope.NoContent)))
+      .out(statusCode(StatusCode.NoContent).description("System is live").and(emptyOutputAs(())))
 
-  protected[endpoints] val livenessLogic: Unit => Future[Either[ServerError, SuccessEnvelope.NoContent.type]] = _ =>
-    recoverServerError(Future.successful(()))(_ => SuccessEnvelope.NoContent)
+  protected[endpoints] val livenessLogic: Unit => Future[Either[ServerError, Unit]] = _ =>
+    recoverServerError(Future.successful(()))(_ => ())
 
   val livenessServerEndpoint: Full[
     Unit,
     Unit,
     Unit,
     ServerError,
-    SuccessEnvelope.NoContent.type,
+    Unit,
     Any,
     Future,
   ] = liveness.serverLogic[Future](livenessLogic)
@@ -304,7 +301,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     Unit,
     Unit,
     Either[ServerError, ServiceUnavailable],
-    SuccessEnvelope.NoContent.type,
+    Unit,
     Any,
   ] =
     adminBase("readiness")
@@ -317,7 +314,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
       )
       .get
       .out(statusCode(StatusCode.NoContent).description("System is ready to serve requests"))
-      .out(emptyOutputAs(SuccessEnvelope.NoContent))
+      .out(emptyOutputAs(()))
       .errorOutEither {
         statusCode(StatusCode.ServiceUnavailable).and {
           jsonBody[ServiceUnavailable]
@@ -325,15 +322,14 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
         }
       }
 
-  protected[endpoints] val readinessLogic
-    : Unit => Future[Either[Either[ServerError, ServiceUnavailable], SuccessEnvelope.NoContent.type]] =
+  protected[endpoints] val readinessLogic: Unit => Future[Either[Either[ServerError, ServiceUnavailable], Unit]] =
     _ =>
       recoverServerErrorEither(
         Future
           .successful(
             Either.cond(
               appMethods.isReady,
-              SuccessEnvelope.NoContent,
+              (),
               Coproduct[ServiceUnavailable :+: CNil](ServiceUnavailable("System is not ready")),
             ),
           ),
@@ -344,13 +340,15 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     Unit,
     Unit,
     Either[ServerError, ServiceUnavailable],
-    SuccessEnvelope.NoContent.type,
+    Unit,
     Any,
     Future,
   ] = readiness.serverLogic[Future](readinessLogic)
 
-  protected[endpoints] val gracefulShutdown: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Accepted, Any] =
-    adminBase("shutdown")
+  protected[endpoints] val gracefulShutdown: Endpoint[Unit, Unit, ServerError, Unit, Any] =
+    rawEndpoint("admin:shutdown")
+      .tag("Administration")
+      .errorOut(serverError())
       .name("initiate-shutdown")
       .summary("Graceful Shutdown")
       .description(
@@ -359,35 +357,28 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
       )
       .post
       .out(statusCode(StatusCode.Accepted).description("Shutdown initiated"))
-      .out(jsonBody[SuccessEnvelope.Accepted])
+  protected[endpoints] val gracefulShutdownLogic: Unit => Future[Either[ServerError, Unit]] = _ =>
+    recoverServerError(appMethods.performShutdown())(_ => ())
 
-  protected[endpoints] val gracefulShutdownLogic: Unit => Future[Either[ServerError, SuccessEnvelope.Accepted]] = _ =>
-    recoverServerError(appMethods.performShutdown())(_ => SuccessEnvelope.Accepted())
-
-  private val gracefulShutdownServerEndpoint
-    : Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Accepted, Any, Future] =
+  private val gracefulShutdownServerEndpoint: Full[Unit, Unit, Unit, ServerError, Unit, Any, Future] =
     gracefulShutdown.serverLogic[Future](gracefulShutdownLogic)
 
-  protected[endpoints] val metadata: Endpoint[Unit, Unit, ServerError, SuccessEnvelope.Ok[Map[String, String]], Any] =
+  protected[endpoints] val metadata: Endpoint[Unit, Unit, ServerError, Map[String, String], Any] =
     adminBase("metadata")
       .name("get-metadata")
       .summary("Persisted Metadata")
       .attribute(Visibility.attributeKey, Visibility.Hidden)
       .get
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[Map[String, String]]])
+      .out(jsonBody[Map[String, String]])
 
-  protected[endpoints] val metadataLogic: Unit => Future[Either[ServerError, SuccessEnvelope.Ok[Map[String, String]]]] =
-    _ =>
-      recoverServerError(appMethods.metaData)((inp: Map[String, String]) =>
-        SuccessEnvelope.Ok(inp): SuccessEnvelope.Ok[Map[String, String]],
-      )
+  protected[endpoints] val metadataLogic: Unit => Future[Either[ServerError, Map[String, String]]] =
+    _ => recoverServerError(appMethods.metaData)((inp: Map[String, String]) => inp: Map[String, String])
 
-  private val metadataServerEndpoint
-    : Full[Unit, Unit, Unit, ServerError, SuccessEnvelope.Ok[Map[String, String]], Any, Future] =
+  private val metadataServerEndpoint: Full[Unit, Unit, Unit, ServerError, Map[String, String], Any, Future] =
     metadata.serverLogic[Future](metadataLogic)
 
-  protected[endpoints] val metrics: Endpoint[Unit, Option[Int], ServerError, SuccessEnvelope.Ok[TMetricsReport], Any] =
+  protected[endpoints] val metrics: Endpoint[Unit, Option[Int], ServerError, TMetricsReport, Any] =
     adminBase("metrics")
       .name("get-metrics")
       .summary("Metrics")
@@ -420,47 +411,41 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
       )
       .get
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[SuccessEnvelope.Ok[TMetricsReport]])
+      .out(jsonBody[TMetricsReport])
 
-  protected[endpoints] val metricsLogic
-    : Option[Int] => Future[Either[ServerError, SuccessEnvelope.Ok[TMetricsReport]]] = maybeMemberIdx =>
-    recoverServerError(appMethods.metrics(maybeMemberIdx).map(metricsReportFromV1Metrics))((inp: TMetricsReport) =>
-      SuccessEnvelope.Ok(inp),
-    )
+  protected[endpoints] val metricsLogic: Option[Int] => Future[Either[ServerError, TMetricsReport]] = maybeMemberIdx =>
+    recoverServerError(appMethods.metrics(maybeMemberIdx).map(metricsReportFromV1Metrics))((inp: TMetricsReport) => inp)
 
-  private val metricsServerEndpoint
-    : Full[Unit, Unit, Option[Int], ServerError, SuccessEnvelope.Ok[TMetricsReport], Any, Future] =
+  private val metricsServerEndpoint: Full[Unit, Unit, Option[Int], ServerError, TMetricsReport, Any, Future] =
     metrics.serverLogic[Future](metricsLogic)
 
   protected[endpoints] val getShardSizes: Endpoint[
     Unit,
     Unit,
     ServerError,
-    SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
+    Map[Int, TShardInMemoryLimit],
     Any,
-  ] = adminBase("shards").get
+  ] = adminBase("shardSizeLimits").get
     .name("get-shard-sizes")
     .summary("Get Shard Sizes")
     .description("Get the in-memory node limits for all shards.")
-    .in("size-limits")
     .out(statusCode(StatusCode.Ok))
-    .out(jsonBody[SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]])
+    .out(jsonBody[Map[Int, TShardInMemoryLimit]])
 
-  protected[endpoints] val getShardSizesLogic
-    : Unit => Future[Either[ServerError, SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]]] =
+  protected[endpoints] val getShardSizesLogic: Unit => Future[Either[ServerError, Map[Int, TShardInMemoryLimit]]] =
     _ =>
       recoverServerError(
         appMethods
           .shardSizes(Map.empty)
           .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
-      )((inp: Map[Int, TShardInMemoryLimit]) => SuccessEnvelope.Ok(inp))
+      )((inp: Map[Int, TShardInMemoryLimit]) => inp)
 
   private val getShardSizesServerEndpoint: Full[
     Unit,
     Unit,
     Unit,
     ServerError,
-    SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
+    Map[Int, TShardInMemoryLimit],
     Any,
     Future,
   ] = getShardSizes.serverLogic[Future](getShardSizesLogic)
@@ -469,9 +454,9 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     Unit,
     Map[Int, TShardInMemoryLimit],
     ServerError,
-    SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
+    Map[Int, TShardInMemoryLimit],
     Any,
-  ] = adminBase("shards").post
+  ] = adminBase("shardSizeLimits").patch
     .name("update-shard-sizes")
     .summary("Update Shard Sizes")
     .description(
@@ -479,32 +464,31 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
         |
         |Returns the updated in-memory node settings for all shards.""".stripMargin,
     )
-    .in("size-limits")
     .in(jsonOrYamlBody[Map[Int, TShardInMemoryLimit]](Some(exampleShardMap)))
     .out(statusCode(StatusCode.Ok))
-    .out(jsonBody[SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]])
+    .out(jsonBody[Map[Int, TShardInMemoryLimit]])
 
   protected[endpoints] val updateShardSizesLogic: Map[Int, TShardInMemoryLimit] => Future[
-    Either[ServerError, SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]]],
+    Either[ServerError, Map[Int, TShardInMemoryLimit]],
   ] = resizes =>
     recoverServerError(
       appMethods
         .shardSizes(resizes.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
         .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
-    )((inp: Map[Int, TShardInMemoryLimit]) => SuccessEnvelope.Ok(inp))
+    )((inp: Map[Int, TShardInMemoryLimit]) => inp)
 
   private val updateShardSizesServerEndpoint: Full[
     Unit,
     Unit,
     Map[Int, TShardInMemoryLimit],
     ServerError,
-    SuccessEnvelope.Ok[Map[Int, TShardInMemoryLimit]],
+    Map[Int, TShardInMemoryLimit],
     Any,
     Future,
   ] = updateShardSizes.serverLogic[Future](updateShardSizesLogic)
 
   protected[endpoints] val requestNodeSleep
-    : Endpoint[Unit, (QuineId, Option[NamespaceParameter]), ServerError, SuccessEnvelope.Accepted, Any] =
+    : Endpoint[Unit, (QuineId, Option[NamespaceParameter]), ServerError, Unit, Any] =
     adminBase("nodes").post
       .name("sleep-node")
       .summary("Sleep Node")
@@ -513,18 +497,13 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
           |
           |This behavior is not guaranteed. Activity on the node will supersede this request.""".stripMargin,
       )
-      .in(path[QuineId]("nodeIdSegment"))
-      .in("request-sleep")
+      .attribute(Visibility.attributeKey, Visibility.Hidden)
+      .in(CustomMethod.colonVerbPath[QuineId]("nodeIdSegment", "requestSleep"))
       .in(namespaceParameter)
       .out(statusCode(StatusCode.Accepted))
-      .out(jsonBody[SuccessEnvelope.Accepted])
-
   protected[endpoints] val requestNodeSleepLogic
-    : ((QuineId, Option[NamespaceParameter])) => Future[Either[ServerError, SuccessEnvelope.Accepted]] = {
-    case (nodeId, namespace) =>
-      recoverServerError(appMethods.requestNodeSleep(nodeId, namespaceFromParam(namespace)))(_ =>
-        SuccessEnvelope.Accepted(),
-      )
+    : ((QuineId, Option[NamespaceParameter])) => Future[Either[ServerError, Unit]] = { case (nodeId, namespace) =>
+    recoverServerError(appMethods.requestNodeSleep(nodeId, namespaceFromParam(namespace)))(_ => ())
   }
 
   private val requestNodeSleepServerEndpoint: Full[
@@ -532,7 +511,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     Unit,
     (QuineId, Option[NamespaceParameter]),
     ServerError,
-    SuccessEnvelope.Accepted,
+    Unit,
     Any,
     Future,
   ] = requestNodeSleep.serverLogic[Future](requestNodeSleepLogic)
