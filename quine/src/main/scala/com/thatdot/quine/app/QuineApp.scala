@@ -1125,7 +1125,7 @@ final class QuineApp(
         Future.sequence(ingestMap.map { case (name, ingest) =>
           IngestMetered.removeIngestMeter(ns, name, graph.metrics)
           ingest.close()
-          ingest.terminated().recover { case _ => Future.successful(Done) }
+          ingest.terminated().flatten.recover { case _ => Done }
         })
       }(implicitly, graph.system.dispatcher)
       .map(_ => ())(graph.system.dispatcher)
