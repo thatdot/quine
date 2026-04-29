@@ -67,6 +67,7 @@ object StoplightElements {
             attr("basePath") := basePath,
             attr("router") := router,
             attr("tryItCredentialsPolicy") := tryItCredentialsPolicy,
+            attr("hideServerInfo") := "true",
             height := "100%",
             apiDescriptionDocumentProp := spec,
           )

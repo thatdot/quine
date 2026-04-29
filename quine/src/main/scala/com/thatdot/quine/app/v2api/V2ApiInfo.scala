@@ -3,7 +3,7 @@ package com.thatdot.quine.app.v2api
 import scala.concurrent.Future
 
 import sttp.apispec.Tag
-import sttp.apispec.openapi.{Contact, Info}
+import sttp.apispec.openapi.Info
 import sttp.capabilities.WebSockets
 import sttp.capabilities.pekko.PekkoStreams
 import sttp.tapir.{EndpointInput, server}
@@ -21,13 +21,6 @@ object V2ApiInfo {
         |and is included in Quine as fully interactive documentation. When running Quine, you can issue
         |API calls directly from the embedded documentation pages.""".stripMargin.replace('\n', ' ') + "\n\n" +
       "For docs, guides, and tutorials, please visit <https://quine.io>",
-    ),
-    contact = Some(
-      Contact(
-        name = Some("thatDot Support"),
-        url = Some("https://thatdot.com"),
-        email = Some("support@thatdot.com"),
-      ),
     ),
   )
 
