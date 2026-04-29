@@ -172,7 +172,7 @@ object V2IngestEntities {
   case class IngestStreamInfo(
     status: IngestStreamStatus,
     message: Option[String],
-    settings: IngestSource,
+    settings: QuineIngestConfiguration,
     stats: IngestStreamStats,
   ) {
     def withName(name: String): IngestStreamInfoWithName =
@@ -188,7 +188,7 @@ object V2IngestEntities {
     name: String,
     status: IngestStreamStatus,
     message: Option[String],
-    settings: IngestSource,
+    settings: QuineIngestConfiguration,
     stats: IngestStreamStats,
   )
 

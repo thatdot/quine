@@ -510,21 +510,6 @@ object V2IngestEntitiesGenerators {
       totalRuntime <- Arbitrary.arbitrary[Long]
     } yield IngestStreamStats(ingestedCount, rates, byteRates, startTime, totalRuntime)
 
-    val ingestStreamInfo: Gen[IngestStreamInfo] = for {
-      status <- v2IngestStreamStatus
-      message <- Gen.option(nonEmptyAlphaNumStr)
-      settings <- ingestSource
-      stats <- ingestStreamStats
-    } yield IngestStreamInfo(status, message, settings, stats)
-
-    val ingestStreamInfoWithName: Gen[IngestStreamInfoWithName] = for {
-      name <- nonEmptyAlphaNumStr
-      status <- v2IngestStreamStatus
-      message <- Gen.option(nonEmptyAlphaNumStr)
-      settings <- ingestSource
-      stats <- ingestStreamStats
-    } yield IngestStreamInfoWithName(name, status, message, settings, stats)
-
     val ingestFormat: Gen[IngestFormat] = Gen.oneOf(fileFormat, streamingFormat)
 
     val quineIngestConfiguration: Gen[QuineIngestConfiguration] = for {
@@ -544,6 +529,21 @@ object V2IngestEntitiesGenerators {
       parallelism = parallelism,
       maxPerSecond = maxPerSecond,
     )
+
+    val ingestStreamInfo: Gen[IngestStreamInfo] = for {
+      status <- v2IngestStreamStatus
+      message <- Gen.option(nonEmptyAlphaNumStr)
+      settings <- quineIngestConfiguration
+      stats <- ingestStreamStats
+    } yield IngestStreamInfo(status, message, settings, stats)
+
+    val ingestStreamInfoWithName: Gen[IngestStreamInfoWithName] = for {
+      name <- nonEmptyAlphaNumStr
+      status <- v2IngestStreamStatus
+      message <- Gen.option(nonEmptyAlphaNumStr)
+      settings <- quineIngestConfiguration
+      stats <- ingestStreamStats
+    } yield IngestStreamInfoWithName(name, status, message, settings, stats)
 
     val quineIngestStreamWithStatus: Gen[QuineIngestStreamWithStatus] = for {
       config <- quineIngestConfiguration

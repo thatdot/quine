@@ -76,7 +76,7 @@ object ApiIngest {
     @description("Indicator of whether the ingest is still running, completed, etc.") status: IngestStreamStatus,
     @description("Error message about the ingest, if any.") message: Option[String],
     // Add a warnings output string
-    @description("Configuration of the ingest stream.") settings: IngestSource,
+    @description("Configuration of the ingest stream.") settings: Oss.QuineIngestConfiguration,
     @description("Statistics on progress of running ingest stream.") stats: IngestStreamStats,
   ) {
     def withName(name: String): IngestStreamInfoWithName = IngestStreamInfoWithName(
@@ -100,7 +100,7 @@ object ApiIngest {
     @description("Unique name identifying the ingest stream.") name: String,
     @description("Indicator of whether the ingest is still running, completed, etc.") status: IngestStreamStatus,
     @description("Error message about the ingest, if any.") message: Option[String],
-    @description("Configuration of the ingest stream.") settings: IngestSource,
+    @description("Configuration of the ingest stream.") settings: Oss.QuineIngestConfiguration,
     @description("Statistics on progress of running ingest stream") stats: IngestStreamStats,
   )
 

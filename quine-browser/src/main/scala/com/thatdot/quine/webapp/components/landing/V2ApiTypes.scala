@@ -62,9 +62,10 @@ object V2ApiTypes {
   /** Mirrors `com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestStreamInfoWithName` (fields subset).
     *
     * `status` is extracted from the `"type"` discriminator of `ApiIngest.IngestStreamStatus`.
-    * `sourceType` is extracted from the `"type"` discriminator of `ApiIngest.IngestSource`.
-    * `sourceId` is a best-effort human-readable identifier pulled from the settings (e.g.
-    * Kafka bootstrapServers, S3 bucket, file path). Falls back to the sourceType slug.
+    * `sourceType` is extracted from the `"type"` discriminator of `ApiIngest.IngestSource`,
+    * which lives at `settings.source` since `settings` is a full `QuineIngestConfiguration`.
+    * `sourceId` is a best-effort human-readable identifier pulled from `settings.source`
+    * (e.g. Kafka bootstrapServers, S3 bucket, file path). Falls back to the sourceType slug.
     *
     * @see [[public/quine/src/main/scala/com/thatdot/quine/app/v2api/definitions/ingest2/ApiIngest.scala]]
     */
@@ -97,10 +98,10 @@ object V2ApiTypes {
           .downField("type")
           .as[String]
           .orElse(c.downField("status").as[String])
-        settings = c.downField("settings")
-        sourceType <- settings.downField("type").as[String]
+        source = c.downField("settings").downField("source")
+        sourceType <- source.downField("type").as[String]
         sourceId = sourceIdFields
-          .flatMap(f => settings.downField(f).as[String].toOption)
+          .flatMap(f => source.downField(f).as[String].toOption)
           .find(_.nonEmpty)
           .getOrElse(sourceType)
         stats <- c.downField("stats").as[V2IngestStats]

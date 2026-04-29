@@ -19,7 +19,7 @@ import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
 }
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, QuineValueIngestQuery}
 import com.thatdot.quine.app.model.ingest2.sources.WebSocketFileUploadSource
-import com.thatdot.quine.app.model.ingest2.{IngestSource, V1ToV2, V2IngestEntities}
+import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities}
 import com.thatdot.quine.app.model.transformation.polyglot
 import com.thatdot.quine.app.model.transformation.polyglot.langauges.JavaScriptTransformation
 import com.thatdot.quine.app.util.QuineLoggables._
@@ -325,20 +325,27 @@ trait IngestStreamState {
           case IngestStreamStatus.Failed =>
             Future.failed(IngestApiEntities.PauseOperationException.Failed)
           case _ =>
-            val flippedValve = ingest.valve().flatMap(_.flip(newState))(defaultExecutionContext)
-            val ingestStatus = flippedValve.flatMap { _ =>
-              // HACK: set the ingest's "initial status" to "Paused". `stream2Info` will use this as the stream status
-              // when the valve is closed but the stream is not terminated. However, this assignment is not threadsafe,
-              // and this directly violates the semantics of `initialStatus`. This should be fixed in a future refactor.
-              ingest.initialStatus = IngestStreamStatus.Paused
-              streamToInternalModel(ingest.copy(settings = IngestSource(ingest.settings)))
-            }(defaultExecutionContext)
-            ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)
+            ingest.settings.config match {
+              case Right(_) =>
+                // V1 ingest configurations cannot be represented in the V2 IngestStreamInfo model
+                // (which carries a full QuineIngestConfiguration). They should be paused via the V1 API.
+                Future.successful(None)
+              case Left(v2Config) =>
+                val flippedValve = ingest.valve().flatMap(_.flip(newState))(defaultExecutionContext)
+                val ingestStatus = flippedValve.flatMap { _ =>
+                  // HACK: set the ingest's "initial status" to "Paused". `stream2Info` will use this as the stream status
+                  // when the valve is closed but the stream is not terminated. However, this assignment is not threadsafe,
+                  // and this directly violates the semantics of `initialStatus`. This should be fixed in a future refactor.
+                  ingest.initialStatus = IngestStreamStatus.Paused
+                  streamToInternalModel(ingest.copy(settings = v2Config))
+                }(defaultExecutionContext)
+                ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)
+            }
         }
     }
 
   protected def streamToInternalModel(
-    stream: IngestStreamWithControl[IngestSource],
+    stream: IngestStreamWithControl[V2IngestConfiguration],
   ): Future[V2IngestEntities.IngestStreamInfo] =
     stream.status
       .map { status =>
@@ -372,8 +379,8 @@ trait IngestStreamState {
           optWs,
           optWsV2,
         ) =>
-      val ingestV2 = IngestStreamWithControl[IngestSource](
-        v2Config.source,
+      val ingestV2 = IngestStreamWithControl[V2IngestConfiguration](
+        v2Config,
         metrics,
         valve,
         terminated,

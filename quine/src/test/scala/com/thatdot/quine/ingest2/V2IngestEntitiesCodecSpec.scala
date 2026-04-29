@@ -433,18 +433,26 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
       val info = IngestStreamInfo(
         status = IngestStreamStatus.Running,
         message = None,
-        settings = SQSIngest(
-          format = StreamingFormat.JsonFormat,
-          queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/queue",
-          credentials = Some(V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
-          region = Some(V1.AwsRegion("us-east-1")),
+        settings = QuineIngestConfiguration(
+          name = "test-ingest",
+          source = SQSIngest(
+            format = StreamingFormat.JsonFormat,
+            queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/queue",
+            credentials = Some(V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
+            region = Some(V1.AwsRegion("us-east-1")),
+          ),
+          query = "MATCH (n) RETURN n",
         ),
         stats = IngestStreamStats(0, RatesSummary(0, 0, 0, 0, 0), RatesSummary(0, 0, 0, 0, 0), java.time.Instant.now, 0),
       )
       val json = info.asJson
 
-      json.hcursor.downField("settings").downField("credentials").downField("accessKeyId").as[String] shouldBe
-      Right("Secret(****)")
+      json.hcursor
+        .downField("settings")
+        .downField("source")
+        .downField("credentials")
+        .downField("accessKeyId")
+        .as[String] shouldBe Right("Secret(****)")
     }
   }
 
@@ -474,18 +482,26 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
         name = "test-ingest",
         status = IngestStreamStatus.Running,
         message = None,
-        settings = SQSIngest(
-          format = StreamingFormat.JsonFormat,
-          queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/queue",
-          credentials = Some(V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
-          region = Some(V1.AwsRegion("us-east-1")),
+        settings = QuineIngestConfiguration(
+          name = "test-ingest",
+          source = SQSIngest(
+            format = StreamingFormat.JsonFormat,
+            queueUrl = "https://sqs.us-east-1.amazonaws.com/123456789012/queue",
+            credentials = Some(V1.AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
+            region = Some(V1.AwsRegion("us-east-1")),
+          ),
+          query = "MATCH (n) RETURN n",
         ),
         stats = IngestStreamStats(0, RatesSummary(0, 0, 0, 0, 0), RatesSummary(0, 0, 0, 0, 0), java.time.Instant.now, 0),
       )
       val json = info.asJson
 
-      json.hcursor.downField("settings").downField("credentials").downField("accessKeyId").as[String] shouldBe
-      Right("Secret(****)")
+      json.hcursor
+        .downField("settings")
+        .downField("source")
+        .downField("credentials")
+        .downField("accessKeyId")
+        .as[String] shouldBe Right("Secret(****)")
     }
   }
 

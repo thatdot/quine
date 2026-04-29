@@ -50,8 +50,12 @@ object IngestStreamTable {
       json.hcursor.get[String]("message").toOption.filter(_.nonEmpty)
     }
     val sourceTypeSignal = jsonSignal.map { json =>
-      val settings = json.hcursor.downField("settings").focus.getOrElse(Json.obj())
-      settings.hcursor.get[String]("type").toOption.getOrElse("?")
+      json.hcursor
+        .downField("settings")
+        .downField("source")
+        .get[String]("type")
+        .toOption
+        .getOrElse("?")
     }
     val statsSignal = jsonSignal.map(_.hcursor.downField("stats").focus.getOrElse(Json.obj()))
 
