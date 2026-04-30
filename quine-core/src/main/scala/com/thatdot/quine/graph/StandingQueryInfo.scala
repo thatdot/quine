@@ -4,8 +4,8 @@ import java.time.Instant
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import org.apache.pekko.stream.scaladsl.Source
-import org.apache.pekko.stream.{BoundedSourceQueue, QueueOfferResult}
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
+import org.apache.pekko.stream.{BoundedSourceQueue, Materializer, QueueOfferResult}
 import org.apache.pekko.{Done, NotUsed}
 
 import com.codahale.metrics.{Counter, Meter, Timer}
@@ -161,7 +161,8 @@ final class RunningStandingQuery(
   val resultMeter: Meter,
   val droppedCounter: Counter,
   val startTime: Instant,
-) extends LazySafeLogging {
+)(implicit materializer: Materializer)
+    extends LazySafeLogging {
 
   def this(
     resultsQueue: BoundedSourceQueue[StandingQueryResult.WithQueueTimer],
@@ -170,7 +171,7 @@ final class RunningStandingQuery(
     resultsHub: Source[StandingQueryResult, NotUsed],
     outputTermination: Future[Done],
     metrics: HostQuineMetrics,
-  ) =
+  )(implicit materializer: Materializer) =
     this(
       resultsQueue,
       query,
@@ -187,10 +188,10 @@ final class RunningStandingQuery(
       resultsQueue.complete()
     }
 
-    /* Using outputTermination instead of resultsQueue.watchCompletion, because a watchCompletion future may not
-     * complete if the termination is caused by a sink cancellation rather than a source completion. Note that since
-     * [[resultsHub]] is (so far) always a BroadcastHub, it shouldn't ever cancel, so this is probably unnecessary
-     */
+    // Drain the BroadcastHub buffer so the completion signal can propagate.
+    // Without consumers, the hub backpressures and blocks completion forever.
+    resultsHub.runWith(Sink.ignore)
+
     outputTermination.map(_ => ())(ExecutionContext.parasitic)
   }
 
