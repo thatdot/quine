@@ -44,7 +44,7 @@ window.onload = function() {
         onNetworkCreate: function(n) {
             network = n;
         },
-        documentationUrl: "docs/openapi.json?relative=true",
+        documentationUrl: "docs/openapi.json",
         documentationV2Url: "api/v2/openapi.json",
         baseURI: derivedBaseURI,
         serverUrl: derivedBaseURI.replace(/\/$/, ""),
