@@ -316,6 +316,30 @@ class V2QueryWebSocketFlowSpec extends AnyFunSuite with Matchers with BeforeAndA
     pub.sendComplete()
   }
 
+  test("authorizer that throws produces MessageError instead of crashing the WebSocket") {
+    val executor = new StubExecutor
+    val authorizer: V2QueryWebSocketFlow.MessageAuthorizer = {
+      case _: RunQuery => throw new IllegalArgumentException("Simulated compilation failure")
+      case other => Right(other)
+    }
+    val flow = V2QueryWebSocketFlow.buildFlow(executor, authorizeMessage = Some(authorizer))
+    val (pub, sub) = TestSource[WebSocketFrame]().via(flow).toMat(TestSink[WebSocketFrame]())(Keep.both).run()
+
+    sub.request(10)
+    pub.sendNext(sendText("""{"type":"RunQuery","queryId":0,"query":"bad query","sort":"Node"}"""))
+
+    val response = parseServerMessage(sub.expectNext(3.seconds))
+    response shouldBe a[MessageError]
+    response.asInstanceOf[MessageError].error should include("Simulated compilation failure")
+
+    // Connection should still be alive — send another message
+    pub.sendNext(sendText("""{"type":"CancelQuery","queryId":99}"""))
+    val response2 = parseServerMessage(sub.expectNext(3.seconds))
+    response2 shouldBe a[MessageError]
+
+    pub.sendComplete()
+  }
+
   test("QuinePattern interpreter is passed through to executor") {
     val executor = new StubExecutor
     val flow = V2QueryWebSocketFlow.buildFlow(executor)

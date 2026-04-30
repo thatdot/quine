@@ -184,7 +184,10 @@ object V2QueryWebSocketFlow extends LazySafeLogging {
               val authorized = deserialized.flatMap { msg =>
                 authorizeMessage match {
                   case Some(authorize) =>
-                    authorize(msg).left.map(MessageError.apply)
+                    try authorize(msg).left.map(MessageError.apply)
+                    catch {
+                      case NonFatal(err) => Left(MessageError(serverExceptionMessage(err)))
+                    }
                   case None =>
                     Right(msg)
                 }
