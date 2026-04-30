@@ -68,9 +68,10 @@ object StandingQueryPattern {
     // SQv4/Cypher interpreter
     case object MultipleValues extends StandingQueryMode
 
+    // Not yet released; intentionally excluded from `values` so it does not appear in the public API schema.
     case object QuinePattern extends StandingQueryMode
 
-    val values: Seq[StandingQueryMode] = Seq(DistinctId, MultipleValues, QuinePattern)
+    val values: Seq[StandingQueryMode] = Seq(DistinctId, MultipleValues)
   }
 }
 

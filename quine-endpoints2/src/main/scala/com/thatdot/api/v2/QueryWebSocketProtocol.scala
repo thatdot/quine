@@ -2,6 +2,7 @@ package com.thatdot.api.v2
 
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder, Json}
+import sttp.tapir.{Schema, Validator}
 
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 
@@ -44,7 +45,10 @@ object QueryWebSocketProtocol {
     /** The default Cypher interpreter. */
     case object Cypher extends QueryInterpreter
 
-    /** The QuinePattern compiler and interpreter, supporting both ad-hoc and standing queries. */
+    /** The QuinePattern compiler and interpreter, supporting both ad-hoc and standing queries.
+      * Not yet released; still accepted by the encoder/decoder for internal use, but intentionally
+      * excluded from the OpenAPI schema below.
+      */
     case object QuinePattern extends QueryInterpreter
 
     implicit val encoder: Encoder[QueryInterpreter] = Encoder.encodeString.contramap {
@@ -56,6 +60,8 @@ object QueryWebSocketProtocol {
       case "QuinePattern" => Right(QuinePattern)
       case other => Left(s"Unknown query interpreter: $other")
     }
+    implicit val schema: Schema[QueryInterpreter] =
+      Schema.string[QueryInterpreter].validate(Validator.enumeration(List(Cypher), v => Some(v.toString)))
   }
 
   sealed abstract class QuerySort

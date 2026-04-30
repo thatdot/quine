@@ -17,7 +17,13 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
 
   //FORK DIFFERENCE: A placeholder list of types that are not publicly available and should
   // be excluded from user-facing API documentation
-  val unusedTypes : Set[String] = Set("ReactiveStream")
+  val unusedTypes : Set[String] = Set(
+    "ReactiveStream",
+    // QuinePattern is not yet released; hide its V1 ingest format variants from the OpenAPI spec.
+    "QuinePatternLine",
+    "QuinePatternJson",
+    "QuinePatternCsv",
+  )
 
   // FORK DIFFERENCE: mapJson that accepts keys in function
   private def mapJsonUsingKeys[A](map: collection.Map[String, A])(f: (String, A) => ujson.Value): ujson.Obj = {

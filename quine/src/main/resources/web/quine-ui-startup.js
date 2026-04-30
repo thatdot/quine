@@ -21,7 +21,7 @@ var urlParams = new URLSearchParams(window.location.search);
 // See: BaseAppRoutes.scala:50 - content.replace("/*{{DEFAULT_V2_API}}*/true", defaultV2Api.toString)
 var defaultQueriesOverV2Api = /*{{DEFAULT_V2_API}}*/true;
 
-var apiPaths = ["home", "dashboard", "v2docs", "docs", "streams"];
+var apiPaths = ["home", "dashboard", "v1docs", "docs", "streams"];
 
 function deriveProxySafeBaseURI() {
     return apiPaths.reduce((incrementalDerivationString, terminalPath) => {

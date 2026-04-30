@@ -8,6 +8,6 @@ import com.thatdot.quine.webapp.components.StoplightElements
 object DocsV1View {
   def apply(options: QuineUiOptions): HtmlElement = StoplightElements(
     apiDescriptionUrl = options.documentationUrl,
-    basePath = "/docs",
+    basePath = "/v1docs",
   )
 }

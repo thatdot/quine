@@ -7,8 +7,8 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationEncoder,
 }
 import io.circe.{Decoder, Encoder}
-import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
+import sttp.tapir.{Schema, Validator}
 
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 
@@ -41,12 +41,16 @@ object StandingQueryPattern {
     // SQv4/Cypher interpreter
     case object MultipleValues extends StandingQueryMode
 
+    // Not yet released. Still accepted by the encoder/decoder for internal use,
+    // but intentionally excluded from `publicValues` so it does not appear in the OpenAPI schema.
     case object QuinePattern extends StandingQueryMode
 
     val values: Seq[StandingQueryMode] = Seq(DistinctId, MultipleValues, QuinePattern)
+    private val publicValues: Seq[StandingQueryMode] = Seq(DistinctId, MultipleValues)
 
     implicit val encoder: Encoder[StandingQueryMode] = deriveEnumerationEncoder
     implicit val decoder: Decoder[StandingQueryMode] = deriveEnumerationDecoder
-    implicit lazy val schema: Schema[StandingQueryMode] = Schema.derivedEnumeration.defaultStringBased
+    implicit lazy val schema: Schema[StandingQueryMode] =
+      Schema.string[StandingQueryMode].validate(Validator.enumeration(publicValues.toList, v => Some(v.toString)))
   }
 }
