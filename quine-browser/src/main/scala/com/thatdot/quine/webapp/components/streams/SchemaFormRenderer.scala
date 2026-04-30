@@ -639,7 +639,8 @@ object SchemaFormRenderer {
     }
 
     val typeObserver = Observer[String] { discValue =>
-      if (discValue.isEmpty) clearUnion() else switchDiscriminator(discValue)
+      if (discValue.isEmpty || !mapping.contains(discValue)) clearUnion()
+      else switchDiscriminator(discValue)
     }
 
     // When a union has only one variant, a type selector is pointless \u2014 it either
