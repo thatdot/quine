@@ -400,11 +400,31 @@ div.vis-tooltip {
 .sidebar-header {
   height: var(--topbar-height);
   box-sizing: border-box;
+  justify-content: space-between;
 }
 
 /* Sidebar brand logo */
 .sidebar-brand img.sidebar-brand-full {
-  height: 16px;
+  height: 30px;
+}
+
+.sidebar-brand img.sidebar-brand-narrow {
+  display: none;
+  height: 30px;
+}
+
+.sidebar.sidebar-narrow .sidebar-brand {
+  justify-content: center;
+  flex: 1;
+  cursor: pointer;
+}
+
+.sidebar.sidebar-narrow .sidebar-brand-narrow {
+  display: inline;
+}
+
+.sidebar.sidebar-narrow .sidebar-toggler {
+  display: none;
 }
 
 /* Override CoreUI's mobile sidebar behavior - we use narrow mode instead of hiding */

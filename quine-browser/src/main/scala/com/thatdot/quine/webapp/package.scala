@@ -44,6 +44,10 @@ package object webapp {
   @js.native
   object QuineLogo extends js.Object
 
+  @JSImport("resources/logo-icon.svg", JSImport.Default)
+  @js.native
+  object QuineIcon extends js.Object
+
   /** Mount the Quine web app onto the DOM
     *
     * @param target DOM element onto which the webapp is mounted
@@ -63,7 +67,12 @@ package object webapp {
     val laminarRoot = LaminarRoot(
       LaminarRootProps(
         productName = "Quine",
-        logo = Some(img(src := QuineLogo.toString, alt := "Quine", cls := "sidebar-brand-full")),
+        logo = Some(
+          span(
+            img(src := QuineLogo.toString, alt := "Quine", cls := "sidebar-brand-full"),
+            img(src := QuineIcon.toString, alt := "Quine", cls := "sidebar-brand-narrow"),
+          ),
+        ),
         navItems = QuineOssNavItems(apiV1),
         router = router,
         views = QuineOssViews(

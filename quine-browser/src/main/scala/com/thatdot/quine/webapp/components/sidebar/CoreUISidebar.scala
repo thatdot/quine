@@ -27,8 +27,11 @@ object CoreUISidebar {
       div(
         cls := "sidebar-header border-bottom",
         div(
-          cls := "sidebar-brand d-flex justify-content-between align-items-center",
+          cls := "sidebar-brand d-flex align-items-center",
           logo.getOrElse(span(cls := "sidebar-brand-full", productName)),
+          onClick.compose(_.sample(sidebarStateVar).collect { case SidebarState.Narrow =>
+            SidebarState.Expanded
+          }) --> sidebarStateVar,
         ),
         button(
           cls := "sidebar-toggler",
