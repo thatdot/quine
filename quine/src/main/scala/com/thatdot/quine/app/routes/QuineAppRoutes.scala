@@ -31,7 +31,10 @@ import com.thatdot.quine.gremlin.GremlinQueryRunner
   * @param graph underlying graph
   * @param quineApp quine application state
   * @param config current application config
-  * @param uri The url from which these routes will be served (used for docs generation)
+  * @param advertisedBaseUrl externally-reachable base URL, if explicitly configured via
+  *                          `webserver-advertise`. Used for OpenAPI server URLs and OIDC
+  *                          redirect URIs. When `None`, those default to relative paths /
+  *                          request-derived values.
   * @param timeout timeout
   */
 class QuineAppRoutes(
@@ -42,7 +45,7 @@ class QuineAppRoutes(
     with StandingQueryStoreV1
     with IngestStreamState,
   val config: BaseConfig,
-  val uri: URL,
+  val advertisedBaseUrl: Option[URL],
   val timeout: Timeout,
 )(implicit val ec: ExecutionContext, protected val logConfig: LogConfig)
     extends BaseAppRoutes
@@ -122,7 +125,7 @@ class QuineAppRoutes(
   }
 
   /** OpenAPI route */
-  lazy val openApiRoute: Route = QuineAppOpenApiDocsRoutes(graph, uri).route
+  lazy val openApiRoute: Route = QuineAppOpenApiDocsRoutes(graph, advertisedBaseUrl).route
 
   private val namespacesUnsupportedRoute =
     parameter("namespace")(_ => complete(StatusCodes.BadRequest, HttpEntity("Namespaces not supported")))
@@ -167,7 +170,7 @@ class QuineAppRoutes(
     // Always serve both V1 and V2 routes
     val v2Route = new V2OssRoutes(
       new OssApiMethods(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
-      openApiServerUrl = uri.toString,
+      openApiServerUrl = advertisedBaseUrl.fold("/")(_.toString),
     ).v2Routes(ingestOnly = false)
 
     logger.info(safe"API V1 and V2 endpoints available (UI default: ${Safe(config.defaultApiVersion)})")

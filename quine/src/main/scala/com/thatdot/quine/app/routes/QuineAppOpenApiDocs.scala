@@ -106,13 +106,18 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)(implicit protec
   * of our API
   *
   * @param graph the Quine graph
+  * @param advertisedBaseUrl externally-reachable base URL, if explicitly configured.
+  *                          When present, the default (`?relative=false`) spec uses absolute server URLs.
+  *                          When absent, all responses use relative server URLs.
   */
-final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, url: URL)(implicit protected val logConfig: LogConfig)
-    extends endpoints4s.pekkohttp.server.Endpoints
+final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, advertisedBaseUrl: Option[URL])(implicit
+  protected val logConfig: LogConfig,
+) extends endpoints4s.pekkohttp.server.Endpoints
     with endpoints4s.pekkohttp.server.JsonEntitiesFromEncodersAndDecoders {
 
   private val relativePathsApi = new QuineAppOpenApiDocs(graph.idProvider).api
-  private val absolutePathsApi = relativePathsApi.withServers(Seq(Server(url.toString)))
+  private val absolutePathsApi =
+    advertisedBaseUrl.fold(relativePathsApi)(u => relativePathsApi.withServers(Seq(Server(u.toString))))
 
   val route: Route = {
     val docEndpoint = endpoint(

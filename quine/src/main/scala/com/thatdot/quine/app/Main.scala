@@ -282,14 +282,21 @@ object Main extends App with LazySafeLogging {
 
   statusLines.info(log"Graph is ready")
 
-  // Determine the bind address and resolvable URL for the web server, if enabled
+  // Determine the bind address and resolvable URL for the web server, if enabled.
+  // The resolvable URL is used for *local* presentation (startup log, recipe status URL printed to stdout):
+  // when no advertise URL is configured, it falls back to the bind authority — fine for "click here on the
+  // local machine" but NOT a meaningful externally-reachable URL.
   val bindAndResolvableAddresses: Option[(WebServerBindConfig, URL)] = Option.when(config.webserver.enabled) {
-    // if a canonical URL is configured, use that for presentation (e.g. logging) purposes. Otherwise, infer
-    // from the bind URL
     config.webserver -> config.webserverAdvertise.fold(config.webserver.guessResolvableUrl)(
       _.url(config.webserver.protocol),
     )
   }
+  // The externally-advertised base URL — only set when the operator has explicitly configured
+  // `webserver-advertise`. Used for OpenAPI `servers[]` and OIDC `redirect_uri` construction.
+  // When unset, those surfaces fall back to relative paths / request-derived values, which work
+  // correctly behind LoadBalancers, ingress, port-forwarding, etc.
+  val advertisedBaseUrl: Option[URL] =
+    config.webserverAdvertise.map(_.url(config.webserver.protocol))
 
   var recipeInterpreterTask: Option[Cancellable] = recipe.map {
     case Recipe.V1(r) =>
@@ -312,7 +319,7 @@ object Main extends App with LazySafeLogging {
   }
 
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
-    new QuineAppRoutes(graph, quineApp, config, resolvableUrl, timeout)(
+    new QuineAppRoutes(graph, quineApp, config, advertisedBaseUrl, timeout)(
       ExecutionContext.parasitic,
       logConfig,
     )
