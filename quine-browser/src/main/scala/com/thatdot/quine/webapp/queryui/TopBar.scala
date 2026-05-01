@@ -41,8 +41,9 @@ object TopBar {
         canRead = canRead,
       ),
       navButtons,
-      child <-- foundNodesCount.combineWith(foundEdgesCount).map { case (n, e) =>
-        Counters.nodeEdgeCounters(n, e)
+      child <-- foundNodesCount.combineWith(foundEdgesCount).map {
+        case (None, None) => emptyNode
+        case (n, e) => Counters.nodeEdgeCounters(n, e)
       },
     )
   }

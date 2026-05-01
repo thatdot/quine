@@ -78,6 +78,7 @@ object HistoryNavigationButtons {
     div(
       flexGrow := "1",
       display := "flex",
+      alignItems := "center",
       // Back button: left-click = previous, right-click = {Previous, Previous Checkpoint, Beginning}
       ToolbarButton(
         "ion-ios-skipbackward",

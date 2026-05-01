@@ -116,14 +116,19 @@ pre.wrap {
   right: 0.4em; /* matches message bar padding */
 }
 
+.nav-bar > * {
+  height: var(--topbar-height);
+}
 .query-input {
   flex-grow: 4;
   display: flex;
+  box-sizing: border-box;
+  padding: 0.5rem 0;
 }
 .query-input-input {
   flex-grow: 1;
   padding: .2em;
-  margin: .4em 0 .4em .4em;
+  margin: 0 0 0 .4em;
   font-family: inherit;
   font-size: 1.2em;
   border: none;
@@ -138,7 +143,7 @@ pre.wrap {
 .query-input-button {
   float: left;
   padding: .2em .6em;
-  margin: .4em .4em .4em 0;
+  margin: 0 .4em 0 0;
   font-family: inherit;
   font-size: 1.2em;
   border: none;

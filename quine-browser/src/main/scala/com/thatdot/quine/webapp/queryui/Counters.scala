@@ -19,7 +19,7 @@ object Counters {
     htmlTag("i")(
       cls := s"$ionClass ${Styles.navBarButton} ${Styles.rightIcon}",
       title := tooltipTitle,
-      visibility := (if (count.isEmpty) "hidden" else "visible"),
+      display := (if (count.isEmpty) "none" else ""),
       span(
         span(fontSize := "small", count.getOrElse(0).toString),
       ),
@@ -30,6 +30,7 @@ object Counters {
     div(
       flexGrow := "0",
       display := "flex",
+      alignItems := "center",
       counter(
         ionClass = "ion-android-radio-button-on",
         tooltipTitle = "Nodes returned by last query",
