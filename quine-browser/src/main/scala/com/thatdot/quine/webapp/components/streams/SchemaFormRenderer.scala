@@ -383,10 +383,62 @@ object SchemaFormRenderer {
             stateVar.update(SchemaFormState.setAt(_, path, Json.fromString(v)))
           },
         ),
-        options.map(opt => option(value := opt, opt)),
+        options.map(opt => option(value := opt, humanizeEnumValue(opt))),
       ),
     )
   }
+
+  /** Common abbreviations that should remain uppercase in display labels rather than
+    * being title-cased (e.g. `"SHARD_ID"` should render as `"Shard ID"`, not `"Shard Id"`).
+    */
+  private val KnownAbbreviations: Set[String] = Set(
+    "API",
+    "ARN",
+    "AWS",
+    "CLI",
+    "CSV",
+    "DNS",
+    "HTTP",
+    "HTTPS",
+    "IAM",
+    "ID",
+    "IP",
+    "JSON",
+    "JWT",
+    "KCL",
+    "OS",
+    "SASL",
+    "SDK",
+    "SQL",
+    "SSL",
+    "TCP",
+    "TLS",
+    "UDP",
+    "UI",
+    "URI",
+    "URL",
+    "UUID",
+    "XML",
+    "YAML",
+  )
+
+  /** Convert a `SCREAMING_SNAKE_CASE` enum value into a Title Case display label
+    * (e.g. `"DOUBLE_QUOTE"` → `"Double Quote"`, `"SHARD_ID"` → `"Shard ID"`).
+    * Leaves values that aren't all-uppercase alone, so externally-conventional strings
+    * like Kafka's `"latest"` or a future `"PascalCase"` enum render as-is.
+    */
+  private def humanizeEnumValue(value: String): String =
+    if (value.nonEmpty && value.forall(c => c.isUpper || c.isDigit || c == '_'))
+      value
+        .split('_')
+        .iterator
+        .map { part =>
+          if (part.isEmpty) part
+          else if (KnownAbbreviations.contains(part)) part
+          else part.head.toString + part.tail.toLowerCase
+        }
+        .mkString(" ")
+    else value
 
   // --- Composite renderers ---
 

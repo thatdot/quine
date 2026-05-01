@@ -18,9 +18,9 @@ class ApiUiStylingCodecSpec extends AnyFunSuite with Matchers with ScalaCheckDri
     }
   }
 
-  test("QuerySort encodes with type discriminator") {
-    (QuerySort.Node: QuerySort).asJson.hcursor.get[String]("type") shouldBe Right("Node")
-    (QuerySort.Text: QuerySort).asJson.hcursor.get[String]("type") shouldBe Right("Text")
+  test("QuerySort encodes as a plain string") {
+    (QuerySort.Node: QuerySort).asJson.asString shouldBe Some("NODE")
+    (QuerySort.Text: QuerySort).asJson.asString shouldBe Some("TEXT")
   }
 
   test("QuickQuery roundtrip encoding/decoding") {

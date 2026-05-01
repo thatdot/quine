@@ -10,7 +10,7 @@ object ApiUiStylingGenerators {
   import JsonGenerators.Gens.dictionary
 
   object Gens {
-    val querySort: Gen[QuerySort] = Gen.oneOf(QuerySort.Node, QuerySort.Text)
+    val querySort: Gen[QuerySort] = Gen.oneOf(QuerySort.values)
 
     val quickQuery: Gen[QuickQuery] = for {
       name <- nonEmptyAlphaNumStr

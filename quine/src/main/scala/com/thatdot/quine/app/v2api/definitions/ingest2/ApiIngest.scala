@@ -21,6 +21,7 @@ import com.thatdot.api.schema.SecretSchemas._
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.codec.DisjointEither.syntax._
 import com.thatdot.api.v2.codec.DisjointEvidence._
+import com.thatdot.api.v2.codec.ScreamingSnakeEnum
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEncoder, instantDecoder, instantEncoder}
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, finiteDurationEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.{charsetSchema, instantSchema}
@@ -163,10 +164,9 @@ object ApiIngest {
 
     val values: Seq[IngestStreamStatus] = Seq(Running, Paused, Restored, Completed, Terminated, Failed)
 
-    implicit val encoder: Encoder[IngestStreamStatus] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[IngestStreamStatus] = deriveEnumerationDecoder
-    implicit lazy val schema: Schema[IngestStreamStatus] =
-      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
+    implicit val encoder: Encoder[IngestStreamStatus] = ScreamingSnakeEnum.encoder
+    implicit val decoder: Decoder[IngestStreamStatus] = ScreamingSnakeEnum.decoder(values)
+    implicit lazy val schema: Schema[IngestStreamStatus] = ScreamingSnakeEnum.schema(values)
   }
 
   sealed trait CsvCharacter
@@ -188,18 +188,16 @@ object ApiIngest {
 
     val values: Seq[CsvCharacter] = Seq(Backslash, Comma, Semicolon, Colon, Tab, Pipe, DoubleQuote)
 
-    implicit val encoder: Encoder[CsvCharacter] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[CsvCharacter] = deriveEnumerationDecoder
+    implicit val encoder: Encoder[CsvCharacter] = ScreamingSnakeEnum.encoder
+    implicit val decoder: Decoder[CsvCharacter] = ScreamingSnakeEnum.decoder(values)
 
-    // Schema.derived generates a oneOf of $ref objects in the OpenAPI spec, which
-    // means the CSV fields (delimiter, quoteChar, escapeChar) render as dropdowns
-    // with opaque object options and no visible defaults. This string-enum schema
-    // instead produces `{"type": "string", "enum": ["Comma", "Backslash", ...]}`,
-    // which lets the @default annotations on CSV's fields emit properly and causes
-    // the Streams UI to show a simple dropdown pre-filled with the default.
-    implicit lazy val schema: Schema[CsvCharacter] = Schema.string.validate(
-      Validator.enumeration(values.toList, v => Option(v.toString)),
-    )
+    // Schema.derived would generate a oneOf of $ref objects in the OpenAPI spec, which
+    // means the CSV fields (delimiter, quoteChar, escapeChar) would render as dropdowns
+    // with opaque object options and no visible defaults. The helper builds a string-enum
+    // schema instead — `{"type": "string", "enum": [...]}` — letting the @default
+    // annotations on CSV's fields emit properly and the Streams UI render a dropdown
+    // pre-filled with the default.
+    implicit lazy val schema: Schema[CsvCharacter] = ScreamingSnakeEnum.schema(values)
   }
 
   @title("Kafka Auto Offset Reset")
@@ -218,10 +216,9 @@ object ApiIngest {
     @default(Seq(Latest, Earliest, None))
     val values: Seq[KafkaAutoOffsetReset] = Seq(Latest, Earliest, None)
 
-    implicit val encoder: Encoder[KafkaAutoOffsetReset] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[KafkaAutoOffsetReset] = deriveEnumerationDecoder
-    implicit lazy val schema: Schema[KafkaAutoOffsetReset] =
-      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
+    implicit val encoder: Encoder[KafkaAutoOffsetReset] = ScreamingSnakeEnum.encoder
+    implicit val decoder: Decoder[KafkaAutoOffsetReset] = ScreamingSnakeEnum.decoder(values)
+    implicit lazy val schema: Schema[KafkaAutoOffsetReset] = ScreamingSnakeEnum.schema(values)
   }
 
   @title("Kafka offset tracking mechanism")
@@ -268,6 +265,8 @@ object ApiIngest {
 
     case object Sasl_Plaintext extends KafkaSecurityProtocol("SASL_PLAINTEXT")
 
+    val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl, Sasl_Plaintext)
+
     implicit val encoder: Encoder[KafkaSecurityProtocol] = Encoder.encodeString.contramap(_.name)
     implicit val decoder: Decoder[KafkaSecurityProtocol] = Decoder.decodeString.emap {
       case s if s == PlainText.name => Right(PlainText)
@@ -276,7 +275,8 @@ object ApiIngest {
       case s if s == Sasl_Plaintext.name => Right(Sasl_Plaintext)
       case s => Left(s"$s is not a valid KafkaSecurityProtocol")
     }
-    implicit lazy val schema: Schema[KafkaSecurityProtocol] = Schema.derived
+    implicit lazy val schema: Schema[KafkaSecurityProtocol] =
+      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.name)))
   }
 
   object WebSocketClient {
@@ -319,10 +319,9 @@ object ApiIngest {
     @default(Seq(Zlib, Gzip, Base64))
     val values: Seq[RecordDecodingType] = Seq(Zlib, Gzip, Base64)
 
-    implicit val encoder: Encoder[RecordDecodingType] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[RecordDecodingType] = deriveEnumerationDecoder
-    implicit lazy val schema: Schema[RecordDecodingType] =
-      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
+    implicit val encoder: Encoder[RecordDecodingType] = ScreamingSnakeEnum.encoder
+    implicit val decoder: Decoder[RecordDecodingType] = ScreamingSnakeEnum.decoder(values)
+    implicit lazy val schema: Schema[RecordDecodingType] = ScreamingSnakeEnum.schema(values)
   }
 
   sealed abstract class FileIngestMode
@@ -337,10 +336,9 @@ object ApiIngest {
     @default(Seq(Regular, NamedPipe))
     val values: Seq[FileIngestMode] = Seq(Regular, NamedPipe)
 
-    implicit val encoder: Encoder[FileIngestMode] = deriveEnumerationEncoder
-    implicit val decoder: Decoder[FileIngestMode] = deriveEnumerationDecoder
-    implicit lazy val schema: Schema[FileIngestMode] =
-      Schema.string.validate(Validator.enumeration(values.toList, v => Option(v.toString)))
+    implicit val encoder: Encoder[FileIngestMode] = ScreamingSnakeEnum.encoder
+    implicit val decoder: Decoder[FileIngestMode] = ScreamingSnakeEnum.decoder(values)
+    implicit lazy val schema: Schema[FileIngestMode] = ScreamingSnakeEnum.schema(values)
   }
 
   sealed trait Transformation
@@ -1244,22 +1242,22 @@ object ApiIngest {
         @default(false)
         headers: Either[Boolean, List[String]] = Left(false),
         @description("CSV row delimiter character.")
-        // @default uses the wire-format string ("Comma") instead of the Scala value
-        // (CsvCharacter.Comma) so that Tapir emits "default": "Comma" in the OpenAPI spec.
+        // @default uses the wire-format string ("COMMA") instead of the Scala value
+        // (CsvCharacter.Comma) so that Tapir emits "default": "COMMA" in the OpenAPI spec.
         // This lets the Streams UI pre-select the correct default in the dropdown.
         // The Scala default on the field itself is unchanged.
-        @default("Comma")
+        @default("COMMA")
         delimiter: CsvCharacter = CsvCharacter.Comma,
         @description(
           """Character used to quote values in a field. Special characters (like new lines) inside of a quoted
             |section will be a part of the CSV value.""".asOneLine,
         )
         // See delimiter comment above for why this uses the wire-format string.
-        @default("DoubleQuote")
+        @default("DOUBLE_QUOTE")
         quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
         @description("Character used to escape special characters.")
         // See delimiter comment above for why this uses the wire-format string.
-        @default("Backslash")
+        @default("BACKSLASH")
         escapeChar: CsvCharacter = CsvCharacter.Backslash,
       ) extends FileFormat
 

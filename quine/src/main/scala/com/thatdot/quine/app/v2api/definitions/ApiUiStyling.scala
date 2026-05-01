@@ -6,6 +6,7 @@ import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.codec.ScreamingSnakeEnum
 
 object ApiUiStyling {
   import com.thatdot.quine.app.util.StringOps.syntax._
@@ -17,9 +18,11 @@ object ApiUiStyling {
     case object Node extends QuerySort
     case object Text extends QuerySort
 
-    implicit val encoder: Encoder[QuerySort] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[QuerySort] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[QuerySort] = Schema.derived
+    val values: Seq[QuerySort] = Seq(Node, Text)
+
+    implicit val encoder: Encoder[QuerySort] = ScreamingSnakeEnum.encoder
+    implicit val decoder: Decoder[QuerySort] = ScreamingSnakeEnum.decoder(values)
+    implicit lazy val schema: Schema[QuerySort] = ScreamingSnakeEnum.schema(values)
   }
 
   /** Queries like the ones that show up when right-clicking nodes

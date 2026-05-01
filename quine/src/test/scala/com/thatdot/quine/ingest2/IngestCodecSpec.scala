@@ -355,20 +355,20 @@ class IngestCodecSpec
   // is reserved for unions whose variants carry payloads.
 
   test("RecordDecodingType encodes as a bare string") {
-    (RecordDecodingType.Zlib: RecordDecodingType).asJson shouldEqual Json.fromString("Zlib")
-    (RecordDecodingType.Gzip: RecordDecodingType).asJson shouldEqual Json.fromString("Gzip")
-    (RecordDecodingType.Base64: RecordDecodingType).asJson shouldEqual Json.fromString("Base64")
+    (RecordDecodingType.Zlib: RecordDecodingType).asJson shouldEqual Json.fromString("ZLIB")
+    (RecordDecodingType.Gzip: RecordDecodingType).asJson shouldEqual Json.fromString("GZIP")
+    (RecordDecodingType.Base64: RecordDecodingType).asJson shouldEqual Json.fromString("BASE64")
   }
 
   test("FileIngestMode encodes as a bare string") {
-    (FileIngestMode.Regular: FileIngestMode).asJson shouldEqual Json.fromString("Regular")
-    (FileIngestMode.NamedPipe: FileIngestMode).asJson shouldEqual Json.fromString("NamedPipe")
+    (FileIngestMode.Regular: FileIngestMode).asJson shouldEqual Json.fromString("REGULAR")
+    (FileIngestMode.NamedPipe: FileIngestMode).asJson shouldEqual Json.fromString("NAMED_PIPE")
   }
 
   test("KafkaAutoOffsetReset encodes as a bare string") {
-    (KafkaAutoOffsetReset.Latest: KafkaAutoOffsetReset).asJson shouldEqual Json.fromString("Latest")
-    (KafkaAutoOffsetReset.Earliest: KafkaAutoOffsetReset).asJson shouldEqual Json.fromString("Earliest")
-    (KafkaAutoOffsetReset.None: KafkaAutoOffsetReset).asJson shouldEqual Json.fromString("None")
+    (KafkaAutoOffsetReset.Latest: KafkaAutoOffsetReset).asJson shouldEqual Json.fromString("LATEST")
+    (KafkaAutoOffsetReset.Earliest: KafkaAutoOffsetReset).asJson shouldEqual Json.fromString("EARLIEST")
+    (KafkaAutoOffsetReset.None: KafkaAutoOffsetReset).asJson shouldEqual Json.fromString("NONE")
   }
 
   test("BillingMode encodes as a bare string") {

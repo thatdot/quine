@@ -49,7 +49,9 @@ trait V2QueryUiConfigurationRoutesConverters {
 trait V2QueryUiConfigurationRoutesSchemas extends AnySchema with JsonSchemas {
   implicit lazy val v2JsonSchema: JsonSchema[Json] = anySchema(None)
   implicit lazy val v2UiNodePredicateSchema: JsonSchema[V2UiNodePredicate] = genericRecord
-  implicit lazy val v2QuerySort: JsonSchema[V2QuerySort] = genericTagged
+  // AIP-126 wire format: flat SCREAMING_SNAKE_CASE string (e.g. `"NODE"`), not a tagged object.
+  implicit lazy val v2QuerySort: Enum[V2QuerySort] =
+    stringEnumeration[V2QuerySort](Seq(V2QuerySort.Node, V2QuerySort.Text))(_.toString.toUpperCase)
   implicit lazy val v2QuickQuerySchema: JsonSchema[V2QuickQuery] = genericRecord
   implicit lazy val v2UiNodeQuickQuerySchema: JsonSchema[V2UiNodeQuickQuery] = genericRecord
 }

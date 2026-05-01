@@ -61,7 +61,7 @@ object V2ApiTypes {
 
   /** Mirrors `com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestStreamInfoWithName` (fields subset).
     *
-    * `status` is extracted from the `"type"` discriminator of `ApiIngest.IngestStreamStatus`.
+    * `status` is the `IngestStreamStatus` value, normalized to PascalCase via [[V2IngestInfo.humanizeStatus]].
     * `sourceType` is extracted from the `"type"` discriminator of `ApiIngest.IngestSource`,
     * which lives at `settings.source` since `settings` is a full `QuineIngestConfiguration`.
     * `sourceId` is a best-effort human-readable identifier pulled from `settings.source`
@@ -90,6 +90,20 @@ object V2ApiTypes {
         "applicationName",
       )
 
+    /** SCREAMING_SNAKE_CASE → PascalCase, e.g. `"PAUSED"` → `"Paused"`. Pass-through for
+      * non-uppercase input so unknown future values surface verbatim.
+      */
+    def humanizeStatus(wire: String): String =
+      if (wire.nonEmpty && wire.forall(c => c.isUpper || c.isDigit || c == '_'))
+        wire
+          .split('_')
+          .iterator
+          .map { part =>
+            if (part.isEmpty) part else part.head.toString + part.tail.toLowerCase
+          }
+          .mkString
+      else wire
+
     implicit val decoder: Decoder[V2IngestInfo] = (c: HCursor) =>
       for {
         name <- c.downField("name").as[String]
@@ -98,6 +112,7 @@ object V2ApiTypes {
           .downField("type")
           .as[String]
           .orElse(c.downField("status").as[String])
+          .map(humanizeStatus)
         source = c.downField("settings").downField("source")
         sourceType <- source.downField("type").as[String]
         sourceId = sourceIdFields

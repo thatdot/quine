@@ -54,7 +54,7 @@ object LandingPageData {
   /** Convert V2 API standing query data to display types used by OverviewDiagram. */
   def fromV2StandingQueries(sqs: Seq[V2StandingQueryInfo]): Seq[StandingQueryInfo] =
     sqs.map { sq =>
-      val totalResults = sq.stats.values.map(_.rates.count).sum
+      val totalResults = sq.stats.values.map(_.rates.oneMinute).sum.toLong
       StandingQueryInfo(
         name = sq.name,
         status = if (sq.stats.nonEmpty) "Running" else "Idle",

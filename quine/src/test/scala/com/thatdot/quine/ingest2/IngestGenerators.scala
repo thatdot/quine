@@ -67,12 +67,7 @@ object IngestGenerators {
       waitForCommitConfirmation <- bool
     } yield ExplicitCommit(maxBatch, maxIntervalMillis.millis, parallelism, waitForCommitConfirmation)
 
-    val kafkaSecurityProtocol: Gen[KafkaSecurityProtocol] = Gen.oneOf(
-      KafkaSecurityProtocol.PlainText,
-      KafkaSecurityProtocol.Ssl,
-      KafkaSecurityProtocol.Sasl_Ssl,
-      KafkaSecurityProtocol.Sasl_Plaintext,
-    )
+    val kafkaSecurityProtocol: Gen[KafkaSecurityProtocol] = Gen.oneOf(KafkaSecurityProtocol.values)
 
     val kafkaAutoOffsetReset: Gen[KafkaAutoOffsetReset] = Gen.oneOf(KafkaAutoOffsetReset.values)
 

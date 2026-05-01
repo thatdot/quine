@@ -3,6 +3,8 @@ package com.thatdot.quine.webapp.components.streams
 import com.raquo.laminar.api.L._
 import io.circe.Json
 
+import com.thatdot.quine.webapp.components.landing.V2ApiTypes.V2IngestInfo
+
 /** Renders the ingest streams table with status badges and action icons.
   *
   * Pure renderer: receives Signals to read, Observers to write. No API
@@ -44,7 +46,7 @@ object IngestStreamTable {
     onResume: Observer[String],
   ): HtmlElement = {
     val statusSignal = jsonSignal.map { json =>
-      json.hcursor.get[String]("status").toOption.getOrElse("Unknown")
+      json.hcursor.get[String]("status").toOption.map(V2IngestInfo.humanizeStatus).getOrElse("Unknown")
     }
     val messageSignal = jsonSignal.map { json =>
       json.hcursor.get[String]("message").toOption.filter(_.nonEmpty)

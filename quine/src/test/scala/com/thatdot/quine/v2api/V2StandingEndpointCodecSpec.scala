@@ -3,6 +3,7 @@ package com.thatdot.quine.v2api
 import java.util.UUID
 
 import cats.data.NonEmptyList
+import io.circe.Json
 import io.circe.syntax._
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
@@ -54,12 +55,10 @@ class V2StandingEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaChe
       }
     }
 
-    it("should encode as simple string (enumeration style)") {
-      forAll { (mode: StandingQueryMode) =>
-        val json = mode.asJson
-        val expectedValue = mode.getClass.getSimpleName.stripSuffix("$")
-        json.as[String] shouldBe Right(expectedValue)
-      }
+    it("should encode as a SCREAMING_SNAKE_CASE string") {
+      (StandingQueryMode.DistinctId: StandingQueryMode).asJson shouldBe Json.fromString("DISTINCT_ID")
+      (StandingQueryMode.MultipleValues: StandingQueryMode).asJson shouldBe Json.fromString("MULTIPLE_VALUES")
+      (StandingQueryMode.QuinePattern: StandingQueryMode).asJson shouldBe Json.fromString("QUINE_PATTERN")
     }
   }
 
