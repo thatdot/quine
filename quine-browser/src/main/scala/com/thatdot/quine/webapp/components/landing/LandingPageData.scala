@@ -4,12 +4,13 @@ import com.thatdot.quine.webapp.components.landing.V2ApiTypes._
 
 /** Display types used by `OverviewDiagram` and conversion helpers from the V2 API types. */
 
-final case class IngestInfo(name: String, sourceType: String, source: String, status: String, rate: Long)
+final case class IngestInfo(name: String, sourceType: String, source: String, status: String, rate: Double)
 final case class StandingQueryOutputInfo(
   name: String,
   outputType: String,
   destination: String,
-  resultCount: Long,
+  rate: Double,
+  totalCount: Long,
   kafkaTopic: Option[String] = None,
 )
 final case class StandingQueryInfo(name: String, status: String, outputs: Seq[StandingQueryOutputInfo])
@@ -47,14 +48,15 @@ object LandingPageData {
         sourceType = slug,
         source = ServiceIcons.labelFor(slug),
         status = info.status,
-        rate = info.stats.rates.oneMinute.toLong,
+        rate = info.stats.rates.oneMinute,
       )
     }
 
   /** Convert V2 API standing query data to display types used by OverviewDiagram. */
   def fromV2StandingQueries(sqs: Seq[V2StandingQueryInfo]): Seq[StandingQueryInfo] =
     sqs.map { sq =>
-      val totalResults = sq.stats.values.map(_.rates.oneMinute).sum.toLong
+      val totalRate = sq.stats.values.map(_.rates.oneMinute).sum
+      val totalCount = sq.stats.values.map(_.rates.count).sum
       StandingQueryInfo(
         name = sq.name,
         status = if (sq.stats.nonEmpty) "Running" else "Idle",
@@ -66,7 +68,8 @@ object LandingPageData {
             // Key by type alone so multiple outputs of the same type collapse to one
             // destination node in the overview diagram.
             destination = ServiceIcons.labelFor(destSlug),
-            resultCount = totalResults,
+            rate = totalRate,
+            totalCount = totalCount,
           )
         },
       )

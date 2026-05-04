@@ -20,7 +20,7 @@ object OverviewDiagram {
   private case class FlowNode(
     label: String,
     nodeType: String, // "kafka", "s3", "kinesis", "http", "stdout", "slack", etc.
-    aggregateRate: Long,
+    aggregateRate: Double,
     status: String, // "Running", "Mixed", "Failed", "Paused"
     count: Int, // number of individual ingests/outputs aggregated
   )
@@ -44,7 +44,7 @@ object OverviewDiagram {
     val (cypherOutputs, regularOutputs) = allOutputs.partition(_.outputType == "cypher")
 
     val cypherNode: Option[FlowNode] = if (cypherOutputs.nonEmpty) {
-      val totalRate = cypherOutputs.map(_.resultCount).sum
+      val totalRate = cypherOutputs.map(_.rate).sum
       Some(FlowNode("Cypher Queries", "cypher", totalRate, "Running", cypherOutputs.size))
     } else None
 
@@ -52,7 +52,7 @@ object OverviewDiagram {
       .groupBy(_.destination)
       .toSeq
       .map { case (dest, group) =>
-        val totalRate = group.map(_.resultCount).sum
+        val totalRate = group.map(_.rate).sum
         FlowNode(dest, group.head.outputType, totalRate, "Running", group.size)
       }
       .sortBy(-_.aggregateRate)
@@ -128,14 +128,13 @@ object OverviewDiagram {
     // Ingest-name → its info (for tooltips). Each ingest is its own overview node now,
     // so the "members" list is typically size 1.
     val ingestsBySource: Map[String, Seq[IngestInfo]] = allIngests.groupBy(_.name)
-    // Destination-label → (queryName, output workflow, resultCount) for destination tooltips.
-    case class RawOutput(queryName: String, workflowName: String, outputType: String, resultCount: Long)
+    case class RawOutput(queryName: String, workflowName: String, outputType: String, rate: Double, totalCount: Long)
     val outputsByDest: Map[String, Seq[RawOutput]] =
       allQueries
         .flatMap(q =>
           q.outputs
             .filterNot(_.outputType == "cypher")
-            .map(o => RawOutput(q.name, o.name, o.outputType, o.resultCount) -> o.destination),
+            .map(o => RawOutput(q.name, o.name, o.outputType, o.rate, o.totalCount) -> o.destination),
         )
         .groupBy(_._2)
         .view
@@ -143,7 +142,9 @@ object OverviewDiagram {
         .toMap
     val cypherRawOutputs: Seq[RawOutput] =
       allQueries.flatMap(q =>
-        q.outputs.filter(_.outputType == "cypher").map(o => RawOutput(q.name, o.name, o.outputType, o.resultCount)),
+        q.outputs
+          .filter(_.outputType == "cypher")
+          .map(o => RawOutput(q.name, o.name, o.outputType, o.rate, o.totalCount)),
       )
     val _ = cypherOutputs // reserved for future
 
@@ -199,8 +200,8 @@ object OverviewDiagram {
     // Per-side stroke scales: the ingest column has its own total/max, as does the
     // output column. This avoids one side with many small flows looking thin compared
     // to the other side with few big flows.
-    val ingestTotal = math.max(ingestNodes.map(_.aggregateRate).sum, 1L).toDouble
-    val outputTotal = math.max(outputNodes.map(_.aggregateRate).sum, 1L).toDouble
+    val ingestTotal = math.max(ingestNodes.map(_.aggregateRate).sum, 1.0)
+    val outputTotal = math.max(outputNodes.map(_.aggregateRate).sum, 1.0)
 
     val ingestStroke = D3
       .scaleLinear()
@@ -222,14 +223,14 @@ object OverviewDiagram {
       val targetDots = minVisibleDots + s * (maxVisibleDots - minVisibleDots)
       math.max(100, (avgDotDuration / targetDots).toInt)
     }
-    def ingestSpawn(rate: Long): Int = spawnIntervalForShare(rate.toDouble / ingestTotal)
-    def outputSpawn(rate: Long): Int = spawnIntervalForShare(rate.toDouble / outputTotal)
+    def ingestSpawn(rate: Double): Int = spawnIntervalForShare(rate / ingestTotal)
+    def outputSpawn(rate: Double): Int = spawnIntervalForShare(rate / outputTotal)
 
     // Draw ingest links (left → center). Color reflects the ingest's status so a
     // paused/failed stream is visible at a glance.
     ingestNodes.zipWithIndex.foreach { case (node, idx) =>
       val y = ingestYs(idx)
-      val strokeW = ingestStroke(node.aggregateRate.toDouble)
+      val strokeW = ingestStroke(node.aggregateRate)
       val pathData = bezierH(leftX + 18, y, centerX - nodeRadius, quineY)
       val lineColor = ingestFlowColor(node.status)
 
@@ -266,7 +267,7 @@ object OverviewDiagram {
     // Draw output links (center → right)
     outputNodes.zipWithIndex.foreach { case (node, idx) =>
       val y = outputYs(idx)
-      val strokeW = outputStroke(node.aggregateRate.toDouble)
+      val strokeW = outputStroke(node.aggregateRate)
       val pathData = bezierH(centerX + nodeRadius, quineY, rightX - 18, y)
 
       svg
@@ -294,12 +295,15 @@ object OverviewDiagram {
         .attr("style", "cursor: pointer;")
       val raws = outputsByDest.getOrElse(node.label, Nil)
       val items = raws
-        .sortBy(-_.resultCount)
-        .map(r => LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", s"${r.resultCount}/s"))
+        .sortBy(-_.rate)
+        .map(r =>
+          LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", LandingTooltip.formatRate(r.rate)),
+        )
       val html = LandingTooltip.header(node.label) +
         LandingTooltip.kvTable(
           LandingTooltip.kvRow("Destination type", ServiceIcons.labelFor(node.nodeType)) +
-          LandingTooltip.kvRow("Aggregate rate", s"${node.aggregateRate}/s") +
+          LandingTooltip.kvRow("Aggregate rate", LandingTooltip.formatRate(node.aggregateRate)) +
+          LandingTooltip.kvRow("Total results", f"${raws.map(_.totalCount).sum}%,d") +
           LandingTooltip.kvRow("Workflows", s"${raws.size}") +
           LandingTooltip.kvRow("Queries", s"${raws.map(_.queryName).distinct.size}"),
         ) +
@@ -413,12 +417,15 @@ object OverviewDiagram {
         .attr("pointer-events", "all")
         .attr("style", "cursor: pointer;")
       val items = raws
-        .sortBy(-_.resultCount)
-        .map(r => LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", s"${r.resultCount}/s"))
+        .sortBy(-_.rate)
+        .map(r =>
+          LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", LandingTooltip.formatRate(r.rate)),
+        )
       val html = LandingTooltip.header(node.label) +
         LandingTooltip.kvTable(
           LandingTooltip.kvRow("Destination type", ServiceIcons.labelFor(node.nodeType)) +
-          LandingTooltip.kvRow("Aggregate rate", s"${node.aggregateRate}/s") +
+          LandingTooltip.kvRow("Aggregate rate", LandingTooltip.formatRate(node.aggregateRate)) +
+          LandingTooltip.kvRow("Total results", f"${raws.map(_.totalCount).sum}%,d") +
           LandingTooltip.kvRow("Workflows", s"${raws.size}") +
           LandingTooltip.kvRow("Queries", s"${raws.map(_.queryName).distinct.size}"),
         ) +
@@ -476,14 +483,15 @@ object OverviewDiagram {
       .attr("style", "cursor: pointer;")
     val totalInRate = allIngests.map(_.rate).sum
     val totalOutRate = outputNodes.map(_.aggregateRate).sum
-    val cypherRate = cypherNode.map(_.aggregateRate).getOrElse(0L)
+    val cypherRate = cypherNode.map(_.aggregateRate).getOrElse(0.0)
     val quineHtml =
       LandingTooltip.header("Quine") +
       LandingTooltip.kvTable(
         LandingTooltip.kvRow("Persistor", ServiceIcons.labelFor(persistor.name)) +
-        LandingTooltip.kvRow("Total ingest rate", s"$totalInRate/s") +
-        LandingTooltip.kvRow("Total output rate", s"$totalOutRate/s") +
-        (if (cypherRate > 0) LandingTooltip.kvRow("Cypher loopback rate", s"$cypherRate/s") else "") +
+        LandingTooltip.kvRow("Total ingest rate", LandingTooltip.formatRate(totalInRate)) +
+        LandingTooltip.kvRow("Total output rate", LandingTooltip.formatRate(totalOutRate)) +
+        (if (cypherRate > 0) LandingTooltip.kvRow("Cypher loopback rate", LandingTooltip.formatRate(cypherRate))
+         else "") +
         LandingTooltip.kvRow("Sources", s"${ingestNodes.size}") +
         LandingTooltip.kvRow("Destinations", s"${outputNodes.size}"),
       )
@@ -526,7 +534,7 @@ object OverviewDiagram {
           .attr("text-anchor", "middle")
           .attr("font-size", "13px")
           .attr("fill", "#6c757d")
-          .text(s"${cNode.aggregateRate}/s")
+          .text(LandingTooltip.formatRate(cNode.aggregateRate))
       }
 
       // Count badge
@@ -566,12 +574,15 @@ object OverviewDiagram {
         .attr("pointer-events", "stroke")
         .attr("style", "cursor: pointer;")
       val items = cypherRawOutputs
-        .sortBy(-_.resultCount)
-        .map(r => LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", s"${r.resultCount}/s"))
+        .sortBy(-_.rate)
+        .map(r =>
+          LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", LandingTooltip.formatRate(r.rate)),
+        )
       val cypherHtml =
         LandingTooltip.header("Cypher loopback") +
         LandingTooltip.kvTable(
-          LandingTooltip.kvRow("Total rate", s"${cNode.aggregateRate}/s") +
+          LandingTooltip.kvRow("Total rate", LandingTooltip.formatRate(cNode.aggregateRate)) +
+          LandingTooltip.kvRow("Total results", f"${cypherRawOutputs.map(_.totalCount).sum}%,d") +
           LandingTooltip.kvRow("Cypher outputs", s"${cypherRawOutputs.size}") +
           LandingTooltip.kvRow("Queries", s"${cypherRawOutputs.map(_.queryName).distinct.size}"),
         ) +
@@ -672,16 +683,16 @@ object OverviewDiagram {
           LandingTooltip.kvTable(
             LandingTooltip.kvRow("Source type", ServiceIcons.labelFor(node.nodeType)) +
             LandingTooltip.kvRow("Source", only.source) +
-            LandingTooltip.kvRow("Rate", s"${only.rate}/s") +
+            LandingTooltip.kvRow("Rate", LandingTooltip.formatRate(only.rate)) +
             LandingTooltip.kvRow("Status", only.status, Some(LandingTooltip.statusColor(only.status))),
           )
       case _ =>
         val sorted = members.sortBy(-_.rate)
-        val items = sorted.map(m => LandingTooltip.BreakdownItem(m.name, m.status, s"${m.rate}/s"))
+        val items = sorted.map(m => LandingTooltip.BreakdownItem(m.name, m.status, LandingTooltip.formatRate(m.rate)))
         LandingTooltip.header(node.label) +
         LandingTooltip.kvTable(
           LandingTooltip.kvRow("Source type", ServiceIcons.labelFor(node.nodeType)) +
-          LandingTooltip.kvRow("Aggregate rate", s"${node.aggregateRate}/s") +
+          LandingTooltip.kvRow("Aggregate rate", LandingTooltip.formatRate(node.aggregateRate)) +
           LandingTooltip.kvRow("Streams", s"${node.count}") +
           LandingTooltip.kvRow("Status", node.status, Some(LandingTooltip.statusColor(node.status))),
         ) +
@@ -769,7 +780,7 @@ object OverviewDiagram {
         .attr("text-anchor", "middle")
         .attr("font-size", "13px")
         .attr("fill", "#6c757d")
-        .text(s"${node.aggregateRate}/s")
+        .text(LandingTooltip.formatRate(node.aggregateRate))
     }
 
     // Count badge (top-right of icon)

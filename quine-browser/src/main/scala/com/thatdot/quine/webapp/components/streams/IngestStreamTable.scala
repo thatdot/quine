@@ -99,11 +99,11 @@ object IngestStreamTable {
             .toOption
             .map(r => f"$r%.1f/s")
             .getOrElse("-")
-          // `totalRuntime` is an AIP-142 duration string (e.g. "5h30m45s"); display verbatim.
           val uptime = stats.hcursor
             .get[String]("totalRuntime")
             .toOption
             .filter(_.nonEmpty)
+            .map(formatUptime)
             .getOrElse("-")
           List(td(ingestedCount), td(rate), td(uptime))
       },
@@ -166,4 +166,38 @@ object IngestStreamTable {
     if (n >= 1000000) f"${n / 1000000.0}%.1fM"
     else if (n >= 1000) f"${n / 1000.0}%.1fK"
     else n.toString
+
+  private val DurationSegment = """(\d+(?:\.\d+)?)(ms|µs|us|ns|h|m|s)""".r
+
+  private def formatUptime(raw: String): String = {
+    val segments = DurationSegment.findAllMatchIn(raw).toList
+    if (segments.isEmpty) return raw
+
+    var totalSeconds = 0L
+    segments.foreach { m =>
+      val value = m.group(1).toDouble
+      m.group(2) match {
+        case "h" => totalSeconds += (value * 3600).toLong
+        case "m" => totalSeconds += (value * 60).toLong
+        case "s" => totalSeconds += value.toLong
+        case _ => // drop sub-second
+      }
+    }
+
+    if (totalSeconds <= 0) return "< 1s"
+
+    val days = totalSeconds / 86400
+    val hours = (totalSeconds % 86400) / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+
+    val parts = Seq(
+      if (days > 0) Some(s"${days}d") else None,
+      if (hours > 0) Some(s"${hours}h") else None,
+      if (minutes > 0) Some(s"${minutes}m") else None,
+      if (days == 0 && seconds > 0) Some(s"${seconds}s") else None,
+    ).flatten
+
+    parts.mkString(" ")
+  }
 }
