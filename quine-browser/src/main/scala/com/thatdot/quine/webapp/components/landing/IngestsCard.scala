@@ -17,105 +17,188 @@ import com.thatdot.quine.webapp.util.Pot
   * Link thickness is proportional to the ingest's one-minute rate.
   * Ingests whose names share a common `name-N` suffix are merged into a
   * single "name (×N)" group node, matching the prototype's behavior.
+  *
+  * The Plotly chart is created once on first mount and subsequent ingest-data
+  * emissions are pushed through `Plotly.react`, which diffs against the current
+  * trace and updates link values smoothly. This avoids the visible flash that
+  * comes with `child <--`-driven full re-renders against a 5-second polling cadence.
   */
 object IngestsCard {
 
   val requiredPermissions: Set[String] = Set("IngestRead")
 
-  def apply(ingestsSignal: Signal[Pot[Seq[V2IngestInfo]]]): HtmlElement =
-    div(child <-- ingestsSignal.map(renderState))
-
-  private def renderState(state: Pot[Seq[V2IngestInfo]]): HtmlElement = state match {
-    case Pot.Empty =>
-      Card(title = "Ingests", body = p(cls := "text-muted mb-0", "No ingest data loaded."))
-
-    case Pot.Pending =>
-      Card(
-        title = "Ingests",
-        body = div(
-          cls := "d-flex align-items-center",
-          span(cls := "spinner-border spinner-border-sm me-2"),
-          span("Loading ingests..."),
-        ),
-      )
-
-    case Pot.Ready(data) =>
-      renderContent(data)
-
-    case Pot.Failed(err) =>
-      Card(title = "Ingests", body = div(cls := "alert alert-danger mb-0", s"Error: $err"))
-
-    case Pot.PendingStale(data) =>
-      div(
-        cls := "position-relative",
-        div(cls := "opacity-50", renderContent(data)),
-        div(
-          cls := "position-absolute top-0 start-0 w-100 text-center mt-4",
-          span(cls := "spinner-border spinner-border-sm me-1"),
-          span("Refreshing..."),
-        ),
-      )
-
-    case Pot.FailedStale(data, err) =>
-      div(
-        div(cls := "alert alert-danger mb-2", s"Error refreshing: $err"),
-        renderContent(data),
-      )
-  }
-
-  private def renderContent(ingests: Seq[V2IngestInfo]): HtmlElement = {
-    if (ingests.isEmpty)
-      return Card(title = "Ingests", body = p(cls := "text-muted mb-0", "No ingests configured."))
-
+  def apply(ingestsSignal: Signal[Pot[Seq[V2IngestInfo]]]): HtmlElement = {
     // Track observer + debounce timer so we can re-render on container resize.
     var observer: js.Dynamic = null
     var rerenderTimeout: Int = 0
     var lastWidth: Int = -1
+    // Plotly is initialized lazily on the first `Ready` emission. Subsequent
+    // `Ready` emissions go through `Plotly.react`.
+    var plotlyInitialized: Boolean = false
+    var lastIngests: Seq[V2IngestInfo] = Nil
+    // Structure key for the Sankey — sorted node labels. Overlay/tooltip regeneration
+    // is skipped when the key matches, since Plotly preserves DOM identity for the
+    // same node set across `react` calls. Skipping the overlay churn eliminates the
+    // frame-long flicker that was visible on every poll.
+    var lastStructureKey: Seq[String] = Nil
+    // Tooltip closures reach back into this cell to render fresh data on hover, so
+    // hover content always reflects the latest poll without re-attaching listeners.
+    var current: Seq[V2IngestInfo] = Nil
+
+    // Split the source Pot into two narrower signals (data + status) and `.distinct`
+    // each so identical polls don't re-fire any side effects. Following the Laminar
+    // principle of binding the smallest piece per signal.
+    val dataSig: Signal[Option[Seq[V2IngestInfo]]] = ingestsSignal.map(_.toOption).distinct
+    val statusSig: Signal[Option[HtmlElement]] = ingestsSignal
+      .map[Option[StatusKind]] {
+        // PendingStale isn't currently produced by LandingStore; treat like Ready if it ever is.
+        // FailedStale: chart keeps showing prior data; the page-level banner in LandingPage
+        // surfaces the refresh-failure message across all cards.
+        case Pot.Ready(_) | Pot.PendingStale(_) | Pot.FailedStale(_, _) => None
+        case Pot.Empty => Some(StatusKind.Empty)
+        case Pot.Pending => Some(StatusKind.Pending)
+        case Pot.Failed(err) => Some(StatusKind.Failed(err))
+      }
+      .distinct
+      .map(_.map(renderStatus))
+
+    val plotContainer = div(width := "100%")
+
+    def renderInto(container: dom.HTMLElement, ingests: Seq[V2IngestInfo]): Unit = {
+      lastIngests = ingests
+      current = ingests
+      if (ingests.isEmpty) {
+        if (plotlyInitialized) {
+          PlotlyJS.purge(container)
+          plotlyInitialized = false
+          lastStructureKey = Nil
+        }
+        return
+      }
+      val (traces, layout, config, sourceTypeLabels, structureKey) = buildPlotlyArgs(ingests)
+      val structureChanged = structureKey != lastStructureKey
+      val wasInitialized = plotlyInitialized
+      val promise =
+        if (plotlyInitialized) PlotlyJS.react(container, traces, layout, config)
+        else PlotlyJS.newPlot(container, traces, layout, config)
+      val _ = promise // suppress unused-value warning
+      // Plotly rebuilds its SVG `<text>` elements on every `react` call, so the
+      // `display: none` we applied to icon-replaced labels gets reset. We re-hide
+      // them *synchronously*: by the time `react` returns, Plotly has already written
+      // the new `<text>` nodes to the DOM (just not painted them yet), so a synchronous
+      // walk catches the labels before any paint. This avoids the split-second flash
+      // we'd see if hiding were deferred.
+      //
+      // The `<img>` overlay elements we appended on the *previous* render are still
+      // in place, so we only re-add them when the node set actually changed. That
+      // post-processing is deferred via `requestAnimationFrame` which runs after layout
+      // but before paint, which is exactly what `addIconOverlays` needs (it calls `getBoundingClientRect()`
+      // to position each `<img>` and would get stale measurements if it ran before layout).
+      hideIconReplacedLabels(container, sourceTypeLabels)
+      if (structureChanged || !wasInitialized) {
+        val _ = dom.window.requestAnimationFrame { (_: Double) =>
+          addIconOverlays(container, sourceTypeLabels)
+          addTooltips(container, () => current)
+        }
+      }
+      lastStructureKey = structureKey
+      plotlyInitialized = true
+      lastWidth = container.clientWidth.toInt
+    }
 
     Card(
-      title = "Ingests",
+      title = "Ingests on this Host",
       body = div(
-        width := "100%",
-        onMountCallback { ctx =>
-          val container = ctx.thisNode.ref
-          renderSankey(container, ingests)
-          lastWidth = container.clientWidth.toInt
-          val ro = js.Dynamic.global.ResizeObserver
-          if (!js.isUndefined(ro)) {
-            observer = js.Dynamic.newInstance(ro)({ (_: js.Any) =>
-              val w = container.clientWidth.toInt
-              if (math.abs(w - lastWidth) > 8) {
-                if (rerenderTimeout != 0) dom.window.clearTimeout(rerenderTimeout)
-                rerenderTimeout = dom.window.setTimeout(
-                  () => {
-                    PlotlyJS.purge(container)
-                    renderSankey(container, ingests)
-                    lastWidth = container.clientWidth.toInt
-                  },
-                  120,
-                )
-              }
-            }: js.Function1[js.Any, Unit])
-            val _ = observer.observe(container)
-          }
-        },
-        onUnmountCallback { el =>
-          PlotlyJS.purge(el.ref)
-          if (observer != null) observer.disconnect()
-          if (rerenderTimeout != 0) dom.window.clearTimeout(rerenderTimeout)
-        },
+        // The Plotly container — its identity stays stable across signal emissions,
+        // and Plotly mutates the SVG inside it via `react`.
+        plotContainer.amend(
+          onMountCallback { ctx =>
+            val container = ctx.thisNode.ref
+            // If we already saw `Ready` data before mount, draw it now.
+            if (lastIngests.nonEmpty) renderInto(container, lastIngests)
+            val ro = js.Dynamic.global.ResizeObserver
+            if (!js.isUndefined(ro)) {
+              observer = js.Dynamic.newInstance(ro)({ (_: js.Any) =>
+                val w = container.clientWidth.toInt
+                if (math.abs(w - lastWidth) > 8) {
+                  if (rerenderTimeout != 0) dom.window.clearTimeout(rerenderTimeout)
+                  rerenderTimeout = dom.window.setTimeout(
+                    () => {
+                      if (plotlyInitialized) {
+                        // Force a fresh layout at the new width — `react` alone won't
+                        // pick up the container size change reliably.
+                        PlotlyJS.purge(container)
+                        plotlyInitialized = false
+                      }
+                      renderInto(container, lastIngests)
+                    },
+                    120,
+                  )
+                }
+              }: js.Function1[js.Any, Unit])
+              val _ = observer.observe(container)
+            }
+          },
+          onUnmountCallback { el =>
+            PlotlyJS.purge(el.ref)
+            plotlyInitialized = false
+            if (observer != null) observer.disconnect()
+            if (rerenderTimeout != 0) dom.window.clearTimeout(rerenderTimeout)
+          },
+          // Pump fresh ingest data into Plotly on every emission. `dataSig` is
+          // `.distinct`d so a poll that returns the same Seq doesn't even fire here.
+          dataSig --> Observer[Option[Seq[V2IngestInfo]]] {
+            case Some(data) =>
+              val container = plotContainer.ref
+              if (container != null) renderInto(container, data)
+              else lastIngests = data
+            case None => () // status overlay handles the not-loaded case
+          },
+        ),
+        // Status overlay (placeholder/error) sits above the plot container. When the
+        // overlay is `None`, only the chart shows. `statusSig` is `.distinct`d on the
+        // status *kind*, so the placeholder element is only rebuilt on a real status
+        // transition — not on every poll while the card is loaded.
+        child.maybe <-- statusSig,
       ),
     )
   }
 
-  /** Extract a common prefix from names like `ingest-1`, `ingest-2` → `ingest`. */
-  private val NumberSuffix = """^(.+)-(\d+)$""".r
-  private def ingestGroupName(name: String): String = name match {
-    case NumberSuffix(prefix, _) => prefix
-    case other => other
+  /** Status kinds for the placeholder overlay — declared as a separate ADT so the
+    * overlay signal can be `.distinct`d on the kind, not on the rendered element.
+    */
+  sealed private trait StatusKind
+  private object StatusKind {
+    case object Empty extends StatusKind
+    case object Pending extends StatusKind
+    final case class Failed(err: String) extends StatusKind
   }
 
-  private def renderSankey(container: dom.HTMLElement, ingests: Seq[V2IngestInfo]): Unit = {
+  private def renderStatus(kind: StatusKind): HtmlElement = kind match {
+    case StatusKind.Empty => p(cls := "text-muted mb-0", "No ingest data loaded.")
+    case StatusKind.Pending =>
+      div(
+        cls := "d-flex align-items-center",
+        span(cls := "spinner-border spinner-border-sm me-2"),
+        span("Loading ingests..."),
+      )
+    case StatusKind.Failed(err) =>
+      div(cls := "alert alert-danger mb-0", s"Error: $err")
+  }
+
+  /** Compute the Plotly trace, layout, and config arguments plus the source-type-label
+    * map needed by the icon-overlay step, and a structure key (sorted node labels)
+    * used to decide whether overlays/tooltip zones need re-attaching.
+    */
+  private def buildPlotlyArgs(
+    ingests: Seq[V2IngestInfo],
+  ): (
+    js.Array[js.Object],
+    js.Object,
+    js.Object,
+    Map[String, String],
+    Seq[String],
+  ) = {
     // Three-column Sankey: source → ingest group → Quine.
     // Group first by source identifier (e.g. Kafka bootstrap servers, S3 bucket), then
     // within each source by name prefix (so `ingest-1` and `ingest-2` collapse to "ingest (×2)").
@@ -145,10 +228,6 @@ object IngestsCard {
 
     // source-node text → type slug (so icon overlay can resolve)
     val sourceTypeLabels = scala.collection.mutable.Map[String, String]()
-    // ingest-group label → member ingests (for tooltips)
-    val groupTooltipData = scala.collection.mutable.Map[String, Seq[V2IngestInfo]]()
-    // source-node label → (sourceType, member ingests) for tooltips
-    val sourceTooltipData = scala.collection.mutable.Map[String, (String, Seq[V2IngestInfo])]()
 
     // Rates often span orders of magnitude (e.g. 1/s vs 1000/s), which makes the
     // smallest flows invisible when link heights are linearly proportional. We compress
@@ -164,7 +243,6 @@ object IngestsCard {
       val sourceLabel = sourceId
       val sourceIdx = getNodeIdx(s"__source_$sourceId", sourceLabel, baseColor)
       sourceTypeLabels(sourceLabel) = sourceType
-      sourceTooltipData(sourceLabel) = (sourceType, sourceIngests)
 
       // Middle column: group ingests by name prefix within this source.
       val byPrefix: Seq[(String, Seq[V2IngestInfo])] =
@@ -182,7 +260,6 @@ object IngestsCard {
         val lighterColor = lighter.toString().asInstanceOf[String]
 
         val igIdx = getNodeIdx(s"__ig_${sourceId}_$prefix", label, lighterColor)
-        groupTooltipData(label) = members
 
         val totalRate = members.map(_.stats.rates.oneMinute).sum
         val value = math.max(compress(totalRate), 0.5)
@@ -243,20 +320,40 @@ object IngestsCard {
       staticPlot = true,
     )
 
-    PlotlyJS.newPlot(
-      container,
+    val structureKey: Seq[String] = nodeLabels.toSeq.sorted
+    (
       js.Array(trace.asInstanceOf[js.Object]),
       layout.asInstanceOf[js.Object],
       config.asInstanceOf[js.Object],
+      sourceTypeLabels.toMap,
+      structureKey,
     )
-    // Defer overlay rendering until Plotly has committed the SVG to the DOM.
-    val _ = dom.window.setTimeout(
-      () => {
-        addIconOverlays(container, sourceTypeLabels.toMap)
-        addTooltips(container, groupTooltipData.toMap, sourceTooltipData.toMap, ingests)
-      },
-      0,
-    )
+  }
+
+  /** Extract a common prefix from names like `ingest-1`, `ingest-2` → `ingest`. */
+  private val NumberSuffix = """^(.+)-(\d+)$""".r
+  private def ingestGroupName(name: String): String = name match {
+    case NumberSuffix(prefix, _) => prefix
+    case other => other
+  }
+
+  /** Re-apply `display: none` to the SVG text labels that are visually replaced by an
+    * icon overlay. Plotly's `react` rebuilds those `<text>` elements internally, so
+    * each render restores their default visibility — without this re-hiding step the
+    * label text reappears alongside the icon on every poll. Cheap and safe to call on
+    * every Plotly render, even when the structure key hasn't changed.
+    */
+  private def hideIconReplacedLabels(container: dom.HTMLElement, sourceTypeLabels: Map[String, String]): Unit = {
+    val texts = container.querySelectorAll(".sankey text.node-label")
+    if (texts.length == 0) return
+    (0 until texts.length).foreach { i =>
+      val labelEl = texts.item(i).asInstanceOf[dom.Element]
+      val text = Option(labelEl.textContent).map(_.trim).getOrElse("")
+      val replaced =
+        text == "Quine" ||
+        sourceTypeLabels.get(text).flatMap(ServiceIcons.forType).isDefined
+      if (replaced) labelEl.asInstanceOf[dom.html.Element].style.display = "none"
+    }
   }
 
   /** For source-type nodes that have a known icon, hide the text label and overlay the icon
@@ -289,7 +386,9 @@ object IngestsCard {
         val rect = rectOpt.getOrElse(labelEl)
         val rectBox = rect.getBoundingClientRect()
 
-        // Hide the text label — the icon replaces it.
+        // Hide the text label — the icon replaces it. (Also done by
+        // `hideIconReplacedLabels` on every Plotly render, since `Plotly.react`
+        // rebuilds the `<text>` elements and resets their inline style.)
         labelEl.asInstanceOf[dom.html.Element].style.display = "none"
 
         val (leftPx, topPx) = placement match {
@@ -331,12 +430,13 @@ object IngestsCard {
     }
   }
 
-  /** Add hover zones for ingest-group labels, source-type nodes, and the Quine node. */
+  /** Add hover zones for ingest-group labels, source-type nodes, and the Quine node.
+    * Each zone's tooltip is built lazily from `getCurrent()` on hover, so updates to
+    * the underlying ingest data are reflected without re-attaching listeners.
+    */
   private def addTooltips(
     container: dom.HTMLElement,
-    groupTooltipData: Map[String, Seq[V2IngestInfo]],
-    sourceTooltipData: Map[String, (String, Seq[V2IngestInfo])],
-    allIngests: Seq[V2IngestInfo],
+    getCurrent: () => Seq[V2IngestInfo],
   ): Unit = {
     val existing = container.querySelectorAll(".ingest-tooltip-zone")
     (0 until existing.length).foreach(i => existing.item(i).asInstanceOf[dom.Element].remove())
@@ -346,7 +446,7 @@ object IngestsCard {
 
     val containerRect = container.getBoundingClientRect()
 
-    def placeZone(labelEl: dom.Element, html: String, extraPadX: Int = 8, extraPadY: Int = 8): Unit = {
+    def placeZone(labelEl: dom.Element, buildHtml: () => String, extraPadX: Int = 8, extraPadY: Int = 8): Unit = {
       val rawLabelRect = labelEl.getBoundingClientRect()
       // A hidden text label (Quine / source-type nodes whose labels are replaced by
       // an icon overlay) reports a zero-size rect at (0,0). Treat that as "no label"
@@ -379,7 +479,7 @@ object IngestsCard {
       )
       zone.addEventListener(
         "mouseenter",
-        (_: dom.Event) => LandingTooltip.showNear(html, zone.getBoundingClientRect()),
+        (_: dom.Event) => LandingTooltip.showNear(buildHtml(), zone.getBoundingClientRect()),
       )
       zone.addEventListener("mouseleave", (_: dom.Event) => LandingTooltip.hide())
       val _ = container.appendChild(zone)
@@ -389,16 +489,41 @@ object IngestsCard {
       val labelEl = texts.item(i).asInstanceOf[dom.Element]
       val text = Option(labelEl.textContent).map(_.trim).getOrElse("")
 
-      groupTooltipData.get(text).foreach { members =>
-        placeZone(labelEl, buildGroupTooltip(text, members))
+      // Resolve which kind of node this is by checking the current ingest data. The
+      // structure key guarantees these lookups will continue to work for the lifetime
+      // of these listeners (regenerated when the structure changes).
+      def groupMembersFor(label: String, current: Seq[V2IngestInfo]): Option[Seq[V2IngestInfo]] = {
+        val candidates = current
+          .groupBy(ig => (ig.sourceId, ingestGroupName(ig.name)))
+          .map { case ((_, prefix), members) =>
+            val l = if (members.size > 1) s"$prefix (×${members.size})" else prefix
+            l -> members
+          }
+        candidates.get(label)
       }
+      def sourceMembersFor(label: String, current: Seq[V2IngestInfo]): Option[(String, Seq[V2IngestInfo])] =
+        current.groupBy(_.sourceId).get(label).map { members =>
+          (members.head.sourceType.toLowerCase, members)
+        }
 
-      sourceTooltipData.get(text).foreach { case (sourceType, members) =>
-        placeZone(labelEl, buildSourceTooltip(text, sourceType, members))
-      }
-
+      // Decide tooltip type once at attach time based on the current data, but rebuild
+      // the contents from `getCurrent()` on each hover.
+      val current0 = getCurrent()
       if (text == "Quine") {
-        placeZone(labelEl, buildQuineTooltip(allIngests), extraPadX = 12, extraPadY = 12)
+        placeZone(labelEl, () => buildQuineTooltip(getCurrent()), extraPadX = 12, extraPadY = 12)
+      } else if (groupMembersFor(text, current0).isDefined) {
+        placeZone(
+          labelEl,
+          () => buildGroupTooltip(text, groupMembersFor(text, getCurrent()).getOrElse(Nil)),
+        )
+      } else if (sourceMembersFor(text, current0).isDefined) {
+        placeZone(
+          labelEl,
+          () => {
+            val (st, members) = sourceMembersFor(text, getCurrent()).getOrElse(("", Nil))
+            buildSourceTooltip(text, st, members)
+          },
+        )
       }
     }
   }

@@ -22,8 +22,7 @@ object LandingView {
       ingestsSignal = store.ingestsSignal,
       standingQueriesSignal = store.standingQueriesSignal,
       configSignal = store.configSignal,
-      dispatch = store.input.writer,
-      commandHandler = store.commandHandler,
+      subscriptions = store.subscriptions,
     )
   }
 }

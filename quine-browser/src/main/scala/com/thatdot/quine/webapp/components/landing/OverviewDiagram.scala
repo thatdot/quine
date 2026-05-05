@@ -13,8 +13,65 @@ import com.thatdot.quine.webapp.components.D3
   * with a Persistor below center. Lines are bezier curves with thickness
   * proportional to aggregate throughput. Animated icons spawn periodically
   * along the lines based on rate.
+  *
+  * The diagram is driven by a `Signal[Snapshot]`. Snapshots whose [[StructureKey]]
+  * matches the previously-rendered key produce *in-place* updates: stroke widths,
+  * rate text, dot-spawn intervals, and tooltip data are mutated on the existing
+  * SVG. Only structural changes (ingests/outputs added or removed, persistor type
+  * changing, etc.) trigger a full re-render. This keeps the dot animation smooth
+  * across the 5-second polling cadence and prevents page-scroll resets that would
+  * otherwise happen when Laminar swapped the entire DOM subtree.
   */
 object OverviewDiagram {
+
+  /** All inputs the diagram needs to render. */
+  final case class Snapshot(
+    ingests: Seq[IngestInfo],
+    queries: Seq[StandingQueryInfo],
+    persistor: PersistorInfo,
+    clusterFullyUp: Option[Boolean],
+  )
+
+  /** The subset of a snapshot whose change forces a full re-render. Anything not
+    * captured here — rates, latencies, individual ingest statuses, cluster degraded
+    * state — is updated in-place against the existing SVG by `applyRates`.
+    *
+    * Persistor name is structural because the rendering branches between an icon
+    * and a boxed text label depending on whether `ServiceIcons.forType` resolves.
+    * Cypher *count* is structural because the badge above the loopback arc only
+    * appears at count > 1.
+    */
+  final private case class StructureKey(
+    ingestKeys: Seq[(String, String)],
+    outputKeys: Seq[(String, String, Seq[(String, String)])],
+    cypherCount: Int,
+    persistorName: String,
+  )
+
+  private object StructureKey {
+    def from(snap: Snapshot): StructureKey = {
+      val ingestKeys = snap.ingests
+        .map(i => (i.name, i.sourceType))
+        .sortBy(_._1)
+      val regularOutputs = snap.queries.flatMap(q => q.outputs.filterNot(_.outputType == "cypher").map(q -> _))
+      val outputKeys = regularOutputs
+        .groupBy(_._2.destination)
+        .toSeq
+        .map { case (dest, group) =>
+          val first = group.head._2
+          val members = group.map { case (q, o) => (q.name, o.name) }.sortBy(t => (t._1, t._2))
+          (dest, first.outputType, members)
+        }
+        .sortBy(_._1)
+      val cypherCount = snap.queries.flatMap(_.outputs).count(_.outputType == "cypher")
+      StructureKey(
+        ingestKeys = ingestKeys,
+        outputKeys = outputKeys,
+        cypherCount = cypherCount,
+        persistorName = snap.persistor.name,
+      )
+    }
+  }
 
   /** Aggregated node for display in the diagram. */
   private case class FlowNode(
@@ -25,137 +82,91 @@ object OverviewDiagram {
     count: Int, // number of individual ingests/outputs aggregated
   )
 
-  def apply(
-    ingests: Seq[IngestInfo],
-    queries: Seq[StandingQueryInfo],
-    persistor: PersistorInfo,
-    clusterFullyUp: Option[Boolean] = None,
-  ): HtmlElement = {
-    // One node per ingest — intentionally not aggregated by source so users can
-    // distinguish individual streams even when several share the same connection.
-    val ingestNodes: Seq[FlowNode] = ingests
-      .map { ingest =>
-        FlowNode(ingest.name, ingest.sourceType, ingest.rate, ingest.status, count = 1)
-      }
-      .sortBy(-_.aggregateRate)
+  /** Result of rendering the diagram once: live spawn-timers plus an `applyRates`
+    * callback that mutates the existing SVG when only rate-like data has changed.
+    */
+  final private class RenderHandles(
+    val applyRates: Snapshot => Unit,
+    val timers: scala.collection.mutable.ArrayBuffer[SpawnTimer],
+  ) {
+    def stopTimers(): Unit = {
+      timers.foreach(_.stop())
+      timers.clear()
+    }
+  }
 
-    // Separate cypher outputs (loop back to Quine) from regular outputs
-    val allOutputs = queries.flatMap(_.outputs)
-    val (cypherOutputs, regularOutputs) = allOutputs.partition(_.outputType == "cypher")
-
-    val cypherNode: Option[FlowNode] = if (cypherOutputs.nonEmpty) {
-      val totalRate = cypherOutputs.map(_.rate).sum
-      Some(FlowNode("Cypher Queries", "cypher", totalRate, "Running", cypherOutputs.size))
-    } else None
-
-    val outputNodes: Seq[FlowNode] = regularOutputs
-      .groupBy(_.destination)
-      .toSeq
-      .map { case (dest, group) =>
-        val totalRate = group.map(_.rate).sum
-        FlowNode(dest, group.head.outputType, totalRate, "Running", group.size)
-      }
-      .sortBy(-_.aggregateRate)
-
-    // Track D3 intervals so we can stop them on re-render or unmount.
-    val intervals = scala.collection.mutable.ArrayBuffer[js.Dynamic]()
-    // ResizeObserver handle so unmount can disconnect it.
+  def apply(snapshot: Signal[Snapshot]): HtmlElement = {
     var observer: js.Dynamic = null
-    // Debounce rapid width changes during drag-resize.
     var rerenderTimeout: Int = 0
     var lastRenderedWidth: Int = -1
+    var lastStructureKey: Option[StructureKey] = None
+    var handles: Option[RenderHandles] = None
+    var lastSnapshot: Option[Snapshot] = None
 
-    def clearAll(container: dom.HTMLElement): Unit = {
-      intervals.foreach(_.stop())
-      intervals.clear()
+    def doRender(container: dom.HTMLElement, snap: Snapshot): Unit = {
+      handles.foreach(_.stopTimers())
       container.innerHTML = ""
-    }
-
-    def rerender(container: dom.HTMLElement): Unit = {
-      clearAll(container)
-      val newIntervals = renderDiagram(
-        container,
-        ingestNodes,
-        outputNodes,
-        cypherNode,
-        persistor,
-        ingests,
-        queries,
-        cypherOutputs,
-        clusterFullyUp,
-      )
-      intervals ++= newIntervals
+      handles = Some(renderDiagram(container, snap))
+      lastStructureKey = Some(StructureKey.from(snap))
       lastRenderedWidth = container.clientWidth.toInt
     }
 
     div(
       width := "100%",
-      onMountCallback { ctx =>
+      onMountBind { ctx =>
         val container = ctx.thisNode.ref
-        rerender(container)
+
+        // Wire up a ResizeObserver so the SVG is rebuilt at the new container width.
         val ro = js.Dynamic.global.ResizeObserver
         if (!js.isUndefined(ro)) {
           observer = js.Dynamic.newInstance(ro)({ (_: js.Any) =>
             val w = container.clientWidth.toInt
             if (math.abs(w - lastRenderedWidth) > 8) {
               if (rerenderTimeout != 0) dom.window.clearTimeout(rerenderTimeout)
-              rerenderTimeout = dom.window.setTimeout(() => rerender(container), 120)
+              rerenderTimeout = dom.window.setTimeout(
+                () => lastSnapshot.foreach(s => doRender(container, s)),
+                120,
+              )
             }
           }: js.Function1[js.Any, Unit])
           val _ = observer.observe(container)
         }
+
+        // Initial render uses the latest snapshot; subsequent emissions either apply
+        // in-place rate updates (no SVG churn) or trigger a full rerender when the
+        // structural key changes.
+        snapshot --> Observer[Snapshot] { snap =>
+          lastSnapshot = Some(snap)
+          val key = StructureKey.from(snap)
+          if (lastStructureKey.contains(key) && handles.isDefined) {
+            handles.foreach(_.applyRates(snap))
+          } else {
+            doRender(container, snap)
+          }
+        }
       },
       onUnmountCallback { _ =>
-        intervals.foreach(_.stop())
-        intervals.clear()
+        handles.foreach(_.stopTimers())
+        handles = None
+        lastStructureKey = None
+        lastSnapshot = None
         if (observer != null) observer.disconnect()
         if (rerenderTimeout != 0) dom.window.clearTimeout(rerenderTimeout)
       },
     )
   }
 
-  private def renderDiagram(
-    container: dom.HTMLElement,
-    ingestNodes: Seq[FlowNode],
-    outputNodes: Seq[FlowNode],
-    cypherNode: Option[FlowNode],
-    persistor: PersistorInfo,
-    allIngests: Seq[IngestInfo],
-    allQueries: Seq[StandingQueryInfo],
-    cypherOutputs: Seq[StandingQueryOutputInfo],
-    clusterFullyUp: Option[Boolean],
-  ): Seq[js.Dynamic] = {
-    // Ingest-name → its info (for tooltips). Each ingest is its own overview node now,
-    // so the "members" list is typically size 1.
-    val ingestsBySource: Map[String, Seq[IngestInfo]] = allIngests.groupBy(_.name)
-    case class RawOutput(queryName: String, workflowName: String, outputType: String, rate: Double, totalCount: Long)
-    val outputsByDest: Map[String, Seq[RawOutput]] =
-      allQueries
-        .flatMap(q =>
-          q.outputs
-            .filterNot(_.outputType == "cypher")
-            .map(o => RawOutput(q.name, o.name, o.outputType, o.rate, o.totalCount) -> o.destination),
-        )
-        .groupBy(_._2)
-        .view
-        .mapValues(_.map(_._1))
-        .toMap
-    val cypherRawOutputs: Seq[RawOutput] =
-      allQueries.flatMap(q =>
-        q.outputs
-          .filter(_.outputType == "cypher")
-          .map(o => RawOutput(q.name, o.name, o.outputType, o.rate, o.totalCount)),
-      )
-    val _ = cypherOutputs // reserved for future
+  private def renderDiagram(container: dom.HTMLElement, initial: Snapshot): RenderHandles = {
+    var current: Snapshot = initial
 
-    val intervals = scala.collection.mutable.ArrayBuffer[js.Dynamic]()
     // Layout constants
     val width = container.clientWidth.toInt
     val nodeW = 130.0 // kept for layout reference
     val nodeH = 50.0 // kept for layout reference
-    val cypherSpace = if (cypherNode.isDefined) 70 else 0
+    val (ingestNodes0, outputNodes0, cypherNode0) = derivedNodes(initial)
+    val cypherSpace = if (cypherNode0.isDefined) 70 else 0
     val minNodeAreaHeight = 100
-    val nodeAreaHeight = math.max(math.max(ingestNodes.size, outputNodes.size) * 95 + 60, minNodeAreaHeight)
+    val nodeAreaHeight = math.max(math.max(ingestNodes0.size, outputNodes0.size) * 95 + 60, minNodeAreaHeight)
     val persistorSpace = 80
     val height = cypherSpace + nodeAreaHeight + persistorSpace
 
@@ -163,6 +174,8 @@ object OverviewDiagram {
     val centerX = width / 2.0
     val rightX = width - 90.0
     val nodeRadius = 28.0 // center Quine node radius
+
+    val timers = scala.collection.mutable.ArrayBuffer[SpawnTimer]()
 
     // Create SVG via D3
     val svg = D3
@@ -172,11 +185,7 @@ object OverviewDiagram {
       .attr("height", height)
       .attr("viewBox", s"0 0 $width $height")
 
-    // Add a defs section for filters (the prototype uses no arrowheads — flow direction
-    // is shown by the animated dot packets along each line).
     val defs = svg.append("defs")
-
-    // Drop shadow filter for nodes
     val shadow = defs
       .append("filter")
       .attr("id", "node-shadow")
@@ -192,25 +201,18 @@ object OverviewDiagram {
       .attr("flood-opacity", 0.15)
 
     // Compute vertical positions for nodes (offset by cypherSpace)
-    val ingestYs = computeNodeYs(ingestNodes.size, nodeAreaHeight).map(_ + cypherSpace)
-    val outputYs = computeNodeYs(outputNodes.size, nodeAreaHeight).map(_ + cypherSpace)
+    val ingestYs = computeNodeYs(ingestNodes0.size, nodeAreaHeight).map(_ + cypherSpace)
+    val outputYs = computeNodeYs(outputNodes0.size, nodeAreaHeight).map(_ + cypherSpace)
     val quineY = cypherSpace + nodeAreaHeight / 2.0
     val persistorY = cypherSpace + nodeAreaHeight + 50.0
 
     // Per-side stroke scales: the ingest column has its own total/max, as does the
     // output column. This avoids one side with many small flows looking thin compared
     // to the other side with few big flows.
-    val ingestTotal = math.max(ingestNodes.map(_.aggregateRate).sum, 1.0)
-    val outputTotal = math.max(outputNodes.map(_.aggregateRate).sum, 1.0)
-
-    val ingestStroke = D3
-      .scaleLinear()
-      .domain(js.Array(0.0, ingestTotal))
-      .range(js.Array(1.5, 18.0))
-    val outputStroke = D3
-      .scaleLinear()
-      .domain(js.Array(0.0, outputTotal))
-      .range(js.Array(1.5, 18.0))
+    def ingestStroke(ingestTotal: Double): js.Dynamic =
+      D3.scaleLinear().domain(js.Array(0.0, math.max(ingestTotal, 1.0))).range(js.Array(1.5, 18.0))
+    def outputStroke(outputTotal: Double): js.Dynamic =
+      D3.scaleLinear().domain(js.Array(0.0, math.max(outputTotal, 1.0))).range(js.Array(1.5, 18.0))
 
     // Target "visible dots" scaled so even a modest share feels lively. Using sqrt(share)
     // means a line with 4% of side-total flow gets ~20% of max dots — not just 4%.
@@ -223,18 +225,35 @@ object OverviewDiagram {
       val targetDots = minVisibleDots + s * (maxVisibleDots - minVisibleDots)
       math.max(100, (avgDotDuration / targetDots).toInt)
     }
-    def ingestSpawn(rate: Double): Int = spawnIntervalForShare(rate / ingestTotal)
-    def outputSpawn(rate: Double): Int = spawnIntervalForShare(rate / outputTotal)
+
+    // Per-line handles, captured by both initial render and rate-update closures. Each
+    // line owns a single long-lived `SpawnParams` cell that the dot loop reads on every
+    // tick. Rate updates mutate the cell in-place — no timer churn.
+    case class LineHandle(
+      name: String,
+      pathSel: js.Dynamic,
+      hoverSel: js.Dynamic,
+      params: SpawnParams,
+    )
+
+    val ingestLines = scala.collection.mutable.ArrayBuffer[LineHandle]()
+    val outputLines = scala.collection.mutable.ArrayBuffer[LineHandle]()
+    val ingestNodeHandles = scala.collection.mutable.ArrayBuffer[NodeHandle]()
+    val outputNodeHandles = scala.collection.mutable.ArrayBuffer[NodeHandle]()
+
+    // Initial totals from the first snapshot.
+    val initialIngestTotal = math.max(ingestNodes0.map(_.aggregateRate).sum, 1.0)
+    val initialOutputTotal = math.max(outputNodes0.map(_.aggregateRate).sum, 1.0)
 
     // Draw ingest links (left → center). Color reflects the ingest's status so a
     // paused/failed stream is visible at a glance.
-    ingestNodes.zipWithIndex.foreach { case (node, idx) =>
+    ingestNodes0.zipWithIndex.foreach { case (node, idx) =>
       val y = ingestYs(idx)
-      val strokeW = ingestStroke(node.aggregateRate)
+      val strokeW = ingestStroke(initialIngestTotal)(node.aggregateRate.toDouble)
       val pathData = bezierH(leftX + 18, y, centerX - nodeRadius, quineY)
       val lineColor = ingestFlowColor(node.status)
 
-      svg
+      val pathSel = svg
         .append("path")
         .attr("d", pathData)
         .attr("fill", "none")
@@ -242,14 +261,16 @@ object OverviewDiagram {
         .attr("stroke-width", strokeW)
         .attr("stroke-opacity", 0.35)
 
-      // Spawn animated icons periodically
-      if (node.aggregateRate > 0) {
-        val intervalMs = ingestSpawn(node.aggregateRate)
-        intervals += spawnAnimatedIcons(svg, pathData, intervalMs, lineColor)
-      }
+      val params = new SpawnParams(
+        intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / initialIngestTotal),
+        color = lineColor,
+        durationMs = avgDotDuration,
+        enabled = node.aggregateRate > 0,
+      )
+      timers += spawnAnimatedIconsMutable(svg, pathData, params)
 
       // Hover overlay for this flow line
-      val flowPath = svg
+      val hoverSel = svg
         .append("path")
         .attr("d", pathData)
         .attr("fill", "none")
@@ -257,20 +278,28 @@ object OverviewDiagram {
         .attr("stroke-width", math.max(20.0, strokeW.asInstanceOf[Double] + 10.0))
         .attr("pointer-events", "stroke")
         .attr("style", "cursor: pointer;")
-      val members = ingestsBySource.getOrElse(node.label, Nil)
       LandingTooltip.attachToPath(
-        flowPath.node().asInstanceOf[dom.Element],
-        () => buildIngestFlowTooltip(node, members),
+        hoverSel.node().asInstanceOf[dom.Element],
+        () => {
+          val members = current.ingests.filter(_.name == node.label)
+          val freshNode = node.copy(
+            aggregateRate = members.map(_.rate).sum,
+            status = members.headOption.map(_.status).getOrElse(node.status),
+          )
+          buildIngestFlowTooltip(freshNode, members)
+        },
       )
+
+      ingestLines += LineHandle(node.label, pathSel, hoverSel, params)
     }
 
     // Draw output links (center → right)
-    outputNodes.zipWithIndex.foreach { case (node, idx) =>
+    outputNodes0.zipWithIndex.foreach { case (node, idx) =>
       val y = outputYs(idx)
-      val strokeW = outputStroke(node.aggregateRate)
+      val strokeW = outputStroke(initialOutputTotal)(node.aggregateRate.toDouble)
       val pathData = bezierH(centerX + nodeRadius, quineY, rightX - 18, y)
 
-      svg
+      val pathSel = svg
         .append("path")
         .attr("d", pathData)
         .attr("fill", "none")
@@ -278,14 +307,15 @@ object OverviewDiagram {
         .attr("stroke-width", strokeW)
         .attr("stroke-opacity", 0.35)
 
-      // Spawn animated icons periodically
-      if (node.aggregateRate > 0) {
-        val intervalMs = outputSpawn(node.aggregateRate)
-        intervals += spawnAnimatedIcons(svg, pathData, intervalMs, "#1658b7")
-      }
+      val params = new SpawnParams(
+        intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / initialOutputTotal),
+        color = "#1658b7",
+        durationMs = avgDotDuration,
+        enabled = node.aggregateRate > 0,
+      )
+      timers += spawnAnimatedIconsMutable(svg, pathData, params)
 
-      // Hover overlay for this flow line
-      val flowPath = svg
+      val hoverSel = svg
         .append("path")
         .attr("d", pathData)
         .attr("fill", "none")
@@ -293,42 +323,15 @@ object OverviewDiagram {
         .attr("stroke-width", math.max(20.0, strokeW.asInstanceOf[Double] + 10.0))
         .attr("pointer-events", "stroke")
         .attr("style", "cursor: pointer;")
-      val raws = outputsByDest.getOrElse(node.label, Nil)
-      val items = raws
-        .sortBy(-_.rate)
-        .map(r =>
-          LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", LandingTooltip.formatRate(r.rate)),
-        )
-      val html = LandingTooltip.header(node.label) +
-        LandingTooltip.kvTable(
-          LandingTooltip.kvRow("Destination type", ServiceIcons.labelFor(node.nodeType)) +
-          LandingTooltip.kvRow("Aggregate rate", LandingTooltip.formatRate(node.aggregateRate)) +
-          LandingTooltip.kvRow("Total results", f"${raws.map(_.totalCount).sum}%,d") +
-          LandingTooltip.kvRow("Workflows", s"${raws.size}") +
-          LandingTooltip.kvRow("Queries", s"${raws.map(_.queryName).distinct.size}"),
-        ) +
-        (if (raws.nonEmpty)
-           LandingTooltip.subheader("Queries feeding this destination") +
-           LandingTooltip.breakdownTable(items)
-         else "")
       LandingTooltip.attachToPath(
-        flowPath.node().asInstanceOf[dom.Element],
-        () => html,
+        hoverSel.node().asInstanceOf[dom.Element],
+        () => buildOutputDestTooltip(node, current),
       )
+
+      outputLines += LineHandle(node.label, pathSel, hoverSel, params)
     }
 
-    // Draw persistor links: two parallel lines between Quine and the persistor.
-    //   Left line = writes (Quine → persistor), dots travel down.
-    //   Right line = reads (persistor → Quine), dots travel up — achieved by defining
-    //   the path from persistor to Quine so the `t=0→1` tween walks the reading direction.
-    //
-    // Line color encodes *latency health*:
-    //   blue  = healthy (low latency)
-    //   amber = degraded (p90-ish)
-    //   red   = bad (p99-ish+)
-    //
-    // Dot volume encodes *throughput* (ops/sec), dot speed encodes *latency* within the
-    // visible animation window.
+    // Persistor links: two parallel lines between Quine and the persistor.
     val persistorTopY = quineY + nodeRadius
     val persistorBotY = persistorY - 20
     val persistorLaneGap = 7.0
@@ -339,49 +342,50 @@ object OverviewDiagram {
     // Defined persistor → Quine so dots animate bottom-to-top (read direction).
     val readPathData = s"M$readX,$persistorBotY L$readX,$persistorTopY"
 
-    val writeColor = latencyHealthColor(persistor.writeLatencyMs)
-    val readColor = latencyHealthColor(persistor.readLatencyMs)
+    val writeColor0 = latencyHealthColor(initial.persistor.writeLatencyMs)
+    val readColor0 = latencyHealthColor(initial.persistor.readLatencyMs)
 
-    svg
+    val writePathSel = svg
       .append("path")
       .attr("d", writePathData)
       .attr("fill", "none")
-      .attr("stroke", writeColor)
-      .attr("stroke-width", persistorStrokeWidth(persistor.writeOpsPerSec))
+      .attr("stroke", writeColor0)
+      .attr("stroke-width", persistorStrokeWidth(initial.persistor.writeOpsPerSec))
       .attr("stroke-opacity", 0.5)
 
-    svg
+    val readPathSel = svg
       .append("path")
       .attr("d", readPathData)
       .attr("fill", "none")
-      .attr("stroke", readColor)
-      .attr("stroke-width", persistorStrokeWidth(persistor.readOpsPerSec))
+      .attr("stroke", readColor0)
+      .attr("stroke-width", persistorStrokeWidth(initial.persistor.readOpsPerSec))
       .attr("stroke-opacity", 0.5)
 
-    // Animated dots on each line.
-    if (persistor.writeOpsPerSec > 0.01 || persistor.writeLatencyMs > 0.01) {
-      val (intervalMs, durationMs) = persistorAnimationTiming(
-        persistor.writeOpsPerSec,
-        persistor.writeLatencyMs,
-      )
-      intervals += spawnAnimatedIcons(svg, writePathData, intervalMs, writeColor, durationMs)
-    }
-    if (persistor.readOpsPerSec > 0.01 || persistor.readLatencyMs > 0.01) {
-      val (intervalMs, durationMs) = persistorAnimationTiming(
-        persistor.readOpsPerSec,
-        persistor.readLatencyMs,
-      )
-      intervals += spawnAnimatedIcons(svg, readPathData, intervalMs, readColor, durationMs)
-    }
+    val (writeIntervalMs0, writeDuration0) =
+      persistorAnimationTiming(initial.persistor.writeOpsPerSec, initial.persistor.writeLatencyMs)
+    val (readIntervalMs0, readDuration0) =
+      persistorAnimationTiming(initial.persistor.readOpsPerSec, initial.persistor.readLatencyMs)
+    val writeParams = new SpawnParams(
+      intervalMs = writeIntervalMs0,
+      color = writeColor0,
+      durationMs = writeDuration0,
+      enabled = initial.persistor.writeOpsPerSec > 0.01 || initial.persistor.writeLatencyMs > 0.01,
+    )
+    val readParams = new SpawnParams(
+      intervalMs = readIntervalMs0,
+      color = readColor0,
+      durationMs = readDuration0,
+      enabled = initial.persistor.readOpsPerSec > 0.01 || initial.persistor.readLatencyMs > 0.01,
+    )
+    timers += spawnAnimatedIconsMutable(svg, writePathData, writeParams)
+    timers += spawnAnimatedIconsMutable(svg, readPathData, readParams)
 
     // Draw ingest nodes
-    ingestNodes.zipWithIndex.foreach { case (node, idx) =>
+    ingestNodes0.zipWithIndex.foreach { case (node, idx) =>
       val y = ingestYs(idx)
-      drawNode(svg, leftX, y, nodeW, nodeH, node)
+      val handle = drawNode(svg, leftX, y, nodeW, nodeH, node)
+      ingestNodeHandles += handle
 
-      val members = ingestsBySource.getOrElse(node.label, Nil)
-      // Hug the visible icon + label + rate footprint rather than the layout cell.
-      // An oversized invisible rect would keep the tooltip open over whitespace.
       val hoverW = 90.0
       val hoverH = 80.0
       val zone = svg
@@ -395,16 +399,23 @@ object OverviewDiagram {
         .attr("style", "cursor: pointer;")
       LandingTooltip.attachToElement(
         zone.node().asInstanceOf[dom.Element],
-        () => buildIngestFlowTooltip(node, members),
+        () => {
+          val members = current.ingests.filter(_.name == node.label)
+          val freshNode = node.copy(
+            aggregateRate = members.map(_.rate).sum,
+            status = members.headOption.map(_.status).getOrElse(node.status),
+          )
+          buildIngestFlowTooltip(freshNode, members)
+        },
       )
     }
 
     // Draw output nodes
-    outputNodes.zipWithIndex.foreach { case (node, idx) =>
+    outputNodes0.zipWithIndex.foreach { case (node, idx) =>
       val y = outputYs(idx)
-      drawNode(svg, rightX, y, nodeW, nodeH, node)
+      val handle = drawNode(svg, rightX, y, nodeW, nodeH, node)
+      outputNodeHandles += handle
 
-      val raws = outputsByDest.getOrElse(node.label, Nil)
       val hoverW = 90.0
       val hoverH = 80.0
       val zone = svg
@@ -416,52 +427,28 @@ object OverviewDiagram {
         .attr("fill", "transparent")
         .attr("pointer-events", "all")
         .attr("style", "cursor: pointer;")
-      val items = raws
-        .sortBy(-_.rate)
-        .map(r =>
-          LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", LandingTooltip.formatRate(r.rate)),
-        )
-      val html = LandingTooltip.header(node.label) +
-        LandingTooltip.kvTable(
-          LandingTooltip.kvRow("Destination type", ServiceIcons.labelFor(node.nodeType)) +
-          LandingTooltip.kvRow("Aggregate rate", LandingTooltip.formatRate(node.aggregateRate)) +
-          LandingTooltip.kvRow("Total results", f"${raws.map(_.totalCount).sum}%,d") +
-          LandingTooltip.kvRow("Workflows", s"${raws.size}") +
-          LandingTooltip.kvRow("Queries", s"${raws.map(_.queryName).distinct.size}"),
-        ) +
-        (if (raws.nonEmpty)
-           LandingTooltip.subheader("Queries feeding this destination") +
-           LandingTooltip.breakdownTable(items)
-         else "")
       LandingTooltip.attachToElement(
         zone.node().asInstanceOf[dom.Element],
-        () => html,
+        () => buildOutputDestTooltip(node, current),
       )
     }
 
-    // Draw center Quine node (dark-blue filled circle with the white Quine icon inside).
-    // Grouped so we can `.raise()` it after each animated dot spawn — otherwise newly
-    // appended <circle> packets paint on top of Quine as they enter/exit the center.
+    // Center Quine node — ring color reflects cluster health.
     val quineOuterR = nodeRadius + 6
-    // Ring color reflects cluster health: brite-blue when fully up (or unknown, i.e.
-    // OSS single-node with no cluster-status endpoint), red when degraded. The dark-navy
-    // fill stays constant so the white Quine logo remains legible.
-    val quineStroke = clusterFullyUp match {
+    val initialQuineStroke = initial.clusterFullyUp match {
       case Some(false) => "#dc3545"
       case _ => "#1658b7"
     }
     val quineGroup = svg.append("g").attr("class", "quine-center-node")
-    quineGroup
+    val quineRingSel = quineGroup
       .append("circle")
       .attr("cx", centerX)
       .attr("cy", quineY)
       .attr("r", quineOuterR)
       .attr("fill", "#0a295b")
-      .attr("stroke", quineStroke)
+      .attr("stroke", initialQuineStroke)
       .attr("stroke-width", 3)
 
-    // Icon fits inside the circle with a little padding. Nudged 2px down-right to
-    // visually center the asymmetric Quine glyph inside the ring.
     val quineIconSize = quineOuterR * 1.3
     quineGroup
       .append("image")
@@ -472,7 +459,6 @@ object OverviewDiagram {
       .attr("height", quineIconSize)
       .attr("preserveAspectRatio", "xMidYMid meet")
 
-    // Hover zone over the Quine node
     val quineZone = svg
       .append("circle")
       .attr("cx", centerX)
@@ -481,40 +467,28 @@ object OverviewDiagram {
       .attr("fill", "transparent")
       .attr("pointer-events", "all")
       .attr("style", "cursor: pointer;")
-    val totalInRate = allIngests.map(_.rate).sum
-    val totalOutRate = outputNodes.map(_.aggregateRate).sum
-    val cypherRate = cypherNode.map(_.aggregateRate).getOrElse(0.0)
-    val quineHtml =
-      LandingTooltip.header("Quine") +
-      LandingTooltip.kvTable(
-        LandingTooltip.kvRow("Persistor", ServiceIcons.labelFor(persistor.name)) +
-        LandingTooltip.kvRow("Total ingest rate", LandingTooltip.formatRate(totalInRate)) +
-        LandingTooltip.kvRow("Total output rate", LandingTooltip.formatRate(totalOutRate)) +
-        (if (cypherRate > 0) LandingTooltip.kvRow("Cypher loopback rate", LandingTooltip.formatRate(cypherRate))
-         else "") +
-        LandingTooltip.kvRow("Sources", s"${ingestNodes.size}") +
-        LandingTooltip.kvRow("Destinations", s"${outputNodes.size}"),
-      )
     LandingTooltip.attachToElement(
       quineZone.node().asInstanceOf[dom.Element],
-      () => quineHtml,
+      () => buildQuineTooltip(current),
     )
 
-    // Draw cypher loopback arc above Quine
-    cypherNode.foreach { cNode =>
+    // Cypher loopback arc above Quine — rate text and dot params are updated in place.
+    var cypherRateText: Option[js.Dynamic] = None
+    var cypherParams: Option[SpawnParams] = None
+    var cypherPathData: String = ""
+    cypherNode0.foreach { cNode =>
       val arcTop = quineY - nodeRadius - 50
-      val arcPathData =
+      cypherPathData =
         s"M${centerX + nodeRadius},${quineY - 10} C${centerX + 80},$arcTop ${centerX - 80},$arcTop ${centerX - nodeRadius},${quineY - 10}"
 
       svg
         .append("path")
-        .attr("d", arcPathData)
+        .attr("d", cypherPathData)
         .attr("fill", "none")
         .attr("stroke", "#1658b7")
         .attr("stroke-width", 2.5)
         .attr("stroke-opacity", 0.4)
 
-      // Label at top of arc
       svg
         .append("text")
         .attr("x", centerX)
@@ -523,21 +497,20 @@ object OverviewDiagram {
         .attr("font-size", "14px")
         .attr("font-weight", "500")
         .attr("fill", "#0a295b")
-        .text(s"Cypher Queries")
+        .text("Cypher Queries")
 
-      // Rate below the label
-      if (cNode.aggregateRate > 0) {
-        svg
-          .append("text")
-          .attr("x", centerX)
-          .attr("y", arcTop + 13)
-          .attr("text-anchor", "middle")
-          .attr("font-size", "13px")
-          .attr("fill", "#6c757d")
-          .text(LandingTooltip.formatRate(cNode.aggregateRate))
-      }
+      // Always create the rate-text element (even if rate is 0 initially) so we can
+      // mutate its text on rate updates without rebuilding the SVG.
+      val rateText = svg
+        .append("text")
+        .attr("x", centerX)
+        .attr("y", arcTop + 13)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "13px")
+        .attr("fill", "#6c757d")
+        .text(if (cNode.aggregateRate > 0) LandingTooltip.formatRate(cNode.aggregateRate) else "")
+      cypherRateText = Some(rateText)
 
-      // Count badge
       if (cNode.count > 1) {
         svg
           .append("circle")
@@ -558,63 +531,42 @@ object OverviewDiagram {
           .text(cNode.count.toString)
       }
 
-      // Animated icons along the arc (cypher loopback is routed on the output side)
-      if (cNode.aggregateRate > 0) {
-        val intervalMs = outputSpawn(cNode.aggregateRate)
-        intervals += spawnAnimatedIcons(svg, arcPathData, intervalMs, "#1658b7")
-      }
+      val cParams = new SpawnParams(
+        intervalMs = spawnIntervalForShare(cNode.aggregateRate.toDouble / initialOutputTotal),
+        color = "#1658b7",
+        durationMs = avgDotDuration,
+        enabled = cNode.aggregateRate > 0,
+      )
+      timers += spawnAnimatedIconsMutable(svg, cypherPathData, cParams)
+      cypherParams = Some(cParams)
 
-      // Hover overlay for the cypher arc
       val arcZone = svg
         .append("path")
-        .attr("d", arcPathData)
+        .attr("d", cypherPathData)
         .attr("fill", "none")
         .attr("stroke", "transparent")
         .attr("stroke-width", 24)
         .attr("pointer-events", "stroke")
         .attr("style", "cursor: pointer;")
-      val items = cypherRawOutputs
-        .sortBy(-_.rate)
-        .map(r =>
-          LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", LandingTooltip.formatRate(r.rate)),
-        )
-      val cypherHtml =
-        LandingTooltip.header("Cypher loopback") +
-        LandingTooltip.kvTable(
-          LandingTooltip.kvRow("Total rate", LandingTooltip.formatRate(cNode.aggregateRate)) +
-          LandingTooltip.kvRow("Total results", f"${cypherRawOutputs.map(_.totalCount).sum}%,d") +
-          LandingTooltip.kvRow("Cypher outputs", s"${cypherRawOutputs.size}") +
-          LandingTooltip.kvRow("Queries", s"${cypherRawOutputs.map(_.queryName).distinct.size}"),
-        ) +
-        (if (cypherRawOutputs.nonEmpty)
-           LandingTooltip.subheader("Cypher outputs") +
-           LandingTooltip.breakdownTable(items)
-         else "")
       LandingTooltip.attachToPath(
         arcZone.node().asInstanceOf[dom.Element],
-        () => cypherHtml,
+        () => buildCypherTooltip(current),
       )
     }
 
-    // Draw persistor node.
-    //   - If we have an icon, show it standalone (most branded persistor icons already
-    //     include the product name, so no label and no box are needed).
-    //   - Otherwise, draw a rounded rect with the persistor name inside, outlined with
-    //     a color that reflects persistor health.
-    val persistorIconOpt = ServiceIcons.forType(persistor.name)
+    // Persistor node (icon or boxed name).
+    val persistorIconOpt = ServiceIcons.forType(initial.persistor.name)
     persistorIconOpt match {
       case Some(iconUri) =>
         val iconSize = 48.0
-        svg
-          .append("image")
-          .attr("href", iconUri)
-          .attr("x", centerX - iconSize / 2)
-          .attr("y", persistorY - iconSize / 2)
-          .attr("width", iconSize)
-          .attr("height", iconSize)
-          .attr("preserveAspectRatio", "xMidYMid meet")
+        // Use foreignObject + HTML <img> rather than SVG <image>: Chromium ignores
+        // `preserveAspectRatio` on nested <image href="X.svg"> when the source SVG
+        // has explicit width/height attributes, stretching landscape icons (Cassandra,
+        // RocksDB, ClickHouse) into a square. HTML `<img object-fit: contain>`
+        // letterboxes correctly across browsers.
+        appendIconImage(svg, iconUri, centerX - iconSize / 2, persistorY - iconSize / 2, iconSize, iconSize)
       case None =>
-        val persistorColor = persistor.status match {
+        val persistorColor = initial.persistor.status match {
           case "Healthy" => "#1658b7"
           case "Degraded" => "#ffc107"
           case _ => "#dc3545"
@@ -638,10 +590,9 @@ object OverviewDiagram {
           .attr("text-anchor", "middle")
           .attr("font-size", "14px")
           .attr("fill", "#0a295b")
-          .text(persistor.name)
+          .text(initial.persistor.name)
     }
 
-    // Hover zone over the persistor
     val persistorZoneW = 140.0
     val persistorZoneH = 70.0
     val persistorZone = svg
@@ -653,28 +604,145 @@ object OverviewDiagram {
       .attr("fill", "transparent")
       .attr("pointer-events", "all")
       .attr("style", "cursor: pointer;")
-    val persistorHtml = {
-      def msRow(label: String, ms: Double): String =
-        if (ms > 0) LandingTooltip.kvRow(label, f"$ms%.2f ms") else ""
-      def rateRow(label: String, rate: Double): String =
-        if (rate > 0) LandingTooltip.kvRow(label, f"$rate%.1f ops/s") else ""
-      LandingTooltip.header("Persistor") +
-      LandingTooltip.kvTable(
-        LandingTooltip.kvRow("Store type", ServiceIcons.labelFor(persistor.name)) +
-        LandingTooltip.kvRow("Status", persistor.status) +
-        rateRow("Write throughput", persistor.writeOpsPerSec) +
-        msRow("Write latency", persistor.writeLatencyMs) +
-        rateRow("Read throughput", persistor.readOpsPerSec) +
-        msRow("Read latency", persistor.readLatencyMs),
-      )
-    }
     LandingTooltip.attachToElement(
       persistorZone.node().asInstanceOf[dom.Element],
-      () => persistorHtml,
+      () => buildPersistorTooltip(current),
     )
 
-    intervals.toSeq
+    // ---- In-place rate updater ----
+    def applyRates(snap: Snapshot): Unit = {
+      current = snap
+      val (ingestNodes, outputNodes, cypherNode) = derivedNodes(snap)
+      val ingestTotal = math.max(ingestNodes.map(_.aggregateRate).sum, 1.0)
+      val outputTotal = math.max(outputNodes.map(_.aggregateRate).sum, 1.0)
+      val iStroke = ingestStroke(ingestTotal)
+      val oStroke = outputStroke(outputTotal)
+
+      // Per-ingest line: stroke + color update; dot cadence/color update via
+      // mutating the line's SpawnParams cell (no timer churn).
+      ingestNodes.zipWithIndex.foreach { case (node, idx) =>
+        if (idx < ingestLines.size) {
+          val handle = ingestLines(idx)
+          val sw = iStroke(node.aggregateRate.toDouble)
+          val color = ingestFlowColor(node.status)
+          handle.pathSel.attr("stroke-width", sw).attr("stroke", color)
+          handle.hoverSel.attr("stroke-width", math.max(20.0, sw.asInstanceOf[Double] + 10.0))
+          handle.params.color = color
+          handle.params.intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / ingestTotal)
+          handle.params.enabled = node.aggregateRate > 0
+        }
+        if (idx < ingestNodeHandles.size) {
+          updateNodeRate(ingestNodeHandles(idx), node.aggregateRate)
+        }
+      }
+
+      outputNodes.zipWithIndex.foreach { case (node, idx) =>
+        if (idx < outputLines.size) {
+          val handle = outputLines(idx)
+          val sw = oStroke(node.aggregateRate.toDouble)
+          handle.pathSel.attr("stroke-width", sw)
+          handle.hoverSel.attr("stroke-width", math.max(20.0, sw.asInstanceOf[Double] + 10.0))
+          handle.params.intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / outputTotal)
+          handle.params.enabled = node.aggregateRate > 0
+        }
+        if (idx < outputNodeHandles.size) {
+          updateNodeRate(outputNodeHandles(idx), node.aggregateRate)
+        }
+      }
+
+      // Cypher loopback rate text + dot params.
+      cypherNode.foreach { cNode =>
+        cypherRateText.foreach(
+          _.text(if (cNode.aggregateRate > 0) LandingTooltip.formatRate(cNode.aggregateRate) else ""),
+        )
+        cypherParams.foreach { p =>
+          p.intervalMs = spawnIntervalForShare(cNode.aggregateRate.toDouble / outputTotal)
+          p.enabled = cNode.aggregateRate > 0
+        }
+      }
+
+      // Persistor lines: latency drives color, throughput drives stroke + spawn rate,
+      // latency also drives dot duration. All three flow through the SpawnParams cells.
+      val newWriteColor = latencyHealthColor(snap.persistor.writeLatencyMs)
+      val newReadColor = latencyHealthColor(snap.persistor.readLatencyMs)
+      writePathSel
+        .attr("stroke", newWriteColor)
+        .attr("stroke-width", persistorStrokeWidth(snap.persistor.writeOpsPerSec))
+      readPathSel
+        .attr("stroke", newReadColor)
+        .attr("stroke-width", persistorStrokeWidth(snap.persistor.readOpsPerSec))
+
+      val (newWriteInterval, newWriteDuration) =
+        persistorAnimationTiming(snap.persistor.writeOpsPerSec, snap.persistor.writeLatencyMs)
+      writeParams.intervalMs = newWriteInterval
+      writeParams.durationMs = newWriteDuration
+      writeParams.color = newWriteColor
+      writeParams.enabled = snap.persistor.writeOpsPerSec > 0.01 || snap.persistor.writeLatencyMs > 0.01
+
+      val (newReadInterval, newReadDuration) =
+        persistorAnimationTiming(snap.persistor.readOpsPerSec, snap.persistor.readLatencyMs)
+      readParams.intervalMs = newReadInterval
+      readParams.durationMs = newReadDuration
+      readParams.color = newReadColor
+      readParams.enabled = snap.persistor.readOpsPerSec > 0.01 || snap.persistor.readLatencyMs > 0.01
+
+      // Cluster ring color.
+      val newQuineStroke = snap.clusterFullyUp match {
+        case Some(false) => "#dc3545"
+        case _ => "#1658b7"
+      }
+      val _ = quineRingSel.attr("stroke", newQuineStroke)
+    }
+
+    new RenderHandles(applyRates, timers)
   }
+
+  /** Refresh the rate text inside an existing node group. Adds a `text` element if the
+    * node previously had no rate (was zero), so subsequent updates can flip 0 → N → 0.
+    */
+  private def updateNodeRate(handle: NodeHandle, rate: Double): Unit = {
+    val _ = if (rate > 0) handle.rateText.text(LandingTooltip.formatRate(rate)) else handle.rateText.text("")
+  }
+
+  /** Cached node group + rate-text selection so updates can change just the text. */
+  private case class NodeHandle(g: js.Dynamic, rateText: js.Dynamic, hasRate: Boolean)
+
+  /** Compute display nodes from a snapshot. Pure function — used both at render time
+    * and on rate updates.
+    *
+    * Nodes are ordered by *name/destination* so vertical positions stay put across
+    * rate ticks. Sorting by rate would cause two ingests to swap places when one
+    * overtook the other, which would either require re-rendering the SVG (defeating
+    * the in-place-update goal) or leave us writing rates to the wrong line.
+    */
+  private def derivedNodes(snap: Snapshot): (Seq[FlowNode], Seq[FlowNode], Option[FlowNode]) = {
+    // One node per ingest — intentionally not aggregated by source so users can
+    // distinguish individual streams even when several share the same connection.
+    val ingestNodes: Seq[FlowNode] = snap.ingests
+      .map(ingest => FlowNode(ingest.name, ingest.sourceType, ingest.rate, ingest.status, count = 1))
+      .sortBy(_.label)
+
+    val allOutputs = snap.queries.flatMap(_.outputs)
+    val (cypherOutputs, regularOutputs) = allOutputs.partition(_.outputType == "cypher")
+
+    val cypherNode: Option[FlowNode] = if (cypherOutputs.nonEmpty) {
+      val totalRate = cypherOutputs.map(_.rate).sum
+      Some(FlowNode("Cypher Queries", "cypher", totalRate, "Running", cypherOutputs.size))
+    } else None
+
+    val outputNodes: Seq[FlowNode] = regularOutputs
+      .groupBy(_.destination)
+      .toSeq
+      .map { case (dest, group) =>
+        val totalRate = group.map(_.rate).sum
+        FlowNode(dest, group.head.outputType, totalRate, "Running", group.size)
+      }
+      .sortBy(_.label)
+
+    (ingestNodes, outputNodes, cypherNode)
+  }
+
+  // ---- Tooltip builders, all read from the `current` snapshot via closure. ----
 
   private def buildIngestFlowTooltip(node: FlowNode, members: Seq[IngestInfo]): String =
     members match {
@@ -702,6 +770,90 @@ object OverviewDiagram {
          else "")
     }
 
+  private def buildOutputDestTooltip(node: FlowNode, snap: Snapshot): String = {
+    case class RawOutput(queryName: String, workflowName: String, outputType: String, rate: Double, totalCount: Long)
+    val raws: Seq[RawOutput] = snap.queries
+      .flatMap(q =>
+        q.outputs
+          .filterNot(_.outputType == "cypher")
+          .filter(_.destination == node.label)
+          .map(o => RawOutput(q.name, o.name, o.outputType, o.rate, o.totalCount)),
+      )
+    val freshRate = raws.map(_.rate).sum
+    val items = raws
+      .sortBy(-_.rate)
+      .map(r => LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", LandingTooltip.formatRate(r.rate)))
+    LandingTooltip.header(node.label) +
+    LandingTooltip.kvTable(
+      LandingTooltip.kvRow("Destination type", ServiceIcons.labelFor(node.nodeType)) +
+      LandingTooltip.kvRow("Aggregate rate", LandingTooltip.formatRate(freshRate)) +
+      LandingTooltip.kvRow("Total results", f"${raws.map(_.totalCount).sum}%,d") +
+      LandingTooltip.kvRow("Workflows", s"${raws.size}") +
+      LandingTooltip.kvRow("Queries", s"${raws.map(_.queryName).distinct.size}"),
+    ) +
+    (if (raws.nonEmpty)
+       LandingTooltip.subheader("Queries feeding this destination") +
+       LandingTooltip.breakdownTable(items)
+     else "")
+  }
+
+  private def buildQuineTooltip(snap: Snapshot): String = {
+    val (ingestNodes, outputNodes, cypherNode) = derivedNodes(snap)
+    val totalInRate = snap.ingests.map(_.rate).sum
+    val totalOutRate = outputNodes.map(_.aggregateRate).sum
+    val cypherRate = cypherNode.map(_.aggregateRate).getOrElse(0.0)
+    LandingTooltip.header("Quine") +
+    LandingTooltip.kvTable(
+      LandingTooltip.kvRow("Persistor", ServiceIcons.labelFor(snap.persistor.name)) +
+      LandingTooltip.kvRow("Total ingest rate", LandingTooltip.formatRate(totalInRate)) +
+      LandingTooltip.kvRow("Total output rate", LandingTooltip.formatRate(totalOutRate)) +
+      (if (cypherRate > 0) LandingTooltip.kvRow("Cypher loopback rate", LandingTooltip.formatRate(cypherRate))
+       else "") +
+      LandingTooltip.kvRow("Sources", s"${ingestNodes.size}") +
+      LandingTooltip.kvRow("Destinations", s"${outputNodes.size}"),
+    )
+  }
+
+  private def buildCypherTooltip(snap: Snapshot): String = {
+    case class RawOutput(queryName: String, workflowName: String, outputType: String, rate: Double, totalCount: Long)
+    val cypherRaws: Seq[RawOutput] = snap.queries.flatMap(q =>
+      q.outputs
+        .filter(_.outputType == "cypher")
+        .map(o => RawOutput(q.name, o.name, o.outputType, o.rate, o.totalCount)),
+    )
+    val totalRate = cypherRaws.map(_.rate).sum
+    val items = cypherRaws
+      .sortBy(-_.rate)
+      .map(r => LandingTooltip.BreakdownItem(s"${r.queryName} → ${r.workflowName}", LandingTooltip.formatRate(r.rate)))
+    LandingTooltip.header("Cypher loopback") +
+    LandingTooltip.kvTable(
+      LandingTooltip.kvRow("Total rate", LandingTooltip.formatRate(totalRate)) +
+      LandingTooltip.kvRow("Total results", f"${cypherRaws.map(_.totalCount).sum}%,d") +
+      LandingTooltip.kvRow("Cypher outputs", s"${cypherRaws.size}") +
+      LandingTooltip.kvRow("Queries", s"${cypherRaws.map(_.queryName).distinct.size}"),
+    ) +
+    (if (cypherRaws.nonEmpty)
+       LandingTooltip.subheader("Cypher outputs") +
+       LandingTooltip.breakdownTable(items)
+     else "")
+  }
+
+  private def buildPersistorTooltip(snap: Snapshot): String = {
+    def msRow(label: String, ms: Double): String =
+      if (ms > 0) LandingTooltip.kvRow(label, f"$ms%.2f ms") else ""
+    def rateRow(label: String, rate: Double): String =
+      if (rate > 0) LandingTooltip.kvRow(label, f"$rate%.1f ops/s") else ""
+    LandingTooltip.header("Persistor") +
+    LandingTooltip.kvTable(
+      LandingTooltip.kvRow("Store type", ServiceIcons.labelFor(snap.persistor.name)) +
+      LandingTooltip.kvRow("Status", snap.persistor.status) +
+      rateRow("Write throughput", snap.persistor.writeOpsPerSec) +
+      msRow("Write latency", snap.persistor.writeLatencyMs) +
+      rateRow("Read throughput", snap.persistor.readOpsPerSec) +
+      msRow("Read latency", snap.persistor.readLatencyMs),
+    )
+  }
+
   private def computeNodeYs(count: Int, totalHeight: Int): Seq[Double] =
     if (count == 0) Seq.empty
     else if (count == 1) Seq(totalHeight / 2.0)
@@ -713,6 +865,36 @@ object OverviewDiagram {
   private def bezierH(x1: Double, y1: Double, x2: Double, y2: Double): String = {
     val midX = (x1 + x2) / 2.0
     s"M$x1,$y1 C$midX,$y1 $midX,$y2 $x2,$y2"
+  }
+
+  /** Append an icon to an SVG selection, sized to fit the given box while preserving
+    * the icon's natural aspect ratio. We render via `foreignObject` + HTML `<img>`
+    * because Chromium doesn't honor `preserveAspectRatio` on nested SVG `<image>`
+    * elements when the source SVG has explicit width/height attributes — landscape
+    * icons (Cassandra, RocksDB, ClickHouse, Kafka) end up stretched to a square.
+    * HTML `<img>` with `object-fit: contain` letterboxes correctly across browsers.
+    */
+  private def appendIconImage(
+    parent: js.Dynamic,
+    iconUri: String,
+    x: Double,
+    y: Double,
+    width: Double,
+    height: Double,
+  ): js.Dynamic = {
+    val fo = parent
+      .append("foreignObject")
+      .attr("x", x)
+      .attr("y", y)
+      .attr("width", width)
+      .attr("height", height)
+    fo.append("xhtml:img")
+      .attr("src", iconUri)
+      .attr(
+        "style",
+        s"width: ${width}px; height: ${height}px; object-fit: contain; pointer-events: none;",
+      )
+    fo
   }
 
   private def nodeColor(status: String): String = status match {
@@ -733,21 +915,28 @@ object OverviewDiagram {
     case _ => "#1658b7"
   }
 
-  private def drawNode(svg: js.Dynamic, x: Double, y: Double, nodeW: Double, nodeH: Double, node: FlowNode): Unit = {
+  /** Draw a node and return a handle for in-place rate updates. The rate-text element
+    * is created unconditionally so subsequent updates can flip its content between
+    * "$rate/s" and "" without DOM mutations beyond `.text(...)`.
+    */
+  private def drawNode(
+    svg: js.Dynamic,
+    x: Double,
+    y: Double,
+    nodeW: Double,
+    nodeH: Double,
+    node: FlowNode,
+  ): NodeHandle = {
     val color = nodeColor(node.status)
     val iconOpt = ServiceIcons.forType(node.nodeType)
     val iconSize = 32
 
     val g = svg.append("g")
 
-    // Service icon centered at (x, y)
+    // Service icon centered at (x, y). foreignObject + HTML <img> instead of SVG
+    // <image> so non-square icons letterbox correctly — see the persistor branch.
     iconOpt.foreach { iconUri =>
-      g.append("image")
-        .attr("href", iconUri)
-        .attr("x", x - iconSize / 2)
-        .attr("y", y - iconSize / 2)
-        .attr("width", iconSize)
-        .attr("height", iconSize)
+      appendIconImage(g, iconUri, x - iconSize / 2, y - iconSize / 2, iconSize.toDouble, iconSize.toDouble)
     }
 
     // If no icon, draw a small colored circle as a fallback
@@ -762,7 +951,7 @@ object OverviewDiagram {
     }
 
     // Label below the icon
-    val label = if (node.label.length > 18) node.label.take(16) + "\u2026" else node.label
+    val label = if (node.label.length > 18) node.label.take(16) + "…" else node.label
     g.append("text")
       .attr("x", x)
       .attr("y", y + iconSize / 2 + 16)
@@ -772,16 +961,15 @@ object OverviewDiagram {
       .attr("fill", "#0a295b")
       .text(label)
 
-    // Rate below the label
-    if (node.aggregateRate > 0) {
-      g.append("text")
-        .attr("x", x)
-        .attr("y", y + iconSize / 2 + 32)
-        .attr("text-anchor", "middle")
-        .attr("font-size", "13px")
-        .attr("fill", "#6c757d")
-        .text(LandingTooltip.formatRate(node.aggregateRate))
-    }
+    // Rate text — created up front (possibly empty) so we can mutate it on rate ticks.
+    val rateText = g
+      .append("text")
+      .attr("x", x)
+      .attr("y", y + iconSize / 2 + 32)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "13px")
+      .attr("fill", "#6c757d")
+      .text(if (node.aggregateRate > 0) LandingTooltip.formatRate(node.aggregateRate) else "")
 
     // Count badge (top-right of icon)
     if (node.count > 1) {
@@ -802,6 +990,8 @@ object OverviewDiagram {
         .attr("dominant-baseline", "central")
         .text(node.count.toString)
     }
+
+    NodeHandle(g, rateText, hasRate = node.aggregateRate > 0)
   }
 
   /** Map persistor write latency (ms) and throughput (ops/sec) to animation timing.
@@ -854,76 +1044,94 @@ object OverviewDiagram {
     minW + math.sqrt(share) * (maxW - minW)
   }
 
-  private def spawnAnimatedIcons(
+  /** Mutable spawn parameters read by the dot-spawn loop on each tick. Updating the
+    * fields changes the next dot's color/duration and the cadence of subsequent
+    * spawns, so rate changes flow through smoothly without restarting the timer.
+    *
+    * `enabled = false` pauses spawning without destroying the timer; setting it
+    * back to `true` resumes spawning on the next scheduled tick.
+    */
+  final private class SpawnParams(
+    var intervalMs: Int,
+    var color: String,
+    var durationMs: Double,
+    var enabled: Boolean = true,
+  )
+
+  /** Stop handle for [[spawnAnimatedIconsMutable]]. */
+  final private class SpawnTimer(stopFn: () => Unit) {
+    def stop(): Unit = stopFn()
+  }
+
+  /** Like [[spawnAnimatedIcons]] but reads its spawn cadence and dot styling from a
+    * mutable [[SpawnParams]] cell on every tick. This lets `applyRates` update the
+    * dot rate by mutating the cell, without tearing down and recreating the timer
+    * (which would interrupt the visible flow every 5 seconds).
+    */
+  private def spawnAnimatedIconsMutable(
     svg: js.Dynamic,
     pathData: String,
-    intervalMs: Int,
-    color: String,
-    durationMs: Double = 2300.0,
-  ): js.Dynamic = {
-    // Create a hidden path element for measuring
+    params: SpawnParams,
+  ): SpawnTimer = {
     val pathEl = svg
       .append("path")
       .attr("d", pathData)
       .attr("fill", "none")
       .attr("stroke", "none")
 
-    D3.interval(
-      { (_: Double) =>
-        val pathNode = pathEl.node().asInstanceOf[dom.svg.Path]
-        val totalLength = pathNode.getTotalLength()
+    var stopped = false
+    var handle: Int = 0
 
-        // Animated circle "data packet" that moves along the path.
-        // Insert *before* the Quine center group so dots paint underneath Quine as they
-        // enter/exit the center. Falls back to `.append` if the Quine group isn't present
-        // (e.g. during initial render ordering).
-        val iconRaw =
-          if (
-            !js.isUndefined(svg.select(".quine-center-node").node()) &&
-            svg.select(".quine-center-node").node() != null
-          ) {
-            svg.insert("circle", ".quine-center-node")
-          } else {
-            svg.append("circle")
-          }
-        val icon = iconRaw
-          .attr("r", 5)
-          .attr("fill", color)
-          .attr("opacity", 0.6)
-          .attr("stroke", "white")
-          .attr("stroke-width", 1)
-          // Dots are decorative — never let them capture hover events. Without this,
-          // a dot passing under the cursor fires mouseleave on the underlying line/node
-          // hover zone, flickering the tooltip off and on as each dot crosses.
-          .attr("pointer-events", "none")
+    def spawnOne(): Unit = {
+      val pathNode = pathEl.node().asInstanceOf[dom.svg.Path]
+      val totalLength = pathNode.getTotalLength()
+      val iconRaw =
+        if (
+          !js.isUndefined(svg.select(".quine-center-node").node()) &&
+          svg.select(".quine-center-node").node() != null
+        ) svg.insert("circle", ".quine-center-node")
+        else svg.append("circle")
+      val icon = iconRaw
+        .attr("r", 5)
+        .attr("fill", params.color)
+        .attr("opacity", 0.6)
+        .attr("stroke", "white")
+        .attr("stroke-width", 1)
+        .attr("pointer-events", "none")
+      val _ = icon
+        .transition()
+        .duration(params.durationMs)
+        .ease(D3.easeLinear)
+        .attrTween(
+          "transform",
+          { () =>
+            val interpolate: js.Function1[Double, String] = { (t: Double) =>
+              val point = pathNode.getPointAtLength(t * totalLength)
+              s"translate(${point.x},${point.y})"
+            }
+            interpolate
+          }: js.Function0[js.Function1[Double, String]],
+        )
+        .on(
+          "end",
+          { () =>
+            val _ = icon.remove(); ()
+          }: js.Function0[Unit],
+        )
+    }
 
-        // Animate along path at constant speed. The crossing time is fixed (not
-        // jittered) so successive dots on the same line travel at identical speeds —
-        // otherwise a later dot with a shorter duration would overtake an earlier one.
-        // Linear easing (not the default cubic) prevents dots from bunching up at the
-        // start and end of the line.
-        val _ = icon
-          .transition()
-          .duration(durationMs)
-          .ease(D3.easeLinear)
-          .attrTween(
-            "transform",
-            { () =>
-              val interpolate: js.Function1[Double, String] = { (t: Double) =>
-                val point = pathNode.getPointAtLength(t * totalLength)
-                s"translate(${point.x},${point.y})"
-              }
-              interpolate
-            }: js.Function0[js.Function1[Double, String]],
-          )
-          .on(
-            "end",
-            { () =>
-              val _ = icon.remove(); ()
-            }: js.Function0[Unit],
-          )
-      },
-      intervalMs.toDouble,
-    )
+    def loop(): Unit = {
+      if (stopped) return
+      if (params.enabled) spawnOne()
+      handle = dom.window.setTimeout(() => loop(), params.intervalMs.toDouble)
+    }
+
+    // Kick off immediately so the first dot doesn't wait an entire interval.
+    loop()
+    new SpawnTimer(() => {
+      stopped = true
+      if (handle != 0) dom.window.clearTimeout(handle)
+    })
   }
+
 }

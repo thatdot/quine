@@ -20,11 +20,11 @@ object ClusterHealthCard {
 
   private def renderState(state: Pot[V2ServiceStatus]): HtmlElement = state match {
     case Pot.Empty =>
-      Card(title = "Cluster Health", body = p(cls := "text-muted mb-0", "No cluster data loaded."))
+      Card(title = "Cluster Status", body = p(cls := "text-muted mb-0", "No cluster data loaded."))
 
     case Pot.Pending =>
       Card(
-        title = "Cluster Health",
+        title = "Cluster Status",
         body = div(
           cls := "d-flex align-items-center",
           span(cls := "spinner-border spinner-border-sm me-2"),
@@ -36,24 +36,16 @@ object ClusterHealthCard {
       renderContent(status)
 
     case Pot.Failed(err) =>
-      Card(title = "Cluster Health", body = div(cls := "alert alert-danger mb-0", s"Error: $err"))
+      Card(title = "Cluster Status", body = div(cls := "alert alert-danger mb-0", s"Error: $err"))
 
+    // PendingStale isn't currently produced by LandingStore; render like Ready if it ever is.
     case Pot.PendingStale(status) =>
-      div(
-        cls := "position-relative",
-        div(cls := "opacity-50", renderContent(status)),
-        div(
-          cls := "position-absolute top-0 start-0 w-100 text-center mt-4",
-          span(cls := "spinner-border spinner-border-sm me-1"),
-          span("Refreshing..."),
-        ),
-      )
+      renderContent(status)
 
-    case Pot.FailedStale(status, err) =>
-      div(
-        div(cls := "alert alert-danger mb-2", s"Error refreshing: $err"),
-        renderContent(status),
-      )
+    // FailedStale: keep showing the prior data; a single page-level "Failed to refresh"
+    // banner in LandingPage covers the messaging across all cards.
+    case Pot.FailedStale(status, _) =>
+      renderContent(status)
   }
 
   private def renderContent(status: V2ServiceStatus): HtmlElement = {
@@ -63,7 +55,7 @@ object ClusterHealthCard {
     val spares = status.cluster.hotSpares
 
     Card(
-      title = "Cluster Health",
+      title = "Cluster Status",
       body = div(
         styleAttr := "font-size: 1rem;",
         div(

@@ -1,10 +1,6 @@
 package com.thatdot.quine.webapp.components.landing
 
-import scala.concurrent.Future
-import scala.util.{Failure, Success}
-
 import com.raquo.laminar.api.L._
-import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.routes.{MetricsReport, ShardInMemoryLimit}
 import com.thatdot.quine.webapp.components.landing.V2ApiTypes._
@@ -12,15 +8,18 @@ import com.thatdot.quine.webapp.util.Pot
 
 /** Store for the landing page.
   *
-  * Owns the command intake, Pot lifecycle state, and command processing.
-  * Calls [[LandingService]] for async data fetching and bridges
-  * the Future results back into the reactive state.
+  * Owns the Pot lifecycle state. Subscribes to the polling streams exposed by
+  * [[LandingService]] and bridges each tick into a `Var[Pot[_]]`:
+  *   - a successful tick replaces the Pot with `Ready(value)`
+  *   - a failed tick surfaces as `Failed(msg)` on the initial fetch (no prior data),
+  *     or as `FailedStale(prev, msg)` when prior data exists, so cards can keep
+  *     showing the last known good value alongside a refresh-failure banner
   *
-  * Components push commands to [[input]].writer and read from the exposed signals.
+  * Stream subscriptions activate when [[subscriptions]] is mounted on an element.
   *
-  * When `userPermissions` is `Some(_)`, fetches are skipped for data whose consuming card
-  * the user cannot view. This avoids firing requests that would 403 and keeps the
-  * browser console clean. `None` means no auth configured (OSS) — everything fetches.
+  * When `userPermissions` is `Some(_)`, fetches are skipped for data whose consuming
+  * card the user cannot view. This avoids firing requests that would 403 and keeps
+  * the browser console clean. `None` means no auth configured (OSS) — everything fetches.
   */
 final class LandingStore(
   service: LandingService,
@@ -29,9 +28,6 @@ final class LandingStore(
 ) {
 
   type MetricsData = (MetricsReport, Map[Int, ShardInMemoryLimit])
-
-  /** Command intake. Pass `input.writer` to components. */
-  val input: EventBus[LandingCommand] = new EventBus
 
   private val metricsVar: Var[Pot[MetricsData]] = Var(Pot.Empty)
   private val ingestsVar: Var[Pot[Seq[V2IngestInfo]]] = Var(Pot.Empty)
@@ -61,47 +57,42 @@ final class LandingStore(
   private val fetchClusterStatusAllowed =
     fetchClusterStatus && allowed(ClusterHealthCard.requiredPermissions)
 
-  /** Command processing — bind to a mounted element to activate.
-    *
-    * `Refresh` dispatches metrics, ingests, standing queries, and cluster status.
-    * OSS deployments will get a failed `clusterStatus` Pot because `/api/v2/admin/status`
-    * isn't exposed; the enterprise landing view is the one that actually renders it.
+  /** Bind to a mounted element to activate stream subscriptions. On mount, Vars for
+    * subscribed feeds are flipped to `Pending` so cards render a spinner until the
+    * first tick lands.
     */
-  val commandHandler: Binder[HtmlElement] = input.events --> Observer[LandingCommand] {
-    case LandingCommand.Refresh =>
-      if (fetchMetricsAllowed) input.writer.onNext(LandingCommand.RefreshMetrics)
-      if (fetchIngestsAllowed) input.writer.onNext(LandingCommand.RefreshIngests)
-      if (fetchStandingQueriesAllowed) input.writer.onNext(LandingCommand.RefreshStandingQueries)
-      if (fetchConfigAllowed) input.writer.onNext(LandingCommand.RefreshConfig)
-      if (fetchClusterStatusAllowed) input.writer.onNext(LandingCommand.RefreshClusterStatus)
-
-    case LandingCommand.RefreshMetrics =>
-      if (fetchMetricsAllowed) refreshPot(metricsVar, service.fetchMetrics())
-
-    case LandingCommand.RefreshIngests =>
-      if (fetchIngestsAllowed) refreshPot(ingestsVar, service.fetchIngests())
-
-    case LandingCommand.RefreshStandingQueries =>
-      if (fetchStandingQueriesAllowed) refreshPot(standingQueriesVar, service.fetchStandingQueries())
-
-    case LandingCommand.RefreshClusterStatus =>
-      if (fetchClusterStatusAllowed) refreshPot(clusterStatusVar, service.fetchClusterStatus())
-
-    case LandingCommand.RefreshConfig =>
-      if (fetchConfigAllowed) refreshPot(configVar, service.fetchConfig())
-  }
-
-  private def refreshPot[A](v: Var[Pot[A]], fetch: => Future[A]): Unit = {
-    val staleData = v.now().toOption
-    v.set(staleData.fold[Pot[A]](Pot.Pending)(Pot.PendingStale(_)))
-    fetch.onComplete {
-      case Success(data) =>
-        v.set(Pot.Ready(data))
-      case Failure(err) =>
-        val msg =
-          if (err.getMessage != null && err.getMessage.nonEmpty) err.getMessage
-          else "Fetch failed"
-        v.set(staleData.fold[Pot[A]](Pot.Failed(msg))(Pot.FailedStale(_, msg)))
+  val subscriptions: Modifier[HtmlElement] = {
+    val binders = Seq.newBuilder[Modifier[HtmlElement]]
+    if (fetchMetricsAllowed) binders ++= bind(service.metrics, metricsVar)
+    if (fetchIngestsAllowed) binders ++= bind(service.ingests, ingestsVar)
+    if (fetchStandingQueriesAllowed) binders ++= bind(service.standingQueries, standingQueriesVar)
+    if (fetchClusterStatusAllowed) binders ++= bind(service.clusterStatus, clusterStatusVar)
+    if (fetchConfigAllowed) binders ++= bind(service.config, configVar)
+    binders += onMountCallback[HtmlElement] { _ =>
+      if (fetchMetricsAllowed) metricsVar.set(Pot.Pending)
+      if (fetchIngestsAllowed) ingestsVar.set(Pot.Pending)
+      if (fetchStandingQueriesAllowed) standingQueriesVar.set(Pot.Pending)
+      if (fetchClusterStatusAllowed) clusterStatusVar.set(Pot.Pending)
+      if (fetchConfigAllowed) configVar.set(Pot.Pending)
     }
+    binders.result()
   }
+
+  /** Subscribe a feed to a Pot var.
+    *
+    *   - on a successful tick: set `Ready(value)`
+    *   - on a failed tick: set `FailedStale(prev, msg)` if prior data exists (so cards
+    *     keep showing it with a "Failed to refresh" banner), or `Failed(msg)` if there
+    *     is no prior value
+    */
+  private def bind[A](feed: LandingService.Feed[A], v: Var[Pot[A]]): Seq[Modifier[HtmlElement]] = Seq(
+    feed.values --> Observer[A](a => v.set(Pot.Ready(a))),
+    feed.errors --> Observer[String] { msg =>
+      v.update {
+        case Pot.Ready(prev) => Pot.FailedStale(prev, msg)
+        case Pot.FailedStale(prev, _) => Pot.FailedStale(prev, msg)
+        case _ => Pot.Failed(msg)
+      }
+    },
+  )
 }

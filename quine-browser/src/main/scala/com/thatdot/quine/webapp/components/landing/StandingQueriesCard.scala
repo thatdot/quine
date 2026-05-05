@@ -26,11 +26,11 @@ object StandingQueriesCard {
 
   private def renderState(state: Pot[Seq[V2StandingQueryInfo]]): HtmlElement = state match {
     case Pot.Empty =>
-      Card(title = "Standing Queries", body = p(cls := "text-muted mb-0", "No standing query data loaded."))
+      Card(title = "Cluster Standing Queries", body = p(cls := "text-muted mb-0", "No standing query data loaded."))
 
     case Pot.Pending =>
       Card(
-        title = "Standing Queries",
+        title = "Cluster Standing Queries",
         body = div(
           cls := "d-flex align-items-center",
           span(cls := "spinner-border spinner-border-sm me-2"),
@@ -42,35 +42,27 @@ object StandingQueriesCard {
       renderContent(data)
 
     case Pot.Failed(err) =>
-      Card(title = "Standing Queries", body = div(cls := "alert alert-danger mb-0", s"Error: $err"))
+      Card(title = "Cluster Standing Queries", body = div(cls := "alert alert-danger mb-0", s"Error: $err"))
 
+    // PendingStale isn't currently produced by LandingStore; render like Ready if it ever is.
     case Pot.PendingStale(data) =>
-      div(
-        cls := "position-relative",
-        div(cls := "opacity-50", renderContent(data)),
-        div(
-          cls := "position-absolute top-0 start-0 w-100 text-center mt-4",
-          span(cls := "spinner-border spinner-border-sm me-1"),
-          span("Refreshing..."),
-        ),
-      )
+      renderContent(data)
 
-    case Pot.FailedStale(data, err) =>
-      div(
-        div(cls := "alert alert-danger mb-2", s"Error refreshing: $err"),
-        renderContent(data),
-      )
+    // FailedStale: keep showing the prior data; a single page-level "Failed to refresh"
+    // banner in LandingPage covers the messaging across all cards.
+    case Pot.FailedStale(data, _) =>
+      renderContent(data)
   }
 
   private def renderContent(queries: Seq[V2StandingQueryInfo]): HtmlElement = {
     if (queries.isEmpty)
       return Card(
-        title = "Standing Queries",
+        title = "Cluster Standing Queries",
         body = p(cls := "text-muted mb-0", "No standing queries configured."),
       )
 
     Card(
-      title = "Standing Queries",
+      title = "Cluster Standing Queries",
       body = div(
         width := "100%",
         withResizeObserver(queries, renderSankey),

@@ -36,8 +36,7 @@ object LandingPage {
     ingestsSignal: Signal[Pot[Seq[V2IngestInfo]]],
     standingQueriesSignal: Signal[Pot[Seq[V2StandingQueryInfo]]],
     configSignal: Signal[Pot[V2QuineConfig]],
-    dispatch: Observer[LandingCommand],
-    commandHandler: Binder[HtmlElement],
+    subscriptions: Modifier[HtmlElement],
     clusterStatusSignal: Option[Signal[Pot[V2ServiceStatus]]] = None,
     extraCards: Seq[(Set[String], HtmlElement)] = Seq.empty,
     userPermissions: Option[Set[String]] = None,
@@ -73,9 +72,26 @@ object LandingPage {
       case (needed, card) if allowed(needed) => card
     }
 
+    // A polled feed enters `FailedStale` when a refresh fails after data has already
+    // loaded. Cards keep showing the prior data; this page-level banner is the single
+    // user-facing indication that the page is no longer live. Only signals whose card
+    // is actually mounted are watched, so e.g. cluster-status is ignored on OSS.
+    def isStale(p: Pot[_]): Boolean = p match {
+      case Pot.FailedStale(_, _) => true
+      case _ => false
+    }
+    val watchedSignals: Seq[Signal[Pot[_]]] =
+      (if (canSeeIngests) Seq(ingestsSignal) else Nil) ++
+      (if (canSeeStandingQueries) Seq(standingQueriesSignal) else Nil) ++
+      (if (canSeeClusterHealth) clusterStatusSignal.toSeq else Nil) ++
+      (if (canSeeHostMetrics) Seq(metricsSignal) else Nil) ++
+      (if (canSeeOverview) Seq(configSignal) else Nil)
+    val refreshFailedSignal: Signal[Boolean] =
+      if (watchedSignals.isEmpty) Signal.fromValue(false)
+      else Signal.combineSeq(watchedSignals).map(_.exists(isStale)).distinct
+
     div(
-      commandHandler,
-      onMountCallback(_ => dispatch.onNext(LandingCommand.Refresh)),
+      subscriptions,
       onUnmountCallback(_ => LandingTooltip.hide()),
       // Blue toolbar matching the Exploration UI nav-bar
       div(
@@ -117,13 +133,19 @@ object LandingPage {
               )
           else emptyNode,
         ),
-        span(
-          cls := s"${Styles.navBarButton} ${Styles.clickable}",
-          onClick --> (_ => dispatch.onNext(LandingCommand.Refresh)),
-          i(cls := "ion-refresh"),
-          span(cls := "ms-1", styleAttr := "font-size: 1em;", "Refresh"),
-        ),
       ),
+      // Page-level "failed to refresh" banner — visible whenever any watched feed
+      // is in FailedStale (a polling tick failed after data had already loaded).
+      child.maybe <-- refreshFailedSignal.map { failed =>
+        if (failed)
+          Some(
+            div(
+              cls := "alert alert-warning mx-3 mt-3 mb-0",
+              "Failed to refresh — showing last loaded data.",
+            ),
+          )
+        else None
+      },
       // Card grid
       div(
         cls := "container-fluid",

@@ -33,26 +33,63 @@ object SystemOverviewCard {
     val clusterSig: Signal[Pot[V2ServiceStatus]] =
       clusterStatusSignal.getOrElse(Signal.fromValue(Pot.Empty: Pot[V2ServiceStatus]))
 
-    val diagramSignal: Signal[HtmlElement] =
+    // Snapshots are produced only once ingests, standing queries, and config have all
+    // loaded. Metrics (and cluster status) are optional — missing values become zeros
+    // / `None`. While the required Pots are still empty/pending, the signal stays at
+    // `None` and the placeholder is shown.
+    val snapshotSignal: Signal[Option[OverviewDiagram.Snapshot]] =
       Signal
         .combine(ingestsSignal, standingQueriesSignal, configSignal, metricsSignal, clusterSig)
         .map { case (ingestsPot, sqPot, configPot, metricsPot, clusterPot) =>
           (ingestsPot.toOption, sqPot.toOption, configPot.toOption) match {
             case (Some(apiIngests), Some(apiQueries), Some(config)) =>
-              OverviewDiagram(
-                ingests = LandingPageData.fromV2Ingests(apiIngests),
-                queries = LandingPageData.fromV2StandingQueries(apiQueries),
-                persistor = persistorFromConfig(config, metricsPot.toOption.map(_._1)),
-                clusterFullyUp = clusterPot.toOption.map(_.fullyUp),
+              Some(
+                OverviewDiagram.Snapshot(
+                  ingests = LandingPageData.fromV2Ingests(apiIngests),
+                  queries = LandingPageData.fromV2StandingQueries(apiQueries),
+                  persistor = persistorFromConfig(config, metricsPot.toOption.map(_._1)),
+                  clusterFullyUp = clusterPot.toOption.map(_.fullyUp),
+                ),
               )
-            case _ =>
-              loadingPlaceholder
+            case _ => None
           }
         }
 
+    // Build a dedicated `Signal[Snapshot]` for the diagram by collapsing every `None`
+    // tick to the most recent `Some`. The scan is seeded with a synthetic empty snapshot
+    // so the signal is well-typed even before the first real load — the diagram will
+    // never *receive* this value, because it's only mounted once a real snapshot exists
+    // (see `body` below).
+    val emptySnapshot = OverviewDiagram.Snapshot(
+      ingests = Nil,
+      queries = Nil,
+      persistor = PersistorInfo.empty,
+      clusterFullyUp = None,
+    )
+    val diagramSnapshot: Signal[OverviewDiagram.Snapshot] =
+      snapshotSignal.scanLeft(_.getOrElse(emptySnapshot)) {
+        case (prev, None) => prev
+        case (_, Some(s)) => s
+      }
+
+    // The diagram element is constructed once and reused. Once data has loaded, every
+    // subsequent rate tick is delivered to the diagram's internal subscription, which
+    // applies the change in-place against the existing SVG (no element churn, no page
+    // scroll reset).
+    val readyDiagram: HtmlElement = OverviewDiagram(diagramSnapshot)
+
+    // Dedupe so the resulting signal only emits when transitioning between Loading
+    // and Loaded — a sequence of consecutive `Some(_)` values is collapsed to a single
+    // emission. This guards against any subtle re-mount that might happen if Laminar's
+    // `child <--` fired on every signal emission.
+    val body: Signal[HtmlElement] = snapshotSignal
+      .map(_.isDefined)
+      .distinct
+      .map(if (_) readyDiagram else loadingPlaceholder)
+
     Card(
       title = "System Overview",
-      body = div(child <-- diagramSignal),
+      body = div(child <-- body),
     )
   }
 
