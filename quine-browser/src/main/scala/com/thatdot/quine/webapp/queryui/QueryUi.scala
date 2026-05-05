@@ -1123,16 +1123,16 @@ object QueryUi {
       ()
     }
 
-    /** Unfix pinned nodes at drag start so vis-network allows repositioning.
-      * Skipped when shift is held, since shift+click means "unpin", not "drag".
+    /** Delegate drag-start to PinTracker so vis-network allows repositioning of
+      * any pinned nodes. Skipped when shift is held, since shift+click means
+      * "unpin", not "drag".
       */
     def networkDragStart(event: vis.ClickEvent): Unit = {
       if (event.event.asInstanceOf[VisIndirectMouseEvent].srcEvent.shiftKey) return
       val draggedIds = event.nodes.toSeq
         .map(_.asInstanceOf[String])
         .filterNot(nodeId => network.exists(_.isCluster(nodeId)))
-      for (nodeId <- draggedIds if pinTracker.isPinned(nodeId))
-        visualization.unfixForDrag(nodeId)
+      pinTracker.beginDrag(draggedIds)
     }
 
     def networkDragEnd(event: vis.ClickEvent): Unit = {
@@ -1599,7 +1599,10 @@ object QueryUi {
         options = networkOptions,
       ),
       // Physics toggle
-      stateVar.signal.map(_.animating).updates --> { animating =>
+      // `.distinct` is essential: `Signal.map` does not dedupe, so without it this
+      // subscriber fires on every unrelated `stateVar` update and overrides the
+      // physics state that `withPhysics` is trying to maintain.
+      stateVar.signal.map(_.animating).distinct.updates --> { animating =>
         network.foreach(_.setOptions(new vis.Network.Options {
           override val physics = new vis.Network.Options.Physics {
             override val enabled = animating

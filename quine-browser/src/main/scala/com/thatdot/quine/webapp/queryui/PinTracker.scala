@@ -14,11 +14,12 @@ final class PinTracker(visualization: GraphVisualization) {
   def pin(nodeIds: Iterable[String]): Unit = {
     val current = pinnedVar.now()
     val toAdd = nodeIds.filterNot(current.contains)
-    if (toAdd.nonEmpty) {
-      pinnedVar.update(_ ++ toAdd)
-      toAdd.foreach(visualization.pinNode)
-    }
+    if (toAdd.nonEmpty) pinnedVar.update(_ ++ toAdd)
+    nodeIds.foreach(visualization.pinNode)
   }
+
+  def beginDrag(nodeIds: Iterable[String]): Unit =
+    nodeIds.filter(isPinned).foreach(visualization.unfixForDrag)
 
   def unpinWithFlash(nodeIds: Iterable[String]): Unit = {
     val current = pinnedVar.now()
