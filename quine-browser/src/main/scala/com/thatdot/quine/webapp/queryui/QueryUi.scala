@@ -1123,12 +1123,10 @@ object QueryUi {
       ()
     }
 
-    /** Delegate drag-start to PinTracker so vis-network allows repositioning of
-      * any pinned nodes. Skipped when shift is held, since shift+click means
-      * "unpin", not "drag".
+    /** Unfix pinned nodes at drag start so vis-network allows repositioning.
+      * They're re-pinned at drag end via `NodesMoved` → `pinTracker.pin`.
       */
     def networkDragStart(event: vis.ClickEvent): Unit = {
-      if (event.event.asInstanceOf[VisIndirectMouseEvent].srcEvent.shiftKey) return
       val draggedIds = event.nodes.toSeq
         .map(_.asInstanceOf[String])
         .filterNot(nodeId => network.exists(_.isCluster(nodeId)))
@@ -1143,16 +1141,49 @@ object QueryUi {
         processVisualizationEvent(GraphVisualizationEvent.NodesMoved(draggedIds))
     }
 
-    def networkClick(event: vis.ClickEvent): Unit =
-      if (event.event.asInstanceOf[VisIndirectMouseEvent].srcEvent.shiftKey) {
-        network.get.getNodeAt(event.pointer.DOM).toOption.foreach { nodeId =>
-          val selected = network.get.getSelectedNodes()
-          val ids = (if (selected.contains(nodeId)) selected.toSeq else Seq(nodeId))
-            .map(_.asInstanceOf[String])
-            .filterNot(id => network.exists(_.isCluster(id)))
-          processVisualizationEvent(GraphVisualizationEvent.UnpinRequested(ids))
-        }
+    /** Shift+hold = unpin. The target set is the live selection ∪ {held node},
+      * filtered to actually-pinned nodes by `unpinWithFlash`. Also re-adds the
+      * held node to the selection: when the held node was already selected,
+      * vis-network's hold path deselects it; prepending undoes that without
+      * needing a pre-gesture snapshot (year-ago technique).
+      */
+    def networkHold(event: vis.ClickEvent): Unit = {
+      val shift = event.event.asInstanceOf[VisIndirectMouseEvent].srcEvent.shiftKey
+      if (!shift) return
+      val heldOpt = network.get
+        .getNodeAt(event.pointer.DOM)
+        .toOption
+        .map(_.asInstanceOf[String])
+      val selected = network.get.getSelectedNodes().toSeq.map(_.asInstanceOf[String])
+      val unionSet = selected.toSet ++ heldOpt
+      val targets = unionSet.toSeq.filterNot(id => network.exists(_.isCluster(id)))
+      if (targets.nonEmpty)
+        processVisualizationEvent(GraphVisualizationEvent.UnpinRequested(targets))
+      if (heldOpt.nonEmpty) {
+        network.get.selectNodes(
+          js.Array[vis.IdType](unionSet.toSeq.map(s => s: vis.IdType): _*),
+        )
       }
+    }
+
+    /** Implements "shift+click toggles node in selection" — vis-network natively
+      * replaces selection on shift+click (multiselect:true only honors Ctrl/Cmd),
+      * which fires deselectNode for the previously-selected nodes. We restore
+      * them and either remove or add the clicked node depending on prior state.
+      */
+    def networkDeselect(event: vis.DeselectEvent): Unit = {
+      val shift = event.event.asInstanceOf[VisIndirectMouseEvent].srcEvent.shiftKey
+      if (!shift) return
+      val clickedId = network.get.getNodeAt(event.pointer.DOM).toOption match {
+        case None => return
+        case Some(nodeId) => nodeId.asInstanceOf[String]
+      }
+      val prevIds = event.previousSelection.nodes.toSeq.map(_.id.asInstanceOf[String])
+      val next =
+        if (prevIds.contains(clickedId)) prevIds.filter(_ != clickedId)
+        else prevIds :+ clickedId
+      network.get.selectNodes(js.Array[vis.IdType](next.map(s => s: vis.IdType): _*))
+    }
 
     def processVisualizationEvent(event: GraphVisualizationEvent): Unit = event match {
       case GraphVisualizationEvent.NodesMoved(nodeIds) =>
@@ -1160,23 +1191,6 @@ object QueryUi {
 
       case GraphVisualizationEvent.UnpinRequested(nodeIds) =>
         pinTracker.unpinWithFlash(nodeIds)
-    }
-
-    def networkDeselect(event: vis.DeselectEvent): Unit = {
-      if (!event.event.asInstanceOf[VisIndirectMouseEvent].srcEvent.shiftKey)
-        return
-
-      val clickedId = network.get.getNodeAt(event.pointer.DOM).toOption match {
-        case None => return
-        case Some(nodeId) => nodeId
-      }
-
-      val selection = event.previousSelection.nodes
-      if (event.previousSelection.nodes.contains(clickedId)) {
-        network.get.selectNodes(selection.filter(_ != clickedId))
-      } else {
-        network.get.selectNodes(selection :+ clickedId)
-      }
     }
 
     def getContextMenuItems(nodeId: String, selectedIds: Seq[String]): Seq[ContextMenuItem] = {
@@ -1338,7 +1352,7 @@ object QueryUi {
       net.onDeselectNode(networkDeselect)
       net.onDragStart(networkDragStart)
       net.onDragEnd(networkDragEnd)
-      net.onClick(networkClick)
+      net.onHold(networkHold)
 
       if (props.initialLayout == NetworkLayout.Tree) {
         // Network initializes in graph mode; switch to tree layout.

@@ -32,9 +32,12 @@ trait DeselectEvent extends InteractionEvent {
   val previousSelection: DeselectEvent.PreviousSelection
 }
 object DeselectEvent {
+  // Vis-network emits the actual Node/Edge objects here, not just their IDs.
+  // The objects carry an `id` field (typed as `IdType`) along with the rest of
+  // the node's options.
   trait PreviousSelection extends js.Object {
-    val nodes: js.Array[IdType]
-    val edges: js.Array[IdType]
+    val nodes: js.Array[Node]
+    val edges: js.Array[Edge]
   }
 }
 
