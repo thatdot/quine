@@ -491,11 +491,15 @@ final private[quine] class GraphShardActor(
         graph.metrics.shardNodesSleptFailureCounter(id.namespace, shardName).inc()
       }
 
-      // wake the node back up
-      self ! WakeUp(
-        id,
-        Some(snapshot),
-        errorCount = Map(WakeUpErrorStates.SleepOutcomeSleepFailed -> 1),
+      // Wake the node back up synchronously — avoids the priority mailbox reordering
+      // SleepFailed (priority 0) ahead of WakeUp (priority 2), which would otherwise
+      // create a window where the node is missing from namespacedNodes.
+      this.receive(
+        WakeUp(
+          id,
+          Some(snapshot),
+          errorCount = Map(WakeUpErrorStates.SleepOutcomeSleepFailed -> 1),
+        ),
       )
 
     case WakeUp(id, snapshotOpt, remaining, errorCount) =>
