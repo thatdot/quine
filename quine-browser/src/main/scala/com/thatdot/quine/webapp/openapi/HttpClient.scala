@@ -17,7 +17,7 @@ object HttpClient {
   /** Execute an HTTP request.
     *
     * @param method     HTTP method (GET, POST, PUT, DELETE)
-    * @param path       URL path with {param} placeholders (e.g., "/api/v2/ingests/{name}")
+    * @param path       URL path with {param} placeholders (e.g., "/api/v2/graph/quine/ingests/{ingestName}")
     * @param pathParams Values to substitute for path placeholders
     * @param queryParams Query string parameters
     * @param body       Optional JSON request body

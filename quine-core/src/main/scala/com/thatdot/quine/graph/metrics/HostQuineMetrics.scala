@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters._
 import com.codahale.metrics.{Counter, Histogram, Meter, MetricRegistry, NoopMetricRegistry, Timer}
 
 import com.thatdot.quine.graph.metrics.implicits._
-import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, namespaceToString}
+import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, defaultNamespaceId}
 import com.thatdot.quine.util.SharedValve
 
 /** A MetricRegistry, wrapped with canonical accessors for common Quine metrics
@@ -29,13 +29,10 @@ final case class HostQuineMetrics(
   lazy val noOpRegistry: NoopMetricRegistry = new NoopMetricRegistry
 
   def metricName(namespaceId: NamespaceId, components: List[String]): String =
-    if (omitDefaultNamespace) {
-      // here, the namespace "default" is omitted from the metric name, while all others are included.
-      (namespaceId ++ components).mkString(".")
-    } else {
-      // here, the namespace is universally included in the metric name
-      (namespaceToString(namespaceId) :: components).mkString(".")
-    }
+    if (omitDefaultNamespace && namespaceId == defaultNamespaceId)
+      components.mkString(".")
+    else
+      (namespaceId.name :: components).mkString(".")
 
   /** Histogram tracking number of in-memory properties on nodes.
     */

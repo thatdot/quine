@@ -53,7 +53,7 @@ class QuinePatternLoader(graph: QuinePatternOpsGraph with StandingQueryOpsGraph)
           _,
           atTime,
         ) =>
-      val ephemeralActor = graph.system.actorOf(Props(classOf[NonNodeActor], graph, namespace))
+      val ephemeralActor = graph.system.actorOf(Props(new NonNodeActor(graph, namespace)))
       // We may want to consider warning or rejecting on non-read commands with `atTime` defined.
       ephemeralActor ! QuinePatternCommand.LoadQueryPlan(
         sqid = sqid,

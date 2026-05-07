@@ -4,13 +4,7 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Flow
 
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
-import com.thatdot.quine.graph.{
-  CypherOpsGraph,
-  NamespaceId,
-  StandingQueryResult,
-  StandingQueryResultStructure,
-  namespaceToString,
-}
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, StandingQueryResult, StandingQueryResultStructure}
 import com.thatdot.quine.routes.{StandingQueryOutputStructure, StandingQueryResultOutputUserDef}
 
 trait OutputRuntime {
@@ -25,7 +19,7 @@ trait OutputRuntime {
     }
 
   final def execToken(name: String, namespaceId: NamespaceId): SqResultsExecToken = SqResultsExecToken(
-    s"SQ: $name in: ${namespaceToString(namespaceId)}",
+    s"SQ: $name in: ${namespaceId.name}",
   )
   def flow(
     name: String,

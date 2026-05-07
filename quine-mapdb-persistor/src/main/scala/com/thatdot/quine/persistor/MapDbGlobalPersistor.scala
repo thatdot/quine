@@ -9,7 +9,7 @@ import org.apache.pekko.stream.Materializer
 import com.codahale.metrics.MetricRegistry
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.graph.{NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
 import com.thatdot.quine.util.Log.implicits._
 abstract class AbstractMapDbPrimePersistor(
@@ -27,7 +27,7 @@ abstract class AbstractMapDbPrimePersistor(
   def dbForPath(dbPath: MapDbPersistor.DbPath) =
     new MapDbPersistor(
       dbPath,
-      null,
+      defaultNamespaceId,
       writeAheadLog,
       interval,
       persistenceConfig,
@@ -108,13 +108,12 @@ class PersistedMapDbPrimePersistor(
   }
 
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgent =
-    namespace match {
-      case Some(name) =>
-        val dir = new File(namespacesDir, name.name)
-        dir.mkdirs() // the parent dir "namespaces" will be created if it doesn't exist already
-        possiblyShardedDb(
-          new File(dir, basePath.getName), // Use whatever name was set in config as the name of our mapdb file.
-        )
-      case None => possiblyShardedDb(basePath)
+    if (namespace == defaultNamespaceId) possiblyShardedDb(basePath)
+    else {
+      val dir = new File(namespacesDir, namespace.name)
+      dir.mkdirs() // the parent dir "namespaces" will be created if it doesn't exist already
+      possiblyShardedDb(
+        new File(dir, basePath.getName), // Use whatever name was set in config as the name of our mapdb file.
+      )
     }
 }

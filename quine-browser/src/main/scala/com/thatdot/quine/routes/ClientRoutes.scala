@@ -63,8 +63,8 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
   }
 
   def queryProtocolClientV2(namespace: Option[String] = None): V2WebSocketQueryClient = {
-    val nsParam = namespace.fold("")(ns => s"?namespace=$ns")
-    new V2WebSocketQueryClient(new WebSocket(s"$baseWsUrl/api/v2/query/ws$nsParam"))
+    val _ = namespace // OSS V2 only exposes the default `quine` graph
+    new V2WebSocketQueryClient(new WebSocket(s"$baseWsUrl/api/v2/graph/quine/query/ws"))
   }
 
 }

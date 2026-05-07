@@ -25,7 +25,7 @@ import com.thatdot.quine.app.model.ingest.RawValuesIngestSrcDef
 import com.thatdot.quine.app.model.ingest.serialization.{ContentDecoder, CypherJsonInputFormat}
 import com.thatdot.quine.app.{IngestTestGraph, ShutdownSwitch, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphService}
+import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, defaultNamespaceId}
 import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
 
 class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
@@ -50,7 +50,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         maxPerSecond,
         decoders,
         label,
-        intoNamespace = None,
+        intoNamespace = defaultNamespaceId,
       ) {
 
     implicit protected val logConfig: LogConfig = LogConfig.permissive

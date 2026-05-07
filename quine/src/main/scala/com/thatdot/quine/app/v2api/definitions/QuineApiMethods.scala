@@ -45,7 +45,6 @@ import com.thatdot.quine.graph.{
   MemberIdx,
   NamespaceId,
   StandingQueryOpsGraph,
-  namespaceToString,
 }
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.persistor.PersistenceAgent
@@ -183,14 +182,14 @@ trait QuineApiMethods
 
   def getNamespaces: Future[List[String]] = Future.apply {
     graph.requiredGraphIsReady()
-    app.getNamespaces.map(namespaceToString).toList
+    app.getNamespaces.map(_.name).toList
   }(ExecutionContext.parasitic)
 
   def createNamespace(namespace: String): Future[Boolean] =
-    app.createNamespace(Some(Symbol(namespace)))
+    app.createNamespace(NamespaceId(namespace))
 
   def deleteNamespace(namespace: String): Future[Boolean] =
-    app.deleteNamespace(Some(Symbol(namespace)))
+    app.deleteNamespace(NamespaceId(namespace))
 
   def listAllStandingQueries: Future[List[ApiStanding.StandingQuery.RegisteredStandingQuery]] = {
     implicit val executor: ExecutionContext = ExecutionContext.parasitic
@@ -200,22 +199,31 @@ trait QuineApiMethods
   }
 
   // --------------------- Standing Query Endpoints ------------------------
-  def listStandingQueries(namespaceId: NamespaceId): Future[List[ApiStanding.StandingQuery.RegisteredStandingQuery]] =
-    graph.requiredGraphIsReadyFuture {
-      app.getStandingQueriesV2(namespaceId)
-    }
+  def listStandingQueries(
+    namespaceId: NamespaceId,
+  ): Future[Either[NotFound, List[ApiStanding.StandingQuery.RegisteredStandingQuery]]] =
+    graph
+      .requiredGraphIsReadyFuture {
+        app.getStandingQueriesV2(namespaceId).map(Right(_))(ExecutionContext.parasitic)
+      }
+      .recoverWith { case _: NamespaceNotFoundException =>
+        Future.successful(Left(NotFound(s"Graph ${namespaceId.name} not found")))
+      }(ExecutionContext.parasitic)
 
   def propagateStandingQuery(
     includeSleeping: Boolean,
     namespaceId: NamespaceId,
     wakeUpParallelism: Int,
-  ): Future[Unit] =
-    graph
-      .standingQueries(namespaceId)
-      .fold(Future.successful[Unit](())) {
-        _.propagateStandingQueries(Some(wakeUpParallelism).filter(_ => includeSleeping))
-          .map(_ => ())(ExecutionContext.parasitic)
-      }
+  ): Future[Either[NotFound, Unit]] =
+    if (!graph.getNamespaces.contains(namespaceId))
+      Future.successful(Left(NotFound(s"Graph ${namespaceId.name} not found")))
+    else
+      graph
+        .standingQueries(namespaceId)
+        .fold(Future.successful[Either[NotFound, Unit]](Right(()))) {
+          _.propagateStandingQueries(Some(wakeUpParallelism).filter(_ => includeSleeping))
+            .map(_ => Right(()))(ExecutionContext.parasitic)
+        }
 
   /** Default timeout for Kafka bootstrap server connectivity checks */
   private val KafkaConnectivityTimeout: FiniteDuration = 5.seconds
@@ -287,25 +295,30 @@ trait QuineApiMethods
     namespaceId: NamespaceId,
     workflow: ApiStanding.StandingQueryResultWorkflow,
   ): Future[Either[ErrSq, Unit]] =
-    graph.requiredGraphIsReadyFuture {
-      implicit val ec: ExecutionContext = graph.shardDispatcherEC
-      validateWorkflow(workflow).flatMap {
-        case Some(errors) =>
-          Future.successful(Left(asBadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(", ")}")))
+    graph
+      .requiredGraphIsReadyFuture {
+        implicit val ec: ExecutionContext = graph.shardDispatcherEC
+        validateWorkflow(workflow).flatMap {
+          case Some(errors) =>
+            Future
+              .successful(Left(asBadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(", ")}")))
 
-        case None =>
-          app
-            .addStandingQueryOutputV2(name, outputName, namespaceId, workflow)
-            .map {
-              case StandingQueryInterfaceV2.Result.Success =>
-                Right(())
-              case StandingQueryInterfaceV2.Result.AlreadyExists(name) =>
-                Left(asBadRequest(s"There is already a Standing Query output named '$name'"))
-              case StandingQueryInterfaceV2.Result.NotFound(queryName) =>
-                Left(asBadRequest(s"No Standing Query named '$queryName' can be found."))
-            }
+          case None =>
+            app
+              .addStandingQueryOutputV2(name, outputName, namespaceId, workflow)
+              .map {
+                case StandingQueryInterfaceV2.Result.Success =>
+                  Right(())
+                case StandingQueryInterfaceV2.Result.AlreadyExists(name) =>
+                  Left(asBadRequest(s"There is already a Standing Query output named '$name'"))
+                case StandingQueryInterfaceV2.Result.NotFound(queryName) =>
+                  Left(asBadRequest(s"No Standing Query named '$queryName' can be found."))
+              }
+        }
       }
-    }
+      .recoverWith { case _: NamespaceNotFoundException =>
+        Future.successful(Left(asNotFound(s"Graph ${namespaceId.name} not found")))
+      }(ExecutionContext.parasitic)
 
   def setSampleQueries(newSampleQueries: Vector[SampleQuery]): Future[Unit] =
     graph.requiredGraphIsReadyFuture(app.setSampleQueries(newSampleQueries.map(ApiToUiStyling.apply)))
@@ -320,14 +333,19 @@ trait QuineApiMethods
     name: String,
     outputName: String,
     namespaceId: NamespaceId,
-  ): Future[Either[NotFound, ApiStanding.StandingQueryResultWorkflow]] = graph.requiredGraphIsReadyFuture {
-    implicit val exc = ExecutionContext.parasitic
-    app
-      .removeStandingQueryOutputV2(name, outputName, namespaceId)
-      .map(
-        _.toRight(NotFound(s"Standing Query, $name, does not exist")),
-      )
-  }
+  ): Future[Either[NotFound, ApiStanding.StandingQueryResultWorkflow]] =
+    graph
+      .requiredGraphIsReadyFuture {
+        implicit val exc = ExecutionContext.parasitic
+        app
+          .removeStandingQueryOutputV2(name, outputName, namespaceId)
+          .map(
+            _.toRight(NotFound(s"Standing Query, $name, does not exist")),
+          )
+      }
+      .recoverWith { case _: NamespaceNotFoundException =>
+        Future.successful(Left(NotFound(s"Graph ${namespaceId.name} not found")))
+      }(ExecutionContext.parasitic)
 
   def createSQ(
     name: String,
@@ -344,7 +362,7 @@ trait QuineApiMethods
             case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
               Future.successful(Left(asBadRequest(s"There is already a Standing Query named '$name'")))
             case StandingQueryInterfaceV2.Result.NotFound(_) =>
-              Future.successful(Left(asBadRequest(s"Namespace not found: $namespaceId")))
+              Future.successful(Left(asBadRequest(s"Graph not found: $namespaceId")))
             case StandingQueryInterfaceV2.Result.Success =>
               app.getStandingQueryV2(name, namespaceId).map {
                 case Some(value) => Right(value)
@@ -357,7 +375,7 @@ trait QuineApiMethods
         }
       }
       .recoverWith { case _: NamespaceNotFoundException =>
-        Future.successful(Left(asNotFound(s"Namespace, $namespaceId, Not Found")))
+        Future.successful(Left(asNotFound(s"Graph, $namespaceId, Not Found")))
       }
   }
 
@@ -370,6 +388,9 @@ trait QuineApiMethods
       .map(
         _.toRight(NotFound(s"Standing Query, $name, does not exist")),
       )(ExecutionContext.parasitic)
+      .recoverWith { case _: NamespaceNotFoundException =>
+        Future.successful(Left(NotFound(s"Graph ${namespaceId.name} not found")))
+      }(ExecutionContext.parasitic)
 
   def getSQ(
     name: String,
@@ -380,6 +401,9 @@ trait QuineApiMethods
       .map(
         _.toRight(NotFound(s"Standing Query, $name, does not exist")),
       )(ExecutionContext.parasitic)
+      .recoverWith { case _: NamespaceNotFoundException =>
+        Future.successful(Left(NotFound(s"Graph ${namespaceId.name} not found")))
+      }(ExecutionContext.parasitic)
 
   // --------------------- Ingest Endpoints ------------------------
 
@@ -485,13 +509,18 @@ trait QuineApiMethods
   def listIngestStreams(
     namespaceId: NamespaceId,
     memberIdx: Option[MemberIdx],
-  ): Future[Seq[ApiIngest.IngestStreamInfoWithName]] =
-    graph.requiredGraphIsReadyFuture {
-      app
-        .getV2IngestStreams(namespaceId, memberIdx.getOrElse(thisMemberIdx))
-        .map(_.map { case (name, ingest) =>
-          IngestToApi.apply(ingest.withName(name))
-        }.toSeq)(ExecutionContext.parasitic)
-    }
+  ): Future[Either[NotFound, Seq[ApiIngest.IngestStreamInfoWithName]]] =
+    if (!graph.getNamespaces.contains(namespaceId))
+      Future.successful(Left(NotFound(s"Graph ${namespaceId.name} not found")))
+    else
+      graph.requiredGraphIsReadyFuture {
+        app
+          .getV2IngestStreams(namespaceId, memberIdx.getOrElse(thisMemberIdx))
+          .map(ingestMap =>
+            Right(ingestMap.map { case (name, ingest) =>
+              IngestToApi.apply(ingest.withName(name))
+            }.toSeq),
+          )(ExecutionContext.parasitic)
+      }
 
 }

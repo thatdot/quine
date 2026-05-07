@@ -11,6 +11,7 @@ import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, Prepared
 import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.cassandra.support._
@@ -31,7 +32,7 @@ case class DomainGraphNodesCreateConfig(
 )
 
 object DomainGraphNodesDefinition
-    extends TableDefinition[DomainGraphNodes, DomainGraphNodesCreateConfig]("domain_graph_nodes", None)
+    extends TableDefinition[DomainGraphNodes, DomainGraphNodesCreateConfig]("domain_graph_nodes", defaultNamespaceId)
     with DomainGraphNodeColumnNames {
   protected val partitionKey: CassandraColumn[DomainGraphNodeId] = domainGraphNodeIdColumn
   protected val clusterKeys = List.empty

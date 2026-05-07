@@ -10,7 +10,7 @@ import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLog
 import com.thatdot.quine.BuildInfo
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.cypher._
-import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.utils.CypherLoggables._
@@ -18,7 +18,7 @@ import com.thatdot.quine.utils.CypherLoggables._
 object Protocol extends LazySafeLogging {
 
   // Namespaces other than the default are not supported in the Bolt Protocol.
-  val namespace: NamespaceId = None
+  val namespace: NamespaceId = defaultNamespaceId
 
   /** Possible states of a BOLT connection.
     */

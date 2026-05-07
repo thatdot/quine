@@ -8,7 +8,7 @@ import com.thatdot.quine.webapp.util.Pot
 
 /** Card displaying cluster host health from the V2 admin status endpoint.
   *
-  * Enterprise-only: the OSS server does not expose `/api/v2/admin/status`,
+  * Enterprise-only: the OSS server does not expose `/api/v2/system/status`,
   * so the card is only mounted by the enterprise landing view.
   */
 object ClusterHealthCard {

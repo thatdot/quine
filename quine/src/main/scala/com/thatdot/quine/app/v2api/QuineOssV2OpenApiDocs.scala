@@ -9,6 +9,7 @@ import sttp.tapir.{EndpointInput, header}
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.v2api.definitions.{CommonParameters, CustomMethod}
 import com.thatdot.quine.app.v2api.endpoints.Visibility
+import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.routes.exts.NamespaceParameter
 
 trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
@@ -27,6 +28,8 @@ trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
     header[Option[Int]]("Quine-Member-Idx").schema(_.hidden(true))
   def namespaceParameter: EndpointInput[Option[NamespaceParameter]] =
     CommonParameters.hiddenValidatingNamespaceQuery
+
+  def graphPrefix: EndpointInput[NamespaceId] = CommonParameters.defaultGraphPrefix
 
   private lazy val allRawEndpoints = V2ApiInfo.endpointSequences(this)
 

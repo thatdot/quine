@@ -7,7 +7,7 @@ import scala.concurrent.ExecutionContext
 import org.apache.pekko.stream.Materializer
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.graph.{NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.util.Log.implicits._
 
 class RocksDbPrimePersistor(
@@ -37,7 +37,7 @@ class RocksDbPrimePersistor(
   private def makeRocksDb(persistenceConfig: PersistenceConfig, path: File): RocksDbPersistor =
     try new RocksDbPersistor(
       path.getAbsolutePath,
-      null,
+      defaultNamespaceId,
       writeAheadLog,
       syncWrites,
       dbOptionProperties,
@@ -54,9 +54,7 @@ class RocksDbPrimePersistor(
         sys.exit(1)
     }
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgentType =
-    namespace match {
-      case Some(name) => makeRocksDb(persistenceConfig, new File(namespacesDir, name.name))
-      case None => makeRocksDb(persistenceConfig, topLevelPath)
-    }
+    if (namespace == defaultNamespaceId) makeRocksDb(persistenceConfig, topLevelPath)
+    else makeRocksDb(persistenceConfig, new File(namespacesDir, namespace.name))
 
 }

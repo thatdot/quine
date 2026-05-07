@@ -18,9 +18,10 @@ import sttp.tapir._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 
-import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
+import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
+import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
-import com.thatdot.api.v2.{ErrorResponse, V2EndpointDefinitions}
+import com.thatdot.api.v2.V2EndpointDefinitions
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.{
@@ -28,10 +29,10 @@ import com.thatdot.quine.app.v2api.definitions.{
   ApplicationApiMethods,
   CommonParameters,
   CustomMethod,
+  GraphScopedEndpoints,
   ParallelismParameter,
 }
-import com.thatdot.quine.graph.{AlgorithmGraph, BaseGraph, CypherOpsGraph, LiteralOpsGraph}
-import com.thatdot.quine.routes.exts.NamespaceParameter
+import com.thatdot.quine.graph.{AlgorithmGraph, BaseGraph, CypherOpsGraph, LiteralOpsGraph, NamespaceId}
 
 object V2AlgorithmEndpointEntities extends StringOps {
 
@@ -137,41 +138,45 @@ object V2AlgorithmEndpointEntities extends StringOps {
 
 }
 
-trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters with ParallelismParameter {
+trait V2AlgorithmEndpoints
+    extends V2EndpointDefinitions
+    with CommonParameters
+    with GraphScopedEndpoints
+    with ParallelismParameter {
   val appMethods: AlgorithmApiMethods with ApplicationApiMethods {
     val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph with AlgorithmGraph
   }
 
   import V2AlgorithmEndpointEntities._
 
-  private val algorithmBase: EndpointBase = rawEndpoint("algorithm")
-    .tag("Graph Algorithms")
-    .description("High-level operations on the graph to support graph AI, ML, and other algorithms.")
-    .errorOut(serverError())
+  private val rawAlgorithm: Endpoint[Unit, NamespaceId, Nothing, Unit, Any] =
+    graphScopedEndpoint("algorithms", "randomWalk")
+      .tag("Graph Algorithms")
+      .description("High-level operations on the graph to support graph AI, ML, and other algorithms.")
 
-  private val algorithmSaveWalksBase: EndpointBase = rawEndpoint("algorithm:saveWalks")
-    .tag("Graph Algorithms")
-    .description("High-level operations on the graph to support graph AI, ML, and other algorithms.")
-    .errorOut(serverError())
+  private val rawAlgorithmSaveWalks: Endpoint[Unit, NamespaceId, Nothing, Unit, Any] =
+    graphScopedEndpoint("algorithms", "randomWalk:saveWalks")
+      .tag("Graph Algorithms")
+      .description("High-level operations on the graph to support graph AI, ML, and other algorithms.")
 
   protected[endpoints] val saveRandomWalks: Endpoint[
     Unit,
     (
+      NamespaceId,
       Option[Int],
       Option[Int],
       Option[String],
       Option[Double],
       Option[Double],
       Option[String],
-      Option[NamespaceParameter],
       Option[AtTime],
       Int,
       TSaveLocation,
     ),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    Either[ServerError, Either[BadRequest, NotFound]],
     Unit,
     Any,
-  ] = algorithmSaveWalksBase
+  ] = rawAlgorithmSaveWalks
     .name("save-random-walks")
     .summary("Save Random Walks")
     .description(
@@ -209,74 +214,81 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
     .in(returnQs)
     .in(inOutQs)
     .in(randomSeedOptQs)
-    .in(namespaceParameter)
     .in(atTimeParameter)
     .in(parallelismParameter)
     .in(jsonOrYamlBody[TSaveLocation](Some(S3Bucket("your-s3-bucket-name", None))))
     .post
-    .errorOutEither(badRequestError("Invalid Query", "Invalid Argument", "Invalid file name"))
+    .errorOut(badRequestError("Invalid Query", "Invalid Argument", "Invalid file name"))
+    .errorOutEither(notFoundError("Graph not found."))
+    .errorOutEither(serverError())
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Accepted))
   protected[endpoints] val saveRandomWalksLogic: (
     (
+      NamespaceId,
       Option[Int],
       Option[Int],
       Option[String],
       Option[Double],
       Option[Double],
       Option[String],
-      Option[NamespaceParameter],
       Option[AtTime],
       Int,
       TSaveLocation,
     ),
-  ) => Future[Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], Unit]] = {
+  ) => Future[Either[Either[ServerError, Either[BadRequest, NotFound]], Unit]] = {
     case (
+          namespaceId,
           walkLengthOpt,
           numWalksOpt,
           queryOpt,
           returnOpt,
           inOutOpt,
           randomSeedOpt,
-          namespace,
           atTimeOpt,
           parallelism,
           saveLocation,
         ) =>
-      recoverServerErrorEitherWithServerError(
-        Future.successful(
-          appMethods
-            .algorithmSaveRandomWalks(
-              walkLengthOpt,
-              numWalksOpt,
-              queryOpt,
-              returnOpt,
-              inOutOpt,
-              randomSeedOpt,
-              namespaceFromParam(namespace),
-              atTimeOpt,
-              parallelism,
-              saveLocation,
-            ),
-        ),
-      )(_ => ())
+      if (!appMethods.graph.getNamespaces.contains(namespaceId))
+        Future.successful(Left(Right(Right(NotFound(s"Graph ${namespaceId.name} not found")))))
+      else
+        recoverServerErrorEitherWithServerError(
+          Future.successful(
+            appMethods
+              .algorithmSaveRandomWalks(
+                walkLengthOpt,
+                numWalksOpt,
+                queryOpt,
+                returnOpt,
+                inOutOpt,
+                randomSeedOpt,
+                namespaceId,
+                atTimeOpt,
+                parallelism,
+                saveLocation,
+              ),
+          ),
+        )(_ => ()).map(_.left.map(_.map(br => Left(br): Either[BadRequest, NotFound])))(
+          scala.concurrent.ExecutionContext.parasitic,
+        )
   }
 
   private def saveRandomWalksServerEndpoint: Full[
     Unit,
     Unit,
     (
+      NamespaceId,
       Option[Int],
       Option[Int],
       Option[String],
       Option[Double],
       Option[Double],
       Option[String],
-      Option[NamespaceParameter],
       Option[AtTime],
       Int,
       TSaveLocation,
     ),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    Either[ServerError, Either[BadRequest, NotFound]],
     Unit,
     Any,
     Future,
@@ -285,78 +297,85 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions with CommonParameters w
   protected[endpoints] val generateRandomWalk: Endpoint[
     Unit,
     (
+      NamespaceId,
       QuineId,
       Option[Int],
       Option[String],
       Option[Double],
       Option[Double],
       Option[String],
-      Option[NamespaceParameter],
       Option[AtTime],
     ),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    Either[ServerError, Either[BadRequest, NotFound]],
     List[String],
     Any,
-  ] = algorithmBase
+  ] = rawAlgorithm
     .name("generate-random-walk")
     .summary("Generate Random Walk")
     .description("Generate a random walk from a node in the graph and return the results.")
     .post
     .in("nodes")
-    .in(CustomMethod.colonVerbPath[QuineId]("id", "generateRandomWalk").description("Node id"))
+    .in(CustomMethod.colonVerbPath[QuineId]("nodeId", "generateRandomWalk").description("Node id"))
     .in(walkLengthQs)
     .in(onNodeQueryQs)
     .in(returnQs)
     .in(inOutQs)
     .in(randomSeedOptQs)
-    .in(namespaceParameter)
     .in(atTimeParameter)
-    .errorOutEither(badRequestError("Invalid Query", "Invalid Argument"))
+    .errorOut(badRequestError("Invalid Query", "Invalid Argument"))
+    .errorOutEither(notFoundError("Graph not found."))
+    .errorOutEither(serverError())
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[List[String]])
 
   protected[endpoints] val generateRandomWalkLogic: (
     (
+      NamespaceId,
       QuineId,
       Option[Int],
       Option[String],
       Option[Double],
       Option[Double],
       Option[String],
-      Option[NamespaceParameter],
       Option[AtTime],
     ),
-  ) => Future[Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], List[String]]] = {
-    case (id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespace, atTimeOpt) =>
-      recoverServerErrorEitherWithServerError(
-        appMethods
-          .algorithmRandomWalk(
-            id,
-            walkLengthOpt,
-            queryOpt,
-            returnOpt,
-            inOutOpt,
-            randomSeedOpt,
-            namespaceFromParam(namespace),
-            atTimeOpt,
-          ),
-      )(identity)
+  ) => Future[Either[Either[ServerError, Either[BadRequest, NotFound]], List[String]]] = {
+    case (namespaceId, id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, atTimeOpt) =>
+      if (!appMethods.graph.getNamespaces.contains(namespaceId))
+        Future.successful(Left(Right(Right(NotFound(s"Graph ${namespaceId.name} not found")))))
+      else
+        recoverServerErrorEitherWithServerError(
+          appMethods
+            .algorithmRandomWalk(
+              id,
+              walkLengthOpt,
+              queryOpt,
+              returnOpt,
+              inOutOpt,
+              randomSeedOpt,
+              namespaceId,
+              atTimeOpt,
+            ),
+        )(identity).map(_.left.map(_.map(br => Left(br): Either[BadRequest, NotFound])))(
+          scala.concurrent.ExecutionContext.parasitic,
+        )
   }
 
   private def generateRandomWalkServerEndpoint: Full[
     Unit,
     Unit,
     (
+      NamespaceId,
       QuineId,
       Option[Int],
       Option[String],
       Option[Double],
       Option[Double],
       Option[String],
-      Option[NamespaceParameter],
       Option[AtTime],
     ),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    Either[ServerError, Either[BadRequest, NotFound]],
     List[String],
     Any,
     Future,

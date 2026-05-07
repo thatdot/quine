@@ -44,7 +44,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     ),
     timeout.duration,
   )
-  val cypherHarnessNamespace: NamespaceId = None // Use default namespace
+  val cypherHarnessNamespace: NamespaceId = defaultNamespaceId
   implicit def materializer: Materializer = graph.materializer
 
   override def afterAll(): Unit =

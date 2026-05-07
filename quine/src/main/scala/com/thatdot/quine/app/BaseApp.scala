@@ -230,21 +230,21 @@ abstract class BaseApp(graph: BaseGraph) {
     * @return Future status according to persistence. Boolean indicates whether a chance was made.
     */
   def createNamespace(namespace: NamespaceId, shouldWriteToPersistor: Boolean = true): Future[Boolean] =
-    Future.failed(new UnsupportedOperationException(s"Namespace management is not supported."))
+    Future.failed(new UnsupportedOperationException(s"Graph namespace management is not supported."))
 
   /** Delete an existing namespace and all the data in it.
     * @param namespace the name of the new namespace to be deleted
     * @return Future status according to persistence. Boolean indicates whether a chance was made.
     */
   def deleteNamespace(namespace: NamespaceId): Future[Boolean] =
-    Future.failed(new UnsupportedOperationException(s"Namespace management is not supported."))
+    Future.failed(new UnsupportedOperationException(s"Graph namespace management is not supported."))
 
   /** Reads the local cache of available namespaces. */
   def getNamespaces: collection.Set[NamespaceId] = graph.getNamespaces
 
   def onlyIfNamespaceExists[A](namespace: NamespaceId)(f: => Future[A]): Future[A] =
     if (getNamespaces.contains(namespace)) f
-    else Future.failed(NamespaceNotFoundException(namespace))
+    else Future.failed(NamespaceNotFoundException(namespace.name))
 
   def noneIfNoNamespace[A](namespace: NamespaceId)(f: => Option[A]): Option[A] =
     if (getNamespaces.contains(namespace)) f
@@ -252,11 +252,11 @@ abstract class BaseApp(graph: BaseGraph) {
 
   def failIfNoNamespace[A](namespace: NamespaceId)(f: => Try[A]): Try[A] =
     if (getNamespaces.contains(namespace)) f
-    else Failure(exceptions.NamespaceNotFoundException(namespace))
+    else Failure(exceptions.NamespaceNotFoundException(namespace.name))
 
   def invalidIfNoNamespace[A](namespace: NamespaceId)(f: => ValidatedNel[BaseError, A]): ValidatedNel[BaseError, A] =
     if (getNamespaces.contains(namespace)) f
-    else invalidNel(exceptions.NamespaceNotFoundException(namespace))
+    else invalidNel(exceptions.NamespaceNotFoundException(namespace.name))
 
   /** Validate that all persisted namespace names conform to the canonical rules
     * (1-16 lowercase alphanumeric characters starting with a letter). If any name is

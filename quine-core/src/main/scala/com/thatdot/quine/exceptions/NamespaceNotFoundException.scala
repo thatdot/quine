@@ -1,6 +1,6 @@
 package com.thatdot.quine.exceptions
 
-import com.thatdot.quine.graph.{NamespaceId, namespaceToString}
+import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.util.QuineError
 
 case class NamespaceNotFoundException(namespace: String)
@@ -8,7 +8,6 @@ case class NamespaceNotFoundException(namespace: String)
     with QuineError
 
 object NamespaceNotFoundException {
-  def apply(namespaceId: NamespaceId): NamespaceNotFoundException = NamespaceNotFoundException(
-    namespaceToString(namespaceId),
-  )
+  def fromNamespaceId(namespaceId: NamespaceId): NamespaceNotFoundException =
+    NamespaceNotFoundException(namespaceId.name)
 }

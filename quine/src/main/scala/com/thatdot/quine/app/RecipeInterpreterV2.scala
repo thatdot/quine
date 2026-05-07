@@ -20,7 +20,7 @@ import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationStat
 import com.thatdot.quine.app.v2api.converters.{ApiToIngest, ApiToUiStyling}
 import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
 import com.thatdot.quine.graph.cypher.{RunningCypherQuery, Value}
-import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId}
+import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.Log.implicits._
@@ -48,7 +48,7 @@ case class RecipeInterpreterV2(
   private var tasks: List[Cancellable] = List.empty
 
   // Recipes always use the default namespace.
-  val namespace: NamespaceId = None
+  val namespace: NamespaceId = defaultNamespaceId
 
   implicit val ec: ExecutionContext = graphService.system.dispatcher
 

@@ -5,8 +5,6 @@ import java.nio.charset.Charset
 import java.nio.file.Path
 import java.time.temporal.TemporalUnit
 
-import scala.annotation.unused
-
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.stream.scaladsl.Source
@@ -37,7 +35,6 @@ import com.thatdot.quine.graph.{
   MultipleValuesStandingQueryPartId,
   StandingQueryId,
   StandingQueryResult,
-  namespaceToString,
 }
 import com.thatdot.quine.model.{DomainGraphBranch, DomainGraphNode, QuineIdProvider, QuineValue}
 
@@ -345,9 +342,8 @@ object Log {
     implicit val LogActorSelection: Loggable[org.apache.pekko.actor.ActorSelection] =
       toStringLoggable[org.apache.pekko.actor.ActorSelection]
 
-    // Option[Symbol] is too generic a type for which to confidently have an implicit instance
-    @unused val LogNamespaceId: AlwaysSafeLoggable[Option[Symbol]] =
-      Loggable.alwaysSafe[com.thatdot.quine.graph.NamespaceId](namespaceToString)
+    implicit val LogNamespaceId: AlwaysSafeLoggable[com.thatdot.quine.graph.NamespaceId] =
+      Loggable.alwaysSafe[com.thatdot.quine.graph.NamespaceId](_.name)
 
     // NB Milliseconds is
     implicit val LogMilliseconds: AlwaysSafeLoggable[com.thatdot.quine.model.Milliseconds] =

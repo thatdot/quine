@@ -19,6 +19,7 @@ import com.thatdot.quine.graph.{
   NodeEvent,
   StandingQueryId,
   StandingQueryInfo,
+  defaultNamespaceId,
 }
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
@@ -31,7 +32,7 @@ import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
   */
 class EmptyPersistor(
   val persistenceConfig: PersistenceConfig = PersistenceConfig(),
-  val namespace: NamespaceId = None,
+  val namespace: NamespaceId = defaultNamespaceId,
 ) extends PersistenceAgent {
 
   override def emptyOfQuineData(): Future[Boolean] =
@@ -115,4 +116,4 @@ class EmptyPersistor(
   def delete(): Future[Unit] = Future.unit
 }
 
-object EmptyPersistor extends EmptyPersistor(PersistenceConfig(), None)
+object EmptyPersistor extends EmptyPersistor(PersistenceConfig(), defaultNamespaceId)

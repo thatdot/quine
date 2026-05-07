@@ -3,7 +3,6 @@ package com.thatdot.quine.graph.cypher
 import org.apache.pekko.NotUsed
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.graph.namespaceToString
 
 /** Packages together all the information about a query that can be run
   *
@@ -80,9 +79,8 @@ final case class CompiledQuery[+Start <: Location](
       .unsafeSource
       .mapMaterializedValue(_ => NotUsed)
       .named(
-        "cypher-query-namespace-" + namespaceToString(
-          initialInterpreter.namespace,
-        ) + "-atTime-" + initialInterpreter.atTime.fold("none")(_.millis.toString),
+        "cypher-query-namespace-" + initialInterpreter.namespace.name + "-atTime-" + initialInterpreter.atTime
+          .fold("none")(_.millis.toString),
       )
 
     RunningCypherQuery(this, resultSource = results)

@@ -16,8 +16,8 @@ object NamespaceParameter {
     Option.when(isValidNamespaceParameter(normalized))(new NamespaceParameter(normalized))
   }
 
-  // INV: this must match Some(com.thatdot.quine.graph.DefaultNamespaceName) -- not accessible from this package
-  val defaultNamespaceParameter: NamespaceParameter = new NamespaceParameter("default")
+  // INV: must match com.thatdot.quine.graph.NamespaceId.quine.name -- not accessible from this package
+  val defaultNamespaceParameter: NamespaceParameter = new NamespaceParameter("quine")
 
   /** No more than 16 characters total, must start with a letter
     *
@@ -31,10 +31,12 @@ object NamespaceParameter {
 
   /** Human-readable error message for an invalid namespace name.
     * Used in 400 Bad Request responses when namespace validation fails.
+    * Wording is product-neutral so the same message can surface from
+    * Quine (graph) and Novelty (model) routes alike.
     */
   def invalidNamespaceMessage(s: String): String =
-    s"'$s' is not a valid namespace. " +
-    "Namespaces must be 1-16 characters, start with a letter, and contain only letters and digits."
+    s"'$s' is not a valid name. " +
+    "Names must be 1-16 characters, start with a letter, and contain only letters and digits."
 
   val namespaceCodec: Codec[String, NamespaceParameter] = new Codec[String, NamespaceParameter] {
     override def decode(s: String): Validated[NamespaceParameter] =

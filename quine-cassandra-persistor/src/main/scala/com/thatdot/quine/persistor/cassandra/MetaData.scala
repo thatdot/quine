@@ -11,6 +11,7 @@ import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.util.T2
 trait MetaDataColumnName {
@@ -28,7 +29,7 @@ case class MetaDataCreateConfig(
 )
 
 object MetaDataDefinition
-    extends TableDefinition[MetaData, MetaDataCreateConfig]("meta_data", None)
+    extends TableDefinition[MetaData, MetaDataCreateConfig]("meta_data", defaultNamespaceId)
     with MetaDataColumnName {
   protected val partitionKey: CassandraColumn[String] = keyColumn
   protected val clusterKeys = List.empty

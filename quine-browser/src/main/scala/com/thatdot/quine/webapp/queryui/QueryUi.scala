@@ -130,10 +130,10 @@ object QueryUi {
     // --- WebSocket client management ---
 
     def namespaceKeyFor(ns: NamespaceParameter): String =
-      Option(ns.namespaceId).filterNot(_ == "default").getOrElse("__default__")
+      if (ns == NamespaceParameter.defaultNamespaceParameter) "__default__" else ns.namespaceId
 
     def namespaceOptFor(ns: NamespaceParameter): Option[String] =
-      Option(ns.namespaceId).filterNot(_ == "default")
+      if (ns == NamespaceParameter.defaultNamespaceParameter) None else Some(ns.namespaceId)
 
     /** Get or create a V1 websocket client for the given namespace.
       * The namespace is passed explicitly to avoid reading stale values from

@@ -18,7 +18,7 @@ import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
 import shapeless.syntax.std.tuple._
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.graph.{NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.{Chunker, JournalsTableDefinition, NoOpChunker, SnapshotsTableDefinition}
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
@@ -161,7 +161,7 @@ class PrimeCassandraPersistor(
   protected val chunker: Chunker = NoOpChunker
 
   override def prepareNamespace(namespace: NamespaceId): Future[Unit] =
-    if (shouldCreateTables || namespace.nonEmpty) {
+    if (shouldCreateTables || namespace != defaultNamespaceId) {
       CassandraPersistorDefinition.createTables(namespace, session, _ => _ => Future.unit)(
         materializer.executionContext,
         logConfig,

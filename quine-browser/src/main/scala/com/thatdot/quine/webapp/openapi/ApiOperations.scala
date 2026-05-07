@@ -32,17 +32,18 @@ object StreamOp {
   */
 class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
 
-  // V2 release URL patterns: lowerCamelCase per AIP-122, `:verb` colon-method per AIP-136.
-  // Note `\{[^}]+\}` matches an OpenAPI path-template parameter like `{name}` or
-  // `{standingQueryName}` — the parameter name varies between OSS and Enterprise definitions.
-  private val v2IngestBase = """/api/v2/ingests/?$""".r
-  private val v2IngestNamed = """/api/v2/ingests/\{[^}]+\}$""".r
-  private val v2IngestPause = """/api/v2/ingests/\{[^}]+\}:pause$""".r
-  private val v2IngestResume = """/api/v2/ingests/\{[^}]+\}:resume$""".r
-  private val v2SqBase = """/api/v2/standingQueries/?$""".r
-  private val v2SqNamed = """/api/v2/standingQueries/\{[^}]+\}$""".r
-  private val v2SqOutputBase = """/api/v2/standingQueries/\{[^}]+\}/outputs/?$""".r
-  private val v2SqOutputNamed = """/api/v2/standingQueries/\{[^}]+\}/outputs/\{[^}]+\}$""".r
+  // The graph segment is `quine` (literal) in OSS and `{graphName}` (path template) in
+  // Enterprise — `[^/]+` matches either. The inner `\{[^}]+\}` captures vary by parameter
+  // name across products.
+  private val graphScope = """/api/v2/graph/[^/]+"""
+  private val v2IngestBase = (graphScope + """/ingests/?$""").r
+  private val v2IngestNamed = (graphScope + """/ingests/\{[^}]+\}$""").r
+  private val v2IngestPause = (graphScope + """/ingests/\{[^}]+\}:pause$""").r
+  private val v2IngestResume = (graphScope + """/ingests/\{[^}]+\}:resume$""").r
+  private val v2SqBase = (graphScope + """/standingQueries/?$""").r
+  private val v2SqNamed = (graphScope + """/standingQueries/\{[^}]+\}$""").r
+  private val v2SqOutputBase = (graphScope + """/standingQueries/\{[^}]+\}/outputs/?$""").r
+  private val v2SqOutputNamed = (graphScope + """/standingQueries/\{[^}]+\}/outputs/\{[^}]+\}$""").r
 
   private def matches(path: String, pattern: scala.util.matching.Regex): Boolean =
     pattern.findFirstIn(path).isDefined
@@ -56,19 +57,23 @@ class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
     findEndpoint(op).flatMap(_.requestBodySchema).map(OpenApiParser.resolveNode(_, spec.schemas))
 
   /** Invoke an action endpoint, substituting `pathValues` into the endpoint's path
-    * parameters in the order they appear. Used by table rows for play/pause/delete
-    * style actions where there's no body to send.
+    * parameters in the order they appear (after any pre-supplied `extraPathParams`).
+    * Used by table rows for play/pause/delete style actions where there's no body to send.
     *
+    * @param extraPathParams pre-supplied path params (e.g., graphName) that are merged
+    *                        before positionally-assigned values
     * Returns `Left` if the endpoint isn't in the spec; otherwise the raw
     * [[HttpClient]] response (still an `Either` for HTTP-level errors).
     */
   def executeAction(
     op: StreamOp,
     pathValues: Seq[String],
+    extraPathParams: Map[String, String] = Map.empty,
   )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
     findEndpoint(op) match {
       case Some(ep) =>
-        val params = ep.pathParams.zip(pathValues).toMap
+        val remainingParams = ep.pathParams.filterNot(extraPathParams.contains)
+        val params = extraPathParams ++ remainingParams.zip(pathValues).toMap
         HttpClient.call(ep, pathParams = params, baseUrl = baseUrl)
       case None =>
         Future.successful(Left(s"Endpoint for $op not found in API spec."))
@@ -78,8 +83,9 @@ class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
   def executeAction(
     op: StreamOp,
     pathValue: String,
+    extraPathParams: Map[String, String],
   )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-    executeAction(op, Seq(pathValue))
+    executeAction(op, Seq(pathValue), extraPathParams)
 
   private def matchesOp(e: ApiEndpoint, op: StreamOp): Boolean = {
     val m = e.method.toUpperCase

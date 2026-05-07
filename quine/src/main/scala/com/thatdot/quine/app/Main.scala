@@ -30,7 +30,8 @@ import com.thatdot.quine.app.config.{
   UseMtls,
   WebServerBindConfig,
 }
-import com.thatdot.quine.app.migrations.QuineMigrations
+import com.thatdot.quine.app.migrations.instances.{DefaultNamespaceRename, MultipleValuesRewrite}
+import com.thatdot.quine.app.migrations.{Migration, QuineMigrations}
 import com.thatdot.quine.app.routes.{HealthAppRoutes, QuineAppRoutes}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.migrations.{MigrationError, MigrationVersion}
@@ -235,30 +236,37 @@ object Main extends App with LazySafeLogging {
         Future.successful(Left(MigrationError.PreviousMigrationTooAdvanced(versionWentBackwards, GoalVersion)))
       case currentVersion =>
         // the found version indicates we need to run at least one migration
-        // TODO figure out which Migration.Apply instances to run based on the needed Migrations and the product
-        //  running the migrations. For now, with one migration, and in Quine's main, we know what to run
-        require(
-          currentVersion == MigrationVersion(0) && GoalVersion == MigrationVersion(1),
-          s"Unexpected migration versions (current: $currentVersion, goal: $GoalVersion)",
-        )
-        val migrationApply = new QuineMigrations.ApplyMultipleValuesRewrite(
-          graph.namespacePersistor,
-          graph.getNamespaces.toSet,
-        )
+        def applyFor(migration: Migration): Migration.Apply[_ <: Migration] = migration match {
+          case MultipleValuesRewrite =>
+            new QuineMigrations.ApplyMultipleValuesRewrite(graph.namespacePersistor, graph.getNamespaces.toSet)
+          case DefaultNamespaceRename =>
+            new QuineMigrations.ApplyDefaultNamespaceRename(graph.namespacePersistor)
+          case other =>
+            throw new IllegalStateException(s"No OSS migration applicator for: $other")
+        }
+
+        val migrationsToRun = allMigrations.filter(m => m.from >= currentVersion && m.from < GoalVersion)
 
         quineApp
           .restoreNonDefaultNamespacesFromMetaData(ec)
           .flatMap { _ =>
-            migrationApply.run()(graph.dispatchers)
+            migrationsToRun.foldLeft(Future.successful(Right(()): Either[MigrationError, Unit])) {
+              (prevFut, migration) =>
+                prevFut.flatMap {
+                  case err @ Left(_) => Future.successful(err)
+                  case Right(()) =>
+                    applyFor(migration)
+                      .run()(graph.dispatchers)
+                      .flatMap {
+                        case err @ Left(_) => Future.successful(err)
+                        case Right(()) =>
+                          MigrationVersion
+                            .set(graph.namespacePersistor, migration.to)
+                            .map(Right(_))(ExecutionContext.parasitic)
+                      }(ExecutionContext.parasitic)
+                }(graph.nodeDispatcherEC)
+            }
           }(graph.nodeDispatcherEC)
-          .flatMap {
-            case err @ Left(_) => Future.successful(err)
-            case Right(_) =>
-              // the migration succeeded, so we can set the version to the `to` version of the migration
-              MigrationVersion
-                .set(graph.namespacePersistor, migrationApply.migration.to)
-                .map(Right(_))(ExecutionContext.parasitic)
-          }(ExecutionContext.parasitic)
     }(graph.nodeDispatcherEC)
   }
   // if there was a migration error, present it to the user then exit

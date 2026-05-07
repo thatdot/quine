@@ -110,7 +110,7 @@ function createBaseHandlers(fixtures: MockApiOptions['fixtures']): MockApiHandle
     'GET /api/v1/admin/metrics': (_req, res) => {
       respondJson(res, metrics);
     },
-    'GET /api/v2/admin/metrics': (_req, res) => {
+    'GET /api/v2/system/metrics': (_req, res) => {
       respondJson(res, metrics);
     },
 
@@ -118,7 +118,7 @@ function createBaseHandlers(fixtures: MockApiOptions['fixtures']): MockApiHandle
     'POST /api/v1/admin/shard-sizes': (_req, res) => {
       respondJson(res, {});
     },
-    'GET /api/v2/admin/shardSizeLimits': (_req, res) => {
+    'GET /api/v2/system/shardSizeLimits': (_req, res) => {
       respondJson(res, {});
     },
 
@@ -146,17 +146,17 @@ function createBaseHandlers(fixtures: MockApiOptions['fixtures']): MockApiHandle
       respondJson(res, sampleEdges);
     },
 
-    // Query endpoints (v2)
-    'POST /api/v2/cypher:query': (_req, res, body) => {
+    // Query endpoints (v2) — graph-scoped under /graph/quine for OSS
+    'POST /api/v2/graph/quine/cypher:query': (_req, res, body) => {
       console.log('[Mock API] Cypher query (v2):', body);
       respondJson(res, sampleQueryResult);
     },
-    'POST /api/v2/cypher:queryNodes': (_req, res, body) => {
+    'POST /api/v2/graph/quine/cypher:queryNodes': (_req, res, body) => {
       console.log('[Mock API] Cypher nodes query (v2):', body);
       console.log(`[Mock API] Returning ${sampleNodes.length} nodes`);
       respondJson(res, sampleNodes);
     },
-    'POST /api/v2/cypher:queryEdges': (_req, res, body) => {
+    'POST /api/v2/graph/quine/cypher:queryEdges': (_req, res, body) => {
       console.log('[Mock API] Cypher edges query (v2):', body);
       console.log(`[Mock API] Returning ${sampleEdges.length} edges`);
       respondJson(res, sampleEdges);

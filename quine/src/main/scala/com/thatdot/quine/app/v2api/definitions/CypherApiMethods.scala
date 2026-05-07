@@ -6,8 +6,10 @@ import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.stream.scaladsl.Sink
 
+import shapeless.{:+:, CNil, Coproduct}
+
 import com.thatdot.api.v2.ErrorDetail
-import com.thatdot.api.v2.ErrorResponse.BadRequest
+import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound}
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.routes.{OSSQueryUiCypherMethods, Util}
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
@@ -25,6 +27,12 @@ trait CypherApiMethods {
   val graph: BaseGraph with CypherOpsGraph with LiteralOpsGraph
   implicit val logConfig: LogConfig
 
+  protected def namespaceTerm: String = "Graph"
+
+  private type CypherErr = BadRequest :+: NotFound :+: CNil
+  private def asBadRequest(br: BadRequest): CypherErr = Coproduct[CypherErr](br)
+  private def asNotFound(msg: String): CypherErr = Coproduct[CypherErr](NotFound(msg))
+
   // The Query UI relies heavily on a couple Cypher endpoints for making queries.
   private def catchCypherException[A](futA: => Future[A]): Future[Either[BadRequest, A]] =
     Future
@@ -32,11 +40,11 @@ trait CypherApiMethods {
       .flatten
       .transform {
         case Success(a) => Success(Right(a))
-        case Failure(qce: CypherException) => Success(Left(BadRequest(qce.pretty, List(ErrorDetail.cypherError))))
+        case Failure(qce: CypherException) =>
+          Success(Left(BadRequest(qce.pretty, List(ErrorDetail.cypherError))))
         case Failure(err) => Failure(err)
       }(ExecutionContext.parasitic)
 
-  //TODO On missing namespace
   //TODO timeout handling
   val cypherMethods = new OSSQueryUiCypherMethods(graph)
 
@@ -45,8 +53,10 @@ trait CypherApiMethods {
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
     query: TCypherQuery,
-  ): Future[Either[BadRequest, TCypherQueryResult]] = {
-    if (query.text.isBlank) return Future.successful(Left(BadRequest("Query text must not be blank")))
+  ): Future[Either[CypherErr, TCypherQueryResult]] = {
+    if (query.text.isBlank) return Future.successful(Left(asBadRequest(BadRequest("Query text must not be blank"))))
+    if (!graph.getNamespaces.contains(namespaceId))
+      return Future.successful(Left(asNotFound(s"$namespaceTerm ${namespaceId.name} not found")))
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
         val (columns, results, isReadOnly, _) =
@@ -60,7 +70,7 @@ trait CypherApiMethods {
           .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)(graph.materializer)
           .map(TCypherQueryResult(columns, _))(ExecutionContext.parasitic)
-      }
+      }.map(_.left.map(asBadRequest))(ExecutionContext.parasitic)
     }
   }
 
@@ -69,8 +79,10 @@ trait CypherApiMethods {
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
     query: TCypherQuery,
-  ): Future[Either[BadRequest, Seq[TUiNode]]] = {
-    if (query.text.isBlank) return Future.successful(Left(BadRequest("Query text must not be blank")))
+  ): Future[Either[CypherErr, Seq[TUiNode]]] = {
+    if (query.text.isBlank) return Future.successful(Left(asBadRequest(BadRequest("Query text must not be blank"))))
+    if (!graph.getNamespaces.contains(namespaceId))
+      return Future.successful(Left(asNotFound(s"$namespaceTerm ${namespaceId.name} not found")))
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
         val (results, isReadOnly, _) =
@@ -84,7 +96,7 @@ trait CypherApiMethods {
           .named(s"cypher-nodes-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .map(node => TUiNode(node.id, node.hostIndex, node.label, node.properties))
           .runWith(Sink.seq)(graph.materializer)
-      }
+      }.map(_.left.map(asBadRequest))(ExecutionContext.parasitic)
     }
   }
 
@@ -93,8 +105,10 @@ trait CypherApiMethods {
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
     query: TCypherQuery,
-  ): Future[Either[BadRequest, Seq[TUiEdge]]] = {
-    if (query.text.isBlank) return Future.successful(Left(BadRequest("Query text must not be blank")))
+  ): Future[Either[CypherErr, Seq[TUiEdge]]] = {
+    if (query.text.isBlank) return Future.successful(Left(asBadRequest(BadRequest("Query text must not be blank"))))
+    if (!graph.getNamespaces.contains(namespaceId))
+      return Future.successful(Left(asNotFound(s"$namespaceTerm ${namespaceId.name} not found")))
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
         val (results, isReadOnly, _) =
@@ -108,7 +122,7 @@ trait CypherApiMethods {
           .named(s"cypher-edges-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .map(edge => TUiEdge(edge.from, edge.edgeType, edge.to, edge.isDirected))
           .runWith(Sink.seq)(graph.materializer)
-      }
+      }.map(_.left.map(asBadRequest))(ExecutionContext.parasitic)
     }
   }
 

@@ -14,10 +14,11 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, oneOfBody, statusCode}
 
-import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
+import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
+import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.V2EndpointDefinitions
 import com.thatdot.api.v2.schema.ThirdPartySchemas.circe.{mapStringJsonSchema, seqSeqJsonSchema}
-import com.thatdot.api.v2.{ErrorResponse, V2EndpointDefinitions}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._
@@ -27,6 +28,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TUiEdge,
   TUiNode,
 }
+import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.routes.exts.NamespaceParameter
 
@@ -83,7 +85,12 @@ object V2CypherEndpointEntities {
   }
 }
 
-trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with CommonParameters with StringOps {
+trait V2CypherEndpoints
+    extends V2EndpointDefinitions
+    with QuineIdCodec
+    with CommonParameters
+    with GraphScopedEndpoints
+    with StringOps {
   val appMethods: ApplicationApiMethods with CypherApiMethods
   val idProvider: QuineIdProvider
 
@@ -95,11 +102,14 @@ trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with Com
 
   private val cypherLanguageUrl = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
 
-  /** Build a base endpoint for a `cypher:<verb>` AIP-136 custom method. */
-  protected[endpoints] def cypherColonVerb(verb: String): EndpointBase =
-    rawEndpoint(s"cypher:$verb")
+  /** Build a base endpoint for a `cypher:<verb>` AIP-136 custom method.
+    * Does not include any error outputs — callers build their own error chain.
+    */
+  protected[endpoints] def cypherColonVerb(
+    verb: String,
+  ): Endpoint[Unit, NamespaceId, Nothing, Unit, Any] =
+    graphScopedEndpoint(s"cypher:$verb")
       .tag("Cypher Query Language")
-      .errorOut(serverError())
 
   private val textEx = TCypherQuery(
     "MATCH (n) RETURN n LIMIT $lim",
@@ -115,8 +125,8 @@ trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with Com
 
   val cypher: Endpoint[
     Unit,
-    (Option[AtTime], FiniteDuration, Option[NamespaceParameter], TCypherQuery),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    (NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery),
+    Either[ServerError, Either[BadRequest, NotFound]],
     TCypherQueryResult,
     Any,
   ] = cypherColonVerb("query")
@@ -125,22 +135,24 @@ trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with Com
     .description(s"Execute an arbitrary [Cypher]($cypherLanguageUrl) query.")
     .in(atTimeParameter)
     .in(timeoutParameter)
-    .in(namespaceParameter)
     .in(queryBody)
     .post
-    .errorOutEither(badRequestError("Invalid Query"))
+    .errorOut(badRequestError("Invalid Query"))
+    .errorOutEither(notFoundError("Graph not found."))
+    .errorOutEither(serverError())
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[TCypherQueryResult])
 
-  private val cypherLogic: ((Option[AtTime], FiniteDuration, Option[NamespaceParameter], TCypherQuery)) => Future[
-    Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], TCypherQueryResult],
-  ] = { case (atTime, timeout, namespace, query) =>
-    recoverServerErrorEitherFlat(
+  private val cypherLogic: ((NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery)) => Future[
+    Either[Either[ServerError, Either[BadRequest, NotFound]], TCypherQueryResult],
+  ] = { case (namespaceId, atTime, timeout, query) =>
+    recoverServerErrorEither(
       appMethods
         .cypherPost(
           atTime,
           timeout,
-          namespaceFromParam(namespace),
+          namespaceId,
           TCypherQuery(query.text, query.parameters),
         ),
     )((inp: TCypherQueryResult) => identity(inp))
@@ -149,8 +161,8 @@ trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with Com
   private val cypherServerEndpoint: Full[
     Unit,
     Unit,
-    (Option[AtTime], FiniteDuration, Option[NamespaceParameter], TCypherQuery),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    (NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery),
+    Either[ServerError, Either[BadRequest, NotFound]],
     TCypherQueryResult,
     Any,
     Future,
@@ -158,8 +170,8 @@ trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with Com
 
   val cypherNodes: Endpoint[
     Unit,
-    (Option[AtTime], FiniteDuration, Option[NamespaceParameter], TCypherQuery),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    (NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery),
+    Either[ServerError, Either[BadRequest, NotFound]],
     Seq[TUiNode],
     Any,
   ] = cypherColonVerb("queryNodes")
@@ -171,35 +183,37 @@ trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with Com
     )
     .in(atTimeParameter)
     .in(timeoutParameter)
-    .in(namespaceParameter)
     .in(queryBody)
     .post
-    .errorOutEither(badRequestError("Invalid Query"))
+    .errorOut(badRequestError("Invalid Query"))
+    .errorOutEither(notFoundError("Graph not found."))
+    .errorOutEither(serverError())
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[Seq[TUiNode]])
 
   val cypherNodesLogic: (
     (
+      NamespaceId,
       Option[Milliseconds],
       FiniteDuration,
-      Option[NamespaceParameter],
       TCypherQuery,
     ),
   ) => Future[Either[
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    Either[ServerError, Either[BadRequest, NotFound]],
     Seq[TUiNode],
-  ]] = { case (atTime, timeout, namespace, query) =>
-    recoverServerErrorEitherFlat(
+  ]] = { case (namespaceId, atTime, timeout, query) =>
+    recoverServerErrorEither(
       appMethods
-        .cypherNodesPost(atTime, timeout, namespaceFromParam(namespace), query),
+        .cypherNodesPost(atTime, timeout, namespaceId, query),
     )((inp: Seq[TUiNode]) => identity(inp))
   }
 
   private val cypherNodesServerEndpoint: Full[
     Unit,
     Unit,
-    (Option[Milliseconds], FiniteDuration, Option[NamespaceParameter], TCypherQuery),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    (NamespaceId, Option[Milliseconds], FiniteDuration, TCypherQuery),
+    Either[ServerError, Either[BadRequest, NotFound]],
     Seq[TUiNode],
     Any,
     Future,
@@ -207,8 +221,8 @@ trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with Com
 
   val cypherEdges: Endpoint[
     Unit,
-    (Option[AtTime], FiniteDuration, Option[NamespaceParameter], TCypherQuery),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    (NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery),
+    Either[ServerError, Either[BadRequest, NotFound]],
     Seq[TUiEdge],
     Any,
   ] = cypherColonVerb("queryEdges")
@@ -220,22 +234,24 @@ trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with Com
     )
     .in(atTimeParameter)
     .in(timeoutParameter)
-    .in(namespaceParameter)
     .in(queryBody)
     .post
-    .errorOutEither(badRequestError("Invalid Query"))
+    .errorOut(badRequestError("Invalid Query"))
+    .errorOutEither(notFoundError("Graph not found."))
+    .errorOutEither(serverError())
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[Seq[TUiEdge]])
 
-  val cypherEdgesLogic: ((Option[AtTime], FiniteDuration, Option[NamespaceParameter], TCypherQuery)) => Future[
-    Either[Either[ErrorResponse.ServerError, ErrorResponse.BadRequest], Seq[TUiEdge]],
-  ] = { case (atTime, timeout, namespace, query) =>
-    recoverServerErrorEitherFlat(
+  val cypherEdgesLogic: ((NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery)) => Future[
+    Either[Either[ServerError, Either[BadRequest, NotFound]], Seq[TUiEdge]],
+  ] = { case (namespaceId, atTime, timeout, query) =>
+    recoverServerErrorEither(
       appMethods
         .cypherEdgesPost(
           atTime,
           timeout,
-          namespaceFromParam(namespace),
+          namespaceId,
           TCypherQuery(query.text, query.parameters),
         ),
     )((inp: Seq[TUiEdge]) => identity(inp))
@@ -244,8 +260,8 @@ trait V2CypherEndpoints extends V2EndpointDefinitions with QuineIdCodec with Com
   private val cypherEdgesServerEndpoint: Full[
     Unit,
     Unit,
-    (Option[Milliseconds], FiniteDuration, Option[NamespaceParameter], TCypherQuery),
-    Either[ErrorResponse.ServerError, ErrorResponse.BadRequest],
+    (NamespaceId, Option[Milliseconds], FiniteDuration, TCypherQuery),
+    Either[ServerError, Either[BadRequest, NotFound]],
     Seq[TUiEdge],
     Any,
     Future,

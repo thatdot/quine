@@ -3,7 +3,7 @@ package com.thatdot.quine.app.migrations
 import scala.concurrent.{ExecutionContext, Future}
 
 import com.thatdot.common.logging.Log._
-import com.thatdot.quine.app.migrations.instances.MultipleValuesRewrite
+import com.thatdot.quine.app.migrations.instances.{DefaultNamespaceRename, MultipleValuesRewrite}
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryPattern}
 import com.thatdot.quine.migrations.MigrationError
 import com.thatdot.quine.persistor.cassandra.{CassandraPersistor, StandingQueryStatesDefinition}
@@ -66,6 +66,19 @@ object QuineMigrations {
       }
     }
   }
+
+  /** OSS no-op: OSS cannot have user-created namespaces, and the default namespace storage
+    * is already unprefixed — no rename needed.
+    */
+  class ApplyDefaultNamespaceRename(val persistor: PrimePersistor)
+      extends Migration.Apply[DefaultNamespaceRename.type] {
+    val migration = DefaultNamespaceRename
+
+    def run()(implicit
+      ecs: ComputeAndBlockingExecutionContext,
+    ): Future[Either[MigrationError, Unit]] = Future.successful(Right(()))
+  }
+
   object ApplyMultipleValuesRewrite {
 
     private[this] def anyMultipleValuesQueriesRegistered(persistor: PrimePersistor)(implicit

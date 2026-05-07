@@ -24,7 +24,7 @@ import com.thatdot.quine.app.model.transformation.polyglot
 import com.thatdot.quine.app.model.transformation.polyglot.langauges.JavaScriptTransformation
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.exceptions.{DuplicateIngestException, NamespaceNotFoundException}
-import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId, namespaceToString}
+import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.util.{BaseError, SwitchMode}
@@ -164,10 +164,10 @@ trait IngestStreamState {
     ingestStreams.get(intoNamespace) match {
       // TODO Note for review comparison: v1 version fails silently here.
       // TODO Also, shouldn't this just add the namespace if it's not found?
-      case None => invalidNel(NamespaceNotFoundException(intoNamespace))
+      case None => invalidNel(NamespaceNotFoundException(intoNamespace.name))
       // Ingest already exists.
       case Some(ingests) if ingests.contains(name) =>
-        invalidNel(DuplicateIngestException(name, Some(namespaceToString(intoNamespace))))
+        invalidNel(DuplicateIngestException(name, Some(intoNamespace.name)))
       case Some(ingests) =>
         val (initialValveSwitchMode, initialStatus) =
           determineSwitchModeAndStatus(previousStatus, shouldResumeRestoredIngests)

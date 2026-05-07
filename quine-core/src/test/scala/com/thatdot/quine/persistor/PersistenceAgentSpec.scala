@@ -32,9 +32,6 @@ import com.thatdot.quine.graph.{
   StandingQueryId,
   StandingQueryInfo,
   StandingQueryPattern,
-  defaultNamespaceId,
-  namespaceFromString,
-  namespaceToString,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineValue}
@@ -72,15 +69,10 @@ abstract class PersistenceAgentSpec
   def persistor: PrimePersistor
 
   // main namespace used for tests
-  val testNamespace: NamespaceId = namespaceFromString("persistenceSpec")
+  val testNamespace: NamespaceId = NamespaceId("persistencespec")
   // alternate namespaces used for tests specifically about namespace isolation / interop
-  val altNamespace1: NamespaceId = namespaceFromString("persistenceSpec1")
-  val altNamespace2: NamespaceId = namespaceFromString("persistenceSpec2")
-
-  // default NamespaceIds -- `defaultNamespacedNamed` relies on breaking the `NamespaceId` abstraction
-  // and should be rejected by the persistence layer
-  val defaultNamespaceNamed: NamespaceId = Some(Symbol(namespaceToString(defaultNamespaceId)))
-  val defaultNamespaceUnnamed: NamespaceId = defaultNamespaceId
+  val altNamespace1: NamespaceId = NamespaceId("persistencespec1")
+  val altNamespace2: NamespaceId = NamespaceId("persistencespec2")
 
   // initialized in beforeAll
   final var namespacedPersistor: NamespacedPersistenceAgent = _
@@ -1172,17 +1164,6 @@ abstract class PersistenceAgentSpec
       }
     }
 
-  }
-  describe("Default namespace") {
-    // resolution of Some("default") to None is handled by routes/apps, and should not reach the persistence agent.
-    it(
-      s"should only be able to resolve the default namespace as $defaultNamespaceUnnamed and not $defaultNamespaceNamed",
-    ) {
-      // Have to create the default namespace before using it:
-      persistor.initializeOnce
-      persistor(defaultNamespaceNamed) should not be defined
-      persistor(defaultNamespaceUnnamed) shouldBe defined
-    }
   }
 }
 object PersistenceAgentSpec extends should.Matchers {

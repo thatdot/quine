@@ -86,7 +86,12 @@ trait ErrorResponses extends Endpoints with V2QuerySchemas with JsonEntitiesFrom
 }
 
 trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with ErrorResponses with StatusCodes {
-  final protected val v2ApiBase: Path[Unit] = path / "api" / "v2"
+
+  implicit private lazy val v2NamespaceSegment: Segment[NamespaceParameter] =
+    stringSegment.xmapWithCodec(NamespaceParameter.namespaceCodec)
+
+  private val graphScopedV2Base: Path[NamespaceParameter] =
+    path / "api" / "v2" / "graph" / segment[NamespaceParameter]("graphName")
 
   final type V2QueryInputs[A] = (AtTime, Option[FiniteDuration], NamespaceParameter, A)
 
@@ -112,10 +117,23 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with ErrorRespon
     UiEdge(decodedFromId, v2Edge.edgeType, decodedToId, v2Edge.isDirected)
   }
 
+  /** Reorders the path-then-query tuple to match the existing [[V2QueryInputs]] shape so
+    * browser callers don't have to change.
+    */
+  private def v2QueryInputs[A](
+    url: Url[(NamespaceParameter, AtTime, Option[FiniteDuration])],
+    entity: RequestEntity[A],
+  ): Request[V2QueryInputs[A]] =
+    post(url, entity).xmap[V2QueryInputs[A]] { case (ns, atTime, timeout, body) =>
+      (atTime, timeout, ns, body)
+    } { case (atTime, timeout, ns, body) =>
+      (ns, atTime, timeout, body)
+    }
+
   val cypherPostV2: Endpoint[V2QueryInputs[CypherQuery], Either[ClientErrors, Option[CypherQueryResult]]] =
     endpoint(
-      request = post(
-        url = v2ApiBase / "cypher:query" /? (atTime & reqTimeout & namespace),
+      request = v2QueryInputs(
+        url = graphScopedV2Base / "cypher:query" /? (atTime & reqTimeout),
         entity = jsonOrYamlRequest[CypherQuery]
           .orElse(textRequest)
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
@@ -126,8 +144,8 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with ErrorRespon
 
   val cypherNodesPostV2: Endpoint[V2QueryInputs[CypherQuery], Either[ClientErrors, Option[Seq[UiNode[Id]]]]] =
     endpoint(
-      request = post(
-        url = v2ApiBase / "cypher:queryNodes" /? (atTime & reqTimeout & namespace),
+      request = v2QueryInputs(
+        url = graphScopedV2Base / "cypher:queryNodes" /? (atTime & reqTimeout),
         entity = jsonOrYamlRequest[CypherQuery]
           .orElse(textRequest)
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
@@ -145,8 +163,8 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with ErrorRespon
 
   val cypherEdgesPostV2: Endpoint[V2QueryInputs[CypherQuery], Either[ClientErrors, Option[Seq[UiEdge[Id]]]]] =
     endpoint(
-      request = post(
-        url = v2ApiBase / "cypher:queryEdges" /? (atTime & reqTimeout & namespace),
+      request = v2QueryInputs(
+        url = graphScopedV2Base / "cypher:queryEdges" /? (atTime & reqTimeout),
         entity = jsonOrYamlRequest[CypherQuery]
           .orElse(textRequest)
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),

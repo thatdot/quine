@@ -13,6 +13,7 @@ import com.thatdot.quine.app.model.ingest2.source.IngestBounds
 import com.thatdot.quine.app.model.ingest2.sources.NumberIteratorSource
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.streamedCypherValues
 
@@ -22,7 +23,7 @@ class DelimitedSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterA
   implicit val ec: ExecutionContext = actorSystem.getDispatcher
   val meter: IngestMeter =
     IngestMetered.ingestMeter(
-      None,
+      defaultNamespaceId,
       "test",
       HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
     )

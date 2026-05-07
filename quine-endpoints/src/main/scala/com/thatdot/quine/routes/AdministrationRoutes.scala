@@ -218,9 +218,9 @@ trait AdministrationRoutes
                 |
                 |Counters
                 |
-                | - `node.edge-counts.*`: Histogram-style summaries of edges per node
-                | - `node.property-counts.*`: Histogram-style summaries of properties per node
-                | - `shard.*.sleep-counters`: Count of nodes managed by a shard that have gone through various lifecycle
+                | - `quine.node.edge-counts.*`: Histogram-style summaries of edges per node
+                | - `quine.node.property-counts.*`: Histogram-style summaries of properties per node
+                | - `quine.shard.*.sleep-counters`: Count of nodes managed by a shard that have gone through various lifecycle
                 |   states. These can be used to estimate the number of awake nodes.
                 |
                 |Timers

@@ -29,7 +29,6 @@ import com.thatdot.quine.graph.{
   NodeEvent,
   StandingQueryId,
   StandingQueryInfo,
-  namespaceToString,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.cassandra.support.{CassandraStatementSettings, CassandraTable, TableDefinition}
@@ -201,7 +200,7 @@ abstract class CassandraPersistor(
         case Success(_) => ()
         case Failure(e) =>
           logger.error(
-            log"Error deleting rows in namespace ${Safe(namespaceToString(namespace))} from standing query states table for ${standingQuery}"
+            log"Error deleting rows in namespace ${Safe(namespace.name)} from standing query states table for ${standingQuery}"
             withException e,
           )
       }(materializer.executionContext)

@@ -19,7 +19,7 @@ import io.circe.{Decoder, Encoder}
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.cypher.CypherException
-import com.thatdot.quine.graph.{GraphNotReadyException, NamespaceId, defaultNamespaceId, namespaceFromString}
+import com.thatdot.quine.graph.{GraphNotReadyException, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.gremlin.QuineGremlinException
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.{
@@ -327,7 +327,7 @@ trait WebSocketQueryProtocolServer
     query.directive { _ =>
       extractRequest { req =>
         val nsOpt = req.uri.query().get("namespace")
-        val namespaceId = nsOpt.map(namespaceFromString).getOrElse(defaultNamespaceId)
+        val namespaceId = nsOpt.map(NamespaceId(_)).getOrElse(defaultNamespaceId)
         handleWebSocketMessages(queryProtocol(namespaceId).named("ui-query-protocol-websocket"))
       }
     }

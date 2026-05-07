@@ -20,6 +20,7 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities._
+import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
 
@@ -162,7 +163,7 @@ object V2AdministrationEndpointEntities {
 
 }
 
-trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with StringOps {
+trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with GraphScopedEndpoints with StringOps {
 
   implicit lazy val graphHashCodeSchema: Schema[TGraphHashCode] =
     Schema
@@ -184,9 +185,9 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
   implicit lazy val tMetricsReportSchema: Schema[TMetricsReport] = Schema.derived
   implicit lazy val tShardInMemoryLimitSchema: Schema[TShardInMemoryLimit] = Schema.derived
 
-  def adminBase(path: String): EndpointBase = rawEndpoint("admin")
+  def adminBase(path: String): EndpointBase = rawEndpoint("system")
     .in(path)
-    .tag("Administration")
+    .tag("System Administration")
     .errorOut(serverError())
 
   protected[endpoints] val systemInfo: Endpoint[Unit, Unit, ServerError, TQuineInfo, Any] =
@@ -235,8 +236,10 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
     configE.serverLogic[Future](configLogic)
 
   protected[endpoints] val graphHashCode
-    : Endpoint[Unit, (Option[AtTime], Option[NamespaceParameter]), ServerError, TGraphHashCode, Any] =
-    adminBase("graphHashCode")
+    : Endpoint[Unit, (NamespaceId, Option[AtTime]), ServerError, TGraphHashCode, Any] =
+    graphScopedEndpoint("hashCode")
+      .tag("System Administration")
+      .errorOut(serverError())
       .description(
         "Generate a hash of the state of the graph at the provided timestamp.\n\n" +
         """This is done by materializing readonly/historical versions of all nodes at a particular timestamp and
@@ -248,21 +251,20 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
       .name("get-graph-hashcode")
       .summary("Graph Hashcode")
       .in(atTimeParameter)
-      .in(namespaceParameter)
       .get
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[TGraphHashCode])
 
-  protected[endpoints] val graphHashCodeLogic: ((Option[AtTime], Option[NamespaceParameter])) => Future[
+  protected[endpoints] val graphHashCodeLogic: ((NamespaceId, Option[AtTime])) => Future[
     Either[ServerError, TGraphHashCode],
-  ] = { case (atime, ns) =>
-    recoverServerError(appMethods.graphHashCode(atime, namespaceFromParam(ns)))((inp: TGraphHashCode) => inp)
+  ] = { case (namespaceId, atime) =>
+    recoverServerError(appMethods.graphHashCode(atime, namespaceId))((inp: TGraphHashCode) => inp)
   }
 
   private val graphHashCodeServerEndpoint: Full[
     Unit,
     Unit,
-    (Option[AtTime], Option[NamespaceParameter]),
+    (NamespaceId, Option[AtTime]),
     ServerError,
     TGraphHashCode,
     Any,
@@ -346,8 +348,8 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
   ] = readiness.serverLogic[Future](readinessLogic)
 
   protected[endpoints] val gracefulShutdown: Endpoint[Unit, Unit, ServerError, Unit, Any] =
-    rawEndpoint("admin:shutdown")
-      .tag("Administration")
+    rawEndpoint("system:shutdown")
+      .tag("System Administration")
       .errorOut(serverError())
       .name("initiate-shutdown")
       .summary("Graceful Shutdown")
@@ -392,9 +394,9 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Str
           |
           |Counters
           |
-          | - `node.edge-counts.*`: Histogram-style summaries of edges per node
-          | - `node.property-counts.*`: Histogram-style summaries of properties per node
-          | - `shard.*.sleep-counters`: Count of nodes managed by a shard that have gone through various lifecycle
+          | - `quine.node.edge-counts.*`: Histogram-style summaries of edges per node
+          | - `quine.node.property-counts.*`: Histogram-style summaries of properties per node
+          | - `quine.shard.*.sleep-counters`: Count of nodes managed by a shard that have gone through various lifecycle
           |   states. These can be used to estimate the number of awake nodes.
           |
           |Timers

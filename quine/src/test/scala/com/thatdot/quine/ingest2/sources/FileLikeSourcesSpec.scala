@@ -24,6 +24,7 @@ import com.thatdot.quine.app.model.ingest2.sources.DEFAULT_MAXIMUM_LINE_SIZE
 import com.thatdot.quine.app.model.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.graph.cypher.{Expr, Value}
+import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.{
   buildDecodedSource,
@@ -81,7 +82,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
   ): TestResult = {
     val src = srcFromString(sample).via(ContentDecoder.encoderFlow(contentDecoders))
     val meter = IngestMetered.ingestMeter(
-      None,
+      defaultNamespaceId,
       randomString(),
       HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
     )

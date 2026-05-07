@@ -208,7 +208,7 @@ object V2ApiTypes {
       } yield V2ClusterOperationStatus(members, spares, targetSize)
   }
 
-  /** Subset of the running config JSON exposed by `GET /api/v2/admin/config`.
+  /** Subset of the running config JSON exposed by `GET /api/v2/system/config`.
     * We only extract the persistor store type (e.g. "cassandra", "rocksdb") and leave the
     * rest untouched since the full config is a dynamic JSON blob.
     * @see [[public/quine/src/main/scala/com/thatdot/quine/app/v2api/endpoints/V2QuineAdministrationEndpoints.scala]] (configE)

@@ -9,6 +9,6 @@ package object instances {
 
   /** Registry of all migrations, in order.
     */
-  val all: Seq[Migration] = Seq(MultipleValuesRewrite)
+  val all: Seq[Migration] = Seq(MultipleValuesRewrite, DefaultNamespaceRename)
   require(all.zipWithIndex.forall { case (m, i) => m.from.version == i }, "Migrations must be contiguous and in-order")
 }

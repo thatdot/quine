@@ -57,10 +57,11 @@ class EndpointValidationSpec
   import IngestGenerators.Gens.{kafka => kafkaGen, kinesis => kinesisGen}
 
   val baseUrl = "/api/v2"
+  val graphBaseUrl: String = s"$baseUrl/graph/quine"
 
   "A kinesis ingest with illegal iterator type" should "fail with 400" in {
     forAll(kinesisGen, arbQuineIngestConfiguration.arbitrary) { (kinesis, ingest) =>
-      val url = s"$baseUrl/ingests"
+      val url = s"$graphBaseUrl/ingests"
       val kinesisIngest = kinesis.copy(
         iteratorType = IteratorType.AfterSequenceNumber("ignore"),
         numRetries = 3, //TODO java.lang.IllegalArgumentException: maxAttempts must be positive
@@ -85,7 +86,7 @@ class EndpointValidationSpec
 
   "A kinesis ingest with invalid numRetries" should "fail with 400" in {
     forAll(Gen.chooseNum(Int.MinValue, 0)) { badRetries =>
-      val url = s"$baseUrl/ingests"
+      val url = s"$graphBaseUrl/ingests"
       val kinesisIngest = Api.IngestSource.Kinesis(
         format = Api.IngestFormat.StreamingFormat.Json,
         streamName = "test-stream",
@@ -110,7 +111,7 @@ class EndpointValidationSpec
 
   "A kafka ingest with unrecognized properties" should "fail with 400" in {
     forAll(kafkaGen, arbQuineIngestConfiguration.arbitrary) { (kafka, ingest) =>
-      val url = s"$baseUrl/ingests"
+      val url = s"$graphBaseUrl/ingests"
       val kafkaIngest: Api.IngestSource.Kafka = kafka.copy(kafkaProperties =
         Map(
           "Unrecognized.property.name" -> "anything",
@@ -128,7 +129,7 @@ class EndpointValidationSpec
   }
 
   "A kinesis ingest with no explicit region" should "not return 500" in {
-    val url = s"$baseUrl/ingests"
+    val url = s"$graphBaseUrl/ingests"
     val kinesisIngest = Api.IngestSource.Kinesis(
       format = Api.IngestFormat.StreamingFormat.Json,
       streamName = "test-stream",
@@ -159,8 +160,8 @@ class EndpointValidationSpec
     HttpRequest(HttpMethods.GET, "/api/v2/openapi.json") ~> routes ~> check {
       status.intValue() shouldEqual 200
       val body = entityAs[String]
-      body should include(""""/api/v2/cypher:query"""")
-      body should include(""""/api/v2/ingests/{name}:pause"""")
+      body should include(""""/api/v2/graph/quine/cypher:query"""")
+      body should include(""""/api/v2/graph/quine/ingests/{ingestName}:pause"""")
       // Synthetic marker should never appear in the served spec.
       body should not include "__colonVerb__"
     }
@@ -171,7 +172,7 @@ class EndpointValidationSpec
     HttpRequest(HttpMethods.GET, "/openapi.json") ~> routes ~> check {
       status.intValue() shouldEqual 200
       val body = entityAs[String]
-      body should include(""""/api/v2/cypher:query"""")
+      body should include(""""/api/v2/graph/quine/cypher:query"""")
     }
   }
 }

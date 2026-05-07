@@ -17,7 +17,7 @@ import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.v2api.OssApiMethods
 import com.thatdot.quine.app.v2api.definitions.{CommonParameters, TapirRoutes}
 import com.thatdot.quine.app.v2api.endpoints.V2QuineAdministrationEndpoints
-import com.thatdot.quine.graph.GraphService
+import com.thatdot.quine.graph.{GraphService, NamespaceId}
 import com.thatdot.quine.routes.exts.NamespaceParameter
 
 /** Health endpoint routes for Quine
@@ -65,6 +65,8 @@ class HealthAppRoutes(
 
   override def namespaceParameter: EndpointInput[Option[NamespaceParameter]] =
     CommonParameters.hiddenValidatingNamespaceQuery
+
+  override def graphPrefix: EndpointInput[NamespaceId] = CommonParameters.defaultGraphPrefix
 
   override lazy val staticFilesRoute: Route = reject
 

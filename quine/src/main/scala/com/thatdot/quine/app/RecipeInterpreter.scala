@@ -20,7 +20,7 @@ import com.thatdot.quine.app.RecipeInterpreter.RecipeState
 import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStoreV1}
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.cypher.{RunningCypherQuery, Value}
-import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId}
+import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log.implicits._
 object RecipeInterpreter {
@@ -46,7 +46,7 @@ case class RecipeInterpreter(
   private var tasks: List[Cancellable] = List.empty
 
   // Recipes always use the default namespace.
-  val namespace: NamespaceId = None
+  val namespace: NamespaceId = defaultNamespaceId
 
   /** Cancel all the tasks, returning true if any task cancel returns true. */
   override def cancel(): Boolean = tasks.foldLeft(false)((a, b) => b.cancel() || a)

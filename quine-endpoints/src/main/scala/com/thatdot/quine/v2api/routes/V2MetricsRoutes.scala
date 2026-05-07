@@ -6,13 +6,13 @@ import com.thatdot.quine.routes._
 
 trait V2MetricsRoutes extends AdministrationRoutes with V2QuerySchemas {
 
-  final protected val v2Admin: Path[Unit] = path / "api" / "v2" / "admin"
+  final protected val v2System: Path[Unit] = path / "api" / "v2" / "system"
 
   protected val v2MetricsTag: Tag = Tag("Administration V2")
 
   val metricsV2: Endpoint[Unit, Either[ClientErrors, Option[MetricsReport]]] =
     endpoint(
-      request = get(v2Admin / "metrics"),
+      request = get(v2System / "metrics"),
       response = customBadRequest("runtime error accessing metrics")
         .orElse(wheneverFound(ok(jsonResponse[MetricsReport]))),
     )
@@ -28,7 +28,7 @@ trait V2MetricsRoutes extends AdministrationRoutes with V2QuerySchemas {
 
     endpoint(
       request = get(
-        url = v2Admin / "shardSizeLimits",
+        url = v2System / "shardSizeLimits",
       ),
       response = customBadRequest("runtime error updating shard sizes")
         .orElse(wheneverFound(ok(jsonResponse[Map[Int, ShardInMemoryLimit]]))),

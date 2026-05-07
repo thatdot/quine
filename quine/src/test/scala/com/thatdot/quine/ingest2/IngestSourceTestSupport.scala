@@ -19,6 +19,7 @@ import com.thatdot.quine.app.model.ingest2.sources.FileSource.decodedSourceFromF
 import com.thatdot.quine.app.model.ingest2.sources.{DEFAULT_CHARSET, DEFAULT_MAXIMUM_LINE_SIZE}
 import com.thatdot.quine.app.routes.IngestMetered
 import com.thatdot.quine.graph.cypher.Value
+import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 
 object IngestSourceTestSupport {
@@ -48,7 +49,7 @@ object IngestSourceTestSupport {
     contentDecoders: Seq[ContentDecoder] = Seq(),
   ): DecodedSource = {
     val meter = IngestMetered.ingestMeter(
-      None,
+      defaultNamespaceId,
       randomString(),
       HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
     )

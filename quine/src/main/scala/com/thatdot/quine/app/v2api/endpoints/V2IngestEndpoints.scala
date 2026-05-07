@@ -17,10 +17,11 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.Oss
 import com.thatdot.quine.app.v2api.definitions.{
   CommonParameters,
   CustomMethod,
+  GraphScopedEndpoints,
   QuineApiMethods,
   V2QuineEndpointDefinitions,
 }
-import com.thatdot.quine.routes.exts.NamespaceParameter
+import com.thatdot.quine.graph.NamespaceId
 
 object V2IngestEndpoints {
 
@@ -38,17 +39,21 @@ object V2IngestEndpoints {
       )
 }
 
-trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters with StringOps {
+trait V2IngestEndpoints
+    extends V2QuineEndpointDefinitions
+    with CommonParameters
+    with GraphScopedEndpoints
+    with StringOps {
   import com.thatdot.quine.app.v2api.converters.ApiToIngest.OssConversions._
 
   val appMethods: QuineApiMethods
 
   val ingestStreamNameElement: EndpointInput.PathCapture[String] =
-    path[String]("name").description("Ingest Stream name.").example("numbers")
+    path[String]("ingestName").description("Ingest Stream name.").example("numbers")
 
   private def ingestStreamNameWithVerb(verb: String): EndpointInput.PathCapture[String] =
     CustomMethod
-      .colonVerbPath[String]("name", verb)
+      .colonVerbPath[String]("ingestName", verb)
       .description("Ingest Stream name.")
       .example("numbers")
 
@@ -58,12 +63,12 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
   // 3. Adjusting the `.errorOut*` calls or their dependencies to accommodate the new expected ERROR_OUTPUT
   // 4. Inline `rawIngest` implementation into `ingestBase`
   // But, FYI, step 3 is not immediately straightforward
-  protected[endpoints] val rawIngest: Endpoint[Unit, Unit, Nothing, Unit, Any] =
-    rawEndpoint("ingests")
+  protected[endpoints] val rawIngest: Endpoint[Unit, NamespaceId, Nothing, Unit, Any] =
+    graphScopedEndpoint("ingests")
       .tag("Ingest Streams")
       .description("Sources of streaming data ingested into the graph interpreter.")
 
-  private val ingestBase: EndpointBase = rawIngest.errorOut(serverError())
+  private val ingestBase: Endpoint[Unit, NamespaceId, ServerError, Unit, Any] = rawIngest.errorOut(serverError())
 
   private val ingestExample = ApiIngest.Oss.QuineIngestConfiguration(
     name = "numbers",
@@ -76,10 +81,10 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
   implicit private val ec: ExecutionContext = ExecutionContext.parasitic
 
   protected[endpoints] val createIngest
-    : Endpoint[Unit, (Option[NamespaceParameter], Option[Int], Oss.QuineIngestConfiguration), Either[
+    : Endpoint[Unit, (NamespaceId, Option[Int], Oss.QuineIngestConfiguration), Either[
       ServerError,
-      BadRequest,
-    ], (ApiIngest.IngestStreamInfoWithName, Option[String]), Any] = ingestBase
+      Either[BadRequest, NotFound],
+    ], (ApiIngest.IngestStreamInfoWithName, Option[String]), Any] = rawIngest
     .name("create-ingest")
     .summary("Create Ingest Stream")
     .description(
@@ -89,7 +94,6 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
         |and must be created with a unique name. Many Ingest Stream types allow a Cypher query to operate
         |on the event stream data to create nodes and relationships in the graph.""".asOneLine,
     )
-    .in(namespaceParameter)
     .in(memberIdxParameter)
     .in(jsonOrYamlBody[ApiIngest.Oss.QuineIngestConfiguration](Some(ingestExample)))
     .post
@@ -101,29 +105,34 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
         "RFC 7234 Warning header; multiple warnings are comma-separated `199` entries.",
       ),
     )
-    .errorOutEither(
+    .errorOut(
       badRequestError(
         "Ingest Stream with that name already exists.",
         "Ingest Stream creation failed with config errors.",
       ),
     )
+    .errorOutEither(notFoundError("Graph not found."))
+    .errorOutEither(serverError())
+    .mapErrorOut(err => err.swap)(err => err.swap)
 
-  protected[endpoints] val createIngestLogic
-    : ((Option[NamespaceParameter], Option[Int], Oss.QuineIngestConfiguration)) => Future[
-      Either[Either[ServerError, BadRequest], (ApiIngest.IngestStreamInfoWithName, Option[String])],
-    ] = { case (ns, memberIdx, ingestStreamConfig) =>
-    recoverServerErrorEitherWithServerError {
-      appMethods.createIngestStream(ingestStreamConfig.name, namespaceFromParam(ns), ingestStreamConfig, memberIdx)
-    } { case (stream, warnings) =>
-      (stream, V2IngestEndpoints.warningHeader(warnings))
-    }
+  protected[endpoints] val createIngestLogic: ((NamespaceId, Option[Int], Oss.QuineIngestConfiguration)) => Future[
+    Either[Either[ServerError, Either[BadRequest, NotFound]], (ApiIngest.IngestStreamInfoWithName, Option[String])],
+  ] = { case (namespaceId, memberIdx, ingestStreamConfig) =>
+    if (!appMethods.graph.getNamespaces.contains(namespaceId))
+      Future.successful(Left(Right(Right(NotFound(s"Graph ${namespaceId.name} not found")))))
+    else
+      recoverServerErrorEitherWithServerError {
+        appMethods.createIngestStream(ingestStreamConfig.name, namespaceId, ingestStreamConfig, memberIdx)
+      } { case (stream, warnings) =>
+        (stream, V2IngestEndpoints.warningHeader(warnings))
+      }.map(_.left.map(_.map(br => Left(br): Either[BadRequest, NotFound])))(ExecutionContext.parasitic)
   }
 
   private val createIngestServerEndpoint: Full[
     Unit,
     Unit,
-    (Option[NamespaceParameter], Option[Int], Oss.QuineIngestConfiguration),
-    Either[ServerError, BadRequest],
+    (NamespaceId, Option[Int], Oss.QuineIngestConfiguration),
+    Either[ServerError, Either[BadRequest, NotFound]],
     (ApiIngest.IngestStreamInfoWithName, Option[String]),
     Any,
     Future,
@@ -131,7 +140,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
 
   protected[endpoints] val pauseIngest: Endpoint[
     Unit,
-    (String, Option[NamespaceParameter], Option[Int]),
+    (NamespaceId, String, Option[Int]),
     Either[ServerError, Either[NotFound, BadRequest]],
     ApiIngest.IngestStreamInfoWithName,
     Any,
@@ -140,7 +149,6 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .summary("Pause Ingest Stream")
     .description("Temporarily pause processing new events by the named Ingest Stream.")
     .in(ingestStreamNameWithVerb("pause"))
-    .in(namespaceParameter)
     .in(memberIdxParameter)
     .post
     .errorOut(notFoundError("Ingest Stream with that name does not exist."))
@@ -150,32 +158,35 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[ApiIngest.IngestStreamInfoWithName])
 
-  protected[endpoints] val pauseIngestLogic: ((String, Option[NamespaceParameter], Option[Int])) => Future[
+  protected[endpoints] val pauseIngestLogic: ((NamespaceId, String, Option[Int])) => Future[
     Either[Either[ServerError, Either[NotFound, BadRequest]], ApiIngest.IngestStreamInfoWithName],
-  ] = { case (ingestStreamName, ns, maybeMemberIdx) =>
-    recoverServerErrorEither(
-      appMethods
-        .pauseIngestStream(ingestStreamName, namespaceFromParam(ns), maybeMemberIdx)
-        .map {
-          _.left
-            .map((err: BadRequest) => Coproduct[NotFound :+: BadRequest :+: CNil](err))
-            .flatMap {
-              case None =>
-                Left(
-                  Coproduct[NotFound :+: BadRequest :+: CNil](
-                    NotFound(s"Ingest Stream $ingestStreamName does not exist"),
-                  ),
-                )
-              case Some(streamInfo) => Right(streamInfo)
-            }
-        },
-    )(out => out)
+  ] = { case (namespaceId, ingestStreamName, maybeMemberIdx) =>
+    if (!appMethods.graph.getNamespaces.contains(namespaceId))
+      Future.successful(Left(Right(Left(NotFound(s"Graph ${namespaceId.name} not found")))))
+    else
+      recoverServerErrorEither(
+        appMethods
+          .pauseIngestStream(ingestStreamName, namespaceId, maybeMemberIdx)
+          .map {
+            _.left
+              .map((err: BadRequest) => Coproduct[NotFound :+: BadRequest :+: CNil](err))
+              .flatMap {
+                case None =>
+                  Left(
+                    Coproduct[NotFound :+: BadRequest :+: CNil](
+                      NotFound(s"Ingest Stream $ingestStreamName does not exist"),
+                    ),
+                  )
+                case Some(streamInfo) => Right(streamInfo)
+              }
+          },
+      )(out => out)
   }
 
   private val pauseIngestServerEndpoint: Full[
     Unit,
     Unit,
-    (String, Option[NamespaceParameter], Option[Int]),
+    (NamespaceId, String, Option[Int]),
     Either[ServerError, Either[NotFound, BadRequest]],
     ApiIngest.IngestStreamInfoWithName,
     Any,
@@ -184,7 +195,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
 
   protected[endpoints] val unpauseIngest: Endpoint[
     Unit,
-    (String, Option[NamespaceParameter], Option[Int]),
+    (NamespaceId, String, Option[Int]),
     Either[ServerError, Either[NotFound, BadRequest]],
     ApiIngest.IngestStreamInfoWithName,
     Any,
@@ -193,7 +204,6 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .summary("Resume Ingest Stream")
     .description("Resume processing new events by the named Ingest Stream.")
     .in(ingestStreamNameWithVerb("resume"))
-    .in(namespaceParameter)
     .in(memberIdxParameter)
     .post
     .errorOut(notFoundError("Ingest Stream with that name does not exist."))
@@ -203,30 +213,33 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[ApiIngest.IngestStreamInfoWithName])
 
-  protected[endpoints] val unpauseIngestLogic: ((String, Option[NamespaceParameter], Option[Int])) => Future[
+  protected[endpoints] val unpauseIngestLogic: ((NamespaceId, String, Option[Int])) => Future[
     Either[Either[ServerError, Either[NotFound, BadRequest]], ApiIngest.IngestStreamInfoWithName],
-  ] = { case (ingestStreamName, ns, maybeMemberIdx) =>
-    recoverServerErrorEither(
-      appMethods.unpauseIngestStream(ingestStreamName, namespaceFromParam(ns), maybeMemberIdx).map {
-        _.left
-          .map((err: BadRequest) => Coproduct[NotFound :+: BadRequest :+: CNil](err))
-          .flatMap {
-            case None =>
-              Left(
-                Coproduct[NotFound :+: BadRequest :+: CNil](
-                  NotFound(s"Ingest Stream $ingestStreamName does not exist."),
-                ),
-              )
-            case Some(streamInfo) => Right(streamInfo)
-          }
-      },
-    )((id: ApiIngest.IngestStreamInfoWithName) => id)
+  ] = { case (namespaceId, ingestStreamName, maybeMemberIdx) =>
+    if (!appMethods.graph.getNamespaces.contains(namespaceId))
+      Future.successful(Left(Right(Left(NotFound(s"Graph ${namespaceId.name} not found")))))
+    else
+      recoverServerErrorEither(
+        appMethods.unpauseIngestStream(ingestStreamName, namespaceId, maybeMemberIdx).map {
+          _.left
+            .map((err: BadRequest) => Coproduct[NotFound :+: BadRequest :+: CNil](err))
+            .flatMap {
+              case None =>
+                Left(
+                  Coproduct[NotFound :+: BadRequest :+: CNil](
+                    NotFound(s"Ingest Stream $ingestStreamName does not exist."),
+                  ),
+                )
+              case Some(streamInfo) => Right(streamInfo)
+            }
+        },
+      )((id: ApiIngest.IngestStreamInfoWithName) => id)
   }
 
   private val unpauseIngestServerEndpoint: Full[
     Unit,
     Unit,
-    (String, Option[NamespaceParameter], Option[Int]),
+    (NamespaceId, String, Option[Int]),
     Either[ServerError, Either[NotFound, BadRequest]],
     ApiIngest.IngestStreamInfoWithName,
     Any,
@@ -235,7 +248,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
 
   protected[endpoints] val deleteIngest: Endpoint[
     Unit,
-    (String, Option[NamespaceParameter], Option[Int]),
+    (NamespaceId, String, Option[Int]),
     Either[ServerError, NotFound],
     ApiIngest.IngestStreamInfoWithName,
     Any,
@@ -248,34 +261,37 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
         |information once the operation is complete.""".asOneLine,
     )
     .in(ingestStreamNameElement)
-    .in(namespaceParameter)
     .in(memberIdxParameter)
     .delete
     .errorOutEither(notFoundError("Ingest Stream with that name does not exist."))
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[ApiIngest.IngestStreamInfoWithName])
 
-  protected[endpoints] val deleteIngestLogic: ((String, Option[NamespaceParameter], Option[Int])) => Future[
+  protected[endpoints] val deleteIngestLogic: ((NamespaceId, String, Option[Int])) => Future[
     Either[Either[ServerError, NotFound], ApiIngest.IngestStreamInfoWithName],
-  ] = { case (ingestStreamName, ns, memberIdx) =>
-    recoverServerErrorEither(
-      appMethods
-        .deleteIngestStream(ingestStreamName, namespaceFromParam(ns), memberIdx)
-        .map {
-          case None => Left(Coproduct[NotFound :+: CNil](NotFound(s"Ingest Stream $ingestStreamName does not exist")))
-          case Some(streamInfo) => Right(streamInfo)
-        },
-    )((inp: ApiIngest.IngestStreamInfoWithName) => inp)
+  ] = { case (namespaceId, ingestStreamName, memberIdx) =>
+    if (!appMethods.graph.getNamespaces.contains(namespaceId))
+      Future.successful(Left(Right(NotFound(s"Graph ${namespaceId.name} not found"))))
+    else
+      recoverServerErrorEither(
+        appMethods
+          .deleteIngestStream(ingestStreamName, namespaceId, memberIdx)
+          .map {
+            case None =>
+              Left(Coproduct[NotFound :+: CNil](NotFound(s"Ingest Stream $ingestStreamName does not exist")))
+            case Some(streamInfo) => Right(streamInfo)
+          },
+      )((inp: ApiIngest.IngestStreamInfoWithName) => inp)
   }
 
-  private val deleteIngestServerEndpoint: Full[Unit, Unit, (String, Option[NamespaceParameter], Option[Int]), Either[
+  private val deleteIngestServerEndpoint: Full[Unit, Unit, (NamespaceId, String, Option[Int]), Either[
     ServerError,
     NotFound,
   ], ApiIngest.IngestStreamInfoWithName, Any, Future] = deleteIngest.serverLogic[Future](deleteIngestLogic)
 
   protected[endpoints] val ingestStatus: Endpoint[
     Unit,
-    (String, Option[NamespaceParameter], Option[Int]),
+    (NamespaceId, String, Option[Int]),
     Either[ServerError, NotFound],
     ApiIngest.IngestStreamInfoWithName,
     Any,
@@ -284,33 +300,35 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
     .summary("Ingest Stream Status")
     .description("Return the Ingest Stream status information for a configured Ingest Stream by name.")
     .in(ingestStreamNameElement)
-    .in(namespaceParameter)
     .in(memberIdxParameter)
     .get
     .errorOutEither(notFoundError("Ingest Stream with that name does not exist."))
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[ApiIngest.IngestStreamInfoWithName])
 
-  protected[endpoints] val ingestStatusLogic: ((String, Option[NamespaceParameter], Option[Int])) => Future[
+  protected[endpoints] val ingestStatusLogic: ((NamespaceId, String, Option[Int])) => Future[
     Either[Either[ServerError, NotFound], ApiIngest.IngestStreamInfoWithName],
-  ] = { case (ingestStreamName, ns, memberIdx) =>
-    recoverServerErrorEither(
-      appMethods
-        .ingestStreamStatus(ingestStreamName, namespaceFromParam(ns), memberIdx)
-        .map {
-          case None =>
-            Left(
-              Coproduct[NotFound :+: CNil](NotFound(s"Ingest Stream $ingestStreamName does not exist")),
-            )
-          case Some(streamInfo) => Right(streamInfo)
-        },
-    )((inp: ApiIngest.IngestStreamInfoWithName) => identity(inp))
+  ] = { case (namespaceId, ingestStreamName, memberIdx) =>
+    if (!appMethods.graph.getNamespaces.contains(namespaceId))
+      Future.successful(Left(Right(NotFound(s"Graph ${namespaceId.name} not found"))))
+    else
+      recoverServerErrorEither(
+        appMethods
+          .ingestStreamStatus(ingestStreamName, namespaceId, memberIdx)
+          .map {
+            case None =>
+              Left(
+                Coproduct[NotFound :+: CNil](NotFound(s"Ingest Stream $ingestStreamName does not exist")),
+              )
+            case Some(streamInfo) => Right(streamInfo)
+          },
+      )((inp: ApiIngest.IngestStreamInfoWithName) => identity(inp))
   }
 
   private val ingestStatusServerEndpoint: Full[
     Unit,
     Unit,
-    (String, Option[NamespaceParameter], Option[Int]),
+    (NamespaceId, String, Option[Int]),
     Either[ServerError, NotFound],
     ApiIngest.IngestStreamInfoWithName,
     Any,
@@ -319,8 +337,8 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
 
   protected[endpoints] val listIngest: Endpoint[
     Unit,
-    (Option[NamespaceParameter], Option[Int]),
-    ServerError,
+    (NamespaceId, Option[Int]),
+    Either[ServerError, NotFound],
     Page[ApiIngest.IngestStreamInfoWithName],
     Any,
   ] =
@@ -334,23 +352,23 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with CommonParameters
         |place per AIP-158 so future server-side paging can be added without a breaking
         |wire change.""".asOneLine,
       )
-      .in(namespaceParameter)
       .in(memberIdxParameter)
       .get
+      .errorOutEither(notFoundError("Graph not found."))
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[Page[ApiIngest.IngestStreamInfoWithName]])
 
-  protected[endpoints] val listIngestLogic: ((Option[NamespaceParameter], Option[Int])) => Future[
-    Either[ServerError, Page[ApiIngest.IngestStreamInfoWithName]],
-  ] = { case (ns, memberIdx) =>
-    recoverServerError(appMethods.listIngestStreams(namespaceFromParam(ns), memberIdx))(Page.of(_))
+  protected[endpoints] val listIngestLogic: ((NamespaceId, Option[Int])) => Future[
+    Either[Either[ServerError, NotFound], Page[ApiIngest.IngestStreamInfoWithName]],
+  ] = { case (namespaceId, memberIdx) =>
+    recoverServerErrorEitherFlat(appMethods.listIngestStreams(namespaceId, memberIdx))(Page.of(_))
   }
 
   private val listIngestServerEndpoint: Full[
     Unit,
     Unit,
-    (Option[NamespaceParameter], Option[Int]),
-    ServerError,
+    (NamespaceId, Option[Int]),
+    Either[ServerError, NotFound],
     Page[ApiIngest.IngestStreamInfoWithName],
     Any,
     Future,

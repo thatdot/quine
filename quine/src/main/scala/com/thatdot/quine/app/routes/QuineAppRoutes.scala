@@ -76,7 +76,7 @@ class QuineAppRoutes(
   override def hostIndex(qid: QuineId): Int = 0
 
   override def namespaceExists(namespace: String): Boolean =
-    graph.getNamespaces.contains(namespaceFromString(namespace))
+    graph.getNamespaces.contains(NamespaceId(namespace))
 
   lazy val staticFilesRoute: Route = {
     Directives.pathEndOrSingleSlash {

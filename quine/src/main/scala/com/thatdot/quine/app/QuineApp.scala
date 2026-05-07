@@ -50,8 +50,6 @@ import com.thatdot.quine.graph.{
   StandingQueryId,
   StandingQueryInfo,
   defaultNamespaceId,
-  namespaceFromString,
-  namespaceToString,
 }
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PrimePersistor, Version}
@@ -185,7 +183,7 @@ final class QuineApp(
         .get(inNamespace)
         .fold(
           Future.successful[StandingQueryInterfaceV2.Result](
-            StandingQueryInterfaceV2.Result.NotFound(namespaceToString(inNamespace)),
+            StandingQueryInterfaceV2.Result.NotFound(inNamespace.name),
           ),
         ) { sqOutputTargets =>
           if (sqOutputTargets.contains(queryName)) {
@@ -1179,7 +1177,7 @@ final class QuineApp(
     getOrDefaultGlobalMetaData(NonDefaultNamespacesKey, List.empty[String])
       .flatMap { nss =>
         validateNamespaceNames(nss)
-        Future.traverse(nss)(n => createNamespace(namespaceFromString(n), shouldWriteToPersistor = false))
+        Future.traverse(nss)(n => createNamespace(NamespaceId(n), shouldWriteToPersistor = false))
       }
       .map(rs => require(rs.forall(identity), "Some namespaces could not be restored from persistence."))
 
@@ -1540,7 +1538,7 @@ object QuineApp {
     */
   def makeNamespaceMetaDataKey(namespace: NamespaceId, basedOnKey: String): String =
     // Example storage keys: "standing_query_outputs-myNamespace" or for default: "standing_query_outputs"
-    basedOnKey + namespace.fold("")(_ => "-" + namespaceToString(namespace))
+    if (namespace == defaultNamespaceId) basedOnKey else basedOnKey + "-" + namespace.name
 
   // the maximum time to allow a configuring API call (e.g., "add ingest query" or "update node appearances") to execute
   final val ConfigApiTimeout: FiniteDuration = 30.seconds

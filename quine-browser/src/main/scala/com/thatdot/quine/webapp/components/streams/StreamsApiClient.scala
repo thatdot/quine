@@ -43,13 +43,20 @@ object StreamsApiClient {
   /** Create a StreamsApiClient from a parsed OpenAPI spec.
     * Internally discovers endpoints via V2 path pattern matching and
     * makes HTTP calls via dom.fetch.
+    *
+    * @param graphName the graph (namespace) to scope operations to. For OSS this is always "quine";
+    *                  for Enterprise it should be the user's selected graph.
     */
-  def apply(parsedSpec: ParsedSpec, baseUrl: String): StreamsApiClient = new Impl(parsedSpec, baseUrl)
+  def apply(parsedSpec: ParsedSpec, baseUrl: String, graphName: String = "quine"): StreamsApiClient =
+    new Impl(parsedSpec, baseUrl, graphName)
 
-  private class Impl(val spec: ParsedSpec, baseUrl: String) extends StreamsApiClient {
+  private class Impl(val spec: ParsedSpec, baseUrl: String, graphName: String) extends StreamsApiClient {
     import com.thatdot.quine.webapp.openapi.{ApiOperationRegistry, HttpClient, StreamOp}
 
     private val registry = new ApiOperationRegistry(spec, baseUrl)
+
+    /** Default path params: provides the graphName for graph-scoped endpoints. */
+    private val defaultPathParams: Map[String, String] = Map("graphName" -> graphName)
 
     def ingestCreateSchema: Option[SchemaNode] = registry.requestSchema(StreamOp.CreateIngest)
     def sqCreateSchema: Option[SchemaNode] = registry.requestSchema(StreamOp.CreateStandingQuery)
@@ -66,13 +73,13 @@ object StreamsApiClient {
       callWithBody(StreamOp.CreateIngest, body)
 
     def deleteIngest(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      registry.executeAction(StreamOp.DeleteIngest, name)
+      registry.executeAction(StreamOp.DeleteIngest, name, defaultPathParams)
 
     def pauseIngest(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      registry.executeAction(StreamOp.PauseIngest, name)
+      registry.executeAction(StreamOp.PauseIngest, name, defaultPathParams)
 
     def resumeIngest(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      registry.executeAction(StreamOp.ResumeIngest, name)
+      registry.executeAction(StreamOp.ResumeIngest, name, defaultPathParams)
 
     def listStandingQueries()(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       callListAndUnwrapItems(StreamOp.ListStandingQueries)
@@ -81,25 +88,27 @@ object StreamsApiClient {
       callWithBody(StreamOp.CreateStandingQuery, body)
 
     def deleteStandingQuery(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      registry.executeAction(StreamOp.DeleteStandingQuery, name)
+      registry.executeAction(StreamOp.DeleteStandingQuery, name, defaultPathParams)
 
     def addOutput(sqName: String, body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.findEndpoint(StreamOp.AddSQOutput) match {
         case Some(ep) =>
-          val params = ep.pathParams.headOption.map(_ -> sqName).toMap
+          val params =
+            defaultPathParams ++ ep.pathParams.filterNot(defaultPathParams.contains).headOption.map(_ -> sqName)
           HttpClient.call(ep, pathParams = params, body = Some(body), baseUrl = baseUrl)
         case None =>
           Future.successful(Left("Add output endpoint not found in API spec."))
       }
 
     def removeOutput(sqName: String, outputName: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      registry.executeAction(StreamOp.RemoveSQOutput, Seq(sqName, outputName))
+      registry.executeAction(StreamOp.RemoveSQOutput, Seq(sqName, outputName), defaultPathParams)
 
     private def callListAndUnwrapItems(
       op: StreamOp,
     )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.findEndpoint(op) match {
-        case Some(ep) => HttpClient.call(ep, baseUrl = baseUrl).map(_.map(HttpClient.unwrapPageItems))
+        case Some(ep) =>
+          HttpClient.call(ep, pathParams = defaultPathParams, baseUrl = baseUrl).map(_.map(HttpClient.unwrapPageItems))
         case None => Future.successful(Left(s"Endpoint for $op not found in API spec."))
       }
 
@@ -108,7 +117,7 @@ object StreamsApiClient {
       body: Json,
     )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.findEndpoint(op) match {
-        case Some(ep) => HttpClient.call(ep, body = Some(body), baseUrl = baseUrl)
+        case Some(ep) => HttpClient.call(ep, pathParams = defaultPathParams, body = Some(body), baseUrl = baseUrl)
         case None => Future.successful(Left(s"Endpoint for $op not found in API spec."))
       }
   }

@@ -58,19 +58,21 @@ final class LandingService(routes: ClientRoutes) {
     metricsF.zip(shardSizesF)
   }
 
+  // OSS endpoints are scoped to the literal `quine` graph. Enterprise's landing page
+  // doesn't surface ingests or standing queries.
   private def fetchIngests(): Future[Seq[V2IngestInfo]] =
-    fetchV2[V2Page[V2IngestInfo]]("api/v2/ingests").map(_.items)
+    fetchV2[V2Page[V2IngestInfo]]("api/v2/graph/quine/ingests").map(_.items)
 
   private def fetchStandingQueries(): Future[Seq[V2StandingQueryInfo]] =
-    fetchV2[V2Page[V2StandingQueryInfo]]("api/v2/standingQueries").map(_.items)
+    fetchV2[V2Page[V2StandingQueryInfo]]("api/v2/graph/quine/standingQueries").map(_.items)
 
   /** Enterprise-only: fetch cluster status (members + hot spares). */
   private def fetchClusterStatus(): Future[V2ServiceStatus] =
-    fetchV2[V2ServiceStatus]("api/v2/admin/status")
+    fetchV2[V2ServiceStatus]("api/v2/system/status")
 
   /** Fetch the running config and extract the persistor store type. */
   private def fetchConfig(): Future[V2QuineConfig] =
-    fetchV2[V2QuineConfig]("api/v2/admin/config")
+    fetchV2[V2QuineConfig]("api/v2/system/config")
 
   /** Fetch from a V2 API endpoint, honoring the same base URL that endpoints4s uses
     * via `ClientRoutes.baseUrlOpt`. When the base URL is set (typically derived by the

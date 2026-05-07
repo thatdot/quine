@@ -21,7 +21,7 @@ import com.thatdot.quine.app.{IngestTestGraph, Metrics}
 import com.thatdot.quine.compiler.{cypher => cyComp}
 import com.thatdot.quine.graph.cypher.RunningCypherQuery
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
-import com.thatdot.quine.graph.{GraphService, MasterStream, cypher}
+import com.thatdot.quine.graph.{GraphService, MasterStream, cypher, defaultNamespaceId}
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.{buildDecodedSource, srcFromString}
 import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.TestLogging._
@@ -47,14 +47,16 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
       val decodedSource =
         buildDecodedSource(srcFromString(rawJson), JsonLinesFormat, IngestBounds(), DEFAULT_MAXIMUM_LINE_SIZE, Seq())
 
-      val ingestQuery = QuineValueIngestQuery.build(graph, "CREATE ($that)", "that", None).get
+      val ingestQuery = QuineValueIngestQuery.build(graph, "CREATE ($that)", "that", defaultNamespaceId).get
 
       val ingestSource = decodedSource.toQuineIngestSource("test", ingestQuery, None, graph)
-      val ingestStream: Source[MasterStream.IngestSrcExecToken, NotUsed] = ingestSource.stream(None, _ => ())
+      val ingestStream: Source[MasterStream.IngestSrcExecToken, NotUsed] =
+        ingestSource.stream(defaultNamespaceId, _ => ())
       ingestStream.runWith(graph.masterStream.ingestCompletionsSink)(graph.materializer)
       Thread.sleep(1000)
 
-      val queryFuture: RunningCypherQuery = cyComp.queryCypherValues("match (n) return count(n.foo)", None)(graph)
+      val queryFuture: RunningCypherQuery =
+        cyComp.queryCypherValues("match (n) return count(n.foo)", defaultNamespaceId)(graph)
       IngestTestGraph.collect(queryFuture.results)(graph.materializer).head shouldEqual Vector(cypher.Expr.Integer(5L))
     }
   }
@@ -64,7 +66,7 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
 
     val meter: IngestMeter =
       IngestMetered.ingestMeter(
-        None,
+        defaultNamespaceId,
         "test",
         HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
       )
@@ -73,14 +75,16 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
       NumberIteratorSource(IngestBounds(0L, Some(1_000_000_000_000L)), meter).decodedSource
 
     val ingestQuery =
-      QuineValueIngestQuery.build(graph, "MATCH (n) WHERE id(n) = idFrom($that) SET n.num = $that", "that", None).get
+      QuineValueIngestQuery
+        .build(graph, "MATCH (n) WHERE id(n) = idFrom($that) SET n.num = $that", "that", defaultNamespaceId)
+        .get
 
     val ingestSource = decodedSource.toQuineIngestSource("test", ingestQuery, None, graph)
     val stats = ingestSource.meter
 
     val ingestStream =
       ingestSource
-        .stream(None, _ => ())
+        .stream(defaultNamespaceId, _ => ())
         .watchTermination()(Keep.right)
         .to(graph.masterStream.ingestCompletionsSink)
 
@@ -114,7 +118,7 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
 
     val meter: IngestMeter =
       IngestMetered.ingestMeter(
-        None,
+        defaultNamespaceId,
         "test",
         HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
       )
@@ -123,14 +127,16 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
       NumberIteratorSource(IngestBounds(0L, Some(1_000_000_000_000L)), meter).decodedSource
 
     val ingestQuery =
-      QuineValueIngestQuery.build(graph, "MATCH (n) WHERE id(n) = idFrom($that) SET n.num = $that", "that", None).get
+      QuineValueIngestQuery
+        .build(graph, "MATCH (n) WHERE id(n) = idFrom($that) SET n.num = $that", "that", defaultNamespaceId)
+        .get
 
     val ingestSource = decodedSource.toQuineIngestSource("test", ingestQuery, None, graph)
     val stats = ingestSource.meter
 
     val ingestStream =
       ingestSource
-        .stream(None, _ => ())
+        .stream(defaultNamespaceId, _ => ())
         .watchTermination()(Keep.right)
         .to(graph.masterStream.ingestCompletionsSink)
 

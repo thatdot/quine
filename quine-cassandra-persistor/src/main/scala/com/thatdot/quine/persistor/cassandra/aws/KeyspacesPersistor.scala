@@ -37,7 +37,7 @@ import software.aws.mcs.auth.SigV4AuthProvider
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.graph.{NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.{
   Chunker,
@@ -256,7 +256,7 @@ class PrimeKeyspacesPersistor(
   protected val chunker: Chunker = new SizeBoundedChunker(maxBatchSize = 30, parallelism = 6, materializer)
 
   override def prepareNamespace(namespace: NamespaceId): Future[Unit] =
-    if (shouldCreateTables || namespace.nonEmpty) {
+    if (shouldCreateTables || namespace != defaultNamespaceId) {
       KeyspacesPersistorDefinition.createTables(namespace, session, verifyTable)(
         materializer.executionContext,
         logConfig,

@@ -11,7 +11,7 @@ import org.scalactic.source.Position
 import org.scalatest.funsuite.AsyncFunSuite
 import org.scalatest.{Assertion, BeforeAndAfterAll}
 
-import com.thatdot.quine.graph.{GraphService, LiteralOpsGraph, NamespaceId, QuineUUIDProvider}
+import com.thatdot.quine.graph.{GraphService, LiteralOpsGraph, NamespaceId, QuineUUIDProvider, defaultNamespaceId}
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 import com.thatdot.quine.util.TestLogging._
@@ -30,7 +30,7 @@ class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfte
     timeout.duration,
   )
   implicit val materializer: Materializer = graph.materializer
-  val gremlinHarnessNamespace: NamespaceId = None // Use default namespace
+  val gremlinHarnessNamespace: NamespaceId = defaultNamespaceId
   val literalOps: graph.LiteralOps = graph.literalOps(gremlinHarnessNamespace)
 
   val gremlin: GremlinQueryRunner = GremlinQueryRunner(graph)

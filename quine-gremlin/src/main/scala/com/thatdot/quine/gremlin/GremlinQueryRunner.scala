@@ -9,7 +9,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId}
+import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineValue}
 
 /** Entry point for running Gremlin queries on Quine.
@@ -64,7 +64,7 @@ final case class GremlinQueryRunner(
   def query(
     queryString: String,
     parameters: Map[Symbol, QuineValue] = Map.empty,
-    namespace: NamespaceId = None,
+    namespace: NamespaceId = defaultNamespaceId,
     atTime: Option[Milliseconds] = None,
   )(implicit logConfig: LogConfig): Source[Any, NotUsed] = {
     val query: Query = parseQuery(new lexer.Scanner(queryString))
@@ -82,7 +82,7 @@ final case class GremlinQueryRunner(
   def queryExpecting[T: ClassTag](
     queryString: String,
     parameters: Map[Symbol, QuineValue] = Map.empty,
-    namespace: NamespaceId = None,
+    namespace: NamespaceId = defaultNamespaceId,
     atTime: Option[Milliseconds] = None,
   )(implicit logConfig: LogConfig): Source[T, NotUsed] = {
     val msg = "Top level query was required by the user to have a different type"

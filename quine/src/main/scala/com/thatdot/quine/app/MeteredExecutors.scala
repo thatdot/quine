@@ -96,7 +96,7 @@ object MeteredExecutors extends LazySafeLogging {
     HostQuineMetrics(
       useEnhancedMetrics,
       Metrics,
-      omitDefaultNamespace = true,
+      omitDefaultNamespace = false,
     ) // INV the metrics instance here matches the one used by the app's Main
 
   }

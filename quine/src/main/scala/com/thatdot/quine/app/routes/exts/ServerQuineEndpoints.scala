@@ -8,7 +8,7 @@ import endpoints4s.{Codec, Invalid, Valid, Validated}
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.graph.{NamespaceId, namespaceFromString}
+import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{EdgeDirection, Milliseconds, QuineIdProvider}
 import com.thatdot.quine.routes.exts.{NamespaceParameter, QuineEndpoints}
 
@@ -79,5 +79,5 @@ trait ServerQuineEndpoints extends QuineEndpoints with endpoints4s.generic.JsonS
     byteStringSchema.xmap[Array[Byte]](_.toArray)(ByteString.apply)
 
   def namespaceFromParam(namespaceParameter: NamespaceParameter): NamespaceId =
-    namespaceFromString(namespaceParameter.namespaceId)
+    NamespaceId(namespaceParameter.namespaceId)
 }

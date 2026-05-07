@@ -22,7 +22,15 @@ import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
 import com.thatdot.quine.app.model.ingest.{ContentDelimitedIngestSrcDef, IngestSrcDef}
 import com.thatdot.quine.app.{IngestTestGraph, QuineAppIngestControl, StdInStream, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Expr
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, LiteralOpsGraph, MasterStream, NamespaceId, idFrom}
+import com.thatdot.quine.graph.{
+  CypherOpsGraph,
+  GraphService,
+  LiteralOpsGraph,
+  MasterStream,
+  NamespaceId,
+  defaultNamespaceId,
+  idFrom,
+}
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
 import com.thatdot.quine.routes.{FileIngestFormat, NumberIteratorIngest, StandardInputIngest}
@@ -36,7 +44,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   implicit val system: ActorSystem = graph.system
   implicit val timeout: Timeout = Timeout(2.seconds)
   implicit val ec: ExecutionContextExecutor = system.dispatcher
-  val namespace: NamespaceId = None // Use default namespace
+  val namespace: NamespaceId = defaultNamespaceId
   implicit val noOpProtobufCache: ProtobufSchemaCache.Blocking.type = ProtobufSchemaCache.Blocking: @nowarn
 
   override def afterAll(): Unit = Await.result(graph.shutdown(), 3.seconds)
@@ -62,7 +70,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         None,
         None,
         "local test",
-        None,
+        defaultNamespaceId,
       )
 
     val probe: TestSubscriber.Probe[MasterStream.IngestSrcExecToken] =
@@ -172,7 +180,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     val maybeIngestSrcDef = IngestSrcDef
       .createIngestSrcDef(
         "number input",
-        None,
+        defaultNamespaceId,
         NumberIteratorIngest(
           FileIngestFormat.CypherLine(
             """MATCH (x) WHERE id(x) = idFrom(toInteger($that)) SET x.value = toInteger($that)""",
@@ -222,7 +230,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     val maybeIngestSrcDef = IngestSrcDef
       .createIngestSrcDef(
         "stdin",
-        None,
+        defaultNamespaceId,
         StandardInputIngest(
           FileIngestFormat.CypherLine(s"""MATCH (x) WHERE id(x) = idFrom("stdin", $$that) SET x.value = $$that"""),
           "UTF-8",

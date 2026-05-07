@@ -17,7 +17,7 @@ import com.datastax.oss.driver.api.querybuilder.schema.CreateTable
 import com.datastax.oss.driver.api.querybuilder.select.SelectFrom
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.graph.{NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.persistor.cassandra.Chunker
 
 object TableDefinition {
@@ -40,7 +40,7 @@ abstract class TableDefinition[A, CreateConfig](unqualifiedTableName: String, na
   /** The name of the table defined by this class.
     * This does include the namespace, but not the keyspace.
     */
-  val name: String = namespace.fold("")(_.name + "_") + unqualifiedTableName
+  val name: String = (if (namespace == defaultNamespaceId) "" else namespace.name + "_") + unqualifiedTableName
   protected val tableName: CqlIdentifier =
     CqlIdentifier.fromCql(name)
 

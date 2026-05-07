@@ -17,6 +17,7 @@ import com.thatdot.quine.app.model.ingest2.sources.withKillSwitches
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.{Metrics, ShutdownSwitch}
 import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.{randomString, streamedCypherValues}
 
@@ -28,7 +29,7 @@ case class TestSource(values: Iterable[TestFrame]) {
 
   val source: Source[TestFrame, ShutdownSwitch] = withKillSwitches(Source.fromIterator(() => values.iterator))
   val meter: IngestMeter = IngestMetered.ingestMeter(
-    None,
+    defaultNamespaceId,
     randomString(),
     HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
   )

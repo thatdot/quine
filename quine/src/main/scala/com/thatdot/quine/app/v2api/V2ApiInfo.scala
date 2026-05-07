@@ -34,7 +34,7 @@ object V2ApiInfo {
     * The order here (sorted alphabetically) controls sidebar group ordering in Stoplight Elements.
     */
   val globalTags: List[Tag] = List(
-    "Administration",
+    "System Administration",
     "Ingest Streams",
     "Standing Queries",
     "Graph Algorithms",

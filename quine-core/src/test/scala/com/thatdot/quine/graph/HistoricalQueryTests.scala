@@ -46,7 +46,7 @@ abstract class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll
     timeout.duration,
   )
   implicit val ec: ExecutionContextExecutor = graph.system.dispatcher
-  val namespace: NamespaceId = None // Use default namespace
+  val namespace: NamespaceId = defaultNamespaceId
 
   var t0: Milliseconds = Milliseconds(0L)
   var t1: Milliseconds = Milliseconds(0L)

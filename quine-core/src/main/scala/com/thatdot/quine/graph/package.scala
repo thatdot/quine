@@ -16,19 +16,7 @@ import com.thatdot.quine.model.{
 
 package object graph {
 
-  /** The default namespace is referred to with `None`. It is a special case because of backwards compatibility. */
-  type NamespaceId = Option[Symbol]
-
-  private val DefaultNamespaceName: String = "default"
-
-  val defaultNamespaceId: NamespaceId = None
-
-  def namespaceFromString(namespaceString: String): NamespaceId = namespaceString.toLowerCase match {
-    case DefaultNamespaceName => None
-    case name => Some(Symbol(name))
-  }
-
-  def namespaceToString(namespace: NamespaceId): String = namespace.fold(DefaultNamespaceName)(_.name)
+  val defaultNamespaceId: NamespaceId = NamespaceId.quine
 
   /** Produce a `QuineId` from a series of arbitrary values. This is meant as the single canonical (user-facing) way to
     * turn values into a `QuineId` by means of consistent hashing. It can be used many places, but the intent is that
