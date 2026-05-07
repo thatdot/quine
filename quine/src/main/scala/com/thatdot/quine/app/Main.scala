@@ -296,7 +296,7 @@ object Main extends App with LazySafeLogging {
   // When unset, those surfaces fall back to relative paths / request-derived values, which work
   // correctly behind LoadBalancers, ingress, port-forwarding, etc.
   val advertisedBaseUrl: Option[URL] =
-    config.webserverAdvertise.map(_.url(config.webserver.protocol))
+    config.webserverAdvertise.map(advertise => advertise.url(advertise.resolveScheme(config.webserver.protocol)))
 
   var recipeInterpreterTask: Option[Cancellable] = recipe.map {
     case Recipe.V1(r) =>

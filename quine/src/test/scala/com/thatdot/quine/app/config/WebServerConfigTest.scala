@@ -61,4 +61,37 @@ class WebServerConfigTest extends AnyFunSuite with should.Matchers {
     val httpsUrl = config.url("https")
     httpsUrl.toString shouldEqual "https://example.com:8080"
   }
+
+  test("resolveScheme: useTls = Some(true) returns https regardless of fallback") {
+    val config = WebserverAdvertiseConfig(
+      address = Host("example.com"),
+      port = Port(8080),
+      useTls = Some(true),
+    )
+
+    config.resolveScheme("http") shouldEqual "https"
+    config.resolveScheme("https") shouldEqual "https"
+  }
+
+  test("resolveScheme: useTls = Some(false) returns http regardless of fallback") {
+    val config = WebserverAdvertiseConfig(
+      address = Host("example.com"),
+      port = Port(8080),
+      useTls = Some(false),
+    )
+
+    config.resolveScheme("http") shouldEqual "http"
+    config.resolveScheme("https") shouldEqual "http"
+  }
+
+  test("resolveScheme: useTls = None falls back to the bind protocol") {
+    val config = WebserverAdvertiseConfig(
+      address = Host("example.com"),
+      port = Port(8080),
+      useTls = None,
+    )
+
+    config.resolveScheme("http") shouldEqual "http"
+    config.resolveScheme("https") shouldEqual "https"
+  }
 }

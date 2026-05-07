@@ -81,9 +81,20 @@ final case class WebserverAdvertiseConfig(
   address: Host,
   port: Port,
   path: Option[String] = None,
+  useTls: Option[Boolean] = None,
 ) {
   def url(protocol: String): URL =
     new URL(protocol, address.asString, port.asInt, path.getOrElse(""))
+
+  /** Resolves the scheme for the advertised URL.
+    *
+    * When `useTls` is configured, it overrides whatever the bind side reports — needed
+    * for deployments behind TLS-terminating ingresses where Quine binds plain HTTP but
+    * is externally reached over HTTPS. When `useTls` is unset, falls back to the bind
+    * protocol so existing deployments are unaffected.
+    */
+  def resolveScheme(fallback: String): String =
+    useTls.fold(fallback)(if (_) "https" else "http")
 }
 
 object WebserverAdvertiseConfig extends PureconfigInstances {
