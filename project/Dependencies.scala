@@ -48,7 +48,7 @@ object Dependencies {
   // On update, check whether net.jpountz.lz4:lz4 exclusion in quine-mapdb-persistor is removable
   val mapDbV = "3.1.0"
   val metricsInfluxdbV = "1.1.0"
-  val msgPackV = "0.9.11"
+  val msgPackV = "0.9.12"
   val openApiCirceYamlV = "0.11.10"
   val openCypherV = "9.2.3"
   val parboiledV = "1.4.1"
