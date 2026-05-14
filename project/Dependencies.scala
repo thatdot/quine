@@ -111,7 +111,7 @@ object Dependencies {
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
   // Parent: AWS SDK (awsSdkV) via transitive Netty dependency
-  val nettyOverrideV = "4.1.132.Final" // CVE-2026-33871
+  val nettyOverrideV = "4.1.133.Final" // CVE-2026-41417
 
   // Parent: io.github.hakky54:ayza-for-pem (ayzaV)
   val bouncycastleOverrideV = "1.84" // CVE-2026-5598
