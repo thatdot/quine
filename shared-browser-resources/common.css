@@ -1,0 +1,546 @@
+/* ==========================================================================
+   thatDot Brand Color System
+   Source: thatDot Brand Style Guide 2025-04-02
+   ========================================================================== */
+
+:root {
+  /* Primary brand colors */
+  --thatdot-dark-blue: #0a295b;    /* All type, structural lines, unfilled shapes, header/footer */
+  --thatdot-brite-blue: #1658b7;   /* Highlighted text (H1/H2), attention-grabbing elements */
+  --thatdot-gray: #acacc9;         /* Design variety elements */
+  --thatdot-green: #00fa9a;        /* CTA buttons, important navigation only — extremely rare */
+
+  /* Background gradient (light grays for section/page backgrounds) */
+  --thatdot-gradient-start: #e2e2ed;
+  --thatdot-gradient-end: #f4f4f9;
+
+  /* Brand color extensions — unofficial */
+  --thatdot-gradient-middle: #ebebf3;
+
+  /* Layout tokens */
+  --topbar-height: 4rem;
+
+  /* Primary typeface — Inter with system-font fallback. Overrides CoreUI's
+     default. Keep the "Inter Variable, Inter, system-ui, ..., sans-serif"
+     prefix in sync with the inline `.fullsize` font-family in the served HTML
+     (quine-ui.html and dev/index.html); the emoji fonts are CSS-only since
+     the pre-bundle window renders no emoji UI. */
+  --cui-font-sans-serif: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+
+  /* Map brand colors to CoreUI taxonomy */
+  --cui-body-bg: var(--thatdot-gradient-end);
+  --cui-body-color: var(--thatdot-dark-blue);
+  --cui-emphasis-color: var(--thatdot-dark-blue);
+  --cui-tertiary-color: var(--thatdot-gray);
+  --cui-tertiary-bg: var(--thatdot-gradient-start);
+  --cui-secondary-color: var(--thatdot-gray);
+  --cui-primary: var(--thatdot-dark-blue);
+
+  /*** Color Variable Selection Guidance
+
+  When choosing color values, follow this priority order:
+
+  Priority 1: CoreUI taxonomy variables (--cui-body-bg, --cui-body-color, --cui-primary, etc.)
+    - Use when the variable's semantic name accurately describes the use case
+    - Example: Use --cui-body-bg for backgrounds, --cui-body-color for text
+    - DO NOT use if the name would mischaracterize the purpose
+      (e.g., don't use --cui-body-bg for a foreground/text color)
+
+  Priority 2: CoreUI scoped variables (--cui-sidebar-bg, --cui-sidebar-color, etc.)
+    - Use for component-specific overrides that chain to deeper taxonomy variables
+
+  Priority 3: Brand theme variables (--thatdot-dark-blue, --thatdot-gradient-end, etc.)
+    - Use when Priority 1 or 2 variables would mischaracterize the purpose
+    - Example: Use --thatdot-gradient-end for light text on dark backgrounds
+      (since --cui-body-bg implies "background" but we need a foreground color)
+    - Also use for brand-specific expressions like gradients
+
+  Priority 4: Raw hex/rgb/hsl values
+    - Last resort for purely functional colors with no semantic meaning
+    - Acceptable for: shadows, overlays, canvas background
+    - Examples: rgba(0,0,0,0.5) for overlay dimming, white for graph canvas
+
+  ***/
+}
+
+/* ==========================================================================
+   Component Styles
+   ========================================================================== */
+
+.gray-clickable {
+  background-color: var(--cui-body-bg);
+  transition:background-color .15s ease-in-out
+}
+.gray-clickable:hover {
+  background-color: var(--cui-tertiary-bg);
+  cursor: pointer;
+}
+.gray-clickable:hover:active {
+  background-color: var(--thatdot-gray);
+}
+
+pre.wrap {
+  white-space: pre-wrap;
+  /* Equivalents for older browsers: */
+  white-space: -moz-pre-wrap;
+  white-space: -pre-wrap;
+  white-space: -o-pre-wrap;
+  word-wrap: break-word;
+}
+
+.message-bar {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  box-sizing: content-box;
+}
+.message-bar-resize-handle {
+  background-color: var(--cui-emphasis-color);
+}
+
+/* Query result sentiment colors */
+.query-result-error {
+  background-color: var(--cui-danger-bg-subtle);
+}
+.query-result-success {
+  background-color: var(--cui-success-bg-subtle);
+}
+.query-result-empty {
+  background-color: var(--cui-secondary-bg-subtle);
+}
+
+.message-bar-button {
+  cursor: pointer;
+  font-size: 2em;
+  position: absolute;
+  right: 0.4em; /* matches message bar padding */
+}
+
+.nav-bar > * {
+  height: var(--topbar-height);
+}
+.query-input {
+  flex-grow: 4;
+  display: flex;
+  box-sizing: border-box;
+  padding: 0.5rem 0;
+}
+.query-input-input {
+  flex-grow: 1;
+  padding: .2em;
+  margin: 0 0 0 .4em;
+  font-family: inherit;
+  font-size: 1.2em;
+  border: none;
+  float: left;
+  color: black;
+  background-color: white;
+  border-radius: .2em 0 0 .2em;
+}
+.query-input-input::placeholder {
+  font-family: inherit;
+}
+.query-input-button {
+  float: left;
+  padding: .2em .6em;
+  margin: 0 .4em 0 0;
+  font-family: inherit;
+  font-size: 1.2em;
+  border: none;
+  border-radius: 0 .2em .2em 0;
+}
+.sample-query-dropdown {
+  position: absolute;
+  top: 100%;
+  left: .4em;
+  right: .4em;
+  background-color: var(--cui-body-bg);
+  border: 1px solid var(--cui-primary);
+  border-radius: .2em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+  max-height: 16em;
+  overflow-y: auto;
+}
+.sample-query-item {
+  padding: 0.5em 0.75em;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: .1em;
+}
+.sample-query-item.highlighted {
+  background-color: var(--cui-tertiary-bg);
+}
+.sample-query-item:first-child {
+  border-radius: .2em .2em 0 0;
+}
+.sample-query-item:last-child {
+  border-radius: 0 0 .2em .2em;
+}
+.sample-query-name {
+  color: var(--cui-body-color);
+}
+.sample-query-text {
+  font-size: .85em;
+  color: var(--cui-secondary-color);
+}
+
+.nav-bar {
+  display: flex;
+  flex-wrap: wrap;
+  overflow: visible;
+  background-color: var(--cui-primary);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.28);
+  position: relative;
+  z-index: 5;
+  min-height: var(--topbar-height);
+  box-sizing: border-box;
+  align-items: center;
+}
+.nav-bar-button {
+  float: left;
+  display: flex;
+  color: var(--thatdot-gradient-end);
+  align-items: center;
+  padding: .6em .5em;
+  text-decoration: none;
+  font-size: 1.4em;
+  margin-left: .5em;
+  margin-right: 0em;
+  transition:color .15s ease-in-out,background-color .15s ease-in-out;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+.nav-bar-button.clickable:hover {
+  background-color: var(--cui-tertiary-bg);
+  color: var(--cui-body-color);
+  cursor: pointer;
+}
+.nav-bar-button.clickable:hover:active {
+  background-color: var(--cui-secondary-color);
+}
+.nav-bar-button.disabled {
+  color: var(--cui-tertiary-color);
+}
+.nav-bar-button.right-icon {
+  float: right;
+  margin-right: .5em;
+  margin-left: 0em;
+}
+/* Cypher results table */
+table.cypher-results {
+  border: 1px solid black;
+  border-collapse: collapse;
+  font-family: monospace;
+}
+table.cypher-results td, table.cypher-results th {
+  padding: 0.5em;
+  border: 1px solid black;
+  border-collapse: collapse;
+}
+
+/* Context menu */
+.context-menu {
+  z-index: 6;
+  position: absolute;
+  background-color: var(--cui-body-bg);
+  border: 1px solid var(--cui-primary);
+  border-radius: .2em;
+  margin: 0;
+  list-style: none;
+}
+.context-menu ul {
+  padding: 0;
+  margin: 0;
+}
+.context-menu ul li {
+  list-style: none;
+  padding: 0.5em 0.75em;
+}
+
+/* Loader */
+.loader {
+  width: 2.4em;
+  height: 2.4em;
+  position: absolute;
+  right: 0;
+  margin: .6em;
+  z-index: 100;
+  justify-content: center;
+  display: flex;
+  flex-direction: column;
+}
+.loader-spinner {
+  width: 2.4em;
+  height: 2.4em;
+  border: none;
+  border-top: .3em solid var(--cui-tertiary-color);
+  border-radius: 50%;
+  animation: spin 0.5s linear infinite;
+  position: absolute;
+  overflow: hidden;
+}
+.loader-counter {
+  width: 2.4em;
+  height: 2.4em;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--cui-tertiary-color);
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Cancellable loader */
+.loader-cancellable.loader:hover {
+  cursor: pointer;
+}
+.loader-cancellable.loader:hover > .loader-counter {
+  visibility: hidden;
+}
+.loader-cancellable.loader:hover > .loader-spinner {
+  border-top: none;
+}
+.loader-cancellable.loader:hover:before, .loader-cancellable.loader:hover:after {
+  background-color: var(--cui-tertiary-color);
+  position: absolute;
+  content: '';
+  height: 0.3em;
+  width: 100%;
+}
+.loader-cancellable.loader:hover:before {
+  transform: rotate(45deg);
+}
+.loader-cancellable.loader:hover:after {
+  transform: rotate(-45deg);
+}
+
+/* Overlay */
+.overlay {
+  background-color: rgba(0, 0, 0, 0.54);
+  z-index: 9;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+.open-overlay {
+  width: 100%;
+  height: 100%;
+  transition: width 0s, height 0s, opacity 0.25s;
+  opacity: 1;
+}
+.closed-overlay {
+  width: 0;
+  height: 0;
+  transition: width 0s 0.25s, height 0s 0.25s, opacity 0.25s;
+  opacity: 0
+}
+
+/* vis-network canvas */
+div.vis-network canvas {
+  background-color: white;
+}
+
+/* Prevent the `vis-network` tooltip from filling the whole page */
+div.vis-tooltip {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  max-width: 30%;
+}
+
+@keyframes activequery {
+  0% { background-color: color-mix(in srgb, var(--cui-success) 15%, white); }
+  7% { background-color: color-mix(in srgb, var(--cui-success) 50%, white); }
+  30% { background-color: color-mix(in srgb, var(--cui-success) 30%, white); }
+  100% { background-color: color-mix(in srgb, var(--cui-success) 15%, white); }
+}
+
+/* Toolbar button context menu (right-click dropdown) */
+.toolbar-context-menu {
+  display: none;
+  position: fixed;
+  z-index: 100;
+  background-color: var(--cui-body-bg);
+  border: 1px solid var(--cui-primary);
+  border-radius: .2em;
+  min-width: 180px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+.toolbar-context-menu.open {
+  display: block;
+}
+.toolbar-context-menu li {
+  padding: 0.5em 0.75em;
+  cursor: pointer;
+  color: var(--cui-body-color);
+}
+.toolbar-context-menu li:hover {
+  background-color: var(--cui-tertiary-bg);
+}
+.toolbar-context-menu li:first-child {
+  border-radius: .2em .2em 0 0;
+}
+.toolbar-context-menu li:last-child {
+  border-radius: 0 0 .2em .2em;
+}
+
+/* CoreUI sidebar - chain to taxonomy */
+.sidebar.sidebar-light {
+  --cui-sidebar-bg: var(--cui-body-bg);
+  --cui-sidebar-color: var(--cui-body-color);
+}
+
+/* Align the sidebar header's height with the top nav-bar (.nav-bar) so the
+   header's bottom border lines up with the nav-bar's bottom edge, giving one
+   continuous horizontal rule across the app. Both read from the shared
+   --topbar-height var so any future change stays coordinated. */
+.sidebar-header {
+  height: var(--topbar-height);
+  box-sizing: border-box;
+  justify-content: space-between;
+}
+
+/* Sidebar brand logo */
+.sidebar-brand img.sidebar-brand-full {
+  height: 30px;
+}
+
+.sidebar-brand img.sidebar-brand-narrow {
+  display: none;
+  height: 30px;
+}
+
+.sidebar.sidebar-narrow .sidebar-brand {
+  justify-content: center;
+  flex: 1;
+  cursor: pointer;
+}
+
+.sidebar.sidebar-narrow .sidebar-brand-narrow {
+  display: inline;
+}
+
+.sidebar.sidebar-narrow .sidebar-toggler {
+  display: none;
+}
+
+/* Override CoreUI's mobile sidebar behavior - we use narrow mode instead of hiding */
+@media (max-width: 991.98px) {
+  /* Prevent CoreUI from pushing sidebar off-screen */
+  .sidebar.sidebar-fixed {
+    margin-inline-start: 0 !important;
+  }
+
+  /* Apply narrow sidebar styles (CoreUI only applies these above 992px) */
+  .sidebar.sidebar-narrow {
+    flex: 0 0 var(--cui-sidebar-narrow-width, 4rem);
+    width: var(--cui-sidebar-narrow-width, 4rem);
+  }
+
+  .sidebar.sidebar-narrow .sidebar-brand-full,
+  .sidebar.sidebar-narrow .nav-link-text {
+    display: none;
+  }
+
+  .sidebar.sidebar-narrow .nav-link {
+    justify-content: center;
+  }
+
+  .sidebar.sidebar-narrow .nav-icon {
+    flex: 0 0 auto;
+    margin-right: 0;
+  }
+
+  .sidebar.sidebar-narrow .nav-title {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Stoplight Elements overrides
+   ========================================================================== */
+
+/* Hide "powered by Stoplight" branding link */
+.HttpService a[href*="stoplight.io"][href*="utm_source=elements"][href*="utm_campaign=powered_by"] {
+  display: none;
+}
+
+/* Inherit app typography + body color */
+.sl-elements-wrapper,
+.sl-elements-wrapper .sl-elements {
+  font-family: inherit;
+  color: var(--cui-body-color);
+}
+
+/* Drop Stoplight's internal max-width so content uses the full page width */
+.sl-elements-wrapper .sl-max-w-4xl {
+  max-width: none;
+}
+
+/* Trim bottom margin + align border colors to our token */
+.sl-elements-wrapper .HttpService {
+  margin-bottom: 0;
+}
+.sl-elements-wrapper [class*="sl-border"] {
+  border-color: var(--cui-border-color);
+}
+
+/* Link color uses the brand accent */
+.sl-elements-wrapper a {
+  color: var(--thatdot-brite-blue);
+}
+.sl-elements-wrapper a:hover {
+  color: var(--thatdot-dark-blue);
+}
+
+/* Match the overview H1 ("Quine API") to the Metrics-page H2 typography so
+ * top-of-page headings share the same visual weight across the app. */
+.sl-elements-wrapper .HttpService h1 {
+  font-size: 32px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+/* Soften inputs and the Send API Request button inside Stoplight's dark
+ * "Try It" / inverted panels. Stoplight's defaults give them near-white
+ * borders that read as harsh against the dark navy background; we drop
+ * the border entirely at rest and reveal a subtle darker-grey outline
+ * only on hover/focus so the field and button blend with the panel until
+ * the user aims at them. */
+.sl-elements-wrapper .sl-inverted input,
+.sl-elements-wrapper .sl-inverted textarea {
+  border-color: transparent;
+  background-color: transparent;
+}
+.sl-elements-wrapper .sl-inverted input:hover,
+.sl-elements-wrapper .sl-inverted textarea:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.sl-elements-wrapper .sl-inverted input:focus,
+.sl-elements-wrapper .sl-inverted textarea:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+  outline: none;
+  box-shadow: none;
+}
+/* The Send API Request button keeps its fill; we only tone its border. */
+.sl-elements-wrapper .sl-inverted .sl-button {
+  border-color: transparent;
+}
+.sl-elements-wrapper .sl-inverted .sl-button:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.sl-elements-wrapper .sl-inverted .sl-button:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+  outline: none;
+  box-shadow: none;
+}
