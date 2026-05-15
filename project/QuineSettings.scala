@@ -69,7 +69,7 @@ object QuineSettings {
       ExclusionRule("org.lz4", "lz4-java"),
     ),
     libraryDependencies ++= Seq(
-      "org.slf4j" % "jcl-over-slf4j" % "2.0.17",
+      "org.slf4j" % "jcl-over-slf4j" % "2.0.18",
     ),
   )
 
