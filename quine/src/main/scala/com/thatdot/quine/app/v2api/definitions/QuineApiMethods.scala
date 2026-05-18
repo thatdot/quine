@@ -356,7 +356,7 @@ trait QuineApiMethods
     implicit val ctx: ExecutionContext = graph.nodeDispatcherEC
     graph
       .requiredGraphIsReadyFuture {
-        try app
+        app
           .addStandingQueryV2(name, namespaceId, sq)
           .flatMap {
             case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
@@ -368,11 +368,12 @@ trait QuineApiMethods
                 case Some(value) => Right(value)
                 case None => sys.error("Standing Query not found after adding, this should not happen.")
               }
-          } catch {
-          case iqp: InvalidQueryPattern => Future.successful(Left(asBadRequest(iqp.message)))
-          case cypherException: CypherException =>
-            Future.successful(Left(asBadRequest(BadRequest(cypherException.pretty, List(ErrorDetail.cypherError)))))
-        }
+          }
+          .recover {
+            case iqp: InvalidQueryPattern => Left(asBadRequest(iqp.message))
+            case cypherException: CypherException =>
+              Left(asBadRequest(BadRequest(cypherException.pretty, List(ErrorDetail.cypherError))))
+          }
       }
       .recoverWith { case _: NamespaceNotFoundException =>
         Future.successful(Left(asNotFound(s"Graph, $namespaceId, Not Found")))

@@ -205,6 +205,8 @@ final class QuineApp(
               }
               .map(_.toMap)
               .flatMap { sqResultsConsumers =>
+                // Throws here are caught by the enclosing `.flatMap` and surfaced as a
+                // failed Future, per StandingQueryInterfaceV2's contract.
                 val (pattern, dgnPackage) = standingQueryDefinition.pattern match {
                   case V2ApiStanding.StandingQueryPattern.Cypher(cypherQuery, mode) =>
                     mode match {
@@ -213,7 +215,6 @@ final class QuineApp(
                           cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider, logConfig)
                         val origin = PatternOrigin.GraphPattern(graphPattern, Some(cypherQuery))
                         if (!graphPattern.distinct) {
-                          // TODO unit test this behavior
                           throw DistinctIdMustDistinct
                         }
                         val (branch, returnColumn) = graphPattern.compiledDomainGraphBranch(graph.labelsProperty)

@@ -7,6 +7,13 @@ import com.thatdot.quine.graph.{NamespaceId, StandingQueryId}
 
 trait StandingQueryInterfaceV2 {
 
+  /** Register a V2 standing query.
+    *
+    * Implementations surface pattern-validation failures
+    * ([[com.thatdot.quine.graph.InvalidQueryPattern]],
+    * [[com.thatdot.quine.graph.cypher.CypherException]]) through the returned
+    * Future's error channel.
+    */
   def addStandingQueryV2(
     queryName: String,
     inNamespace: NamespaceId,
