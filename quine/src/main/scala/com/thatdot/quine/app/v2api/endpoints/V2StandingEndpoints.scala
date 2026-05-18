@@ -93,19 +93,19 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with GraphScopedEnd
       .name("propagate-standing-queries")
       .summary("Propagate Standing Queries")
       .description(
-        """When a new Standing Query is registered in the system, it gets automatically
-          |registered on new nodes (or old nodes that are loaded back into the cache). This behavior
-          |is the default because pro-actively setting the Standing Query on all
-          |existing data might be quite costly depending on how much historical data there is.""".asOneLine + "\n\n" +
-        """However, sometimes there is a legitimate use-case for eagerly propagating standing queries across the graph, for instance:
-          |
-          |  * When interactively constructing a Standing Query for already-ingested data
-          |  * When creating a new Standing Query that needs to be applied to recent data""".stripMargin,
+        """Applies all currently-registered Standing Queries to data already in the graph. By default,
+          |a Standing Query only matches data ingested after the query is registered; this endpoint
+          |backfills it against earlier data.""".asOneLine + "\n\n" +
+        """Useful when interactively constructing a Standing Query, or when a newly-registered query
+          |must match recent history.""".asOneLine,
       )
       .in(
         query[Boolean]("includeSleeping")
           .default(false)
-          .description("Propagate to all sleeping nodes. Setting to true can be costly if there is lot of data."),
+          .description(
+            """If false, only nodes currently in the in-memory cache are evaluated. If true, sleeping
+              |nodes are also woken and evaluated — this can be expensive on large graphs.""".asOneLine,
+          ),
       )
       .in(query[Int]("wakeUpParallelism").default(4).validate(Validator.positive))
       .errorOutEither(notFoundError("Graph not found."))
