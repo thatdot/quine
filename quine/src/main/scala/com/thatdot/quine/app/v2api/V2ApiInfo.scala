@@ -31,17 +31,17 @@ object V2ApiInfo {
     * an intentional act; a typo in an endpoint's .tag() call will fail linting rather than
     * silently creating a new group.
     *
-    * The order here (sorted alphabetically) controls sidebar group ordering in Stoplight Elements.
+    * The order here controls sidebar group ordering in Stoplight Elements.
     */
   val globalTags: List[Tag] = List(
     "System Administration",
     "Ingest Streams",
     "Standing Queries",
     "Graph Algorithms",
-    "UI Styling",
     "Cypher Query Language",
+    "UI Styling",
     "Debug Node Operations",
-  ).sorted.map(Tag(_))
+  ).map(Tag(_))
 
   def endpointSequences(
     provider: V2OssEndpointProvider,
