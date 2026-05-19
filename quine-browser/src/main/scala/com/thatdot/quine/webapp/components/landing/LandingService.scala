@@ -41,8 +41,17 @@ final class LandingService(routes: ClientRoutes) {
     )
   }
 
-  private def errorMessage(t: Throwable): String =
-    Option(t.getMessage).filter(_.nonEmpty).getOrElse("Fetch failed")
+  private def errorMessage(t: Throwable): String = {
+    val raw = Option(t.getMessage).filter(_.nonEmpty)
+    raw match {
+      case None => "Cannot reach server"
+      // Browsers surface network-layer failures (server down, DNS, CORS, offline)
+      // as "Failed to fetch" / "NetworkError" / "Load failed". Normalize those.
+      case Some(m) if m.contains("Failed to fetch") || m.contains("NetworkError") || m.contains("Load failed") =>
+        "Cannot reach server"
+      case Some(m) => m
+    }
+  }
 
   private def fetchMetrics(): Future[MetricsData] = {
     val metricsF = routes.metricsV2(()).future.map {
@@ -88,11 +97,19 @@ final class LandingService(routes: ClientRoutes) {
     dom
       .fetch(url)
       .toFuture
-      .flatMap(_.text().toFuture)
-      .flatMap { body =>
-        io.circe.parser.decode[A](body) match {
-          case Right(value) => Future.successful(value)
-          case Left(err) => Future.failed(new RuntimeException(s"Failed to decode $path: ${err.getMessage}"))
+      .recoverWith { case _ =>
+        Future.failed(new RuntimeException("Cannot reach server"))
+      }
+      .flatMap { response =>
+        if (!response.ok) {
+          Future.failed(new RuntimeException(s"Server returned ${response.status} ${response.statusText}"))
+        } else {
+          response.text().toFuture.flatMap { body =>
+            io.circe.parser.decode[A](body) match {
+              case Right(value) => Future.successful(value)
+              case Left(_) => Future.failed(new RuntimeException("Unexpected response from server"))
+            }
+          }
         }
       }
   }

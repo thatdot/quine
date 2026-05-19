@@ -45,7 +45,7 @@ object StreamsPage {
           )
 
         case Pot.Failed(msg) =>
-          div(cls := "alert alert-danger", s"Failed to load API specification: $msg")
+          div(cls := "alert alert-danger", msg)
 
         case Pot.Ready(spec) =>
           val client = StreamsApiClient(spec, options.serverUrl.getOrElse(""))
@@ -67,7 +67,8 @@ object StreamsPage {
     } yield
       if (response.ok) OpenApiParser.parse(text).map(attachUiHints)
       else Left(s"HTTP ${response.status}")).recover { case ex: Throwable =>
-      Left(ex.getMessage)
+      dom.console.error("Failed to load API specification:", ex.getMessage)
+      Left("Could not connect to the server.")
     }
 
   /** Attach the Streams UI overlay to the parsed spec and report any

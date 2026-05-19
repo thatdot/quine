@@ -605,17 +605,20 @@ object SchemaFormRenderer {
           )
         }
       },
-      button(
-        cls := "btn btn-sm btn-outline-primary",
-        typ := "button",
-        i(cls := "cil-plus me-1"),
-        "Add item",
-        onClick --> { _ =>
-          stateVar.update { json =>
-            val arr = SchemaFormState.getAt(json, path).flatMap(_.asArray).getOrElse(Vector.empty)
-            SchemaFormState.setAt(json, path, Json.fromValues(arr :+ Json.Null))
-          }
-        },
+      div(
+        cls := "mt-2",
+        button(
+          cls := "btn btn-sm btn-outline-primary",
+          typ := "button",
+          i(cls := "cil-plus me-1"),
+          "Add item",
+          onClick --> { _ =>
+            stateVar.update { json =>
+              val arr = SchemaFormState.getAt(json, path).flatMap(_.asArray).getOrElse(Vector.empty)
+              SchemaFormState.setAt(json, path, Json.fromValues(arr :+ Json.Null))
+            }
+          },
+        ),
       ),
     )
   }

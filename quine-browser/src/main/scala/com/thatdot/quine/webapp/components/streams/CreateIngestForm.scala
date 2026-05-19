@@ -191,21 +191,17 @@ object CreateIngestForm {
                 currentStep.set(StepConfig)
               },
               div(
-                cls := "card-body d-flex align-items-center p-2",
+                cls := "card-body d-flex align-items-start p-2",
                 div(
                   cls := "me-3",
                   styleAttr := "font-size: 1.5rem; width: 2rem; flex-shrink: 0; text-align: center",
                   iconEl,
                 ),
                 div(
-                  cls := "flex-grow-1 overflow-hidden",
-                  div(cls := "fw-semibold small text-truncate", name),
+                  cls := "flex-grow-1",
+                  div(cls := "fw-semibold small", name),
                   if (desc.nonEmpty)
-                    small(
-                      cls := "text-body-secondary",
-                      styleAttr := "display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden",
-                      desc,
-                    )
+                    small(cls := "text-body-secondary", desc)
                   else emptyNode,
                 ),
               ),
@@ -294,25 +290,6 @@ object CreateIngestForm {
     val advancedExpanded = Var(false)
 
     div(
-      // Name input — at the top of the configuration step
-      div(
-        cls := "mb-3",
-        label(
-          cls := "form-label",
-          "Ingest Stream Name",
-          span(cls := "text-danger ms-1", "*"),
-        ),
-        input(
-          cls := "form-control",
-          typ := "text",
-          placeholder := "my-ingest-stream",
-          controlled(
-            value <-- nameVar.signal,
-            onInput.mapToValue --> nameVar,
-          ),
-        ),
-        div(cls := "form-text", "A unique name for this ingest stream."),
-      ),
       // Source-specific + top-level fields, split into primary and advanced
       requestSchema match {
         case Some(schema) =>
@@ -328,12 +305,49 @@ object CreateIngestForm {
                       val filteredVariant = vs.copy(
                         properties = vs.properties.map(_.removed(union.propertyName)),
                       )
+                      val variantName = vs.title.getOrElse[String](SchemaFormState.humanizeFieldName(typeName))
+                      val variantDesc = vs.description.getOrElse("")
                       val allFields =
                         if (union.path.nonEmpty) collectFields(filteredVariant, schema, union.path, spec)
                         else collectFields(filteredVariant, SchemaNode(), union.path, spec)
                       val (primary, advanced) = allFields.partition(_.isPrimary)
 
                       div(
+                        // Selected source type summary
+                        div(
+                          cls := "mb-3 p-3 border rounded bg-body-tertiary d-flex align-items-start",
+                          div(
+                            cls := "me-3",
+                            styleAttr := "font-size: 1.5rem; width: 2rem; flex-shrink: 0; text-align: center",
+                            IngestSourceIcons.forSourceType(typeName, variantName),
+                          ),
+                          div(
+                            cls := "flex-grow-1",
+                            div(cls := "fw-semibold", variantName),
+                            if (variantDesc.nonEmpty)
+                              small(cls := "text-body-secondary", variantDesc)
+                            else emptyNode,
+                          ),
+                        ),
+                        // Name input
+                        div(
+                          cls := "mb-3",
+                          label(
+                            cls := "form-label",
+                            "Ingest Stream Name",
+                            span(cls := "text-danger ms-1", "*"),
+                          ),
+                          input(
+                            cls := "form-control",
+                            typ := "text",
+                            placeholder := "my-ingest-stream",
+                            controlled(
+                              value <-- nameVar.signal,
+                              onInput.mapToValue --> nameVar,
+                            ),
+                          ),
+                          div(cls := "form-text", "A unique name for this ingest stream."),
+                        ),
                         // Primary fields — required, no defaults
                         if (primary.nonEmpty) renderFields(primary, spec, formState) else div(),
                         // Advanced configuration — collapsible

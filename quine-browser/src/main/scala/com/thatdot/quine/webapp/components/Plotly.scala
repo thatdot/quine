@@ -62,6 +62,7 @@ object Plotly {
   ): HtmlElement = {
     val mergedConfig = mergeConfig(config)
 
+    var resizeObserver: Option[dom.ResizeObserver] = None
     div(
       width := "100%",
       height := "100%",
@@ -71,8 +72,11 @@ object Plotly {
         val plotlyEl = el.asInstanceOf[PlotlyElement]
         onClick.foreach(h => plotlyEl.on("plotly_click", h))
         onSunburstClick.foreach(h => plotlyEl.on("plotly_sunburstclick", h))
+        resizeObserver = Some(attachResizeObserver(el))
       },
       onUnmountCallback { el =>
+        resizeObserver.foreach(_.disconnect())
+        resizeObserver = None
         PlotlyJS.purge(el.ref)
       },
     )

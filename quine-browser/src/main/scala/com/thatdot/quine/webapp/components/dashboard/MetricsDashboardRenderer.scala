@@ -123,7 +123,7 @@ object MetricsDashboardRenderer {
           cls := "row",
           children <-- metricsVar.signal.map { metrics =>
             extractMemoryCards(metrics).map { case (_, memoryCard) =>
-              div(cls := "col-12 col-md-6 col-xl-3 mt-3", memoryCard)
+              div(cls := "col-12 col-md-6 mt-3", memoryCard)
             }
           },
         ),
@@ -134,7 +134,7 @@ object MetricsDashboardRenderer {
             case (metrics, shardSizes, advanced) =>
               extractShardIds(metrics.counters).toSeq.flatMap { shardId =>
                 ShardInfoCard.ShardInfo.forShard(shardId, metrics.counters, shardSizes.get(shardId)).map { info =>
-                  div(cls := "col-12 col-md-6 col-xl-3 mt-3", ShardInfoCard(info, advanced))
+                  div(cls := "col-12 col-md-6 mt-3", ShardInfoCard(info, advanced))
                 }
               }
           },
@@ -155,7 +155,7 @@ object MetricsDashboardRenderer {
           cls := "row",
           children <-- metricsVar.signal.map { metrics =>
             metrics.timers.map { timer =>
-              div(cls := "col-12 col-md-6 col-xl-3 mt-3", TimerSummaryCard(timer))
+              div(cls := "col-12 col-md-6 mt-3", TimerSummaryCard(timer))
             }
           },
         ),

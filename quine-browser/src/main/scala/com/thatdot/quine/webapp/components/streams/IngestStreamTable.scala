@@ -17,11 +17,13 @@ object IngestStreamTable {
     onDelete: Observer[String],
     onPause: Observer[String],
     onResume: Observer[String],
-  ): HtmlElement =
+  ): HtmlElement = {
+    val expandedVar: Var[Set[String]] = Var(Set.empty)
     table(
       cls := "table table-hover mb-0",
       thead(
         tr(
+          th(styleAttr := "width: 40px"),
           th("Name"),
           th("Type"),
           th("Status"),
@@ -31,16 +33,23 @@ object IngestStreamTable {
           th("Actions"),
         ),
       ),
-      tbody(
-        children <-- entriesSignal.splitSeq(_._1) { strictSignal =>
-          renderRow(strictSignal.key, strictSignal.map(_._2), onDelete, onPause, onResume)
-        },
-      ),
+      children <-- entriesSignal.splitSeq(_._1) { strictSignal =>
+        val name = strictSignal.key
+        val jsonSignal = strictSignal.map(_._2)
+        val isExpanded = expandedVar.signal.map(_.contains(name)).distinct
+        tbody(
+          renderRow(name, jsonSignal, isExpanded, expandedVar, onDelete, onPause, onResume),
+          renderExpandedRow(jsonSignal, isExpanded),
+        )
+      },
     )
+  }
 
   private def renderRow(
     name: String,
     jsonSignal: Signal[Json],
+    isExpanded: Signal[Boolean],
+    expandedVar: Var[Set[String]],
     onDelete: Observer[String],
     onPause: Observer[String],
     onResume: Observer[String],
@@ -63,6 +72,17 @@ object IngestStreamTable {
 
     tr(
       cls <-- statusSignal.map(s => if (s == "Failed") "table-danger" else ""),
+      td(
+        button(
+          cls := "btn btn-sm btn-ghost-secondary p-0",
+          child <-- isExpanded.map { exp =>
+            if (exp) i(cls := "cil-chevron-bottom") else i(cls := "cil-chevron-right")
+          },
+          onClick --> { _ =>
+            expandedVar.update(exp => if (exp.contains(name)) exp - name else exp + name)
+          },
+        ),
+      ),
       td(name),
       td(
         child <-- sourceTypeSignal.map { st =>
@@ -150,6 +170,27 @@ object IngestStreamTable {
       ),
     )
   }
+
+  private def renderExpandedRow(
+    jsonSignal: Signal[Json],
+    isExpanded: Signal[Boolean],
+  ): HtmlElement =
+    tr(
+      cls := "bg-body-tertiary",
+      display <-- isExpanded.map(if (_) "table-row" else "none"),
+      td(
+        colSpan := 8,
+        div(
+          cls := "ms-4 py-2",
+          strong("Configuration"),
+          pre(
+            cls := "mb-0 mt-1 p-2 bg-body rounded border",
+            styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
+            child.text <-- jsonSignal.map(_.spaces2),
+          ),
+        ),
+      ),
+    )
 
   private def statusBadge(status: String): HtmlElement = {
     val badgeClass = status match {

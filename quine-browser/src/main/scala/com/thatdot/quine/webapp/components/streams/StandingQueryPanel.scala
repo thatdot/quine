@@ -57,7 +57,11 @@ object StandingQueryPanel {
           outputFormState = outputFormState,
           outputSchema = outputSchema,
           spec = client.spec,
-          onAddOutput = (sqName, body) => client.addOutput(sqName, body),
+          onAddOutput = (sqName, body) => {
+            val f = client.addOutput(sqName, body)
+            f.foreach(_ => refresh())
+            f
+          },
         )
       },
     )

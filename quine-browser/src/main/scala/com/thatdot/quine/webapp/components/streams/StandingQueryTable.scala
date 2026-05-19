@@ -164,6 +164,7 @@ object StandingQueryTable {
     }
 
     val isAddingHere: Signal[Boolean] = addingOutputFor.signal.map(_.contains(name)).distinct
+    val configExpanded = Var(false)
 
     tr(
       cls := "bg-body-tertiary",
@@ -172,6 +173,24 @@ object StandingQueryTable {
         colSpan := 7,
         div(
           cls := "ms-4 py-2",
+          div(
+            cls := "mb-3",
+            div(
+              cls := "d-flex align-items-center cursor-pointer mb-1",
+              styleAttr := "cursor: pointer",
+              onClick --> { _ => configExpanded.update(!_) },
+              i(
+                cls <-- configExpanded.signal.map(e => if (e) "cil-chevron-bottom me-2" else "cil-chevron-right me-2"),
+              ),
+              strong("Configuration"),
+            ),
+            pre(
+              display <-- configExpanded.signal.map(if (_) "block" else "none"),
+              cls := "mb-0 mt-1 p-2 bg-body rounded border",
+              styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
+              child.text <-- jsonSignal.map(_.spaces2),
+            ),
+          ),
           div(
             cls := "d-flex justify-content-between align-items-center mb-2",
             strong("Outputs"),

@@ -10,13 +10,13 @@ import com.raquo.laminar.api.L._
 object Card {
   def apply(title: Modifier[HtmlElement], body: Modifier[HtmlElement]): HtmlElement =
     div(
-      cls := "card",
+      cls := "card h-100",
       div(
         cls := "card-body",
         div(
           cls := "card-title text-center",
-          styleAttr := "font-size: 1.4rem; font-weight: 600; " +
-          "color: var(--thatdot-brite-blue); margin-bottom: 1rem;",
+          styleAttr := "font-size: 1rem; font-weight: 600; " +
+          "color: var(--thatdot-brite-blue); margin-bottom: 0.5rem;",
           title,
         ),
         div(cls := "card-text", body),
