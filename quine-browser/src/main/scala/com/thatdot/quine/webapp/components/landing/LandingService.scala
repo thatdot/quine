@@ -21,7 +21,7 @@ import com.thatdot.quine.webapp.util.PollingStream
   * queries use dom.fetch against the V2 REST API directly, since there are no endpoints4s
   * traits for these V2 endpoints.
   */
-final class LandingService(routes: ClientRoutes) {
+final class LandingService(routes: ClientRoutes, fetchShardSizes: Boolean = true) {
 
   type MetricsData = (MetricsReport, Map[Int, ShardInMemoryLimit])
 
@@ -59,11 +59,18 @@ final class LandingService(routes: ClientRoutes) {
       case Right(None) => MetricsReport.empty
       case Left(err) => throw new RuntimeException(s"Failed to get metrics: $err")
     }
-    val shardSizesF = routes.shardSizesV2(()).future.map {
-      case Right(Some(shardSizes)) => shardSizes
-      case Right(None) => Map.empty[Int, ShardInMemoryLimit]
-      case Left(err) => throw new RuntimeException(s"Failed to get shard sizes: $err")
-    }
+    // Only callers that hold `ShardLimitsRead` should fetch shard sizes — admin holds
+    // `ApplicationMetricsRead` (so the persistor lane wants metrics) but not
+    // `ShardLimitsRead`, and a 401 on shardSizes would otherwise fail the whole zip
+    // and starve the persistor animation of write/read rates.
+    val shardSizesF: Future[Map[Int, ShardInMemoryLimit]] =
+      if (!fetchShardSizes) Future.successful(Map.empty[Int, ShardInMemoryLimit])
+      else
+        routes.shardSizesV2(()).future.map {
+          case Right(Some(shardSizes)) => shardSizes
+          case Right(None) => Map.empty[Int, ShardInMemoryLimit]
+          case Left(err) => throw new RuntimeException(s"Failed to get shard sizes: $err")
+        }
     metricsF.zip(shardSizesF)
   }
 

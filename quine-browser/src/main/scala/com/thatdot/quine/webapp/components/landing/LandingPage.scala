@@ -43,7 +43,22 @@ object LandingPage {
   ): HtmlElement = {
     def allowed(needed: Set[String]): Boolean = hasPermissions(userPermissions, needed)
 
-    val canSeeOverview = allowed(SystemOverviewCard.requiredPermissions)
+    // Each overview-card section gates on its own permission. The card itself shows as
+    // long as the user can see at least one section — missing sections render blank
+    // in-place rather than collapsing the layout.
+    val overviewVisibility = OverviewDiagram.Visibility(
+      ingests = allowed(SystemOverviewCard.ingestsPermissions),
+      outputs = allowed(SystemOverviewCard.outputsPermissions),
+      cypher = allowed(SystemOverviewCard.cypherPermissions),
+      persistor = allowed(SystemOverviewCard.persistorPermissions),
+      cluster = clusterStatusSignal.isDefined && allowed(SystemOverviewCard.clusterPermissions),
+    )
+    val canSeeOverview =
+      overviewVisibility.ingests ||
+      overviewVisibility.outputs ||
+      overviewVisibility.cypher ||
+      overviewVisibility.persistor ||
+      overviewVisibility.cluster
     val canSeeIngests = allowed(IngestsCard.requiredPermissions)
     val canSeeStandingQueries = allowed(StandingQueriesCard.requiredPermissions)
     val canSeeClusterHealth = clusterStatusSignal.isDefined && allowed(ClusterHealthCard.requiredPermissions)
@@ -85,7 +100,7 @@ object LandingPage {
       (if (canSeeStandingQueries) Seq(standingQueriesSignal) else Nil) ++
       (if (canSeeClusterHealth) clusterStatusSignal.toSeq else Nil) ++
       (if (canSeeHostMetrics) Seq(metricsSignal) else Nil) ++
-      (if (canSeeOverview) Seq(configSignal) else Nil)
+      (if (overviewVisibility.persistor) Seq(configSignal) else Nil)
     val refreshFailedSignal: Signal[Boolean] =
       if (watchedSignals.isEmpty) Signal.fromValue(false)
       else Signal.combineSeq(watchedSignals).map(_.exists(isStale)).distinct
@@ -160,7 +175,8 @@ object LandingPage {
                 standingQueriesSignal,
                 configSignal,
                 metricsSignal,
-                clusterStatusSignal = if (canSeeClusterHealth) clusterStatusSignal else None,
+                clusterStatusSignal = if (overviewVisibility.cluster) clusterStatusSignal else None,
+                visibility = overviewVisibility,
               ),
             ),
           )

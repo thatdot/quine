@@ -43,19 +43,24 @@ final class LandingStore(
 
   private def allowed(needed: Set[String]): Boolean = LandingPage.hasPermissions(userPermissions, needed)
 
-  // A datum is fetched only if at least one card that consumes it is viewable.
-  // The overview persistor animation also uses the metrics feed for write rate/latency, so
-  // allow metrics whenever that card can be seen and the user has ApplicationMetricsRead.
+  // A datum is fetched only if at least one card-section that consumes it is viewable.
+  // The overview-card sections are gated individually now, so each feed checks the
+  // permission for the specific section that needs it rather than the whole card.
+  // Metrics are also used by the overview persistor lane for write rate/latency, so we
+  // fetch them whenever the persistor section is visible AND the user has metrics read.
   private val fetchMetricsAllowed =
     allowed(HostMetricsCard.requiredPermissions) ||
-    (allowed(SystemOverviewCard.requiredPermissions) && allowed(Set("ApplicationMetricsRead")))
+    (allowed(SystemOverviewCard.persistorPermissions) && allowed(Set("ApplicationMetricsRead")))
   private val fetchIngestsAllowed =
-    allowed(IngestsCard.requiredPermissions) || allowed(SystemOverviewCard.requiredPermissions)
+    allowed(IngestsCard.requiredPermissions) || allowed(SystemOverviewCard.ingestsPermissions)
   private val fetchStandingQueriesAllowed =
-    allowed(StandingQueriesCard.requiredPermissions) || allowed(SystemOverviewCard.requiredPermissions)
-  private val fetchConfigAllowed = allowed(SystemOverviewCard.requiredPermissions)
+    allowed(StandingQueriesCard.requiredPermissions) ||
+    allowed(SystemOverviewCard.outputsPermissions) ||
+    allowed(SystemOverviewCard.cypherPermissions)
+  private val fetchConfigAllowed = allowed(SystemOverviewCard.persistorPermissions)
   private val fetchClusterStatusAllowed =
-    fetchClusterStatus && allowed(ClusterHealthCard.requiredPermissions)
+    fetchClusterStatus &&
+    (allowed(ClusterHealthCard.requiredPermissions) || allowed(SystemOverviewCard.clusterPermissions))
 
   /** Bind to a mounted element to activate stream subscriptions. On mount, Vars for
     * subscribed feeds are flipped to `Pending` so cards render a spinner until the

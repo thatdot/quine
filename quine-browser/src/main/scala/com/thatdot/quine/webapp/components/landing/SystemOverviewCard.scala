@@ -18,7 +18,13 @@ object SystemOverviewCard {
 
   type MetricsData = (MetricsReport, Map[Int, ShardInMemoryLimit])
 
-  val requiredPermissions: Set[String] = Set("IngestRead", "StandingQueryRead", "ApplicationStateRead")
+  // Per-section permissions. A user sees the card if they hold ANY of these — each
+  // section is gated independently inside the diagram, so partial views are fine.
+  val ingestsPermissions: Set[String] = Set("IngestRead")
+  val outputsPermissions: Set[String] = Set("StandingQueryRead")
+  val cypherPermissions: Set[String] = Set("StandingQueryRead")
+  val persistorPermissions: Set[String] = Set("ApplicationStateRead")
+  val clusterPermissions: Set[String] = Set("ClusterStatusRead")
 
   def apply(
     ingestsSignal: Signal[Pot[Seq[V2IngestInfo]]],
@@ -26,6 +32,7 @@ object SystemOverviewCard {
     configSignal: Signal[Pot[V2QuineConfig]],
     metricsSignal: Signal[Pot[MetricsData]],
     clusterStatusSignal: Option[Signal[Pot[V2ServiceStatus]]] = None,
+    visibility: OverviewDiagram.Visibility = OverviewDiagram.Visibility.all,
   ): HtmlElement = {
     // `None` when the caller didn't wire a cluster-status signal (OSS). We fall back
     // to a ready signal of `Pot.Empty` so `combine` still produces updates on the
@@ -33,26 +40,32 @@ object SystemOverviewCard {
     val clusterSig: Signal[Pot[V2ServiceStatus]] =
       clusterStatusSignal.getOrElse(Signal.fromValue(Pot.Empty: Pot[V2ServiceStatus]))
 
-    // Snapshots are produced only once ingests, standing queries, and config have all
-    // loaded. Metrics (and cluster status) are optional — missing values become zeros
-    // / `None`. While the required Pots are still empty/pending, the signal stays at
-    // `None` and the placeholder is shown.
+    // Snapshots are produced once every *visible* required feed has loaded. A feed the
+    // user can't see is treated as "ready and empty" so it doesn't block the diagram —
+    // its section is hidden by `visibility` anyway. Cluster + metrics are optional.
     val snapshotSignal: Signal[Option[OverviewDiagram.Snapshot]] =
       Signal
         .combine(ingestsSignal, standingQueriesSignal, configSignal, metricsSignal, clusterSig)
         .map { case (ingestsPot, sqPot, configPot, metricsPot, clusterPot) =>
-          (ingestsPot.toOption, sqPot.toOption, configPot.toOption) match {
-            case (Some(apiIngests), Some(apiQueries), Some(config)) =>
-              Some(
-                OverviewDiagram.Snapshot(
-                  ingests = LandingPageData.fromV2Ingests(apiIngests),
-                  queries = LandingPageData.fromV2StandingQueries(apiQueries),
-                  persistor = persistorFromConfig(config, metricsPot.toOption.map(_._1)),
-                  clusterFullyUp = clusterPot.toOption.map(_.fullyUp),
-                ),
-              )
-            case _ => None
-          }
+          val ingestsReady = !visibility.ingests || ingestsPot.toOption.isDefined
+          val queriesReady = (!visibility.outputs && !visibility.cypher) || sqPot.toOption.isDefined
+          val configReady = !visibility.persistor || configPot.toOption.isDefined
+          if (ingestsReady && queriesReady && configReady) {
+            val apiIngests = if (visibility.ingests) ingestsPot.toOption.getOrElse(Nil) else Nil
+            val apiQueries = if (visibility.outputs || visibility.cypher) sqPot.toOption.getOrElse(Nil) else Nil
+            val persistor = configPot.toOption match {
+              case Some(config) if visibility.persistor => persistorFromConfig(config, metricsPot.toOption.map(_._1))
+              case _ => PersistorInfo.empty
+            }
+            Some(
+              OverviewDiagram.Snapshot(
+                ingests = LandingPageData.fromV2Ingests(apiIngests),
+                queries = LandingPageData.fromV2StandingQueries(apiQueries),
+                persistor = persistor,
+                clusterFullyUp = if (visibility.cluster) clusterPot.toOption.map(_.fullyUp) else None,
+              ),
+            )
+          } else None
         }
 
     // Build a dedicated `Signal[Snapshot]` for the diagram by collapsing every `None`
@@ -76,7 +89,7 @@ object SystemOverviewCard {
     // subsequent rate tick is delivered to the diagram's internal subscription, which
     // applies the change in-place against the existing SVG (no element churn, no page
     // scroll reset).
-    val readyDiagram: HtmlElement = OverviewDiagram(diagramSnapshot)
+    val readyDiagram: HtmlElement = OverviewDiagram(diagramSnapshot, visibility)
 
     // Dedupe so the resulting signal only emits when transitioning between Loading
     // and Loaded — a sequence of consecutive `Some(_)` values is collapsed to a single

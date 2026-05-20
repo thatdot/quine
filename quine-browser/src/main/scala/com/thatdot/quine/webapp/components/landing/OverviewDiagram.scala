@@ -39,6 +39,22 @@ object OverviewDiagram {
     clusterFullyUp: Option[Boolean],
   )
 
+  /** Per-section visibility for the diagram — sections with `false` aren't drawn at
+    * all. The diagram still renders with whatever remains; missing lanes simply
+    * leave blank space rather than collapsing the layout.
+    */
+  final case class Visibility(
+    ingests: Boolean,
+    outputs: Boolean,
+    cypher: Boolean,
+    persistor: Boolean,
+    cluster: Boolean,
+  )
+
+  object Visibility {
+    val all: Visibility = Visibility(ingests = true, outputs = true, cypher = true, persistor = true, cluster = true)
+  }
+
   /** The subset of a snapshot whose change forces a full re-render. Anything not
     * captured here — rates, latencies, individual ingest statuses, cluster degraded
     * state — is updated in-place against the existing SVG by `applyRates`.
@@ -102,7 +118,7 @@ object OverviewDiagram {
     }
   }
 
-  def apply(snapshot: Signal[Snapshot]): HtmlElement = {
+  def apply(snapshot: Signal[Snapshot], visibility: Visibility = Visibility.all): HtmlElement = {
     var observer: js.Dynamic = null
     var rerenderTimeout: Int = 0
     var lastRenderedWidth: Int = -1
@@ -113,7 +129,7 @@ object OverviewDiagram {
     def doRender(container: dom.HTMLElement, snap: Snapshot): Unit = {
       handles.foreach(_.stopTimers())
       container.innerHTML = ""
-      handles = Some(renderDiagram(container, snap))
+      handles = Some(renderDiagram(container, snap, visibility))
       lastStructureKey = Some(StructureKey.from(snap))
       lastRenderedWidth = container.clientWidth.toInt
     }
@@ -163,14 +179,18 @@ object OverviewDiagram {
     )
   }
 
-  private def renderDiagram(container: dom.HTMLElement, initial: Snapshot): RenderHandles = {
+  private def renderDiagram(
+    container: dom.HTMLElement,
+    initial: Snapshot,
+    visibility: Visibility,
+  ): RenderHandles = {
     var current: Snapshot = initial
 
     // Layout constants
     val width = container.clientWidth.toInt
     val nodeW = 130.0 // kept for layout reference
     val nodeH = 50.0 // kept for layout reference
-    val (ingestNodes0, outputNodes0, cypherNode0) = derivedNodes(initial)
+    val (ingestNodes0, outputNodes0, cypherNode0) = derivedNodes(initial, visibility)
     val cypherSpace = if (cypherNode0.isDefined) 70 else 0
     val minNodeAreaHeight = 100
     val nodeAreaHeight = math.max(math.max(ingestNodes0.size, outputNodes0.size) * 95 + 60, minNodeAreaHeight)
@@ -346,7 +366,9 @@ object OverviewDiagram {
       outputLines += LineHandle(node.label, pathSel, hoverSel, params)
     }
 
-    // Persistor links: two parallel lines between Quine and the persistor.
+    // Persistor links: two parallel lines between Quine and the persistor. Both lines
+    // and the persistor node itself are gated by `visibility.persistor` — when hidden,
+    // the bottom lane is simply blank.
     val persistorTopY = quineY + nodeRadius
     val persistorBotY = persistorY - 20
     val persistorLaneGap = 7.0
@@ -360,21 +382,30 @@ object OverviewDiagram {
     val writeColor0 = latencyHealthColor(initial.persistor.writeLatencyMs)
     val readColor0 = latencyHealthColor(initial.persistor.readLatencyMs)
 
-    val writePathSel = svg
-      .append("path")
-      .attr("d", writePathData)
-      .attr("fill", "none")
-      .attr("stroke", writeColor0)
-      .attr("stroke-width", persistorStrokeWidth(initial.persistor.writeOpsPerSec))
-      .attr("stroke-opacity", 0.5)
+    // `writePathSel`/`readPathSel`/params are referenced unconditionally by `applyRates`.
+    // When the persistor is hidden we still create the placeholder JS values so the
+    // updater can be a no-op without null-checking — see the guard inside applyRates.
+    val writePathSel: js.Dynamic =
+      if (visibility.persistor)
+        svg
+          .append("path")
+          .attr("d", writePathData)
+          .attr("fill", "none")
+          .attr("stroke", writeColor0)
+          .attr("stroke-width", persistorStrokeWidth(initial.persistor.writeOpsPerSec))
+          .attr("stroke-opacity", 0.5)
+      else js.Dynamic.literal()
 
-    val readPathSel = svg
-      .append("path")
-      .attr("d", readPathData)
-      .attr("fill", "none")
-      .attr("stroke", readColor0)
-      .attr("stroke-width", persistorStrokeWidth(initial.persistor.readOpsPerSec))
-      .attr("stroke-opacity", 0.5)
+    val readPathSel: js.Dynamic =
+      if (visibility.persistor)
+        svg
+          .append("path")
+          .attr("d", readPathData)
+          .attr("fill", "none")
+          .attr("stroke", readColor0)
+          .attr("stroke-width", persistorStrokeWidth(initial.persistor.readOpsPerSec))
+          .attr("stroke-opacity", 0.5)
+      else js.Dynamic.literal()
 
     val (writeIntervalMs0, writeDuration0) =
       persistorAnimationTiming(initial.persistor.writeOpsPerSec, initial.persistor.writeLatencyMs)
@@ -384,16 +415,20 @@ object OverviewDiagram {
       intervalMs = writeIntervalMs0,
       color = writeColor0,
       durationMs = writeDuration0,
-      enabled = initial.persistor.writeOpsPerSec >= ActiveRateThreshold,
+      enabled = visibility.persistor &&
+        (initial.persistor.writeOpsPerSec >= ActiveRateThreshold),
     )
     val readParams = new SpawnParams(
       intervalMs = readIntervalMs0,
       color = readColor0,
       durationMs = readDuration0,
-      enabled = initial.persistor.readOpsPerSec >= ActiveRateThreshold,
+      enabled = visibility.persistor &&
+        (initial.persistor.readOpsPerSec >= ActiveRateThreshold),
     )
-    timers += spawnAnimatedIconsMutable(svg, writePathData, writeParams)
-    timers += spawnAnimatedIconsMutable(svg, readPathData, readParams)
+    if (visibility.persistor) {
+      timers += spawnAnimatedIconsMutable(svg, writePathData, writeParams)
+      timers += spawnAnimatedIconsMutable(svg, readPathData, readParams)
+    }
 
     // Draw ingest nodes
     ingestNodes0.zipWithIndex.foreach { case (node, idx) =>
@@ -484,7 +519,7 @@ object OverviewDiagram {
       .attr("style", "cursor: pointer;")
     LandingTooltip.attachToElement(
       quineZone.node().asInstanceOf[dom.Element],
-      () => buildQuineTooltip(current),
+      () => buildQuineTooltip(current, visibility),
     )
 
     // Cypher loopback arc above Quine — rate text and dot params are updated in place.
@@ -570,64 +605,66 @@ object OverviewDiagram {
     }
 
     // Persistor node (icon or boxed name).
-    val persistorIconOpt = ServiceIcons.forType(initial.persistor.name)
-    persistorIconOpt match {
-      case Some(iconUri) =>
-        val iconSize = 48.0
-        // Use foreignObject + HTML <img> rather than SVG <image>: Chromium ignores
-        // `preserveAspectRatio` on nested <image href="X.svg"> when the source SVG
-        // has explicit width/height attributes, stretching landscape icons (Cassandra,
-        // RocksDB, ClickHouse) into a square. HTML `<img object-fit: contain>`
-        // letterboxes correctly across browsers.
-        appendIconImage(svg, iconUri, centerX - iconSize / 2, persistorY - iconSize / 2, iconSize, iconSize)
-      case None =>
-        val persistorColor = initial.persistor.status match {
-          case "Healthy" => "#1658b7"
-          case "Degraded" => "#ffc107"
-          case _ => "#dc3545"
-        }
-        val persistorWidth = 120.0
-        val persistorHeight = 44.0
-        svg
-          .append("rect")
-          .attr("x", centerX - persistorWidth / 2)
-          .attr("y", persistorY - persistorHeight / 2)
-          .attr("width", persistorWidth)
-          .attr("height", persistorHeight)
-          .attr("rx", 6)
-          .attr("fill", "white")
-          .attr("stroke", persistorColor)
-          .attr("stroke-width", 2.5)
-        svg
-          .append("text")
-          .attr("x", centerX)
-          .attr("y", persistorY + 5)
-          .attr("text-anchor", "middle")
-          .attr("font-size", "14px")
-          .attr("fill", "#0a295b")
-          .text(initial.persistor.name)
-    }
+    if (visibility.persistor) {
+      val persistorIconOpt = ServiceIcons.forType(initial.persistor.name)
+      persistorIconOpt match {
+        case Some(iconUri) =>
+          val iconSize = 48.0
+          // Use foreignObject + HTML <img> rather than SVG <image>: Chromium ignores
+          // `preserveAspectRatio` on nested <image href="X.svg"> when the source SVG
+          // has explicit width/height attributes, stretching landscape icons (Cassandra,
+          // RocksDB, ClickHouse) into a square. HTML `<img object-fit: contain>`
+          // letterboxes correctly across browsers.
+          appendIconImage(svg, iconUri, centerX - iconSize / 2, persistorY - iconSize / 2, iconSize, iconSize)
+        case None =>
+          val persistorColor = initial.persistor.status match {
+            case "Healthy" => "#1658b7"
+            case "Degraded" => "#ffc107"
+            case _ => "#dc3545"
+          }
+          val persistorWidth = 120.0
+          val persistorHeight = 44.0
+          svg
+            .append("rect")
+            .attr("x", centerX - persistorWidth / 2)
+            .attr("y", persistorY - persistorHeight / 2)
+            .attr("width", persistorWidth)
+            .attr("height", persistorHeight)
+            .attr("rx", 6)
+            .attr("fill", "white")
+            .attr("stroke", persistorColor)
+            .attr("stroke-width", 2.5)
+          svg
+            .append("text")
+            .attr("x", centerX)
+            .attr("y", persistorY + 5)
+            .attr("text-anchor", "middle")
+            .attr("font-size", "14px")
+            .attr("fill", "#0a295b")
+            .text(initial.persistor.name)
+      }
 
-    val persistorZoneW = 140.0
-    val persistorZoneH = 70.0
-    val persistorZone = svg
-      .append("rect")
-      .attr("x", centerX - persistorZoneW / 2)
-      .attr("y", persistorY - persistorZoneH / 2)
-      .attr("width", persistorZoneW)
-      .attr("height", persistorZoneH)
-      .attr("fill", "transparent")
-      .attr("pointer-events", "all")
-      .attr("style", "cursor: pointer;")
-    LandingTooltip.attachToElement(
-      persistorZone.node().asInstanceOf[dom.Element],
-      () => buildPersistorTooltip(current),
-    )
+      val persistorZoneW = 140.0
+      val persistorZoneH = 70.0
+      val persistorZone = svg
+        .append("rect")
+        .attr("x", centerX - persistorZoneW / 2)
+        .attr("y", persistorY - persistorZoneH / 2)
+        .attr("width", persistorZoneW)
+        .attr("height", persistorZoneH)
+        .attr("fill", "transparent")
+        .attr("pointer-events", "all")
+        .attr("style", "cursor: pointer;")
+      LandingTooltip.attachToElement(
+        persistorZone.node().asInstanceOf[dom.Element],
+        () => buildPersistorTooltip(current),
+      )
+    }
 
     // ---- In-place rate updater ----
     def applyRates(snap: Snapshot): Unit = {
       current = snap
-      val (ingestNodes, outputNodes, cypherNode) = derivedNodes(snap)
+      val (ingestNodes, outputNodes, cypherNode) = derivedNodes(snap, visibility)
       val ingestTotal = math.max(ingestNodes.map(_.aggregateRate).sum, 1.0)
       val outputTotal = math.max(outputNodes.map(_.aggregateRate).sum, 1.0)
       val ingestShareDenom = math.max(ingestTotal, animationShareFloor)
@@ -680,35 +717,40 @@ object OverviewDiagram {
 
       // Persistor lines: latency drives color, throughput drives stroke + spawn rate,
       // latency also drives dot duration. All three flow through the SpawnParams cells.
-      val newWriteColor = latencyHealthColor(snap.persistor.writeLatencyMs)
-      val newReadColor = latencyHealthColor(snap.persistor.readLatencyMs)
-      writePathSel
-        .attr("stroke", newWriteColor)
-        .attr("stroke-width", persistorStrokeWidth(snap.persistor.writeOpsPerSec))
-      readPathSel
-        .attr("stroke", newReadColor)
-        .attr("stroke-width", persistorStrokeWidth(snap.persistor.readOpsPerSec))
+      // Skipped entirely when the persistor section is hidden — there's no SVG to mutate.
+      if (visibility.persistor) {
+        val newWriteColor = latencyHealthColor(snap.persistor.writeLatencyMs)
+        val newReadColor = latencyHealthColor(snap.persistor.readLatencyMs)
+        writePathSel
+          .attr("stroke", newWriteColor)
+          .attr("stroke-width", persistorStrokeWidth(snap.persistor.writeOpsPerSec))
+        readPathSel
+          .attr("stroke", newReadColor)
+          .attr("stroke-width", persistorStrokeWidth(snap.persistor.readOpsPerSec))
 
-      val (newWriteInterval, newWriteDuration) =
-        persistorAnimationTiming(snap.persistor.writeOpsPerSec, snap.persistor.writeLatencyMs)
-      writeParams.intervalMs = newWriteInterval
-      writeParams.durationMs = newWriteDuration
-      writeParams.color = newWriteColor
-      writeParams.enabled = snap.persistor.writeOpsPerSec >= ActiveRateThreshold
+        val (newWriteInterval, newWriteDuration) =
+          persistorAnimationTiming(snap.persistor.writeOpsPerSec, snap.persistor.writeLatencyMs)
+        writeParams.intervalMs = newWriteInterval
+        writeParams.durationMs = newWriteDuration
+        writeParams.color = newWriteColor
+        writeParams.enabled = snap.persistor.writeOpsPerSec >= ActiveRateThreshold
 
-      val (newReadInterval, newReadDuration) =
-        persistorAnimationTiming(snap.persistor.readOpsPerSec, snap.persistor.readLatencyMs)
-      readParams.intervalMs = newReadInterval
-      readParams.durationMs = newReadDuration
-      readParams.color = newReadColor
-      readParams.enabled = snap.persistor.readOpsPerSec >= ActiveRateThreshold
-
-      // Cluster ring color.
-      val newQuineStroke = snap.clusterFullyUp match {
-        case Some(false) => "#dc3545"
-        case _ => "#1658b7"
+        val (newReadInterval, newReadDuration) =
+          persistorAnimationTiming(snap.persistor.readOpsPerSec, snap.persistor.readLatencyMs)
+        readParams.intervalMs = newReadInterval
+        readParams.durationMs = newReadDuration
+        readParams.color = newReadColor
+        readParams.enabled = snap.persistor.readOpsPerSec >= ActiveRateThreshold
       }
-      val _ = quineRingSel.attr("stroke", newQuineStroke)
+
+      // Cluster ring color — only meaningful when the cluster section is visible.
+      if (visibility.cluster) {
+        val newQuineStroke = snap.clusterFullyUp match {
+          case Some(false) => "#dc3545"
+          case _ => "#1658b7"
+        }
+        val _ = quineRingSel.attr("stroke", newQuineStroke)
+      }
     }
 
     new RenderHandles(applyRates, timers)
@@ -732,29 +774,43 @@ object OverviewDiagram {
     * overtook the other, which would either require re-rendering the SVG (defeating
     * the in-place-update goal) or leave us writing rates to the wrong line.
     */
-  private def derivedNodes(snap: Snapshot): (Seq[FlowNode], Seq[FlowNode], Option[FlowNode]) = {
+  private def derivedNodes(
+    snap: Snapshot,
+    visibility: Visibility,
+  ): (Seq[FlowNode], Seq[FlowNode], Option[FlowNode]) = {
     // One node per ingest — intentionally not aggregated by source so users can
     // distinguish individual streams even when several share the same connection.
-    val ingestNodes: Seq[FlowNode] = snap.ingests
-      .map(ingest => FlowNode(ingest.name, ingest.sourceType, ingest.rate, ingest.status, count = 1))
-      .sortBy(_.label)
+    val ingestNodes: Seq[FlowNode] =
+      if (!visibility.ingests) Nil
+      else
+        snap.ingests
+          .map(ingest => FlowNode(ingest.name, ingest.sourceType, ingest.rate, ingest.status, count = 1))
+          .sortBy(_.label)
 
-    val allOutputs = snap.queries.flatMap(_.outputs)
-    val (cypherOutputs, regularOutputs) = allOutputs.partition(_.outputType == "cypher")
+    // Skip the partition entirely when neither side will be drawn — saves the
+    // flatMap+partition over `snap.queries` on every rate tick for users who
+    // can't see standing-query data.
+    val (cypherOutputs, regularOutputs): (Seq[StandingQueryOutputInfo], Seq[StandingQueryOutputInfo]) =
+      if (!visibility.outputs && !visibility.cypher) (Nil, Nil)
+      else snap.queries.flatMap(_.outputs).partition(_.outputType == "cypher")
 
-    val cypherNode: Option[FlowNode] = if (cypherOutputs.nonEmpty) {
-      val totalRate = cypherOutputs.map(_.rate).sum
-      Some(FlowNode("Cypher Queries", "cypher", totalRate, "Running", cypherOutputs.size))
-    } else None
+    val cypherNode: Option[FlowNode] =
+      if (visibility.cypher && cypherOutputs.nonEmpty) {
+        val totalRate = cypherOutputs.map(_.rate).sum
+        Some(FlowNode("Cypher Queries", "cypher", totalRate, "Running", cypherOutputs.size))
+      } else None
 
-    val outputNodes: Seq[FlowNode] = regularOutputs
-      .groupBy(_.destination)
-      .toSeq
-      .map { case (dest, group) =>
-        val totalRate = group.map(_.rate).sum
-        FlowNode(dest, group.head.outputType, totalRate, "Running", group.size)
-      }
-      .sortBy(_.label)
+    val outputNodes: Seq[FlowNode] =
+      if (!visibility.outputs) Nil
+      else
+        regularOutputs
+          .groupBy(_.destination)
+          .toSeq
+          .map { case (dest, group) =>
+            val totalRate = group.map(_.rate).sum
+            FlowNode(dest, group.head.outputType, totalRate, "Running", group.size)
+          }
+          .sortBy(_.label)
 
     (ingestNodes, outputNodes, cypherNode)
   }
@@ -814,20 +870,24 @@ object OverviewDiagram {
      else "")
   }
 
-  private def buildQuineTooltip(snap: Snapshot): String = {
-    val (ingestNodes, outputNodes, cypherNode) = derivedNodes(snap)
-    val totalInRate = snap.ingests.map(_.rate).sum
+  private def buildQuineTooltip(snap: Snapshot, visibility: Visibility): String = {
+    val (ingestNodes, outputNodes, cypherNode) = derivedNodes(snap, visibility)
+    val totalInRate = if (visibility.ingests) snap.ingests.map(_.rate).sum else 0.0
     val totalOutRate = outputNodes.map(_.aggregateRate).sum
     val cypherRate = cypherNode.map(_.aggregateRate).getOrElse(0.0)
     LandingTooltip.header("Quine") +
     LandingTooltip.kvTable(
-      LandingTooltip.kvRow("Persistor", ServiceIcons.labelFor(snap.persistor.name)) +
-      LandingTooltip.kvRow("Total ingest rate", LandingTooltip.formatRate(totalInRate)) +
-      LandingTooltip.kvRow("Total output rate", LandingTooltip.formatRate(totalOutRate)) +
-      (if (cypherRate > 0) LandingTooltip.kvRow("Cypher loopback rate", LandingTooltip.formatRate(cypherRate))
+      (if (visibility.persistor) LandingTooltip.kvRow("Persistor", ServiceIcons.labelFor(snap.persistor.name))
        else "") +
-      LandingTooltip.kvRow("Sources", s"${ingestNodes.size}") +
-      LandingTooltip.kvRow("Destinations", s"${outputNodes.size}"),
+      (if (visibility.ingests) LandingTooltip.kvRow("Total ingest rate", LandingTooltip.formatRate(totalInRate))
+       else "") +
+      (if (visibility.outputs) LandingTooltip.kvRow("Total output rate", LandingTooltip.formatRate(totalOutRate))
+       else "") +
+      (if (visibility.cypher && cypherRate > 0)
+         LandingTooltip.kvRow("Cypher loopback rate", LandingTooltip.formatRate(cypherRate))
+       else "") +
+      (if (visibility.ingests) LandingTooltip.kvRow("Sources", s"${ingestNodes.size}") else "") +
+      (if (visibility.outputs) LandingTooltip.kvRow("Destinations", s"${outputNodes.size}") else ""),
     )
   }
 
