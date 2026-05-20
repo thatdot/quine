@@ -6,7 +6,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.cats._
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps

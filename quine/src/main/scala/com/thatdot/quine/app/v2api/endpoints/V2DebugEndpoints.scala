@@ -13,7 +13,7 @@ import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, path, q
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.V2EndpointDefinitions
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps

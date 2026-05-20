@@ -9,7 +9,7 @@ import sttp.tapir.Schema.annotations.{default, description, encodedExample, titl
 
 import com.thatdot.api.codec.SecretCodecs._
 import com.thatdot.api.schema.SecretSchemas._
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, finiteDurationEncoder}
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.{DestinationSteps, Format, OutputFormat}

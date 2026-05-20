@@ -10,7 +10,7 @@ import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
 
 import com.thatdot.api.v2.RatesSummary
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, finiteDurationEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.scala.finiteDurationSchema

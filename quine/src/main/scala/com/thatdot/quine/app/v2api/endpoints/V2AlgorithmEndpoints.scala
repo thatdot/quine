@@ -20,7 +20,7 @@ import sttp.tapir.server.ServerEndpoint.Full
 
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.V2EndpointDefinitions
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.StringOps

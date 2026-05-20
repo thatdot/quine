@@ -18,7 +18,7 @@ import sttp.tapir.{Schema, Validator}
 import com.thatdot.api.codec.SecretCodecs
 import com.thatdot.api.codec.SecretCodecs._
 import com.thatdot.api.schema.SecretSchemas._
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.codec.DisjointEither.syntax._
 import com.thatdot.api.v2.codec.DisjointEvidence._
 import com.thatdot.api.v2.codec.ScreamingSnakeEnum

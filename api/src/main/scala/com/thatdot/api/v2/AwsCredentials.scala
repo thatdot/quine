@@ -6,7 +6,7 @@ import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
 
 import com.thatdot.api.codec.SecretCodecs
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.common.security.Secret
 
 @title("AWS Credentials")

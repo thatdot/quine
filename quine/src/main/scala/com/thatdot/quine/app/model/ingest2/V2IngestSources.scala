@@ -15,7 +15,7 @@ import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.api.codec.SecretCodecs
 import com.thatdot.api.v2.SaslJaasConfig
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
 import com.thatdot.quine.app.util.StringOps.syntax.MultilineTransforms

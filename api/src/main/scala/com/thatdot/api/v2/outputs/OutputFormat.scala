@@ -5,7 +5,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, encodedExample, title}
 
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 
 @title("Result Output Format")
 sealed trait OutputFormat

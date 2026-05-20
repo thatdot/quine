@@ -16,7 +16,7 @@ import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, oneOfBo
 
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.V2EndpointDefinitions
 import com.thatdot.api.v2.schema.ThirdPartySchemas.circe.{mapStringJsonSchema, seqSeqJsonSchema}
 import com.thatdot.common.quineid.QuineId

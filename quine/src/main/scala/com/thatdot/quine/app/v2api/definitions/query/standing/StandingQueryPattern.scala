@@ -5,7 +5,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
 
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.codec.ScreamingSnakeEnum
 
 @title("Standing Query Pattern")

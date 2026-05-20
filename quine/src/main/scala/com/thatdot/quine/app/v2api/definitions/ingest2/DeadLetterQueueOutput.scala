@@ -7,7 +7,7 @@ import sttp.tapir.Schema.annotations.{default, description, title}
 
 import com.thatdot.api.codec.SecretCodecs._
 import com.thatdot.api.schema.SecretSchemas._
-import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.outputs.{DestinationSteps, DestinationSteps => Outputs, OutputFormat => OutputFormats}
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, SaslJaasConfig}
 import com.thatdot.common.security.Secret
