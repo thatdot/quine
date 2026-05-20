@@ -24,6 +24,13 @@ import com.thatdot.quine.webapp.components.D3
   */
 object OverviewDiagram {
 
+  /** Minimum rate (events or ops per second) at which a flow is considered active
+    * enough to animate. Below this, the line is drawn but no dots spawn — avoids
+    * a misleading "data flowing" animation on idle streams reporting trickle rates
+    * (e.g. 0.01 eps from a 1-minute average that hasn't decayed to zero).
+    */
+  private val ActiveRateThreshold = 1.0
+
   /** All inputs the diagram needs to render. */
   final case class Snapshot(
     ingests: Seq[IngestInfo],
@@ -218,7 +225,7 @@ object OverviewDiagram {
     // means a line with 4% of side-total flow gets ~20% of max dots — not just 4%.
     // Dots take ~2300ms to cross the line, so spawnInterval = duration / targetDots.
     val avgDotDuration = 2300.0
-    val minVisibleDots = 3.0
+    val minVisibleDots = 1.0
     val maxVisibleDots = 14.0
     def spawnIntervalForShare(share: Double): Int = {
       val s = math.sqrt(math.min(math.max(share, 0.0), 1.0))
@@ -245,6 +252,14 @@ object OverviewDiagram {
     val initialIngestTotal = math.max(ingestNodes0.map(_.aggregateRate).sum, 1.0)
     val initialOutputTotal = math.max(outputNodes0.map(_.aggregateRate).sum, 1.0)
 
+    // Animation-cadence denominator: floor at 100 eps so low-traffic systems are
+    // shown as a trickle rather than getting full visual liveliness just because
+    // each line happens to be a large share of a tiny total. (e.g. 3 ingests at
+    // 1 eps each → share 1/100 ≈ 1% → near-min dot cadence, not 1/3 ≈ 33%.)
+    val animationShareFloor = 100.0
+    val initialIngestShareDenom = math.max(initialIngestTotal, animationShareFloor)
+    val initialOutputShareDenom = math.max(initialOutputTotal, animationShareFloor)
+
     // Draw ingest links (left → center). Color reflects the ingest's status so a
     // paused/failed stream is visible at a glance.
     ingestNodes0.zipWithIndex.foreach { case (node, idx) =>
@@ -262,10 +277,10 @@ object OverviewDiagram {
         .attr("stroke-opacity", 0.35)
 
       val params = new SpawnParams(
-        intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / initialIngestTotal),
+        intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / initialIngestShareDenom),
         color = lineColor,
         durationMs = avgDotDuration,
-        enabled = node.aggregateRate > 0,
+        enabled = ingestAnimates(node.status) && node.aggregateRate >= ActiveRateThreshold,
       )
       timers += spawnAnimatedIconsMutable(svg, pathData, params)
 
@@ -308,10 +323,10 @@ object OverviewDiagram {
         .attr("stroke-opacity", 0.35)
 
       val params = new SpawnParams(
-        intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / initialOutputTotal),
+        intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / initialOutputShareDenom),
         color = "#1658b7",
         durationMs = avgDotDuration,
-        enabled = node.aggregateRate > 0,
+        enabled = node.aggregateRate >= ActiveRateThreshold,
       )
       timers += spawnAnimatedIconsMutable(svg, pathData, params)
 
@@ -369,13 +384,13 @@ object OverviewDiagram {
       intervalMs = writeIntervalMs0,
       color = writeColor0,
       durationMs = writeDuration0,
-      enabled = initial.persistor.writeOpsPerSec > 0.01 || initial.persistor.writeLatencyMs > 0.01,
+      enabled = initial.persistor.writeOpsPerSec >= ActiveRateThreshold,
     )
     val readParams = new SpawnParams(
       intervalMs = readIntervalMs0,
       color = readColor0,
       durationMs = readDuration0,
-      enabled = initial.persistor.readOpsPerSec > 0.01 || initial.persistor.readLatencyMs > 0.01,
+      enabled = initial.persistor.readOpsPerSec >= ActiveRateThreshold,
     )
     timers += spawnAnimatedIconsMutable(svg, writePathData, writeParams)
     timers += spawnAnimatedIconsMutable(svg, readPathData, readParams)
@@ -532,10 +547,10 @@ object OverviewDiagram {
       }
 
       val cParams = new SpawnParams(
-        intervalMs = spawnIntervalForShare(cNode.aggregateRate.toDouble / initialOutputTotal),
+        intervalMs = spawnIntervalForShare(cNode.aggregateRate.toDouble / initialOutputShareDenom),
         color = "#1658b7",
         durationMs = avgDotDuration,
-        enabled = cNode.aggregateRate > 0,
+        enabled = cNode.aggregateRate >= ActiveRateThreshold,
       )
       timers += spawnAnimatedIconsMutable(svg, cypherPathData, cParams)
       cypherParams = Some(cParams)
@@ -615,6 +630,8 @@ object OverviewDiagram {
       val (ingestNodes, outputNodes, cypherNode) = derivedNodes(snap)
       val ingestTotal = math.max(ingestNodes.map(_.aggregateRate).sum, 1.0)
       val outputTotal = math.max(outputNodes.map(_.aggregateRate).sum, 1.0)
+      val ingestShareDenom = math.max(ingestTotal, animationShareFloor)
+      val outputShareDenom = math.max(outputTotal, animationShareFloor)
       val iStroke = ingestStroke(ingestTotal)
       val oStroke = outputStroke(outputTotal)
 
@@ -628,8 +645,8 @@ object OverviewDiagram {
           handle.pathSel.attr("stroke-width", sw).attr("stroke", color)
           handle.hoverSel.attr("stroke-width", math.max(20.0, sw.asInstanceOf[Double] + 10.0))
           handle.params.color = color
-          handle.params.intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / ingestTotal)
-          handle.params.enabled = node.aggregateRate > 0
+          handle.params.intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / ingestShareDenom)
+          handle.params.enabled = ingestAnimates(node.status) && node.aggregateRate >= ActiveRateThreshold
         }
         if (idx < ingestNodeHandles.size) {
           updateNodeRate(ingestNodeHandles(idx), node.aggregateRate)
@@ -642,8 +659,8 @@ object OverviewDiagram {
           val sw = oStroke(node.aggregateRate.toDouble)
           handle.pathSel.attr("stroke-width", sw)
           handle.hoverSel.attr("stroke-width", math.max(20.0, sw.asInstanceOf[Double] + 10.0))
-          handle.params.intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / outputTotal)
-          handle.params.enabled = node.aggregateRate > 0
+          handle.params.intervalMs = spawnIntervalForShare(node.aggregateRate.toDouble / outputShareDenom)
+          handle.params.enabled = node.aggregateRate >= ActiveRateThreshold
         }
         if (idx < outputNodeHandles.size) {
           updateNodeRate(outputNodeHandles(idx), node.aggregateRate)
@@ -656,8 +673,8 @@ object OverviewDiagram {
           _.text(if (cNode.aggregateRate > 0) LandingTooltip.formatRate(cNode.aggregateRate) else ""),
         )
         cypherParams.foreach { p =>
-          p.intervalMs = spawnIntervalForShare(cNode.aggregateRate.toDouble / outputTotal)
-          p.enabled = cNode.aggregateRate > 0
+          p.intervalMs = spawnIntervalForShare(cNode.aggregateRate.toDouble / outputShareDenom)
+          p.enabled = cNode.aggregateRate >= ActiveRateThreshold
         }
       }
 
@@ -677,14 +694,14 @@ object OverviewDiagram {
       writeParams.intervalMs = newWriteInterval
       writeParams.durationMs = newWriteDuration
       writeParams.color = newWriteColor
-      writeParams.enabled = snap.persistor.writeOpsPerSec > 0.01 || snap.persistor.writeLatencyMs > 0.01
+      writeParams.enabled = snap.persistor.writeOpsPerSec >= ActiveRateThreshold
 
       val (newReadInterval, newReadDuration) =
         persistorAnimationTiming(snap.persistor.readOpsPerSec, snap.persistor.readLatencyMs)
       readParams.intervalMs = newReadInterval
       readParams.durationMs = newReadDuration
       readParams.color = newReadColor
-      readParams.enabled = snap.persistor.readOpsPerSec > 0.01 || snap.persistor.readLatencyMs > 0.01
+      readParams.enabled = snap.persistor.readOpsPerSec >= ActiveRateThreshold
 
       // Cluster ring color.
       val newQuineStroke = snap.clusterFullyUp match {
@@ -913,6 +930,17 @@ object OverviewDiagram {
     case "Paused" | "Restored" => "#d6a100" // amber
     case "Failed" => "#dc3545" // red
     case _ => "#1658b7"
+  }
+
+  /** Whether an ingest line should spawn dots. Paused/Failed/Restored ingests keep
+    * their colored line but show no flow, since data isn't actually moving — the
+    * 1-minute rate average can linger above zero for a while after a stream stops.
+    * `Mixed` (aggregated groups where at least one member is running) still animates,
+    * since some flow is real even if other members are paused.
+    */
+  private def ingestAnimates(status: String): Boolean = status match {
+    case "Running" | "Mixed" => true
+    case _ => false
   }
 
   /** Draw a node and return a handle for in-place rate updates. The rate-text element
