@@ -462,6 +462,12 @@ div.vis-tooltip {
   .sidebar.sidebar-narrow .nav-title {
     display: none;
   }
+
+  /* CoreUI hides .sidebar-toggler below the lg breakpoint; re-show it when the
+     sidebar is expanded so users can collapse it back to narrow. */
+  .sidebar:not(.sidebar-narrow) .sidebar-toggler {
+    display: block;
+  }
 }
 
 /* ==========================================================================
