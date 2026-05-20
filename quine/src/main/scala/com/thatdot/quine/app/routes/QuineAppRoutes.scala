@@ -82,11 +82,14 @@ class QuineAppRoutes(
     Directives.pathEndOrSingleSlash {
       // RFC 8631 — point clients (including AI agents) at the OpenAPI spec for the latest API version.
       Directives.respondWithHeader(RawHeader("Link", "</openapi.json>; rel=\"service-desc\"")) {
-        getFromResource("web/quine-ui.html")
+        redirect("dashboard", StatusCodes.PermanentRedirect)
       }
     } ~
-    Directives.path("dashboard" | "docs" | "v1docs" | "home" | "streams") {
+    Directives.path("dashboard" | "explorer" | "streams" | "metrics" | "docs" | "v1docs") {
       getFromResource("web/quine-ui.html")
+    } ~
+    Directives.path("home") {
+      redirect("dashboard", StatusCodes.PermanentRedirect)
     } ~
     Directives.path("quine-ui-startup.js") {
       getJsWithInjectedConfig("web/quine-ui-startup.js", config.defaultApiVersion == "v2")
