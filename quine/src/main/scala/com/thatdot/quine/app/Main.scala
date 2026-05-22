@@ -191,12 +191,7 @@ object Main extends App with LazySafeLogging {
   // Extract file paths from recipe to automatically allow them
   val recipeFilePaths: List[String] = recipe.toList.flatMap {
     case Recipe.V1(r) => r.extractFileIngestPaths
-    case Recipe.V2(r) =>
-      r.ingestStreams.collect {
-        case is
-            if is.source.isInstanceOf[com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.File] =>
-          is.source.asInstanceOf[com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.File].path
-      }
+    case Recipe.V2(r) => r.extractFileIngestPaths
   }
   val fileAccessPolicy: FileAccessPolicy =
     FileAccessPolicy.fromConfigWithRecipePaths(

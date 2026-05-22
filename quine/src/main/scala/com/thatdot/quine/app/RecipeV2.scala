@@ -196,6 +196,11 @@ object RecipeV2 {
     statusQuery: Option[StatusQueryV2] = None,
   ) {
     def isVersion(testVersion: Int): Boolean = version == testVersion
+
+    /** Extract all file paths from IngestSource.File configurations in this recipe */
+    def extractFileIngestPaths: List[String] = ingestStreams.map(_.source).collect { case f: IngestSource.File =>
+      f.path
+    }
   }
 
   object Recipe {
