@@ -15,11 +15,16 @@ object GitVersion extends AutoPlugin {
   private def tagWithPrefix(git: GitReadonlyInterface, prefix: String): Option[String] =
     git.describedVersion(Seq(prefix + '*')).map(_.stripPrefix(prefix))
 
+  private def currentTagWithPrefix(git: GitReadonlyInterface, prefix: String): Option[String] =
+    git.currentTags.find(_.startsWith(prefix)).map(_.stripPrefix(prefix))
+
   override lazy val projectSettings = Seq(
     tagPrefix := "quine/",
     version := gitReader.value.withGit(git =>
-      // Try "v" as a fallback option to support just "v" as the tag prefix in the OSS repo
-      tagWithPrefix(git, tagPrefix.value) orElse tagWithPrefix(git, "v") getOrElse "UNKNOWN",
+      currentTagWithPrefix(git, "prerelease/" + tagPrefix.value)
+      orElse tagWithPrefix(git, tagPrefix.value)
+      orElse tagWithPrefix(git, "v")
+      getOrElse "UNKNOWN",
     ),
   )
 
