@@ -21,6 +21,7 @@ import com.thatdot.common.security.Secret
 sealed trait SaslJaasConfig
 
 object SaslJaasConfig {
+
   implicit val encoder: Encoder[SaslJaasConfig] = deriveConfiguredEncoder
   implicit val decoder: Decoder[SaslJaasConfig] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[SaslJaasConfig] = Schema.derived
@@ -35,8 +36,13 @@ object SaslJaasConfig {
     implicit val plainLoginEncoder: Encoder[PlainLogin] = deriveConfiguredEncoder
     implicit val scramLoginEncoder: Encoder[ScramLogin] = deriveConfiguredEncoder
     implicit val oauthBearerLoginEncoder: Encoder[OAuthBearerLogin] = deriveConfiguredEncoder
+    implicit val oauthBearerAssertionLoginEncoder: Encoder[OAuthBearerAssertionLogin] = deriveConfiguredEncoder
     deriveConfiguredEncoder
   }
+
+  private val PlainModule = "org.apache.kafka.common.security.plain.PlainLoginModule"
+  private val ScramModule = "org.apache.kafka.common.security.scram.ScramLoginModule"
+  private val OAuthBearerModule = "org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule"
 
   /** Format a SASL/JAAS configuration as a Kafka JAAS config string.
     *
@@ -49,19 +55,31 @@ object SaslJaasConfig {
     */
   private def formatJaasString(config: SaslJaasConfig, renderSecret: Secret => String): String = config match {
     case PlainLogin(username, password) =>
-      s"""org.apache.kafka.common.security.plain.PlainLoginModule required username="$username" password="${renderSecret(
-        password,
-      )}";"""
+      JaasFormatter.loginModule(PlainModule, Seq("username" -> username, "password" -> renderSecret(password)))
     case ScramLogin(username, password) =>
-      s"""org.apache.kafka.common.security.scram.ScramLoginModule required username="$username" password="${renderSecret(
-        password,
-      )}";"""
+      JaasFormatter.loginModule(ScramModule, Seq("username" -> username, "password" -> renderSecret(password)))
     case OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl) =>
-      val scopePart = scope.map(s => s""" scope="$s"""").getOrElse("")
-      val tokenUrlPart = tokenEndpointUrl.map(u => s""" sasl.oauthbearer.token.endpoint.url="$u"""").getOrElse("")
-      s"""org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required clientId="$clientId" clientSecret="${renderSecret(
-        clientSecret,
-      )}"$scopePart$tokenUrlPart;"""
+      JaasFormatter.loginModule(
+        OAuthBearerModule,
+        Seq("clientId" -> clientId, "clientSecret" -> renderSecret(clientSecret)) ++
+        scope.map("scope" -> _) ++
+        tokenEndpointUrl.map("sasl.oauthbearer.token.endpoint.url" -> _),
+      )
+    case a: OAuthBearerAssertionLogin =>
+      JaasFormatter.loginModule(
+        OAuthBearerModule,
+        Seq(
+          "clientId" -> a.clientId,
+          "certFile" -> a.certFile,
+          "certFilePassword" -> renderSecret(a.certFilePassword),
+        ) ++
+        a.certFileType.map("certFileType" -> _) ++
+        a.certAlias.map("certAlias" -> _) ++
+        a.keyAlias.map("keyAlias" -> _) ++
+        Seq("resourceUri" -> a.resourceUri, "discoveryUrl" -> a.discoveryUrl) ++
+        a.caCertPath.map("caCertPath" -> _) ++
+        a.caCertPassword.map(s => "caCertPassword" -> renderSecret(s)),
+      )
   }
 
   /** Loggable instance for SaslJaasConfig that outputs JAAS format with redacted secrets.
@@ -165,4 +183,49 @@ object OAuthBearerLogin {
   implicit val encoder: Encoder[OAuthBearerLogin] = deriveConfiguredEncoder
   implicit val decoder: Decoder[OAuthBearerLogin] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[OAuthBearerLogin] = Schema.derived
+}
+
+/** OAuth Bearer authentication via `private_key_jwt` client assertion (RFC 7521/7523).
+  *
+  * Used when the OAuth client is registered with a certificate rather than a shared secret
+  * (e.g. JPMC IDAnywhere "Confidential Client" with X509). The Quine-provided callback
+  * handler signs a JWT assertion with the private key from the supplied keystore and
+  * exchanges it for a bearer token at the OIDC token endpoint.
+  *
+  * Requires `sasl.login.callback.handler.class` to be wired to
+  * `com.thatdot.quine.auth.kafka.OAuthBearerAssertionLoginCallbackHandler`; this is emitted
+  * automatically via the `KafkaSaslExtension` extension hook when the deployment is
+  * Enterprise.
+  *
+  * @param clientId         OAuth client identifier registered in the IdP
+  * @param certFile         Filesystem path to the JKS/PKCS12 keystore holding the client cert + private key
+  * @param certFilePassword Keystore password (redacted in API responses and logs)
+  * @param certFileType     Optional keystore format hint — usually `"PKCS12"` (the JDK 9+ default) or `"JKS"`.
+  *                         If omitted, [[com.thatdot.quine.auth.oauth.X509Loader]] uses `KeyStore.getDefaultType`.
+  * @param certAlias        Optional keystore alias for the certificate (first cert entry used if omitted)
+  * @param keyAlias         Optional keystore alias for the private key (first key entry used if omitted)
+  * @param resourceUri      IdP resource / audience to request the token for
+  * @param discoveryUrl     OIDC discovery URL for the IdP (used to look up the token endpoint)
+  * @param caCertPath       Optional filesystem path to a JKS/PKCS12 truststore the JVM should use when
+  *                         making the HTTPS call to the OIDC token endpoint. If omitted, the JVM default
+  *                         truststore applies (`-Djavax.net.ssl.trustStore=…`).
+  * @param caCertPassword   Optional password for the truststore named by [[caCertPath]]
+  */
+final case class OAuthBearerAssertionLogin(
+  clientId: String,
+  certFile: String,
+  certFilePassword: Secret,
+  certFileType: Option[String] = None,
+  certAlias: Option[String] = None,
+  keyAlias: Option[String] = None,
+  resourceUri: String,
+  discoveryUrl: String,
+  caCertPath: Option[String] = None,
+  caCertPassword: Option[Secret] = None,
+) extends SaslJaasConfig
+
+object OAuthBearerAssertionLogin {
+  implicit val encoder: Encoder[OAuthBearerAssertionLogin] = deriveConfiguredEncoder
+  implicit val decoder: Decoder[OAuthBearerAssertionLogin] = deriveConfiguredDecoder
+  implicit lazy val schema: Schema[OAuthBearerAssertionLogin] = Schema.derived
 }

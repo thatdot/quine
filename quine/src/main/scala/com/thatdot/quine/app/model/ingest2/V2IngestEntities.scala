@@ -465,6 +465,10 @@ object V2IngestEntities {
                   V1.SaslJaasConfig.ScramLogin(username, password)
                 case api.v2.OAuthBearerLogin(clientId, clientSecret, _, _) =>
                   V1.SaslJaasConfig.OAuthBearerLogin(clientId, clientSecret)
+                case _: api.v2.OAuthBearerAssertionLogin =>
+                  // V2 cert-based assertion auth has no V1 representation; rendering
+                  // this ingest via the V1 API falls through to the placeholder below.
+                  throw new Exception("v2 OAuthBearerAssertionLogin unsupported in v1 ingests")
               },
             )
           }

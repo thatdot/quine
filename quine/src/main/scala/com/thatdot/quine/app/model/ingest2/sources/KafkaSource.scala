@@ -34,6 +34,7 @@ import com.thatdot.api.v2.SaslJaasConfig
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.security.Secret
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
+import com.thatdot.outputs2.kafka.KafkaSaslExtension
 import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
@@ -234,16 +235,20 @@ case class KafkaSource(
   sslTruststorePassword: Option[Secret] = None,
   sslKeyPassword: Option[Secret] = None,
   saslJaasConfig: Option[SaslJaasConfig] = None,
+  saslExtension: Option[KafkaSaslExtension] = None,
 ) extends FramedSourceProvider
     with LazySafeLogging {
 
   /** Log warnings for any kafkaProperties keys that will be overridden by typed Secret params. */
   private def warnOnOverriddenProperties(): Unit = {
+    val extensionKeys: Set[String] = saslExtension.fold(Set.empty[String])(_.additionalProperties.keySet)
+
     val typedSecretKeys: Set[String] = Set.empty ++
       sslKeystorePassword.map(_ => "ssl.keystore.password") ++
       sslTruststorePassword.map(_ => "ssl.truststore.password") ++
       sslKeyPassword.map(_ => "ssl.key.password") ++
-      saslJaasConfig.map(_ => "sasl.jaas.config")
+      saslJaasConfig.map(_ => "sasl.jaas.config") ++
+      extensionKeys
 
     val overriddenKeys = kafkaProperties.keySet.intersect(typedSecretKeys)
     overriddenKeys.foreach { key =>
@@ -266,7 +271,9 @@ case class KafkaSource(
       sslKeyPassword.map("ssl.key.password" -> _.unsafeValue) ++
       saslJaasConfig.map("sasl.jaas.config" -> SaslJaasConfig.toJaasConfigString(_))
 
-    kafkaProperties ++ secretProps
+    val extensionProps: Map[String, String] = saslExtension.fold(Map.empty[String, String])(_.additionalProperties)
+
+    kafkaProperties ++ secretProps ++ extensionProps
   }
 
   def framedSource: ValidatedNel[BaseError, FramedSource] = Try {

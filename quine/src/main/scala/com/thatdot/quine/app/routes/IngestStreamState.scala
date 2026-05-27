@@ -10,6 +10,7 @@ import cats.data.Validated.{invalidNel, validNel}
 import cats.data.ValidatedNel
 
 import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.outputs2.kafka.KafkaExtensionProvider
 import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.QuineIngestSource
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
@@ -46,6 +47,13 @@ trait IngestStreamState {
   def defaultExecutionContext: ExecutionContext
   implicit def materializer: Materializer
   def fileAccessPolicy: FileAccessPolicy
+
+  /** Pluggable Kafka SASL extension provider. Defaults to a no-op for OSS deployments;
+    * Enterprise applications override this to inject auth-method-specific Kafka client
+    * properties (e.g. the `private_key_jwt` OAuth callback handler class).
+    */
+  def kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig] =
+    KafkaExtensionProvider.empty
 
   /** Add a new ingest stream to the running application.
     *
@@ -173,7 +181,7 @@ trait IngestStreamState {
           determineSwitchModeAndStatus(previousStatus, shouldResumeRestoredIngests)
 
         val decodedSourceNel: ValidatedNel[BaseError, DecodedSource] =
-          DecodedSource.apply(name, settings, meter, graph.system, fileAccessPolicy)(
+          DecodedSource.apply(name, settings, meter, graph.system, fileAccessPolicy, kafkaExtensions)(
             protobufCache,
             avroCache,
             logConfig,
@@ -193,7 +201,11 @@ trait IngestStreamState {
           decodedSourceNel.map { (s: DecodedSource) =>
 
             val errorOutputs =
-              s.getDeadLetterQueues(settings.onRecordError.deadLetterQueueSettings)(protobufCache, graph.system)
+              s.getDeadLetterQueues(settings.onRecordError.deadLetterQueueSettings)(
+                protobufCache,
+                graph.system,
+                kafkaExtensions,
+              )
 
             val quineIngestSource: QuineIngestSource = s.toQuineIngestSource(
               name,

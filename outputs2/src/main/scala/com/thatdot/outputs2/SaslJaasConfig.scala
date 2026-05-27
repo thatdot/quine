@@ -1,5 +1,6 @@
 package com.thatdot.outputs2
 
+import com.thatdot.api.v2.JaasFormatter
 import com.thatdot.common.logging.Log.AlwaysSafeLoggable
 import com.thatdot.common.security.Secret
 
@@ -7,6 +8,10 @@ import com.thatdot.common.security.Secret
 sealed trait SaslJaasConfig
 
 object SaslJaasConfig {
+
+  private val PlainModule = "org.apache.kafka.common.security.plain.PlainLoginModule"
+  private val ScramModule = "org.apache.kafka.common.security.scram.ScramLoginModule"
+  private val OAuthBearerModule = "org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule"
 
   /** Format a SASL/JAAS configuration as a Kafka JAAS config string.
     *
@@ -19,17 +24,31 @@ object SaslJaasConfig {
     */
   private def formatJaasString(config: SaslJaasConfig, renderSecret: Secret => String): String = config match {
     case PlainLogin(username, password) =>
-      s"""org.apache.kafka.common.security.plain.PlainLoginModule required username="$username" password="
-          ${renderSecret(password)}";"""
+      JaasFormatter.loginModule(PlainModule, Seq("username" -> username, "password" -> renderSecret(password)))
     case ScramLogin(username, password) =>
-      s"""org.apache.kafka.common.security.scram.ScramLoginModule required username="$username" password="
-          ${renderSecret(password)}";"""
+      JaasFormatter.loginModule(ScramModule, Seq("username" -> username, "password" -> renderSecret(password)))
     case OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl) =>
-      val scopePart = scope.map(s => s""" scope="$s"""").getOrElse("")
-      val tokenUrlPart = tokenEndpointUrl.map(u => s""" sasl.oauthbearer.token.endpoint.url="$u"""").getOrElse("")
-      s"""org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required clientId="$clientId" clientSecret="${renderSecret(
-        clientSecret,
-      )}"$scopePart$tokenUrlPart;"""
+      JaasFormatter.loginModule(
+        OAuthBearerModule,
+        Seq("clientId" -> clientId, "clientSecret" -> renderSecret(clientSecret)) ++
+        scope.map("scope" -> _) ++
+        tokenEndpointUrl.map("sasl.oauthbearer.token.endpoint.url" -> _),
+      )
+    case a: OAuthBearerAssertionLogin =>
+      JaasFormatter.loginModule(
+        OAuthBearerModule,
+        Seq(
+          "clientId" -> a.clientId,
+          "certFile" -> a.certFile,
+          "certFilePassword" -> renderSecret(a.certFilePassword),
+        ) ++
+        a.certFileType.map("certFileType" -> _) ++
+        a.certAlias.map("certAlias" -> _) ++
+        a.keyAlias.map("keyAlias" -> _) ++
+        Seq("resourceUri" -> a.resourceUri, "discoveryUrl" -> a.discoveryUrl) ++
+        a.caCertPath.map("caCertPath" -> _) ++
+        a.caCertPassword.map(s => "caCertPassword" -> renderSecret(s)),
+      )
   }
 
   /** Loggable instance that outputs JAAS format with redacted secrets. */
@@ -62,4 +81,18 @@ final case class OAuthBearerLogin(
   clientSecret: Secret,
   scope: Option[String] = None,
   tokenEndpointUrl: Option[String] = None,
+) extends SaslJaasConfig
+
+/** OAuth Bearer via `private_key_jwt` assertion. */
+final case class OAuthBearerAssertionLogin(
+  clientId: String,
+  certFile: String,
+  certFilePassword: Secret,
+  certFileType: Option[String] = None,
+  certAlias: Option[String] = None,
+  keyAlias: Option[String] = None,
+  resourceUri: String,
+  discoveryUrl: String,
+  caCertPath: Option[String] = None,
+  caCertPassword: Option[Secret] = None,
 ) extends SaslJaasConfig

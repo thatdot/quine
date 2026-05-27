@@ -14,6 +14,7 @@ import org.apache.kafka.common.serialization.ByteArraySerializer
 import com.thatdot.common.logging.Log
 import com.thatdot.common.logging.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.security.Secret
+import com.thatdot.outputs2.kafka.KafkaSaslExtension
 import com.thatdot.outputs2.{ResultDestination, SaslJaasConfig}
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.util.Log.implicits._
@@ -26,6 +27,7 @@ final case class Kafka(
   sslKeyPassword: Option[Secret] = None,
   saslJaasConfig: Option[SaslJaasConfig] = None,
   kafkaProperties: Map[String, String] = Map.empty,
+  saslExtension: Option[KafkaSaslExtension] = None,
 )(implicit system: ActorSystem)
     extends ResultDestination.Bytes.Kafka
     with LazySafeLogging {
@@ -35,11 +37,14 @@ final case class Kafka(
 
   /** Log warnings for any kafkaProperties keys that will be overridden by typed Secret params. */
   private def warnOnOverriddenProperties()(implicit @unused logConfig: Log.LogConfig): Unit = {
+    val extensionKeys: Set[String] = saslExtension.fold(Set.empty[String])(_.additionalProperties.keySet)
+
     val typedSecretKeys: Set[String] = Set.empty ++
       sslKeystorePassword.map(_ => "ssl.keystore.password") ++
       sslTruststorePassword.map(_ => "ssl.truststore.password") ++
       sslKeyPassword.map(_ => "ssl.key.password") ++
-      saslJaasConfig.map(_ => "sasl.jaas.config")
+      saslJaasConfig.map(_ => "sasl.jaas.config") ++
+      extensionKeys
 
     val overriddenKeys = kafkaProperties.keySet.intersect(typedSecretKeys)
     overriddenKeys.foreach { key =>
@@ -58,7 +63,9 @@ final case class Kafka(
       sslKeyPassword.map("ssl.key.password" -> _.unsafeValue) ++
       saslJaasConfig.map("sasl.jaas.config" -> SaslJaasConfig.toJaasConfigString(_))
 
-    kafkaProperties ++ secretProps
+    val extensionProps: Map[String, String] = saslExtension.fold(Map.empty[String, String])(_.additionalProperties)
+
+    kafkaProperties ++ secretProps ++ extensionProps
   }
 
   override def sink(name: String, inNamespace: NamespaceId)(implicit

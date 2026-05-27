@@ -13,6 +13,7 @@ import com.thatdot.api.v2.outputs.{DestinationSteps, OutputFormat}
 import com.thatdot.convert.Api2ToOutputs2
 import com.thatdot.outputs2.FoldableDestinationSteps
 import com.thatdot.outputs2.destination.Kafka
+import com.thatdot.outputs2.kafka.KafkaExtensionProvider
 import com.thatdot.quine.graph.FakeQuineGraph
 import com.thatdot.quine.serialization.ProtobufSchemaCache
 
@@ -23,6 +24,8 @@ class Api2ToOutputs2KafkaSpec extends AnyFunSuite with Matchers with BeforeAndAf
   implicit private val protobufSchemaCache: ProtobufSchemaCache =
     //noinspection ScalaDeprecation
     ProtobufSchemaCache.Blocking: @nowarn("cat=deprecation")
+  implicit private val kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig] =
+    KafkaExtensionProvider.empty
 
   override def beforeAll(): Unit = {
     super.beforeAll()

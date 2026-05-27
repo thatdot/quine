@@ -195,12 +195,13 @@ final class QuineApp(
             implicit val ec: ExecutionContext = graph.nodeDispatcherEC
             Future
               .traverse(standingQueryDefinition.outputs.toVector) { apiWorkflow =>
-                ApiToStanding(apiWorkflow, inNamespace)(graph, protobufSchemaCache).map(workflowInterpreter =>
-                  apiWorkflow.name -> workflowInterpreter
-                    .flow(graph)
-                    .viaMat(KillSwitches.single)(Keep.right)
-                    .map(_ => SqResultsExecToken(s"SQ: ${apiWorkflow.name} in: $inNamespace"))
-                    .to(graph.masterStream.standingOutputsCompletionSink),
+                ApiToStanding(apiWorkflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).map(
+                  workflowInterpreter =>
+                    apiWorkflow.name -> workflowInterpreter
+                      .flow(graph)
+                      .viaMat(KillSwitches.single)(Keep.right)
+                      .map(_ => SqResultsExecToken(s"SQ: ${apiWorkflow.name} in: $inNamespace"))
+                      .to(graph.masterStream.standingOutputsCompletionSink),
                 )
               }
               .map(_.toMap)
@@ -515,19 +516,20 @@ final class QuineApp(
         if (outputs.contains(outputName)) {
           Future.successful(StandingQueryInterfaceV2.Result.AlreadyExists(outputName))
         } else {
-          ApiToStanding(workflow, inNamespace)(graph, protobufSchemaCache).flatMap { workflowInterpreter =>
-            val killSwitch =
-              sqResultsHub
-                .viaMat(KillSwitches.single)(Keep.right)
-                .via(workflowInterpreter.flow(graph)(logConfig))
-                .map(_ => SqResultsExecToken(s"SQ: $outputName in: $inNamespace"))
-                .to(graph.masterStream.standingOutputsCompletionSink)
-                .run()
+          ApiToStanding(workflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).flatMap {
+            workflowInterpreter =>
+              val killSwitch =
+                sqResultsHub
+                  .viaMat(KillSwitches.single)(Keep.right)
+                  .via(workflowInterpreter.flow(graph)(logConfig))
+                  .map(_ => SqResultsExecToken(s"SQ: $outputName in: $inNamespace"))
+                  .to(graph.masterStream.standingOutputsCompletionSink)
+                  .run()
 
-            val updatedInnerMap = outputTargets(inNamespace) +
-              (queryName -> (sqId -> (outputs + (outputName -> OutputTarget.V2(workflow, killSwitch)))))
-            outputTargets += inNamespace -> updatedInnerMap
-            storeStandingQueryOutputs2().map(_ => StandingQueryInterfaceV2.Result.Success)(ExecutionContext.parasitic)
+              val updatedInnerMap = outputTargets(inNamespace) +
+                (queryName -> (sqId -> (outputs + (outputName -> OutputTarget.V2(workflow, killSwitch)))))
+              outputTargets += inNamespace -> updatedInnerMap
+              storeStandingQueryOutputs2().map(_ => StandingQueryInterfaceV2.Result.Success)(ExecutionContext.parasitic)
           }(graph.nodeDispatcherEC)
         }
       optionFut.getOrElse(Future.successful(StandingQueryInterfaceV2.Result.NotFound(queryName)))
@@ -1253,15 +1255,16 @@ final class QuineApp(
             .traverse(queriesWithResultHubs.toVector) { case (queryName, sqId, outputToWorkflowDef, resultHub) =>
               Future
                 .traverse(outputToWorkflowDef.toVector) { case (outputName, workflowDef) =>
-                  ApiToStanding(workflowDef, ns)(graph, protobufSchemaCache).map { workflowInterpreter =>
-                    val killSwitch =
-                      resultHub
-                        .viaMat(KillSwitches.single)(Keep.right)
-                        .via(workflowInterpreter.flow(graph)(logConfig))
-                        .map(_ => SqResultsExecToken(s"SQ: $outputName in: $ns"))
-                        .to(graph.masterStream.standingOutputsCompletionSink)
-                        .run()
-                    outputName -> OutputTarget.V2(workflowDef, killSwitch)
+                  ApiToStanding(workflowDef, ns)(graph, protobufSchemaCache, kafkaExtensions).map {
+                    workflowInterpreter =>
+                      val killSwitch =
+                        resultHub
+                          .viaMat(KillSwitches.single)(Keep.right)
+                          .via(workflowInterpreter.flow(graph)(logConfig))
+                          .map(_ => SqResultsExecToken(s"SQ: $outputName in: $ns"))
+                          .to(graph.masterStream.standingOutputsCompletionSink)
+                          .run()
+                      outputName -> OutputTarget.V2(workflowDef, killSwitch)
                   }
                 }
                 .map { outputNameToV2TargetPairs =>

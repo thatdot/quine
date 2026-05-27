@@ -6,6 +6,7 @@ import org.apache.pekko.actor.ActorSystem
 
 import com.thatdot.api.v2.{outputs => CoreApiOutputs}
 import com.thatdot.outputs2.DataFoldableSink
+import com.thatdot.outputs2.kafka.KafkaExtensionProvider
 import com.thatdot.quine.app.model.{outputs2 => OutputModels}
 import com.thatdot.quine.app.v2api.definitions.outputs.MirrorOfCore
 import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
@@ -84,7 +85,11 @@ object Api2ToOutputs2 {
 
   def apply(
     steps: ApiOutput.QuineDestinationSteps,
-  )(implicit graph: CypherOpsGraph, protobufSchemaCache: ProtobufSchemaCache): Future[DataFoldableSink] = steps match {
+  )(implicit
+    graph: CypherOpsGraph,
+    protobufSchemaCache: ProtobufSchemaCache,
+    kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
+  ): Future[DataFoldableSink] = steps match {
     case x: ApiOutput.QuineDestinationSteps.CypherQuery =>
       Future.successful(apply(x))
     case x: ApiOutput.QuineDestinationSteps.Slack =>
@@ -94,6 +99,7 @@ object Api2ToOutputs2 {
         graph = graph,
         ec = graph.dispatchers.nodeDispatcherEC,
         protobufSchemaCache = protobufSchemaCache,
+        kafkaExtensions = kafkaExtensions,
       )
   }
 

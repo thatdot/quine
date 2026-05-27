@@ -81,4 +81,38 @@ class SaslJaasConfigLoggableSpec extends AnyFunSuite with Matchers {
 
     logged1 shouldBe logged2
   }
+
+  test("OAuthBearerAssertionLogin logs certFilePassword redacted while clientId, certFile, aliases, URIs are visible") {
+    val login = OAuthBearerAssertionLogin(
+      clientId = "CC-700025-G091167-434564-DEV",
+      certFile = "/etc/quine/client.jks",
+      certFilePassword = Secret("super-secret-keystore-pw"),
+      certAlias = Some("alpha"),
+      keyAlias = Some("beta"),
+      resourceUri = "JPMC:URI:RS-102835-43568-gks-DEV",
+      discoveryUrl = "https://idadg2.jpmorganchase.com/adfs/.well-known/openid-configuration",
+    )
+    val logged = logSaslJaasConfig.safe(login)
+
+    logged should include("""certFilePassword="****"""")
+    logged should not include "super-secret-keystore-pw"
+    logged should include("""clientId="CC-700025-G091167-434564-DEV"""")
+    logged should include("""certFile="/etc/quine/client.jks"""")
+    logged should include("""certAlias="alpha"""")
+    logged should include("""keyAlias="beta"""")
+    logged should include("""resourceUri="JPMC:URI:RS-102835-43568-gks-DEV"""")
+  }
+
+  test("OAuthBearerAssertionLogin certFilePassword is indistinguishable regardless of actual value") {
+    val login1 = OAuthBearerAssertionLogin(
+      clientId = "c",
+      certFile = "/x.jks",
+      certFilePassword = Secret("password1"),
+      resourceUri = "https://x",
+      discoveryUrl = "https://x",
+    )
+    val login2 = login1.copy(certFilePassword = Secret("totally-different-password"))
+
+    logSaslJaasConfig.safe(login1) shouldBe logSaslJaasConfig.safe(login2)
+  }
 }

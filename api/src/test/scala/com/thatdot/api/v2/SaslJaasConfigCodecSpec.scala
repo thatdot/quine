@@ -263,10 +263,102 @@ class SaslJaasConfigCodecSpec extends AnyFunSuite with Matchers {
     val plain: SaslJaasConfig = PlainLogin(username = "alice", password = Secret("pw"))
     val scram: SaslJaasConfig = ScramLogin(username = "bob", password = Secret("pw"))
     val oauth: SaslJaasConfig = OAuthBearerLogin(clientId = "client", clientSecret = Secret("secret"))
+    val assertion: SaslJaasConfig = OAuthBearerAssertionLogin(
+      clientId = "client",
+      certFile = "/etc/quine/client.jks",
+      certFilePassword = Secret("jks-pw"),
+      resourceUri = "https://kafka.example.com/api",
+      discoveryUrl = "https://adfs.example.com/adfs/.well-known/openid-configuration",
+    )
     val encoder = SaslJaasConfig.preservingEncoder
 
     encoder(plain).hcursor.get[String]("type") shouldBe Right("PlainLogin")
     encoder(scram).hcursor.get[String]("type") shouldBe Right("ScramLogin")
     encoder(oauth).hcursor.get[String]("type") shouldBe Right("OAuthBearerLogin")
+    encoder(assertion).hcursor.get[String]("type") shouldBe Right("OAuthBearerAssertionLogin")
   }
+
+  test("OAuthBearerAssertionLogin encoder redacts certFilePassword") {
+    val login = OAuthBearerAssertionLogin(
+      clientId = "CC-700025-G091167-434564-DEV",
+      certFile = "/etc/quine/client.jks",
+      certFilePassword = Secret("super-secret-keystore-pw"),
+      certAlias = Some("client-cert"),
+      keyAlias = Some("client-key"),
+      resourceUri = "JPMC:URI:RS-102835-43568-gks-DEV",
+      discoveryUrl = "https://idadg2.jpmorganchase.com/adfs/.well-known/openid-configuration",
+    )
+    val json = login.asJson
+
+    json.hcursor.get[String]("certFilePassword") shouldBe Right("Secret(****)")
+    json.hcursor.get[String]("clientId") shouldBe Right("CC-700025-G091167-434564-DEV")
+    json.hcursor.get[String]("certFile") shouldBe Right("/etc/quine/client.jks")
+  }
+
+  test("OAuthBearerAssertionLogin decoder reconstructs from JSON with optional aliases") {
+    import Secret.Unsafe._
+    val json = io.circe.parser
+      .parse("""{
+        "clientId": "my-cc-client",
+        "certFile": "/path/to/store.jks",
+        "certFilePassword": "ks-pw",
+        "certAlias": "alpha",
+        "keyAlias": "beta",
+        "resourceUri": "https://kafka.example.com/api",
+        "discoveryUrl": "https://adfs.example.com/adfs/.well-known/openid-configuration"
+      }""")
+      .getOrElse(fail("Failed to parse JSON"))
+
+    val decoded = json.as[OAuthBearerAssertionLogin].getOrElse(fail("Failed to decode OAuthBearerAssertionLogin"))
+
+    decoded.clientId shouldBe "my-cc-client"
+    decoded.certFile shouldBe "/path/to/store.jks"
+    decoded.certFilePassword.unsafeValue shouldBe "ks-pw"
+    decoded.certAlias shouldBe Some("alpha")
+    decoded.keyAlias shouldBe Some("beta")
+    decoded.resourceUri shouldBe "https://kafka.example.com/api"
+    decoded.discoveryUrl shouldBe "https://adfs.example.com/adfs/.well-known/openid-configuration"
+  }
+
+  test("OAuthBearerAssertionLogin decoder applies defaults for optional aliases") {
+    val json = io.circe.parser
+      .parse("""{
+        "clientId": "my-cc-client",
+        "certFile": "/path/to/store.jks",
+        "certFilePassword": "ks-pw",
+        "resourceUri": "https://kafka.example.com/api",
+        "discoveryUrl": "https://adfs.example.com/adfs/.well-known/openid-configuration"
+      }""")
+      .getOrElse(fail("Failed to parse JSON"))
+
+    val decoded = json.as[OAuthBearerAssertionLogin].getOrElse(fail("Failed to decode OAuthBearerAssertionLogin"))
+
+    decoded.certAlias shouldBe None
+    decoded.keyAlias shouldBe None
+  }
+
+  test("toJaasConfigString produces OAuthBearerLoginModule JAAS string for OAuthBearerAssertionLogin") {
+    import Secret.Unsafe._
+    val login = OAuthBearerAssertionLogin(
+      clientId = "my-cc-client",
+      certFile = "/etc/quine/client.jks",
+      certFilePassword = Secret("ks-pw"),
+      certAlias = Some("alpha"),
+      keyAlias = Some("beta"),
+      resourceUri = "https://kafka.example.com/api",
+      discoveryUrl = "https://adfs.example.com/discovery",
+    )
+    val jaasString = SaslJaasConfig.toJaasConfigString(login)
+
+    jaasString should include("org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required")
+    jaasString should include("""clientId="my-cc-client"""")
+    jaasString should include("""certFile="/etc/quine/client.jks"""")
+    jaasString should include("""certFilePassword="ks-pw"""")
+    jaasString should include("""certAlias="alpha"""")
+    jaasString should include("""keyAlias="beta"""")
+    jaasString should include("""resourceUri="https://kafka.example.com/api"""")
+    jaasString should include("""discoveryUrl="https://adfs.example.com/discovery"""")
+    jaasString should endWith(";")
+  }
+
 }

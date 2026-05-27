@@ -4,6 +4,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.actor.ActorSystem
 
+import com.thatdot.outputs2.kafka.KafkaExtensionProvider
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.StringInput
@@ -19,6 +20,19 @@ object Api2ToOutputs2 {
       outputs2.ScramLogin(username, password)
     case api.v2.OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl) =>
       outputs2.OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl)
+    case a: api.v2.OAuthBearerAssertionLogin =>
+      outputs2.OAuthBearerAssertionLogin(
+        clientId = a.clientId,
+        certFile = a.certFile,
+        certFilePassword = a.certFilePassword,
+        certFileType = a.certFileType,
+        certAlias = a.certAlias,
+        keyAlias = a.keyAlias,
+        resourceUri = a.resourceUri,
+        discoveryUrl = a.discoveryUrl,
+        caCertPath = a.caCertPath,
+        caCertPassword = a.caCertPassword,
+      )
   }
 
   def apply(
@@ -39,6 +53,7 @@ object Api2ToOutputs2 {
     graph: BaseGraph,
     ec: ExecutionContext,
     protobufSchemaCache: ProtobufSchemaCache,
+    kafkaExtensions: KafkaExtensionProvider[api.v2.SaslJaasConfig],
   ): Future[outputs2.FoldableDestinationSteps] = {
     implicit val system: ActorSystem = graph.system
 
@@ -90,6 +105,7 @@ object Api2ToOutputs2 {
               sslKeyPassword = sslKeyPassword,
               saslJaasConfig = saslJaasConfig.map(apply),
               kafkaProperties = kafkaProperties.view.mapValues(_.s).toMap,
+              saslExtension = saslJaasConfig.flatMap(kafkaExtensions.saslExtensionFor),
             ),
           ),
         )

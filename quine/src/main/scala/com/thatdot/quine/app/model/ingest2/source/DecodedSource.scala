@@ -31,6 +31,7 @@ import com.thatdot.outputs2.FoldableDestinationSteps.{WithByteEncoding, WithData
 import com.thatdot.outputs2.NonFoldableDestinationSteps.WithRawBytes
 import com.thatdot.outputs2.OutputEncoder.{JSON, Protobuf}
 import com.thatdot.outputs2.destination.HttpEndpoint
+import com.thatdot.outputs2.kafka.KafkaExtensionProvider
 import com.thatdot.outputs2.{
   BytesOutputEncoder,
   DestinationSteps,
@@ -254,7 +255,11 @@ abstract class DecodedSource(val meter: IngestMeter) {
 
   def getDeadLetterQueues(
     dlq: DeadLetterQueueSettings,
-  )(implicit protobufSchemaCache: ProtobufSchemaCache, system: ActorSystem): List[(DestinationSteps, Boolean)] =
+  )(implicit
+    protobufSchemaCache: ProtobufSchemaCache,
+    system: ActorSystem,
+    kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
+  ): List[(DestinationSteps, Boolean)] =
     dlq.destinations.map {
 
       case DeadLetterQueueOutput.HttpEndpoint(url, parallelism, headers, OutputFormat.JSON(withMetaData)) =>
@@ -282,6 +287,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
           sslKeyPassword = sslKeyPassword,
           saslJaasConfig = saslJaasConfig.map(Api2ToOutputs2.apply),
           kafkaProperties = kafkaProperties,
+          saslExtension = saslJaasConfig.flatMap(kafkaExtensions.saslExtensionFor),
         )
         outputFormatToDestinationBytes(outputFormat = outputFormat, bytesDestination = kafkaDestination)
 
@@ -434,6 +440,7 @@ object DecodedSource extends LazySafeLogging {
     meter: IngestMeter,
     system: ActorSystem,
     fileAccessPolicy: com.thatdot.quine.app.config.FileAccessPolicy,
+    kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
   )(implicit
     protobufCache: ProtobufSchemaCache,
     logConfig: LogConfig,
@@ -457,6 +464,7 @@ object DecodedSource extends LazySafeLogging {
             sslKeyPassword,
             saslJaasConfig,
           ) =>
+        val v2Sasl = saslJaasConfig.map(V1ToV2(_))
         KafkaSource(
           topics,
           bootstrapServers,
@@ -472,7 +480,8 @@ object DecodedSource extends LazySafeLogging {
           sslKeystorePassword,
           sslTruststorePassword,
           sslKeyPassword,
-          saslJaasConfig.map(V1ToV2(_)),
+          v2Sasl,
+          v2Sasl.flatMap(kafkaExtensions.saslExtensionFor),
         ).framedSource.map(_.toDecoded(FrameDecoder(format)))
 
       case V1.FileIngest(
@@ -655,6 +664,7 @@ object DecodedSource extends LazySafeLogging {
     meter: IngestMeter,
     system: ActorSystem,
     fileAccessPolicy: FileAccessPolicy,
+    kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
   )(implicit
     protobufCache: ProtobufSchemaCache,
     avroCache: AvroSchemaCache,
@@ -798,6 +808,7 @@ object DecodedSource extends LazySafeLogging {
           sslTruststorePassword,
           sslKeyPassword,
           saslJaasConfig,
+          saslJaasConfig.flatMap(kafkaExtensions.saslExtensionFor),
         ).framedSource.map(_.toDecoded(FrameDecoder(format)))
       case ReactiveStreamIngest(format, url, port) =>
         ReactiveSource(url, port, meter)(system).framedSource.map(_.toDecoded(FrameDecoder(format)))

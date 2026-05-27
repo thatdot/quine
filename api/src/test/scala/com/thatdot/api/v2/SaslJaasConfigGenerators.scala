@@ -34,8 +34,32 @@ object SaslJaasConfigGenerators {
       tokenEndpointUrl <- Gen.option(nonEmptyAlphaNumStr.map(s => s"https://$s.example.com/oauth/token"))
     } yield OAuthBearerLogin(clientId, clientSecret, scope, tokenEndpointUrl)
 
+    val oauthBearerAssertionLogin: Gen[OAuthBearerAssertionLogin] = for {
+      clientId <- nonEmptyAlphaNumStr
+      certFile <- nonEmptyAlphaNumStr.map(s => s"/etc/quine/$s.jks")
+      certFilePassword <- secret
+      certFileType <- Gen.option(Gen.oneOf("JKS", "PKCS12"))
+      certAlias <- Gen.option(nonEmptyAlphaNumStr)
+      keyAlias <- Gen.option(nonEmptyAlphaNumStr)
+      resourceHost <- nonEmptyAlphaNumStr
+      discoveryHost <- nonEmptyAlphaNumStr
+      caCertPath <- Gen.option(nonEmptyAlphaNumStr.map(s => s"/etc/quine/$s-truststore.jks"))
+      caCertPassword <- Gen.option(secret)
+    } yield OAuthBearerAssertionLogin(
+      clientId = clientId,
+      certFile = certFile,
+      certFilePassword = certFilePassword,
+      certFileType = certFileType,
+      certAlias = certAlias,
+      keyAlias = keyAlias,
+      resourceUri = s"https://$resourceHost.example.com/api",
+      discoveryUrl = s"https://$discoveryHost.example.com/adfs/.well-known/openid-configuration",
+      caCertPath = caCertPath,
+      caCertPassword = caCertPassword,
+    )
+
     val saslJaasConfig: Gen[SaslJaasConfig] =
-      Gen.oneOf(plainLogin, scramLogin, oauthBearerLogin)
+      Gen.oneOf(plainLogin, scramLogin, oauthBearerLogin, oauthBearerAssertionLogin)
 
     val optSaslJaasConfig: Gen[Option[SaslJaasConfig]] = Gen.option(saslJaasConfig)
   }
@@ -46,6 +70,8 @@ object SaslJaasConfigGenerators {
     implicit val arbPlainLogin: Arbitrary[PlainLogin] = Arbitrary(Gens.plainLogin)
     implicit val arbScramLogin: Arbitrary[ScramLogin] = Arbitrary(Gens.scramLogin)
     implicit val arbOAuthBearerLogin: Arbitrary[OAuthBearerLogin] = Arbitrary(Gens.oauthBearerLogin)
+    implicit val arbOAuthBearerAssertionLogin: Arbitrary[OAuthBearerAssertionLogin] =
+      Arbitrary(Gens.oauthBearerAssertionLogin)
     implicit val arbSaslJaasConfig: Arbitrary[SaslJaasConfig] = Arbitrary(Gens.saslJaasConfig)
     implicit val arbOptSaslJaasConfig: Arbitrary[Option[SaslJaasConfig]] = Arbitrary(Gens.optSaslJaasConfig)
   }

@@ -293,7 +293,7 @@ lazy val `api`: Project = project
 
 lazy val `outputs2`: Project = project
   .settings(commonSettings)
-  .dependsOn(`aws`, `data`, `quine-core`, `quine-serialization`)
+  .dependsOn(`api`, `aws`, `data`, `quine-core`, `quine-serialization`)
   .settings(
     libraryDependencies ++= Seq(
       "com.thatdot" %% "quine-logging" % quineCommonV,
