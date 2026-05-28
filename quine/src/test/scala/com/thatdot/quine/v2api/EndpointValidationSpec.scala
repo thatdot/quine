@@ -16,11 +16,15 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.api.v2.TypeDiscriminatorConfig
+import com.thatdot.api.v2.{ResourceName, TypeDiscriminatorConfig}
 import com.thatdot.quine.app.config.{FileAccessPolicy, QuineConfig, ResolutionMode}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{Oss, RecordDecodingType}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.StandingQueryDefinition
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.Cypher
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode.MultipleValues
+import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultWorkflow
 import com.thatdot.quine.app.v2api.{OssApiMethods, V2OssRoutes}
 import com.thatdot.quine.app.{IngestTestGraph, QuineApp}
 import com.thatdot.quine.ingest2.IngestGenerators
@@ -98,7 +102,7 @@ class EndpointValidationSpec
         recordDecoders = Seq.empty,
       )
       val config = Oss.QuineIngestConfiguration(
-        name = "test-kinesis-bad-retries",
+        name = ResourceName.unsafeFromString("test-kinesis-bad-retries"),
         source = kinesisIngest,
         query = "CREATE ($that)",
       )
@@ -141,7 +145,7 @@ class EndpointValidationSpec
       recordDecoders = Seq.empty,
     )
     val config = Oss.QuineIngestConfiguration(
-      name = "test-kinesis-no-region",
+      name = ResourceName.unsafeFromString("test-kinesis-no-region"),
       source = kinesisIngest,
       query = "CREATE ($that)",
     )
@@ -173,6 +177,89 @@ class EndpointValidationSpec
       status.intValue() shouldEqual 200
       val body = entityAs[String]
       body should include(""""/api/v2/graph/quine/cypher:query"""")
+    }
+  }
+
+  // Identifiers that may become path segments must not contain a colon (AIP-122).
+  // A colon-bearing name would make AIP-136 custom-verb URLs (e.g. `/ingests/{name}:pause`)
+  // ambiguous. The rules below verify that every entrance for a resource name —
+  // URL path, custom-verb segment, JSON body — refuses colons before reaching the
+  // application layer.
+
+  "DELETE /ingests/{name} with a colon in the name" should "fail with 400" in {
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    HttpRequest(HttpMethods.DELETE, s"$graphBaseUrl/ingests/foo:bar") ~> routes ~> check {
+      status.intValue() shouldEqual 400
+    }
+  }
+
+  "POST /ingests/{name}:pause with a colon in the name prefix" should "fail with 400" in {
+    // Verifies the AIP-136 ambiguity is closed: a request like `foo:bar:pause` must not
+    // silently decode to name=`foo:bar` verb=`pause`. The colon-verb codec strips the
+    // trailing `:pause` and delegates the remainder to the `ResourceName` codec, which
+    // rejects the colon.
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    HttpRequest(HttpMethods.POST, s"$graphBaseUrl/ingests/foo:bar:pause") ~> routes ~> check {
+      status.intValue() shouldEqual 400
+    }
+  }
+
+  "POST /ingests with a colon in the body's name field" should "fail with 400" in {
+    // `unsafeFromString` bypasses ResourceName construction validation so we can serialize a
+    // known-invalid name and exercise the server-side decoder rejection.
+    val config = Oss.QuineIngestConfiguration(
+      name = ResourceName.unsafeFromString("bad:name"),
+      source = Api.IngestSource.NumberIterator(0, None),
+      query = "CREATE ($that)",
+    )
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    post(s"$graphBaseUrl/ingests", config) ~> routes ~> check {
+      status.intValue() shouldEqual 400
+    }
+  }
+
+  "DELETE /standingQueries/{name} with a colon in the name" should "fail with 400" in {
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    HttpRequest(HttpMethods.DELETE, s"$graphBaseUrl/standingQueries/foo:bar") ~> routes ~> check {
+      status.intValue() shouldEqual 400
+    }
+  }
+
+  "POST /standingQueries with a colon in the body's name field" should "fail with 400" in {
+    val sq = StandingQueryDefinition(
+      name = ResourceName.unsafeFromString("bad:name"),
+      pattern = Cypher("MATCH (n) RETURN n", MultipleValues),
+    )
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    post(s"$graphBaseUrl/standingQueries", sq) ~> routes ~> check {
+      status.intValue() shouldEqual 400
+    }
+  }
+
+  "POST /standingQueries/{name}/outputs with a colon in the workflow's name field" should "fail with 400" in {
+    val workflow =
+      StandingQueryResultWorkflow.exampleToStandardOut.copy(name = ResourceName.unsafeFromString("bad:name"))
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    post(s"$graphBaseUrl/standingQueries/test-sq/outputs", workflow) ~> routes ~> check {
+      status.intValue() shouldEqual 400
+    }
+  }
+
+  "GET /api/v2/openapi.json" should "publish the resource-name format on path parameters" in {
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    HttpRequest(HttpMethods.GET, "/api/v2/openapi.json") ~> routes ~> check {
+      status.intValue() shouldEqual 200
+      val body = entityAs[String]
+      // ResourceName carries a Schema with format "resource-name"; that should surface
+      // in the spec for every {name}-style path parameter we replaced — including the
+      // verb-suffix variants, whose codec now forwards the base codec's schema rather
+      // than defaulting to a bare string.
+      val resourceNameParameters =
+        """"name":"ingestName".*?"format":"resource-name"""".r.findAllIn(body).length
+      // 3 occurrences: bare `{ingestName}` (DELETE/GET), `{ingestName}:pause`, `{ingestName}:resume`.
+      withClue(s"resource-name format should appear on every ingestName parameter: $resourceNameParameters")(
+        resourceNameParameters should be >= 3,
+      )
     }
   }
 }

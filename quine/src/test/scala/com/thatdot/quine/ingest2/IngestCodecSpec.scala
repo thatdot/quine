@@ -11,7 +11,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion, TypeDiscriminatorConfig}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, ResourceName, TypeDiscriminatorConfig}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.CirceCodecTestSupport
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
@@ -199,7 +199,7 @@ class IngestCodecSpec
       endingOffset = Some(2L),
       recordDecoders = Seq(Base64, Zlib),
     )
-    testJsonRoundtrip(Oss.QuineIngestConfiguration("kafka-in", kafka, "CREATE $(that)"))
+    testJsonRoundtrip(Oss.QuineIngestConfiguration(ResourceName.unsafeFromString("kafka-in"), kafka, "CREATE $(that)"))
 
   }
 

@@ -2,12 +2,14 @@ package com.thatdot.quine.v2api
 
 import org.scalacheck.{Arbitrary, Gen}
 
+import com.thatdot.api.v2.ResourceNameGenerators
 import com.thatdot.quine.ScalaPrimitiveGenerators
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 import com.thatdot.quine.app.v2api.definitions.ingest2.DeadLetterQueueSettings
 
 object V2IngestEndpointGenerators {
 
+  import ResourceNameGenerators.Gens.resourceName
   import ScalaPrimitiveGenerators.Gens.{nonEmptyAlphaNumStr, smallPosNum}
 
   object Gens {
@@ -48,7 +50,7 @@ object V2IngestEndpointGenerators {
     )
 
     val quineIngestConfiguration: Gen[Oss.QuineIngestConfiguration] = for {
-      name <- nonEmptyAlphaNumStr
+      name <- resourceName
       source <- ingestSource
       query <- nonEmptyAlphaNumStr.map(s => s"MATCH (n) WHERE id(n) = idFrom($$that) SET n.value = $s")
       parameter <- Gen.oneOf("that", "input", "data")

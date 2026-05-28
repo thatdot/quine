@@ -4,7 +4,7 @@ import scala.concurrent.duration._
 
 import org.scalacheck.{Arbitrary, Gen}
 
-import com.thatdot.api.v2.RatesSummary
+import com.thatdot.api.v2.{RatesSummary, ResourceNameGenerators}
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern._
 import com.thatdot.quine.app.v2api.definitions.query.standing.{StandingQueryPattern, StandingQueryStats}
@@ -13,6 +13,7 @@ import com.thatdot.quine.{ScalaPrimitiveGenerators, TimeGenerators}
 
 object V2StandingEndpointGenerators {
 
+  import ResourceNameGenerators.Gens.resourceName
   import ScalaPrimitiveGenerators.Gens._
   import StandingQueryOutputGenerators.Gens._
   import TimeGenerators.Gens._
@@ -49,15 +50,21 @@ object V2StandingEndpointGenerators {
     val standingQueryPattern: Gen[StandingQueryPattern] = cypherPattern
 
     val standingQueryDefinition: Gen[StandingQueryDefinition] = for {
-      name <- nonEmptyAlphaNumStr
+      name <- resourceName
       pattern <- standingQueryPattern
       outputs <- Gen.listOfN(2, standingQueryResultWorkflow)
       includeCancellations <- bool
       inputBufferSize <- numWithinBits(7)
-    } yield StandingQueryDefinition(name, pattern, outputs, includeCancellations, inputBufferSize)
+    } yield StandingQueryDefinition(
+      name,
+      pattern,
+      outputs,
+      includeCancellations,
+      inputBufferSize,
+    )
 
     val registeredStandingQuery: Gen[RegisteredStandingQuery] = for {
-      name <- nonEmptyAlphaNumStr
+      name <- resourceName
       internalId <- Gen.uuid
       pattern <- Gen.option(standingQueryPattern)
       outputs <- Gen.listOfN(2, standingQueryResultWorkflow)
@@ -67,7 +74,15 @@ object V2StandingEndpointGenerators {
       statsHosts <- Gen.listOfN(statsCount, nonEmptyAlphaNumStr)
       statsValues <- Gen.listOfN(statsCount, standingQueryStats)
       stats = statsHosts.zip(statsValues).toMap
-    } yield RegisteredStandingQuery(name, internalId, pattern, outputs, includeCancellations, inputBufferSize, stats)
+    } yield RegisteredStandingQuery(
+      name,
+      internalId,
+      pattern,
+      outputs,
+      includeCancellations,
+      inputBufferSize,
+      stats,
+    )
   }
 
   object Arbs {

@@ -5,7 +5,7 @@ import scala.concurrent.duration._
 import cats.data.NonEmptyList
 import org.scalacheck.{Arbitrary, Gen}
 
-import com.thatdot.api.v2.{AwsGenerators, SaslJaasConfigGenerators}
+import com.thatdot.api.v2.{AwsGenerators, ResourceNameGenerators, SaslJaasConfigGenerators}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.ScalaPrimitiveGenerators
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
@@ -23,6 +23,7 @@ object StandingQueryOutputGenerators {
   import V2ApiCommonGenerators.Gens._
 
   object Gens {
+    import ResourceNameGenerators.Gens.resourceName
     import SaslJaasConfigGenerators.Gens.{optSaslJaasConfig, optSecret}
 
     val secretHeaders: Gen[Map[String, Secret]] = for {
@@ -132,7 +133,7 @@ object StandingQueryOutputGenerators {
     } yield NonEmptyList(head, tail)
 
     val standingQueryResultWorkflow: Gen[StandingQueryResultWorkflow] = for {
-      name <- nonEmptyAlphaNumStr
+      name <- resourceName
       filter <- Gen.option(predicate)
       preEnrichmentTransformation <- Gen.option(transformation)
       resultEnrichment <- Gen.option(cypherQuery)

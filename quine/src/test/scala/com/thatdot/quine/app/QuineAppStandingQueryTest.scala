@@ -7,6 +7,7 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.thatdot.api.v2.ResourceName
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.StandingQueryDefinition
@@ -43,7 +44,7 @@ class QuineAppStandingQueryTest extends AnyFunSuite with BeforeAndAfterAll with 
 
   test("DistinctId standing query without DISTINCT fails with DistinctIdMustDistinct") {
     val sq = StandingQueryDefinition(
-      name = "missing-distinct",
+      name = ResourceName.unsafeFromString("missing-distinct"),
       pattern = StandingQueryPattern.Cypher(
         query = "MATCH (n) RETURN id(n)",
         mode = StandingQueryMode.DistinctId,
@@ -55,7 +56,7 @@ class QuineAppStandingQueryTest extends AnyFunSuite with BeforeAndAfterAll with 
 
   test("MultipleValues standing query with DISTINCT fails with MultipleValuesCantDistinct") {
     val sq = StandingQueryDefinition(
-      name = "extra-distinct",
+      name = ResourceName.unsafeFromString("extra-distinct"),
       pattern = StandingQueryPattern.Cypher(
         query = "MATCH (n) RETURN DISTINCT id(n)",
         mode = StandingQueryMode.MultipleValues,

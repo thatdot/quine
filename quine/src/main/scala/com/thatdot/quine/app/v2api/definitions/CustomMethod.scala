@@ -42,10 +42,14 @@ object CustomMethod {
     require(!verb.contains(Marker), s"verb must not contain '$Marker'")
     val suffix = ":" + verb
     val codec: Codec[String, T, CodecFormat.TextPlain] =
-      Codec.string.mapDecode { raw =>
-        if (raw.endsWith(suffix)) baseCodec.decode(raw.stripSuffix(suffix))
-        else DecodeResult.Mismatch(suffix, raw)
-      }(t => baseCodec.encode(t) + suffix)
+      Codec.string
+        .mapDecode { raw =>
+          if (raw.endsWith(suffix)) baseCodec.decode(raw.stripSuffix(suffix))
+          else DecodeResult.Mismatch(suffix, raw)
+        }(t => baseCodec.encode(t) + suffix)
+        // Preserve the base codec's schema (e.g. ResourceName's `format: resource-name`)
+        // so the OpenAPI document publishes the same constraint as the bare `path[T]` form.
+        .schema(baseCodec.schema)
     path[T](paramName + Marker + verb)(codec)
   }
 

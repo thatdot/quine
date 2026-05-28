@@ -270,6 +270,7 @@ lazy val `quine-endpoints2` = crossProject(JSPlatform, JVMPlatform)
       "com.softwaremill.sttp.tapir" %%% "tapir-core" % tapirV,
       "io.circe" %%% "circe-core" % circeV,
       "io.circe" %%% "circe-generic-extras" % circeGenericExtrasV,
+      "org.scalatest" %%% "scalatest" % scalaTestV % Test,
     ),
   )
 

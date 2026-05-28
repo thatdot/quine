@@ -6,6 +6,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{description, title}
 
+import com.thatdot.api.v2.ResourceName
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.cats._
 import com.thatdot.common.security.Secret
@@ -18,7 +19,7 @@ import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResul
 @description(StandingQueryResultWorkflow.apiDescription)
 case class StandingQueryResultWorkflow(
   @description("Name of this output Workflow, unique within the Standing Query.")
-  name: String,
+  name: ResourceName,
   @description("A `StandingQueryResult` filter (one of any built-in options), which runs before any enrichment query.")
   filter: Option[Predicate] = None,
   @description("A transformation function to apply to each result.")
@@ -46,7 +47,7 @@ object StandingQueryResultWorkflow {
   }
 
   val exampleToStandardOut: StandingQueryResultWorkflow = StandingQueryResultWorkflow(
-    name = "stdout-example",
+    name = ResourceName.unsafeFromString("stdout-example"),
     filter = Some(OnlyPositiveMatch),
     preEnrichmentTransformation = Some(InlineData),
     resultEnrichment = Some(CypherQuery(CypherQuery.exampleQuery)),

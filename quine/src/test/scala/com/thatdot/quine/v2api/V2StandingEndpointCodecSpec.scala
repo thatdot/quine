@@ -9,9 +9,9 @@ import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.api.v2.AwsCredentials
 import com.thatdot.api.v2.codec.DurationFormat
 import com.thatdot.api.v2.outputs.OutputFormat
+import com.thatdot.api.v2.{AwsCredentials, ResourceName}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery._
@@ -101,7 +101,7 @@ class V2StandingEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaChe
     it("should encode with correct field values") {
       forAll { (definition: StandingQueryDefinition) =>
         val json = definition.asJson
-        json.hcursor.downField("name").as[String] shouldBe Right(definition.name)
+        json.hcursor.downField("name").as[String] shouldBe Right(definition.name.value)
         json.hcursor.downField("pattern").succeeded shouldBe true
         json.hcursor.downField("includeCancellations").as[Boolean] shouldBe Right(definition.includeCancellations)
         json.hcursor.downField("inputBufferSize").as[Int] shouldBe Right(definition.inputBufferSize)
@@ -121,7 +121,7 @@ class V2StandingEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaChe
 
     it("should redact credentials in JSON output") {
       val workflowWithCreds = StandingQueryResultWorkflow(
-        name = "kinesis-output",
+        name = ResourceName.unsafeFromString("kinesis-output"),
         destinations = NonEmptyList.one(
           QuineDestinationSteps.Kinesis(
             credentials = Some(AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
@@ -136,7 +136,7 @@ class V2StandingEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaChe
         ),
       )
       val definition = StandingQueryDefinition(
-        name = "test-sq",
+        name = ResourceName.unsafeFromString("test-sq"),
         pattern = Cypher("MATCH (n) RETURN id(n)"),
         outputs = Seq(workflowWithCreds),
       )
@@ -165,7 +165,7 @@ class V2StandingEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaChe
     it("should encode with correct field values") {
       forAll { (rsq: RegisteredStandingQuery) =>
         val json = rsq.asJson
-        json.hcursor.downField("name").as[String] shouldBe Right(rsq.name)
+        json.hcursor.downField("name").as[String] shouldBe Right(rsq.name.value)
         json.hcursor.downField("internalId").as[String] shouldBe Right(rsq.internalId.toString)
         json.hcursor.downField("includeCancellations").as[Boolean] shouldBe Right(rsq.includeCancellations)
         json.hcursor.downField("stats").succeeded shouldBe true
@@ -185,7 +185,7 @@ class V2StandingEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaChe
 
     it("should redact credentials in JSON output") {
       val workflowWithCreds = StandingQueryResultWorkflow(
-        name = "kinesis-output",
+        name = ResourceName.unsafeFromString("kinesis-output"),
         destinations = NonEmptyList.one(
           QuineDestinationSteps.Kinesis(
             credentials = Some(AwsCredentials(Secret("AKIAIOSFODNN7EXAMPLE"), Secret("wJalrXUtnFEMI/K7MDENG"))),
@@ -200,7 +200,7 @@ class V2StandingEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaChe
         ),
       )
       val rsq = RegisteredStandingQuery(
-        name = "test-sq",
+        name = ResourceName.unsafeFromString("test-sq"),
         internalId = UUID.randomUUID(),
         pattern = Some(Cypher("MATCH (n) RETURN id(n)")),
         outputs = Seq(workflowWithCreds),

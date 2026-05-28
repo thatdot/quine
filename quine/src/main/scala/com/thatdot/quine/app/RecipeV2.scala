@@ -8,7 +8,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
 
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, ResourceName}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
@@ -42,7 +42,7 @@ object RecipeV2 {
   @description("Configuration for a data ingest stream in V2 recipe format.")
   final case class IngestStreamV2(
     @description("Optional name identifying the ingest stream. If not provided, a name will be generated.")
-    name: Option[String] = None,
+    name: Option[ResourceName] = None,
     @description("Data source configuration.")
     source: IngestSource,
     @description("Cypher query to execute on each record.")
@@ -97,7 +97,7 @@ object RecipeV2 {
   )
   final case class StandingQueryResultWorkflowV2(
     @description("Optional name for this output workflow. If not provided, a name will be generated.")
-    name: Option[String] = None,
+    name: Option[ResourceName] = None,
     @description("Optional filter to apply to results before processing.")
     filter: Option[Predicate] = None,
     @description("Optional transformation to apply to results before enrichment.")
@@ -120,7 +120,7 @@ object RecipeV2 {
   @description("A standing query definition in V2 recipe format with workflow-based outputs.")
   final case class StandingQueryDefinitionV2(
     @description("Optional name for this Standing Query. If not provided, a name will be generated.")
-    name: Option[String] = None,
+    name: Option[ResourceName] = None,
     @description("Pattern to match in the graph.")
     pattern: StandingQueryPattern,
     @description("Output workflows to process results.")

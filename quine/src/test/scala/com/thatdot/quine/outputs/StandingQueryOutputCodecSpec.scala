@@ -6,6 +6,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.api.v2.ResourceName
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.OutputFormat
 import com.thatdot.common.security.Secret
@@ -179,7 +180,7 @@ class StandingQueryOutputCodecSpec
     import cats.data.NonEmptyList
     testJsonRoundtrip[StandingQueryResultWorkflow](
       StandingQueryResultWorkflow(
-        name = "test-workflow",
+        name = ResourceName.unsafeFromString("test-workflow"),
         filter = None,
         preEnrichmentTransformation = None,
         resultEnrichment = None,
@@ -192,7 +193,7 @@ class StandingQueryOutputCodecSpec
     import cats.data.NonEmptyList
     testJsonRoundtrip[StandingQueryResultWorkflow](
       StandingQueryResultWorkflow(
-        name = "full-workflow",
+        name = ResourceName.unsafeFromString("full-workflow"),
         filter = Some(Predicate.OnlyPositiveMatch),
         preEnrichmentTransformation = Some(StandingQueryResultTransformation.InlineData),
         resultEnrichment = Some(

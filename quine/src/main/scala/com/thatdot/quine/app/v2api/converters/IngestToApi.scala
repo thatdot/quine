@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration._
 
+import com.thatdot.api.v2.ResourceName
 import com.thatdot.quine.app.model.ingest2._
 import com.thatdot.quine.app.model.ingest2.{V2IngestEntities => Ingest}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
@@ -448,7 +449,7 @@ object IngestToApi {
 
   def apply(conf: Ingest.QuineIngestConfiguration): Api.Oss.QuineIngestConfiguration =
     Api.Oss.QuineIngestConfiguration(
-      name = conf.name,
+      name = ResourceName.unsafeFromString(conf.name),
       source = apply(conf.source),
       query = conf.query,
       parameter = conf.parameter,
@@ -470,7 +471,7 @@ object IngestToApi {
 
   def apply(info: Ingest.IngestStreamInfoWithName): Api.IngestStreamInfoWithName =
     Api.IngestStreamInfoWithName(
-      name = info.name,
+      name = ResourceName.unsafeFromString(info.name),
       status = apply(info.status),
       message = info.message,
       settings = apply(info.settings),

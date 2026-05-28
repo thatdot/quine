@@ -7,6 +7,7 @@ import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.{default, description, title}
 
+import com.thatdot.api.v2.ResourceName
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.common.security.Secret
 
@@ -16,7 +17,7 @@ object StandingQuery {
   @description("Standing Query.")
   final case class StandingQueryDefinition(
     @description("Unique name for this Standing Query.")
-    name: String,
+    name: ResourceName,
     pattern: StandingQueryPattern,
     // Cannot get `@default` to work here, despite a working example in `DestinationSteps.Kafka#kafkaProperties`.
     @description(
@@ -52,7 +53,7 @@ object StandingQuery {
   @title("Registered Standing Query")
   @description("Registered Standing Query.")
   final case class RegisteredStandingQuery(
-    name: String,
+    name: ResourceName,
     @description("Unique identifier for the query, generated when the query is registered.")
     internalId: UUID,
     @description("Query or pattern to answer in a standing fashion.")

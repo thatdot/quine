@@ -26,7 +26,7 @@ import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEnc
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, finiteDurationEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.{charsetSchema, instantSchema}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.scala.finiteDurationSchema
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary, SaslJaasConfig}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary, ResourceName, SaslJaasConfig}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.{routes => V1}
 
@@ -80,7 +80,7 @@ object ApiIngest {
     @description("Configuration of the ingest stream.") settings: Oss.QuineIngestConfiguration,
     @description("Statistics on progress of running ingest stream.") stats: IngestStreamStats,
   ) {
-    def withName(name: String): IngestStreamInfoWithName = IngestStreamInfoWithName(
+    def withName(name: ResourceName): IngestStreamInfoWithName = IngestStreamInfoWithName(
       name = name,
       status = status,
       message = message,
@@ -98,7 +98,7 @@ object ApiIngest {
   @title("Named Ingest Stream")
   @description("An active stream of data being ingested paired with a name for the stream.")
   final case class IngestStreamInfoWithName(
-    @description("Unique name identifying the ingest stream.") name: String,
+    @description("Unique name identifying the ingest stream.") name: ResourceName,
     @description("Indicator of whether the ingest is still running, completed, etc.") status: IngestStreamStatus,
     @description("Error message about the ingest, if any.") message: Option[String],
     @description("Configuration of the ingest stream.") settings: Oss.QuineIngestConfiguration,
@@ -357,7 +357,7 @@ object ApiIngest {
   object Oss {
     case class QuineIngestConfiguration(
       @description("Unique name identifying the ingest stream.")
-      name: String,
+      name: ResourceName,
       source: IngestSource,
       @description("Cypher query to execute on each record.")
       query: String,

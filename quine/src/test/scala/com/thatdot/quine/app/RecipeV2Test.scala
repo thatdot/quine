@@ -10,6 +10,7 @@ import org.scalatest.concurrent.Eventually
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.{BeforeAndAfterAll, EitherValues}
 
+import com.thatdot.api.v2.ResourceName
 import com.thatdot.common.logging.Log.{LogConfig, SafeLogger}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
@@ -50,6 +51,8 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
       quineWebserverUri = None,
       protobufSchemaCache = ProtobufSchemaCache.Blocking: @nowarn("cat=deprecation"),
     )(graph.idProvider)
+
+  private def rn(s: String): ResourceName = ResourceName(s).fold(err => fail(err), identity)
 
   def parseV2Yaml(s: String): Either[Seq[String], RecipeV2.Recipe] =
     io.circe.yaml.v12.parser
@@ -101,7 +104,7 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
           iconImage = Some("http://example.com"),
           ingestStreams = List(
             RecipeV2.IngestStreamV2(
-              name = Some("file-ingest"),
+              name = Some(rn("file-ingest")),
               source = IngestSource.File(
                 format = IngestFormat.FileFormat.Json,
                 path = "/tmp/somefile",
@@ -113,11 +116,11 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
           ),
           standingQueries = List(
             RecipeV2.StandingQueryDefinitionV2(
-              name = Some("my-sq"),
+              name = Some(rn("my-sq")),
               pattern = StandingQueryPattern.Cypher("MATCH (n) RETURN DISTINCT id(n)"),
               outputs = Seq(
                 RecipeV2.StandingQueryResultWorkflowV2(
-                  name = Some("my-output"),
+                  name = Some(rn("my-output")),
                   destinations = NonEmptyList.one(QuineDestinationSteps.StandardOut),
                 ),
               ),
@@ -254,7 +257,7 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
   }
 
   test("v2 recipe interpreter properly registers a standing query in the recipe") {
-    val sqName = "sq-registration-sq"
+    val sqName = rn("sq-registration-sq")
     val recipe = RecipeV2.Recipe(
       title = "sq-registration-test",
       standingQueries = List(
@@ -263,7 +266,7 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
           pattern = StandingQueryPattern.Cypher("MATCH (n) WHERE n.name IS NOT NULL RETURN DISTINCT id(n)"),
           outputs = Seq(
             RecipeV2.StandingQueryResultWorkflowV2(
-              name = Some("stdout"),
+              name = Some(rn("stdout")),
               destinations = NonEmptyList.one(QuineDestinationSteps.StandardOut),
             ),
           ),
@@ -274,14 +277,14 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
     val interpreter = makeInterpreter(recipe)
     try {
       interpreter.run(memberIdx = 0)
-      val sq = Await.result(quineApp.getStandingQueryV2(sqName, namespace), 5.seconds)
+      val sq = Await.result(quineApp.getStandingQueryV2(sqName.value, namespace), 5.seconds)
       assert(sq.isDefined)
       assert(sq.get.name == sqName)
     } finally { val _ = interpreter.cancel() }
   }
 
   test("v2 interpreter properly registers ingest streams from recipe") {
-    val ingestName = "ingest-registration-ingest"
+    val ingestName = rn("ingest-registration-ingest")
     val recipe = RecipeV2.Recipe(
       title = "ingest-registration-test",
       ingestStreams = List(
@@ -296,12 +299,12 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
     val interpreter = makeInterpreter(recipe)
     try {
       interpreter.run(memberIdx = 0)
-      assert(quineApp.getIngestStream(ingestName, namespace).isDefined)
+      assert(quineApp.getIngestStream(ingestName.value, namespace).isDefined)
     } finally { val _ = interpreter.cancel() }
   }
 
   test("interpreter ingests records into the graph") {
-    val ingestName = "ingest-data-ingest"
+    val ingestName = rn("ingest-data-ingest")
     val recipe = RecipeV2.Recipe(
       title = "ingest-data-test",
       ingestStreams = List(
@@ -318,7 +321,7 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
       interpreter.run(memberIdx = 0)
       eventually(Eventually.timeout(10.seconds), interval(500.millis)) {
         val ingestedCount = quineApp
-          .getIngestStream(ingestName, namespace)
+          .getIngestStream(ingestName.value, namespace)
           .map(_.metrics.toEndpointResponse.ingestedCount)
           .getOrElse(0L)
         assert(ingestedCount == 2L)

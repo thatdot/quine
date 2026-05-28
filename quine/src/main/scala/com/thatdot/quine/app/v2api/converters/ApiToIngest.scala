@@ -365,7 +365,7 @@ object ApiToIngest {
 
   def apply(conf: Api.Oss.QuineIngestConfiguration): Ingest.QuineIngestConfiguration =
     Ingest.QuineIngestConfiguration(
-      conf.name,
+      conf.name.value,
       apply(conf.source),
       conf.query,
       conf.parameter,

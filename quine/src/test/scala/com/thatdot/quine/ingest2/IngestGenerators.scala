@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters._
 
 import org.scalacheck.{Arbitrary, Gen}
 
-import com.thatdot.api.v2.{AwsGenerators, SaslJaasConfigGenerators}
+import com.thatdot.api.v2.{AwsGenerators, ResourceNameGenerators, SaslJaasConfigGenerators}
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.ScalaPrimitiveGenerators
 import com.thatdot.quine.ScalaPrimitiveGenerators.Gens.nonEmptyAlphaNumStr
@@ -21,6 +21,7 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.{DeadLetterQueueOutput, D
 object IngestGenerators {
 
   import AwsGenerators.Gens.{optAwsCredentials, optAwsRegion}
+  import ResourceNameGenerators.Gens.resourceName
   import SaslJaasConfigGenerators.Gens.{optSaslJaasConfig, optSecret}
   import ScalaPrimitiveGenerators.Gens.{bool, unitInterval}
 
@@ -335,9 +336,7 @@ object IngestGenerators {
       Gen.oneOf(file, s3, stdInput, numberIterator, websocketClient, serverSentEvent, sqs, kinesis, kafka)
 
     val quineIngestConfiguration: Gen[Oss.QuineIngestConfiguration] = for {
-      initChar <- Gen.alphaChar
-      nameTail <- Gen.alphaNumStr
-      name = s"$initChar$nameTail"
+      name <- resourceName
       source <- ingestSource
     } yield Oss.QuineIngestConfiguration(name, source, "CREATE ($that)")
 

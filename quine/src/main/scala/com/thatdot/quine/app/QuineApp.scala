@@ -197,7 +197,7 @@ final class QuineApp(
               .traverse(standingQueryDefinition.outputs.toVector) { apiWorkflow =>
                 ApiToStanding(apiWorkflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).map(
                   workflowInterpreter =>
-                    apiWorkflow.name -> workflowInterpreter
+                    apiWorkflow.name.value -> workflowInterpreter
                       .flow(graph)
                       .viaMat(KillSwitches.single)(Keep.right)
                       .map(_ => SqResultsExecToken(s"SQ: ${apiWorkflow.name} in: $inNamespace"))
@@ -290,7 +290,7 @@ final class QuineApp(
                         sqId = sqId,
                       )
                       val outputsWithKillSwitches = standingQueryDefinition.outputs.map { workflow =>
-                        workflow.name -> OutputTarget.V2(workflow, killSwitches(workflow.name))
+                        workflow.name.value -> OutputTarget.V2(workflow, killSwitches(workflow.name.value))
                       }.toMap
                       val updatedInnerMap = sqOutputTargets + (queryName -> (sq.query.id -> outputsWithKillSwitches))
                       outputTargets += inNamespace -> updatedInnerMap
@@ -1685,7 +1685,7 @@ object QuineApp {
     val outputHashCode = metrics.standingQueryResultHashCode(internal.id)
 
     V2ApiStanding.StandingQuery.RegisteredStandingQuery(
-      name = internal.name,
+      name = Api2.ResourceName.unsafeFromString(internal.name),
       internalId = internal.id.uuid,
       pattern = pattern,
       outputs = outputs,

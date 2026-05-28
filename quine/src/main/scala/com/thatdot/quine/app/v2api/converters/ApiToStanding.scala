@@ -64,7 +64,7 @@ object ApiToStanding {
       }
       .map(dataFoldableSinks =>
         standing.StandingQueryResultWorkflow(
-          outputName = workflow.name,
+          outputName = workflow.name.value,
           namespaceId = namespaceId,
           workflow = standing.Workflow(
             filter = workflow.filter.map(Api2ToOutputs2.apply),
@@ -113,7 +113,7 @@ object ApiToStanding {
       .traverse(q.outputs.toVector)(apiWorkflow => apply(apiWorkflow, namespace))
       .map { internalWorkflows =>
         standing.StandingQuery.RegisteredStandingQuery(
-          name = q.name,
+          name = q.name.value,
           internalId = q.internalId,
           pattern = q.pattern.map(apply),
           outputs = internalWorkflows,

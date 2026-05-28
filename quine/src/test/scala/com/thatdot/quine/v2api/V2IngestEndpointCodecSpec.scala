@@ -5,6 +5,7 @@ import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.api.v2.ResourceName
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest._
 
 class V2IngestEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaCheckDrivenPropertyChecks {
@@ -80,7 +81,7 @@ class V2IngestEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
     it("should encode with correct field names") {
       forAll { (config: Oss.QuineIngestConfiguration) =>
         val json = config.asJson
-        json.hcursor.downField("name").as[String] shouldBe Right(config.name)
+        json.hcursor.downField("name").as[String] shouldBe Right(config.name.value)
         json.hcursor.downField("query").as[String] shouldBe Right(config.query)
         json.hcursor.downField("parameter").as[String] shouldBe Right(config.parameter)
         json.hcursor.downField("parallelism").as[Int] shouldBe Right(config.parallelism)
@@ -115,7 +116,7 @@ class V2IngestEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
       }
 
       val config = Oss.QuineIngestConfiguration(
-        name = "test-api-dlq-config",
+        name = ResourceName.unsafeFromString("test-api-dlq-config"),
         source = IngestSource.NumberIterator(limit = None),
         query = "CREATE ($that)",
         onRecordError = OnRecordErrorHandler(

@@ -13,6 +13,7 @@ import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
+import com.thatdot.api.v2.ResourceName
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.QuineIngestConfiguration
@@ -46,6 +47,13 @@ case class RecipeInterpreterV2(
     extends Cancellable {
 
   private var tasks: List[Cancellable] = List.empty
+
+  // Fallback templates are constructor-controlled and always valid; the throw surfaces a
+  // future template regression rather than letting a malformed name reach the API response.
+  private def syntheticResourceName(s: String): ResourceName =
+    ResourceName(s).getOrElse(
+      throw new AssertionError(s"Synthetic recipe fallback name '$s' is not a valid ResourceName"),
+    )
 
   // Recipes always use the default namespace.
   val namespace: NamespaceId = defaultNamespaceId
@@ -81,15 +89,17 @@ case class RecipeInterpreterV2(
     for {
       (standingQueryDef, sqIndex) <- recipe.standingQueries.zipWithIndex
     } {
-      val standingQueryName = standingQueryDef.name.getOrElse(s"standing-query-$sqIndex")
+      val standingQueryRn: ResourceName =
+        standingQueryDef.name.getOrElse(syntheticResourceName(s"standing-query-$sqIndex"))
+      val standingQueryName: String = standingQueryRn.value
 
       // Convert recipe SQ definition to API format
       val apiSqDef = ApiStanding.StandingQuery.StandingQueryDefinition(
-        name = standingQueryName,
+        name = standingQueryRn,
         pattern = standingQueryDef.pattern,
         outputs = standingQueryDef.outputs.zipWithIndex.map { case (workflow, wfIndex) =>
           ApiStanding.StandingQueryResultWorkflow(
-            name = workflow.name.getOrElse(s"output-$wfIndex"),
+            name = workflow.name.getOrElse(syntheticResourceName(s"output-$wfIndex")),
             filter = workflow.filter,
             preEnrichmentTransformation = workflow.preEnrichmentTransformation,
             resultEnrichment = workflow.resultEnrichment.map(e =>
@@ -129,7 +139,8 @@ case class RecipeInterpreterV2(
     for {
       (ingestStream, ingestIndex) <- recipe.ingestStreams.zipWithIndex
     } {
-      val ingestStreamName = ingestStream.name.getOrElse(s"ingest-stream-$ingestIndex")
+      val ingestStreamName: String =
+        ingestStream.name.getOrElse(syntheticResourceName(s"ingest-stream-$ingestIndex")).value
 
       // Convert recipe ingest to V2 internal model
       val v2IngestSource = ApiToIngest(ingestStream.source)
