@@ -16,6 +16,7 @@ import shapeless.{:+:, CNil, Coproduct}
 
 import com.thatdot.api.v2.ErrorDetail
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
+import com.thatdot.api.v2.outputs.{Format, OutputFormat}
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
@@ -24,6 +25,7 @@ import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorStrin
 import com.thatdot.quine.app.model.ingest2.KafkaIngest
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.app.model.ingest2.source.QuineValueIngestQuery
+import com.thatdot.quine.app.model.outputs2.query.{AllNodeScanException, CypherQuery => CypherQueryModel}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.v2api.converters._
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
@@ -48,6 +50,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.persistor.PersistenceAgent
+import com.thatdot.quine.util.StringInput.filenameOrUrl
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo, routes => V1}
 
 sealed trait ProductVersion
@@ -228,17 +231,59 @@ trait QuineApiMethods
   /** Default timeout for Kafka bootstrap server connectivity checks */
   private val KafkaConnectivityTimeout: FiniteDuration = 5.seconds
 
+  private def validateCypherQuery(queryText: String, parameter: String, allowAllNodeScan: Boolean): Option[String] =
+    try {
+      CypherQueryModel.validateAndCompile(queryText, parameter, allowAllNodeScan)
+      None
+    } catch {
+      case e: CypherException => Some(e.pretty)
+      case e: AllNodeScanException => Some(e.getMessage)
+    }
+
+  private def validateProtobufSchema(
+    format: OutputFormat,
+  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] =
+    format match {
+      case OutputFormat.Protobuf(schemaUrl, typeName) =>
+        app.protobufSchemaCache
+          .getMessageDescriptor(filenameOrUrl(schemaUrl), typeName, flushOnFail = true)
+          .map(_ => Option.empty[NonEmptyList[ErrorString]])
+          .recover { case e: IllegalArgumentException =>
+            Some(NonEmptyList.one(e.getMessage))
+          }
+      case _ => Future.successful(None)
+    }
+
   private def validateDestinationSteps(
     destinationSteps: QuineDestinationSteps,
   )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] =
     destinationSteps match {
       case k: QuineDestinationSteps.Kafka =>
-        KafkaSettingsValidator.validatePropertiesWithConnectivity(
+        val kafkaErrors = KafkaSettingsValidator.validatePropertiesWithConnectivity(
           properties = k.kafkaProperties.view.mapValues(_.toString).toMap,
           bootstrapServers = k.bootstrapServers,
           timeout = KafkaConnectivityTimeout,
         )
+        val protobufErrors = validateProtobufSchema(k.format)
+        Future
+          .sequence(List(kafkaErrors, protobufErrors))
+          .map(_.foldLeft(Option.empty[NonEmptyList[ErrorString]])(_ |+| _))
+      case cq: QuineDestinationSteps.CypherQuery =>
+        Future.successful(
+          validateCypherQuery(cq.query, cq.parameter, cq.allowAllNodeScan).map(NonEmptyList.one),
+        )
+      case f: Format =>
+        validateProtobufSchema(f.format)
       case _ => Future.successful(None)
+    }
+
+  private def validateEnrichmentQuery(
+    workflow: ApiStanding.StandingQueryResultWorkflow,
+  ): Option[NonEmptyList[ErrorString]] =
+    workflow.resultEnrichment.flatMap { cq =>
+      validateCypherQuery(cq.query, cq.parameter, cq.allowAllNodeScan).map(e =>
+        NonEmptyList.one(s"Enrichment query: $e"),
+      )
     }
 
   private def validateWorkflow(
@@ -246,7 +291,10 @@ trait QuineApiMethods
   )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] =
     Future
       .sequence(workflow.destinations.toList.map(validateDestinationSteps))
-      .map(_.foldLeft(Option.empty[NonEmptyList[ErrorString]])(_ |+| _))
+      .map { destinationErrors =>
+        val allErrors = destinationErrors.foldLeft(Option.empty[NonEmptyList[ErrorString]])(_ |+| _)
+        allErrors |+| validateEnrichmentQuery(workflow)
+      }
 
   /** Validate DLQ Kafka destinations for an ingest configuration.
     * Checks connectivity to bootstrap servers for any Kafka DLQ destinations.
@@ -300,8 +348,7 @@ trait QuineApiMethods
         implicit val ec: ExecutionContext = graph.shardDispatcherEC
         validateWorkflow(workflow).flatMap {
           case Some(errors) =>
-            Future
-              .successful(Left(asBadRequest(s"Cannot create output `$outputName`: ${errors.toList.mkString(", ")}")))
+            Future.successful(Left(asBadRequest(BadRequest.ofErrorStrings(errors.toList))))
 
           case None =>
             app
@@ -313,6 +360,14 @@ trait QuineApiMethods
                   Left(asBadRequest(s"There is already a Standing Query output named '$name'"))
                 case StandingQueryInterfaceV2.Result.NotFound(queryName) =>
                   Left(asBadRequest(s"No Standing Query named '$queryName' can be found."))
+              }
+              .recover {
+                case e: IllegalArgumentException =>
+                  Left(asBadRequest(s"Cannot create output `$outputName`: ${e.getMessage}"))
+                case cypherException: CypherException =>
+                  Left(asBadRequest(BadRequest(cypherException.pretty, List(ErrorDetail.cypherError))))
+                case e: AllNodeScanException =>
+                  Left(asBadRequest(s"Cannot create output `$outputName`: ${e.getMessage}"))
               }
         }
       }
@@ -347,6 +402,13 @@ trait QuineApiMethods
         Future.successful(Left(NotFound(s"Graph ${namespaceId.name} not found")))
       }(ExecutionContext.parasitic)
 
+  private def validateOutputWorkflows(
+    workflows: Seq[ApiStanding.StandingQueryResultWorkflow],
+  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] =
+    Future
+      .sequence(workflows.map(validateWorkflow))
+      .map(_.foldLeft(Option.empty[NonEmptyList[ErrorString]])(_ |+| _))
+
   def createSQ(
     name: String,
     namespaceId: NamespaceId,
@@ -356,24 +418,32 @@ trait QuineApiMethods
     implicit val ctx: ExecutionContext = graph.nodeDispatcherEC
     graph
       .requiredGraphIsReadyFuture {
-        app
-          .addStandingQueryV2(name, namespaceId, sq)
-          .flatMap {
-            case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
-              Future.successful(Left(asBadRequest(s"There is already a Standing Query named '$name'")))
-            case StandingQueryInterfaceV2.Result.NotFound(_) =>
-              Future.successful(Left(asBadRequest(s"Graph not found: $namespaceId")))
-            case StandingQueryInterfaceV2.Result.Success =>
-              app.getStandingQueryV2(name, namespaceId).map {
-                case Some(value) => Right(value)
-                case None => sys.error("Standing Query not found after adding, this should not happen.")
-              }
+        for {
+          validationErrors <- validateOutputWorkflows(sq.outputs)
+          result <- validationErrors match {
+            case Some(errors) =>
+              Future.successful(Left(asBadRequest(BadRequest.ofErrorStrings(errors.toList))))
+            case None =>
+              app
+                .addStandingQueryV2(name, namespaceId, sq)
+                .flatMap {
+                  case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
+                    Future.successful(Left(asBadRequest(s"There is already a Standing Query named '$name'")))
+                  case StandingQueryInterfaceV2.Result.NotFound(_) =>
+                    Future.successful(Left(asBadRequest(s"Graph not found: $namespaceId")))
+                  case StandingQueryInterfaceV2.Result.Success =>
+                    app.getStandingQueryV2(name, namespaceId).map {
+                      case Some(value) => Right(value)
+                      case None => sys.error("Standing Query not found after adding, this should not happen.")
+                    }
+                }
+                .recover {
+                  case iqp: InvalidQueryPattern => Left(asBadRequest(iqp.message))
+                  case cypherException: CypherException =>
+                    Left(asBadRequest(BadRequest(cypherException.pretty, List(ErrorDetail.cypherError))))
+                }
           }
-          .recover {
-            case iqp: InvalidQueryPattern => Left(asBadRequest(iqp.message))
-            case cypherException: CypherException =>
-              Left(asBadRequest(BadRequest(cypherException.pretty, List(ErrorDetail.cypherError))))
-          }
+        } yield result
       }
       .recoverWith { case _: NamespaceNotFoundException =>
         Future.successful(Left(asNotFound(s"Graph, $namespaceId, Not Found")))
