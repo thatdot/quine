@@ -104,7 +104,7 @@ object Dependencies {
   val egjsHammerjsV = "2.0.17"
   val componentEmitterV = "2.0.0"
   val keycharmV = "0.4.0"
-  val uuidV = "11.1.0"
+  val uuidV = "14.0.0"
 
   // === JVM Override Versions ===
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
