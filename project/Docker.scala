@@ -53,9 +53,10 @@ object Docker extends AutoPlugin {
         from(
           ImageName(
             repository = "eclipse-temurin",
-            tag = Some("21.0.10_7-jre-noble"),
+            tag = Some("21.0.11_10-jre-noble"),
           ),
         )
+        runRaw("apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*")
         healthCheckShell(
           "curl --silent --fail http://localhost:8080/api/v1/admin/liveness || exit 1".split(' '),
           interval = Some(10.seconds),

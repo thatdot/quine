@@ -397,7 +397,7 @@ lazy val `quine-browser`: Project = project
         "@remix-run/router" -> str(remixRunRouterV),
         "minimatch" -> str(minimatchV),
         "yaml" -> str(yamlV),
-        "brace-expansion" -> str(braceExpansionV),
+        "js-cookie" -> str(jsCookieV),
       ),
     ),
     webpackNodeArgs := nodeLegacySslIfAvailable,

@@ -130,11 +130,11 @@ object Dependencies {
   val remixRunRouterV = "1.23.2" // CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
 
   // Parents: @stoplight/elements (stoplightElementsV), glob.
-  val minimatchV = "3.1.5" // CVE-2026-27903 & CVE-2026-27904
+  val minimatchV = "5.1.8" // CVE-2026-27903 & CVE-2026-27904
 
   // Parent: @stoplight/elements (stoplightElementsV) via @stoplight/yaml and openapi3-ts
   val yamlV = "1.10.3" // CVE-2026-33532 (GHSA-48c2-rrv3-qjmp)
 
-  // Parent: @stoplight/elements (stoplightElementsV) via minimatch
-  val braceExpansionV = "1.1.13" // CVE-2026-33750 (GHSA-f886-m6hf-6m8v)
+  // Parent: @stoplight/elements (stoplightElementsV) via react-use
+  val jsCookieV = "3.0.8" // CVE-2026-46625 (GHSA-qjx8-664m-686j)
 }
