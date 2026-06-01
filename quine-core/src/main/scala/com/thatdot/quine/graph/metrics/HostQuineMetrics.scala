@@ -134,7 +134,7 @@ final case class HostQuineMetrics(
     * @see [[com.thatdot.quine.app.routes.IngestMeter]]
     */
   def ingestQueryTimer(namespaceId: NamespaceId, ingestName: String): Timer =
-    metricRegistry.timer(metricName(namespaceId, List("ingest", ingestName, "query")))
+    metricRegistry.timer(metricName(namespaceId, List(IngestMetricComponent, ingestName, "query")))
 
   /** A timer tracking ingest record deserialization time.
     * CAUTION: Unlike the other ingest-related metrics, this timer is not paused when the ingest is completed/failed.
@@ -146,18 +146,18 @@ final case class HostQuineMetrics(
     * @see [[com.thatdot.quine.app.routes.IngestMeter]]
     */
   def ingestDeserializationTimer(namespaceId: NamespaceId, ingestName: String): Timer =
-    metricRegistry.timer(metricName(namespaceId, List("ingest", ingestName, "deserialization")))
+    metricRegistry.timer(metricName(namespaceId, List(IngestMetricComponent, ingestName, "deserialization")))
 
   /** Meter of results that were produced for a named standing query on this host */
   def standingQueryResultMeter(namespaceId: NamespaceId, sqName: String): Meter =
     metricRegistry.meter {
-      metricName(namespaceId, List("standing-queries", "results", sqName))
+      metricName(namespaceId, List(StandingQueryMetricComponent, "results", sqName))
     }
 
   /** Counter of results that were dropped for a named standing query on this host */
   def standingQueryDroppedCounter(namespaceId: NamespaceId, sqName: String): Counter =
     metricRegistry.counter {
-      metricName(namespaceId, List("standing-queries", "dropped", sqName))
+      metricName(namespaceId, List(StandingQueryMetricComponent, "dropped", sqName))
     }
 
   /** Tracks how long SQ results spend in the result queue on this host before being accepted by each output
@@ -166,11 +166,11 @@ final case class HostQuineMetrics(
     * via declared outputs and via other sinks that are dynamically added like SSE and standing.wiretap).
     */
   def standingQueryResultQueueTimer(namespaceId: NamespaceId, name: String): Timer =
-    metricRegistry.timer(metricName(namespaceId, List("standing-queries", "queue-time", name)))
+    metricRegistry.timer(metricName(namespaceId, List(StandingQueryMetricComponent, "queue-time", name)))
 
   /** Histogram of size (in bytes) of persisted standing query states */
   def standingQueryStateSize(namespaceId: NamespaceId, sqId: StandingQueryId): Histogram =
-    metricRegistry.histogram(metricName(namespaceId, List("standing-queries", "states", sqId.uuid.toString)))
+    metricRegistry.histogram(metricName(namespaceId, List(StandingQueryMetricComponent, "states", sqId.uuid.toString)))
 
   private val standingQueryResultHashCodeRegistry: concurrent.Map[StandingQueryId, LongAdder] =
     new ConcurrentHashMap[StandingQueryId, LongAdder]().asScala
@@ -202,6 +202,9 @@ final case class HostQuineMetrics(
 
 object HostQuineMetrics {
   val MetricsRegistryName = "quine-metrics"
+
+  val IngestMetricComponent = "ingest"
+  val StandingQueryMetricComponent = "standing-queries"
 
   sealed trait MessagingMetric {
     def markLocal(): Unit

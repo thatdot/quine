@@ -4,6 +4,7 @@ import com.codahale.metrics.{Meter, Metered, Timer}
 
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.graph.metrics.HostQuineMetrics.IngestMetricComponent
 
 /** Like [[Metered]], but maintains multiple counters relevant to ingest
   */
@@ -32,8 +33,8 @@ object IngestMetered {
     IngestMeter(
       name,
       namespaceId,
-      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List("ingest", name, "count"))),
-      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List("ingest", name, "bytes"))),
+      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List(IngestMetricComponent, name, "count"))),
+      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List(IngestMetricComponent, name, "bytes"))),
       metrics,
     )
 
@@ -41,8 +42,8 @@ object IngestMetered {
     * @see com.codahale.metrics.MetricRegistry#remove
     */
   def removeIngestMeter(namespaceId: NamespaceId, name: String, metrics: HostQuineMetrics): Boolean =
-    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List("ingest", name, "count"))) &&
-    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List("ingest", name, "bytes")))
+    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List(IngestMetricComponent, name, "count"))) &&
+    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List(IngestMetricComponent, name, "bytes")))
 }
 
 final case class IngestMeter private[routes] (
