@@ -32,6 +32,7 @@ import com.thatdot.quine.app.config.{
 }
 import com.thatdot.quine.app.migrations.instances.{DefaultNamespaceRename, MultipleValuesRewrite}
 import com.thatdot.quine.app.migrations.{Migration, QuineMigrations}
+import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
 import com.thatdot.quine.app.routes.{HealthAppRoutes, QuineAppRoutes}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.migrations.{MigrationError, MigrationVersion}
@@ -211,6 +212,7 @@ object Main extends App with LazySafeLogging {
     graph = graph,
     helpMakeQuineBetter = config.helpMakeQuineBetter,
     fileAccessPolicy = fileAccessPolicy,
+    tapBus = new LocalTapBus,
     recipe = recipe,
     recipeCanonicalName = recipe.flatMap(_ => cmdArgs.recipe.flatMap(RecipeV1.getCanonicalName)),
   )

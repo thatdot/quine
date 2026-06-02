@@ -16,6 +16,7 @@ import org.scalatest.matchers.should.Matchers
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app._
 import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
+import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
@@ -29,7 +30,9 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
     val graph: GraphService = IngestTestGraph.makeGraph()
     while (!graph.isReady) Thread.sleep(10)
     val quineApp =
-      new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic))(LogConfig.permissive)
+      new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic), new LocalTapBus)(
+        LogConfig.permissive,
+      )
     implicit val timeout: Timeout = Timeout(2.seconds)
     implicit val ec: ExecutionContext = graph.shardDispatcherEC
 
@@ -102,7 +105,9 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
     val graph: GraphService = IngestTestGraph.makeGraph()
     implicit val ec: ExecutionContext = graph.shardDispatcherEC
     val quineApp =
-      new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic))(LogConfig.permissive)
+      new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic), new LocalTapBus)(
+        LogConfig.permissive,
+      )
     implicit val timeout: Timeout = Timeout(2.seconds)
     while (!graph.isReady) Thread.sleep(10)
 
@@ -236,7 +241,9 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
     val graph: GraphService = IngestTestGraph.makeGraph()
     implicit val ec: ExecutionContext = graph.shardDispatcherEC
     val quineApp =
-      new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic))(LogConfig.permissive)
+      new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic), new LocalTapBus)(
+        LogConfig.permissive,
+      )
     implicit val timeout: Timeout = Timeout(2.seconds)
     while (!graph.isReady) Thread.sleep(10)
 

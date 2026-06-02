@@ -14,6 +14,7 @@ import com.thatdot.api.v2.ResourceName
 import com.thatdot.common.logging.Log.{LogConfig, SafeLogger}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
+import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{IngestFormat, IngestSource}
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern
@@ -30,6 +31,7 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
     graph,
     false,
     FileAccessPolicy(List.empty, ResolutionMode.Dynamic),
+    new LocalTapBus,
   )
 
   val namespace: NamespaceId = defaultNamespaceId

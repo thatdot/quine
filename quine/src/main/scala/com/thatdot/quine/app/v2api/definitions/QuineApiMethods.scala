@@ -167,6 +167,8 @@ trait QuineApiMethods
 
   def thisMemberIdx: Int
 
+  def tapBus: com.thatdot.quine.app.model.outputs2.query.standing.TapBus
+
   private def mkPauseOperationError(
     operation: String,
   ): PartialFunction[Throwable, Either[BadRequest, Nothing]] = {

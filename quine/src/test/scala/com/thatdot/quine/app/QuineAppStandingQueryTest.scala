@@ -10,6 +10,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import com.thatdot.api.v2.ResourceName
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
+import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.StandingQueryDefinition
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode
@@ -30,6 +31,7 @@ class QuineAppStandingQueryTest extends AnyFunSuite with BeforeAndAfterAll with 
     graph,
     helpMakeQuineBetter = false,
     FileAccessPolicy(List.empty, ResolutionMode.Dynamic),
+    new LocalTapBus,
   )
 
   private val namespace: NamespaceId = defaultNamespaceId

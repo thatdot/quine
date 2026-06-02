@@ -18,6 +18,7 @@ import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.api.v2.{ResourceName, TypeDiscriminatorConfig}
 import com.thatdot.quine.app.config.{FileAccessPolicy, QuineConfig, ResolutionMode}
+import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{Oss, RecordDecodingType}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
@@ -32,7 +33,8 @@ import com.thatdot.quine.util.TestLogging._
 
 object EndpointValidationSupport {
   private val graph = IngestTestGraph.makeGraph("endpoint-test")
-  private val quineApp = new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic))
+  private val quineApp =
+    new QuineApp(graph, false, FileAccessPolicy(List.empty, ResolutionMode.Dynamic), new LocalTapBus)
   private val app = new OssApiMethods(graph, quineApp, QuineConfig(), Timeout(5.seconds))
   private val apiRoutes = new V2OssRoutes(app)
   implicit val ec: ExecutionContext.parasitic.type = ExecutionContext.parasitic

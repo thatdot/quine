@@ -26,6 +26,7 @@ import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, Cy
 import com.thatdot.quine.app.model.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
 import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities}
+import com.thatdot.quine.app.model.outputs2.query.standing.{TapBus, TapContext}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters.ApiToStanding
@@ -67,6 +68,7 @@ final class QuineApp(
   graph: GraphService,
   helpMakeQuineBetter: Boolean,
   val fileAccessPolicy: FileAccessPolicy,
+  val tapBus: TapBus,
   recipe: Option[Recipe] = None,
   recipeCanonicalName: Option[String] = None,
 )(implicit val logConfig: LogConfig)
@@ -195,14 +197,16 @@ final class QuineApp(
             implicit val ec: ExecutionContext = graph.nodeDispatcherEC
             Future
               .traverse(standingQueryDefinition.outputs.toVector) { apiWorkflow =>
-                ApiToStanding(apiWorkflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).map(
+                ApiToStanding(apiWorkflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).map {
                   workflowInterpreter =>
+                    implicit val tapCtx: Option[TapContext] =
+                      Some(TapContext(tapBus, queryName, apiWorkflow.name.value, inNamespace))
                     apiWorkflow.name.value -> workflowInterpreter
-                      .flow(graph)
+                      .flow(graph)(logConfig, tapCtx)
                       .viaMat(KillSwitches.single)(Keep.right)
                       .map(_ => SqResultsExecToken(s"SQ: ${apiWorkflow.name} in: $inNamespace"))
-                      .to(graph.masterStream.standingOutputsCompletionSink),
-                )
+                      .to(graph.masterStream.standingOutputsCompletionSink)
+                }
               }
               .map(_.toMap)
               .flatMap { sqResultsConsumers =>
@@ -518,10 +522,12 @@ final class QuineApp(
         } else {
           ApiToStanding(workflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).flatMap {
             workflowInterpreter =>
+              implicit val tapCtx: Option[TapContext] =
+                Some(TapContext(tapBus, queryName, outputName, inNamespace))
               val killSwitch =
                 sqResultsHub
                   .viaMat(KillSwitches.single)(Keep.right)
-                  .via(workflowInterpreter.flow(graph)(logConfig))
+                  .via(workflowInterpreter.flow(graph)(logConfig, tapCtx))
                   .map(_ => SqResultsExecToken(s"SQ: $outputName in: $inNamespace"))
                   .to(graph.masterStream.standingOutputsCompletionSink)
                   .run()
@@ -1257,10 +1263,12 @@ final class QuineApp(
                 .traverse(outputToWorkflowDef.toVector) { case (outputName, workflowDef) =>
                   ApiToStanding(workflowDef, ns)(graph, protobufSchemaCache, kafkaExtensions).map {
                     workflowInterpreter =>
+                      implicit val tapCtx: Option[TapContext] =
+                        Some(TapContext(tapBus, queryName, outputName, ns))
                       val killSwitch =
                         resultHub
                           .viaMat(KillSwitches.single)(Keep.right)
-                          .via(workflowInterpreter.flow(graph)(logConfig))
+                          .via(workflowInterpreter.flow(graph)(logConfig, tapCtx))
                           .map(_ => SqResultsExecToken(s"SQ: $outputName in: $ns"))
                           .to(graph.masterStream.standingOutputsCompletionSink)
                           .run()

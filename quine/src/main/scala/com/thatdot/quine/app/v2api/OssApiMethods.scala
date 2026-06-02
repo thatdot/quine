@@ -5,6 +5,7 @@ import org.apache.pekko.util.Timeout
 import com.thatdot.common.logging.Log._
 import com.thatdot.quine.app.QuineApp
 import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
+import com.thatdot.quine.app.model.outputs2.query.standing.TapBus
 import com.thatdot.quine.app.v2api.definitions.{ProductVersion, QuineApiMethods}
 import com.thatdot.quine.graph.GraphService
 class OssApiMethods(
@@ -16,6 +17,7 @@ class OssApiMethods(
     extends QuineApiMethods
     with LazySafeLogging {
   val thisMemberIdx: Int = 0
+  override val tapBus: TapBus = app.tapBus
 
   override def emptyConfigExample: BaseConfig = QuineConfig()
   override def productVersion: ProductVersion = ProductVersion.Oss
