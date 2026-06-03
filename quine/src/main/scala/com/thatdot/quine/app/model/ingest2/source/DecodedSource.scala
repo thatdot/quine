@@ -46,7 +46,7 @@ import com.thatdot.quine.app.model.ingest.QuineIngestSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.model.ingest2._
-import com.thatdot.quine.app.model.ingest2.codec.FrameDecoder
+import com.thatdot.quine.app.model.ingest2.codec.{FileSeekableInput, FrameDecoder}
 import com.thatdot.quine.app.model.ingest2.sources.S3Source.s3Source
 import com.thatdot.quine.app.model.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.model.ingest2.sources._
@@ -443,6 +443,7 @@ object DecodedSource extends LazySafeLogging {
     kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
   )(implicit
     protobufCache: ProtobufSchemaCache,
+    avroCache: AvroSchemaCache,
     logConfig: LogConfig,
   ): ValidatedNel[BaseError, DecodedSource] = {
     config match {
@@ -531,7 +532,7 @@ object DecodedSource extends LazySafeLogging {
           IngestBounds(startAtOffset, ingestLimit),
           meter,
           Seq(), // There is no compression support in the v1 configuration object.
-        )(system).decodedSource
+        )(system, avroCache).decodedSource
 
       case V1.StandardInputIngest(
             format,
@@ -650,13 +651,6 @@ object DecodedSource extends LazySafeLogging {
     }
   }
 
-  //V2 configuration
-  def apply(src: FramedSource, format: IngestFormat)(implicit
-    protobufCache: ProtobufSchemaCache,
-    avroCache: AvroSchemaCache,
-  ): DecodedSource =
-    src.toDecoded(FrameDecoder(format))
-
   // build from v2 configuration
   def apply(
     name: String,
@@ -672,30 +666,54 @@ object DecodedSource extends LazySafeLogging {
   ): ValidatedNel[BaseError, DecodedSource] =
     config.source match {
       case FileIngest(format, path, mode, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
-        FileSource
-          .srcFromIngest(path, mode, fileAccessPolicy)
-          .andThen { validatedSource =>
-            FileSource.decodedSourceFromFileStream(
-              validatedSource,
-              format,
-              charset,
-              maximumLineSize.getOrElse(1000000), //TODO - To optional
-              IngestBounds(startOffset, limit),
-              meter,
-              recordDecoders.map(ContentDecoder(_)),
-            )
-          }
+        format match {
+          case r: FileFormat.RandomAccess =>
+            // Fast path: file is local and natively seekable; bypass the byte source entirely
+            // and present the file directly to the random-access decoder.
+            FileAccessPolicy.validatePath(path, fileAccessPolicy).map { validatedPath =>
+              FileSource.decodedSourceFromSeekableInput(
+                FileSource.randomAccessDecoder(r),
+                new FileSeekableInput(validatedPath.toFile),
+                IngestBounds(startOffset, limit),
+                meter,
+              )
+            }
+          case _ =>
+            FileSource
+              .srcFromIngest(path, mode, fileAccessPolicy)
+              .andThen { validatedSource =>
+                FileSource.decodedSourceFromFileStream(
+                  validatedSource,
+                  format,
+                  charset,
+                  maximumLineSize.getOrElse(1000000), //TODO - To optional
+                  IngestBounds(startOffset, limit),
+                  meter,
+                  recordDecoders.map(ContentDecoder(_)),
+                )
+              }
+        }
 
       case StdInputIngest(format, maximumLineSize, charset) =>
-        FileSource.decodedSourceFromFileStream(
-          stdInSource,
-          format,
-          charset,
-          maximumLineSize.getOrElse(1000000), //TODO
-          IngestBounds(),
-          meter,
-          Seq(),
-        )
+        format match {
+          case _: FileFormat.RandomAccess =>
+            // stdin is non-seekable; refuse random-access formats rather than buffering all of stdin.
+            Validated.invalidNel(
+              com.thatdot.quine.exceptions.IngestSourceFormatException(
+                s"$format is not supported for stdin ingest (requires seekable input)",
+              ),
+            )
+          case _ =>
+            FileSource.decodedSourceFromFileStream(
+              stdInSource,
+              format,
+              charset,
+              maximumLineSize.getOrElse(1000000), //TODO
+              IngestBounds(),
+              meter,
+              Seq(),
+            )
+        }
 
       case S3Ingest(format, bucketName, key, creds, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
         FileSource.decodedSourceFromFileStream(

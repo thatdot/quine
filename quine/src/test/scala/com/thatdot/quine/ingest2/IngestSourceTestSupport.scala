@@ -1,8 +1,8 @@
 package com.thatdot.quine.ingest2
 
 import scala.collection.immutable
-import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Random, Success}
 
 import org.apache.pekko.NotUsed
@@ -21,8 +21,12 @@ import com.thatdot.quine.app.routes.IngestMetered
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.serialization.AvroSchemaCache
 
 object IngestSourceTestSupport {
+
+  implicit private val noOpAvroSchemaCache: AvroSchemaCache = (_: java.net.URL) =>
+    Future.failed(new UnsupportedOperationException("AvroSchemaCache not available in tests"))
 
   def srcFromString(raw: String): Source[ByteString, NotUsed] = Source(raw.map(ByteString(_)))
 

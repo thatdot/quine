@@ -92,13 +92,39 @@ sealed trait FileFormat extends IngestFormat
 object FileFormat {
   import V1IngestSchemas.csvCharacterSchema
 
+  /** Format whose records are framed by an upstream stage — one ByteString in, one record out.
+    * Routes through `FrameDecoder` and the byte-source plumbing in `FileSource`.
+    */
+  sealed trait Framed extends FileFormat
+
+  /** Format whose records self-delimit within an undelimited byte stream, read forward-only.
+    * Routes through a `StreamingDecoder`.
+    */
+  sealed trait SelfDelimited extends FileFormat
+
+  /** Format that requires random access to the underlying bytes (e.g. a footer-indexed format).
+    * Routes through a `RandomAccessDecoder` against a `SeekableInput`.
+    */
+  sealed trait RandomAccess extends FileFormat
+
   /** Read each line in as a single string element. */
-  case object LineFormat extends FileFormat
+  case object LineFormat extends Framed
 
   /** Read each line as a JSON value */
-  case object JsonLinesFormat extends FileFormat
+  case object JsonLinesFormat extends Framed
 
-  case object JsonFormat extends FileFormat
+  case object JsonFormat extends Framed
+
+  /** Apache Avro Object Container Format. Records are read from the container and emitted individually.
+    * The schema embedded in the file header is used as the writer schema. If a reader schema URL is
+    * provided, it is used for schema evolution / projection.
+    */
+  case class AvroContainerFormat(
+    schemaUrl: Option[String] = None,
+  ) extends SelfDelimited
+
+  /** Apache Parquet columnar format. Each row is emitted as a JSON object. */
+  case object ParquetFormat extends RandomAccess
 
   /** Comma (or other delimiter) separated values. Each line is a record, separated by a field delimiter. */
   case class CsvFormat(
@@ -106,7 +132,7 @@ object FileFormat {
     delimiter: V1.CsvCharacter = V1.CsvCharacter.Comma,
     quoteChar: V1.CsvCharacter = V1.CsvCharacter.DoubleQuote,
     escapeChar: V1.CsvCharacter = V1.CsvCharacter.Backslash,
-  ) extends FileFormat {
+  ) extends Framed {
     require(delimiter != quoteChar, "Different characters must be used for `delimiter` and `quoteChar`.")
     require(delimiter != escapeChar, "Different characters must be used for `delimiter` and `escapeChar`.")
     require(quoteChar != escapeChar, "Different characters must be used for `quoteChar` and `escapeChar`.")
@@ -322,6 +348,10 @@ object V2IngestEntities {
           Success(V1.FileIngestFormat.CypherJson(query, parameter))
         case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
           Success(V1.FileIngestFormat.CypherCsv(query, parameter, headers, delimiter, quoteChar, escapeChar))
+        case _: FileFormat.AvroContainerFormat =>
+          Failure(new UnsupportedOperationException("Avro container file format is not supported in API v1"))
+        case FileFormat.ParquetFormat =>
+          Failure(new UnsupportedOperationException("Parquet file format is not supported in API v1"))
       }
 
       val tryConfig: Try[V1.IngestStreamConfiguration] = source match {

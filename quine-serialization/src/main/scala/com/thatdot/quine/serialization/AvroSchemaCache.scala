@@ -6,7 +6,7 @@ import scala.concurrent.{ExecutionContext, Future, blocking}
 import scala.util.Using
 
 import com.github.blemale.scaffeine.{AsyncLoadingCache, Scaffeine}
-import org.apache.avro.Schema
+import org.apache.avro.{Schema, SchemaParseException}
 
 import com.thatdot.quine.serialization.AvroSchemaError.{InvalidAvroSchema, UnreachableAvroSchema}
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
@@ -38,13 +38,14 @@ object AvroSchemaCache {
     def getSchema(schemaUrl: URL): Future[Schema] =
       avroSchemaCache.get(schemaUrl)
 
-    val parser = new org.apache.avro.Schema.Parser()
-
     private[this] def resolveSchema(uri: URL)(blockingEc: ExecutionContext): Future[Schema] =
       Future(blocking {
+        // Schema.Parser is stateful (accumulates named types) and not thread-safe,
+        // so a fresh parser per call is required.
+        val parser = new Schema.Parser()
         Using.resource(uri.openStream())(parser.parse)
       })(blockingEc).recoverWith {
-        case e: org.apache.avro.SchemaParseException => Future.failed(new InvalidAvroSchema(uri, e))
+        case e: SchemaParseException => Future.failed(new InvalidAvroSchema(uri, e))
         case e: java.io.IOException => Future.failed(new UnreachableAvroSchema(uri, e))
       }(blockingEc)
   }

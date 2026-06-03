@@ -57,6 +57,30 @@ class QuineDataFoldablesFromSpec extends AnyFunSpec with Matchers {
       val result = DataFoldableFrom[cypher.Value].fold[cypher.Value](original, DataFolderTo[cypher.Value])
       result shouldBe original
     }
+
+    describe("Expr.Bytes representsId hint") {
+      val raw = Array[Byte](0x00, 0xFF.toByte, 0x80.toByte, 0x7F)
+
+      it("plain bytes (representsId=false) dispatch to folder.bytes — JSON emits base64") {
+        val plain: cypher.Value = ce.Bytes(raw, representsId = false)
+        DataFoldableFrom[cypher.Value].fold[Json](plain, DataFolderTo[Json]) shouldEqual
+        Json.fromString("AP+Afw==")
+      }
+
+      it("id bytes (representsId=true) dispatch to folder.id — JSON emits canonical hex") {
+        val id: cypher.Value = ce.Bytes(raw, representsId = true)
+        DataFoldableFrom[cypher.Value].fold[Json](id, DataFolderTo[Json]) shouldEqual
+        Json.fromString("00FF807F")
+      }
+
+      it("id bytes round-trip through the Cypher folder preserve the representsId flag") {
+        val id: cypher.Value = ce.Bytes(raw, representsId = true)
+        val out = DataFoldableFrom[cypher.Value].fold[cypher.Value](id, cypherValueFolder)
+        out shouldEqual ce.Bytes(raw, representsId = true)
+        // Bytes.equals ignores the flag, so check it explicitly.
+        out.asInstanceOf[ce.Bytes].representsId shouldEqual true
+      }
+    }
   }
 
   //for protobuf dynamic message foldable test see [[ProtobufTest]]

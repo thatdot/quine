@@ -1223,6 +1223,29 @@ object ApiIngest {
                      |format instead.""".asOneLine)
       case object Json extends FileFormat
 
+      @title("Avro")
+      @description(
+        """Read an Apache Avro Object Container File (.avro). Records are emitted individually using the
+          |schema embedded in the file header. An optional reader schema URL may be provided for schema
+          |evolution / projection.""".asOneLine,
+      )
+      case class Avro(
+        @description(
+          "Optional URL (or local filename) of an Avro schema file to use as the reader schema for schema evolution. " +
+          "If not provided, the writer schema from the file header is used.",
+        )
+        schemaUrl: Option[String] = None,
+      ) extends FileFormat
+
+      @title("Parquet")
+      @description(
+        """Read an Apache Parquet file. Each row is emitted as a JSON object, with column types
+          |interpreted according to the file's embedded schema. Parquet requires random access to
+          |the file's footer, so only file and S3 ingests are supported (not stdin or websocket
+          |upload).""".asOneLine,
+      )
+      case object Parquet extends FileFormat
+
       @title("CSV")
       @description("Emit a list of strings for each row, or a map of field name to string if headers are provided.")
       case class CSV(

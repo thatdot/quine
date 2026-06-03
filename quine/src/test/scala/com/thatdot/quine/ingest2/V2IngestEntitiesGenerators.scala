@@ -222,11 +222,16 @@ object V2IngestEntitiesGenerators {
       escapeChar <- csvCharacter.suchThat(c => c != delimiter && c != quoteChar)
     } yield FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar)
 
+    val avroContainerFormat: Gen[FileFormat.AvroContainerFormat] =
+      Gen.option(nonEmptyAlphaNumStr).map(FileFormat.AvroContainerFormat(_))
+
     val fileFormat: Gen[FileFormat] = Gen.oneOf(
       Gen.const(FileFormat.LineFormat),
       Gen.const(FileFormat.JsonLinesFormat),
       Gen.const(FileFormat.JsonFormat),
       csvFormat,
+      avroContainerFormat,
+      Gen.const(FileFormat.ParquetFormat),
     )
 
     val protobufFormat: Gen[StreamingFormat.ProtobufFormat] = for {

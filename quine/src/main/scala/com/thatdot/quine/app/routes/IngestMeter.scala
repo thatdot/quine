@@ -57,6 +57,19 @@ final case class IngestMeter private[routes] (
     countMeter.mark()
     bytesMeter.mark(bytes.toLong)
   }
+
+  /** Record `n` bytes consumed from the input, independent of record framing. Use when the
+    * site marking bytes doesn't naturally know record boundaries (e.g. a byte-source wireTap
+    * upstream of a decoder that self-delimits).
+    */
+  def markBytes(n: Long): Unit = bytesMeter.mark(n)
+
+  /** Record one ingested element, independent of byte accounting. Use when the site marking
+    * records doesn't naturally know per-record byte size (e.g. a per-row wireTap downstream
+    * of a decoder, where bytes were already counted upstream).
+    */
+  def markRecord(): Unit = countMeter.mark()
+
   override def counts: Metered = countMeter
   override def bytes: Metered = bytesMeter
 

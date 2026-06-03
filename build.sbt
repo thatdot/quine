@@ -461,6 +461,18 @@ lazy val `quine`: Project = project
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
       "org.apache.commons" % "commons-csv" % apacheCommonsCsvV,
+      "com.github.mjakubowski84" %% "parquet4s-core" % parquet4sCoreV,
+      //  We need both hadoop-client-api and hadoop-client-runtime because parquet4s hardcodes liberal-but-unnecessary
+      //  usage of Hadoop. The alternative is to replace parquet4s with direct ParquetFileReader + PlainParquetConfiguration.
+      //  This would eliminate the Hadoop dependency entirely, but it means reimplementing the record-to-RowParquetRecord
+      //  conversion that parquet4s currently handles.
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopV,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopV
+      exclude ("org.apache.logging.log4j", "log4j-slf4j2-impl")
+      exclude ("org.slf4j", "slf4j-reload4j")
+      exclude ("commons-logging", "commons-logging"),
+      // Override transitive aircompressor to fix CVE-2025-67721 (Snappy/LZ4 decompressor info leak)
+      "io.airlift" % "aircompressor" % aircompressorV,
       "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
       "org.apache.pekko" %% "pekko-connectors-csv" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,

@@ -44,6 +44,8 @@ object ApiToIngest {
     case Api.IngestFormat.FileFormat.Line => FileFormat.LineFormat
     case Api.IngestFormat.FileFormat.JsonL => FileFormat.JsonLinesFormat
     case Api.IngestFormat.FileFormat.Json => FileFormat.JsonFormat
+    case Api.IngestFormat.FileFormat.Avro(schemaUrl) => FileFormat.AvroContainerFormat(schemaUrl)
+    case Api.IngestFormat.FileFormat.Parquet => FileFormat.ParquetFormat
     case Api.IngestFormat.FileFormat.CSV(headers, delimiter, quoteChar, escapeChar) =>
       FileFormat.CsvFormat(headers, apply(delimiter), apply(quoteChar), apply(escapeChar))
   }

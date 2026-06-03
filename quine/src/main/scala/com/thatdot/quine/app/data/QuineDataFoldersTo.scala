@@ -22,6 +22,8 @@ object QuineDataFoldersTo {
 
     def bytes(b: Array[Byte]): cypher.Value = ce.Bytes(b, representsId = false)
 
+    def id(b: Array[Byte]): cypher.Value = ce.Bytes(b, representsId = true)
+
     def floating(d: Double): cypher.Value = ce.Floating(d)
 
     def date(d: LocalDate): cypher.Value = ce.Date(d)

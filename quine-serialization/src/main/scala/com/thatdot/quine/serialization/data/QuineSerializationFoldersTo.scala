@@ -2,6 +2,7 @@ package com.thatdot.quine.serialization.data
 
 import java.time.{Duration, LocalDate, LocalDateTime, LocalTime, OffsetTime, ZonedDateTime}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.data.DataFolderTo
 import com.thatdot.quine.model.QuineValue
 
@@ -20,6 +21,8 @@ object QuineSerializationFoldersTo {
     override def string(s: String): QuineValue = QV.Str(s)
 
     override def bytes(b: Array[Byte]): QuineValue = QV.Bytes(b)
+
+    override def id(b: Array[Byte]): QuineValue = QV.Id(QuineId(b))
 
     override def floating(d: Double): QuineValue = QV.Floating(d)
 

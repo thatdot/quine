@@ -2,6 +2,8 @@ package com.thatdot.quine.app.model.ingest2.sources
 
 import java.nio.charset.{Charset, StandardCharsets}
 
+import scala.util.{Failure, Success, Try}
+
 import org.apache.pekko.NotUsed
 import org.apache.pekko.http.scaladsl.common.EntityStreamingSupport
 import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
@@ -21,10 +23,21 @@ import com.thatdot.quine.app.config.FileAccessPolicy
 import com.thatdot.quine.app.model.ingest.NamedPipeSource
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.model.ingest2.FileFormat
-import com.thatdot.quine.app.model.ingest2.codec.{CypherStringDecoder, FrameDecoder, JsonDecoder}
+import com.thatdot.quine.app.model.ingest2.codec.{
+  AvroContainerDecoder,
+  BufferedSeekableInput,
+  CypherStringDecoder,
+  FrameDecoder,
+  JsonDecoder,
+  ParquetDecoder,
+  RandomAccessDecoder,
+  SeekableInput,
+  StreamingDecoder,
+}
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, FramedSource, IngestBounds}
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.FileIngestMode
+import com.thatdot.quine.serialization.AvroSchemaCache
 import com.thatdot.quine.util.BaseError
 
 /** Build a framed source from a file-like stream of ByteStrings. In practice this
@@ -101,7 +114,7 @@ object FileSource extends LazyLogging {
     bounds: IngestBounds = IngestBounds(),
     meter: IngestMeter,
     decoders: Seq[ContentDecoder] = Seq(),
-  ): ValidatedNel[BaseError, DecodedSource] =
+  )(implicit avroSchemaCache: AvroSchemaCache): ValidatedNel[BaseError, DecodedSource] =
     format match {
       case FileFormat.LineFormat =>
         FramedFileSource(
@@ -143,11 +156,181 @@ object FileSource extends LazyLogging {
           maximumLineSize,
           decoders,
         ).decodedSource.valid
-
+      case FileFormat.AvroContainerFormat(schemaUrl) =>
+        decodedSourceFromStreamingDecoder(
+          new AvroContainerDecoder(schemaUrl),
+          fileSource,
+          bounds,
+          meter,
+          decoders,
+        ).valid
+      case r: FileFormat.RandomAccess =>
+        // Random-access formats can't stream — collect the byte source to memory, then
+        // decode through a BufferedSeekableInput. Suitable for S3 and similar inputs that
+        // present as a Source[ByteString] but where we have to read the whole object
+        // anyway. For local files use `decodedSourceFromSeekableInput` to avoid the buffer.
+        decodedSourceFromBufferedRandomAccess(
+          randomAccessDecoder(r),
+          fileSource,
+          bounds,
+          meter,
+          decoders,
+        ).valid
     }
 
-  def decodingFoldableFrom(fileFormat: FileFormat, meter: IngestMeter, maximumLineSize: Int): DecodingFoldableFrom =
+  /** Wrap a [[StreamingDecoder]] as a [[DecodedSource]] by feeding upstream bytes through
+    * decompression, the decoder, then bounding and metering. Byte counts are taken upstream
+    * of decoding (so they reflect transferred bytes, not decoded record sizes); record
+    * counts are taken downstream of decoding for successful decodes only.
+    *
+    * Successful records emit `ByteString.empty` for the Frame slot. Failures emit
+    * `ByteString.empty` with the `Failure[_]` carrying any diagnostic — for self-delimited
+    * formats the original per-record wire bytes are not recoverable, so emitting a
+    * fabricated Frame would be misleading.
+    */
+  private def decodedSourceFromStreamingDecoder[A](
+    decoder: StreamingDecoder[A],
+    fileSource: Source[ByteString, NotUsed],
+    bounds: IngestBounds,
+    ingestMeter: IngestMeter,
+    decoders: Seq[ContentDecoder],
+  ): DecodedSource =
+    new DecodedSource(ingestMeter) {
+      type Decoded = A
+      type Frame = ByteString
+      val foldable: DataFoldableFrom[A] = decoder.dataFoldableFrom
+      val foldableFrame: DataFoldableFrom[ByteString] = DataFoldableFrom.byteStringDataFoldable
+
+      override def content(input: ByteString): Array[Byte] = input.toArrayUnsafe()
+
+      override def stream: Source[(() => Try[A], ByteString), ShutdownSwitch] = {
+        // NB: on a pre-first-success retry the byte source is re-materialized and bytes are
+        // re-metered. Acceptable because such retries fire at very low byte counts (header
+        // / schema-fetch failures) so the over-count is bounded.
+        val recordSource: Source[(() => Try[A], ByteString), NotUsed] = fileSource
+          .wireTap(b => ingestMeter.markBytes(b.size.toLong))
+          .via(decompressingFlow(decoders))
+          .via(decoder.decodeFlow)
+          .via(boundingFlow(bounds))
+          .wireTap(_.foreach(_ => ingestMeter.markRecord()))
+          .map {
+            case Success(r) => (() => Success(r)) -> ByteString.empty
+            case f @ Failure(_) => (() => f) -> ByteString.empty
+          }
+        withKillSwitches(recordSource)
+      }
+    }
+
+  /** Wrap a [[RandomAccessDecoder]] as a [[DecodedSource]] over a byte source by collecting
+    * the bytes to memory and presenting them via [[BufferedSeekableInput]]. Use when the
+    * underlying source can't be opened seekably (e.g. S3).
+    *
+    * Bytes are metered as they arrive (upstream of buffering). Records are metered after
+    * decode for successful decodes only. The Frame slot follows the same "honest" rule as
+    * the streaming-decoder helper: empty for both success and failure.
+    */
+  private def decodedSourceFromBufferedRandomAccess[A](
+    decoder: RandomAccessDecoder[A],
+    fileSource: Source[ByteString, NotUsed],
+    bounds: IngestBounds,
+    ingestMeter: IngestMeter,
+    decoders: Seq[ContentDecoder],
+  ): DecodedSource =
+    new DecodedSource(ingestMeter) {
+      type Decoded = A
+      type Frame = ByteString
+      val foldable: DataFoldableFrom[A] = decoder.dataFoldableFrom
+      val foldableFrame: DataFoldableFrom[ByteString] = DataFoldableFrom.byteStringDataFoldable
+
+      override def content(input: ByteString): Array[Byte] = input.toArrayUnsafe()
+
+      override def stream: Source[(() => Try[A], ByteString), ShutdownSwitch] = {
+        val recordSource: Source[(() => Try[A], ByteString), NotUsed] = fileSource
+          .wireTap(b => ingestMeter.markBytes(b.size.toLong))
+          .via(decompressingFlow(decoders))
+          .fold(ByteString.empty)(_ ++ _)
+          .flatMapConcat(bs => decoder.decode(new BufferedSeekableInput(bs.toArrayUnsafe())))
+          .via(boundingFlow(bounds))
+          .wireTap(_.foreach(_ => ingestMeter.markRecord()))
+          .map {
+            case Success(r) => (() => Success(r)) -> ByteString.empty
+            case f @ Failure(_) => (() => f) -> ByteString.empty
+          }
+        withKillSwitches(recordSource)
+      }
+    }
+
+  /** Wrap a [[RandomAccessDecoder]] as a [[DecodedSource]] over a [[SeekableInput]].
+    * Used when the input is natively seekable (local file) and we can avoid buffering.
+    *
+    * Byte metering reports the input length once at materialization time (the underlying
+    * seekable source doesn't surface per-read byte counts). Record metering is per-record.
+    */
+  def decodedSourceFromSeekableInput[A](
+    decoder: RandomAccessDecoder[A],
+    seekableInput: SeekableInput,
+    bounds: IngestBounds,
+    ingestMeter: IngestMeter,
+  ): DecodedSource =
+    new DecodedSource(ingestMeter) {
+      type Decoded = A
+      type Frame = ByteString
+      val foldable: DataFoldableFrom[A] = decoder.dataFoldableFrom
+      val foldableFrame: DataFoldableFrom[ByteString] = DataFoldableFrom.byteStringDataFoldable
+
+      override def content(input: ByteString): Array[Byte] = input.toArrayUnsafe()
+
+      override def stream: Source[(() => Try[A], ByteString), ShutdownSwitch] = {
+        val recordSource: Source[(() => Try[A], ByteString), NotUsed] = Source
+          .lazySource { () =>
+            ingestMeter.markBytes(seekableInput.length)
+            decoder.decode(seekableInput)
+          }
+          .mapMaterializedValue(_ => NotUsed)
+          .via(boundingFlow(bounds))
+          .wireTap(_.foreach(_ => ingestMeter.markRecord()))
+          .map {
+            case Success(r) => (() => Success(r)) -> ByteString.empty
+            case f @ Failure(_) => (() => f) -> ByteString.empty
+          }
+        withKillSwitches(recordSource)
+      }
+    }
+
+  /** Build a random-access decoder for the given format. Public for callers (e.g. dispatch
+    * sites in `DecodedSource`) that need to construct a decoder directly.
+    */
+  def randomAccessDecoder(format: FileFormat.RandomAccess): RandomAccessDecoder[_] = format match {
+    case FileFormat.ParquetFormat => new ParquetDecoder
+  }
+
+  def decodingFoldableFrom(
+    fileFormat: FileFormat,
+    meter: IngestMeter,
+    maximumLineSize: Int,
+  )(implicit avroSchemaCache: AvroSchemaCache): DecodingFoldableFrom =
     fileFormat match {
+      case _: FileFormat.RandomAccess =>
+        // Random-access formats need to seek their input; a websocket upload is a forward-only
+        // stream with no usable seek semantics. The dispatch above (in `decodedSourceFromFileStream`)
+        // tolerates this for byte-source callers by buffering, but that's inappropriate for a
+        // websocket upload where the producer may be untrusted and unbounded.
+        throw new com.thatdot.quine.exceptions.IngestSourceFormatException(
+          s"$fileFormat is not supported for websocket file upload (requires seekable input)",
+        )
+      case FileFormat.AvroContainerFormat(schemaUrl) =>
+        val decoder = new AvroContainerDecoder(schemaUrl)
+        new DecodingFoldableFrom {
+          override type Element = org.apache.avro.generic.GenericRecord
+          override val dataFoldableFrom: DataFoldableFrom[Element] = decoder.dataFoldableFrom
+
+          override def decodingFlow: Flow[ByteString, Element, NotUsed] =
+            Flow[ByteString]
+              .wireTap(b => meter.markBytes(b.size.toLong))
+              .via(decoder.decodeFlow)
+              .map(_.get) // websocket upload is one-shot; per-record failures fail the stream
+              .wireTap(_ => meter.markRecord())
+        }
       case FileFormat.LineFormat =>
         new DecodingFoldableFrom {
           override type Element = String

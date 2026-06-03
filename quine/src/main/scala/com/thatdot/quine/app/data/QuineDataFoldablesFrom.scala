@@ -29,7 +29,8 @@ object QuineDataFoldablesFrom {
           case Expr.Floating(double) => folder.floating(double)
           case Expr.True => folder.trueValue
           case Expr.False => folder.falseValue
-          case Expr.Bytes(b, _) => folder.bytes(b)
+          case Expr.Bytes(b, true) => folder.id(b)
+          case Expr.Bytes(b, false) => folder.bytes(b)
           case Expr.List(list) =>
             val builder = folder.vectorBuilder()
             list.foreach(v => builder.add(fold(v, folder)))

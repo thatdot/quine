@@ -22,6 +22,8 @@ object PolyglotValueDataFolderTo extends DataFolderTo[Polyglot.HostValue] {
 
   def bytes(b: Array[Byte]): Polyglot.HostValue = b
 
+  def id(b: Array[Byte]): Polyglot.HostValue = b
+
   def floating(d: Double): Polyglot.HostValue = Double.box(d)
 
   def date(d: LocalDate): Polyglot.HostValue = d

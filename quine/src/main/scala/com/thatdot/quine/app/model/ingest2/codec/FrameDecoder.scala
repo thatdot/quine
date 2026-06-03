@@ -19,13 +19,23 @@ import org.apache.commons.csv.CSVFormat
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.data.QuineDataFoldablesFrom
 import com.thatdot.quine.app.model.ingest2.sources.DEFAULT_CHARSET
-import com.thatdot.quine.app.model.ingest2.{FileFormat, IngestFormat => V2IngestFormat, StreamingFormat}
+import com.thatdot.quine.app.model.ingest2.{FileFormat, StreamingFormat}
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes._
 import com.thatdot.quine.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
+/** Decoder for formats whose record framing is provided by an upstream stage — one
+  * already-delimited byte buffer in, one record out (e.g. Kafka messages, lines from
+  * a line-delimiter flow, JSON objects from a JSON framer).
+  *
+  * Synchronous and per-record: callers invoke `decode` once per frame the upstream
+  * stage emits. Decode failures are returned as `Failure[A]` rather than thrown.
+  *
+  * Companion abstraction to [[StreamingDecoder]] (for self-delimited forward-only byte
+  * streams) and [[RandomAccessDecoder]] (for footer-indexed seekable formats).
+  */
 trait FrameDecoder[A] {
   val foldable: DataFoldableFrom[A]
 
@@ -164,11 +174,13 @@ case class CsvMapDecoder(
 }
 object FrameDecoder {
 
-  def apply(
-    format: V2IngestFormat,
-  )(implicit protobufCache: ProtobufSchemaCache, avroSchemaCache: AvroSchemaCache): FrameDecoder[_] = format match {
+  /** Build a frame decoder for a file-ingest format whose records arrive pre-framed.
+    * Self-framing (e.g. Avro container) and random-access (e.g. Parquet) file formats
+    * route through their own decoders and are excluded from this method by type.
+    */
+  def apply(format: FileFormat.Framed): FrameDecoder[_] = format match {
     case FileFormat.LineFormat => CypherStringDecoder
-    case FileFormat.JsonLinesFormat | FileFormat.JsonFormat | StreamingFormat.JsonFormat => JsonDecoder
+    case FileFormat.JsonLinesFormat | FileFormat.JsonFormat => JsonDecoder
     case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
       headers match {
         case Left(false) =>
@@ -188,14 +200,21 @@ object FrameDecoder {
             escapeChar.byte.toChar,
           )
       }
+  }
 
+  /** Build a frame decoder for a streaming-protocol format (Kafka, SQS, SSE, websocket, ...).
+    * One protocol-level message in, one record out.
+    */
+  def apply(
+    format: StreamingFormat,
+  )(implicit protobufCache: ProtobufSchemaCache, avroSchemaCache: AvroSchemaCache): FrameDecoder[_] = format match {
+    case StreamingFormat.JsonFormat => JsonDecoder
     case StreamingFormat.RawFormat => CypherRawDecoder
     case StreamingFormat.ProtobufFormat(schemaUrl, typeName) =>
       ProtobufDecoder(schemaUrl, typeName)
     case StreamingFormat.AvroFormat(schemaUrl) =>
       AvroDecoder(schemaUrl)
     case StreamingFormat.DropFormat => DropDecoder
-
   }
 
   def apply(v1Format: StreamedRecordFormat)(implicit protobufCache: ProtobufSchemaCache): FrameDecoder[_] =

@@ -2,6 +2,7 @@ package com.thatdot.data
 
 import java.time._
 import java.time.format.DateTimeFormatter
+import java.util.Base64
 
 import scala.collection.immutable.SortedMap
 
@@ -17,6 +18,9 @@ trait DataFolderTo[A] {
   def integer(l: Long): A
   def string(s: String): A
   def bytes(b: Array[Byte]): A
+
+  /** Bytes the source tagged as identifying a node (a `QuineId`). */
+  def id(b: Array[Byte]): A
   def floating(d: Double): A
   def date(d: LocalDate): A
   def time(t: OffsetTime): A
@@ -51,7 +55,9 @@ object DataFolderTo {
 
     def string(s: String): Json = Json.fromString(s)
 
-    def bytes(b: Array[Byte]): Json = Json.fromString(ByteConversions.formatHexBinary(b))
+    def bytes(b: Array[Byte]): Json = Json.fromString(Base64.getEncoder.encodeToString(b))
+
+    def id(b: Array[Byte]): Json = Json.fromString(ByteConversions.formatHexBinary(b))
 
     def floating(f: Double): Json = Json.fromDoubleOrString(f)
 
@@ -95,6 +101,8 @@ object DataFolderTo {
     override def string(s: String): Any = s
 
     override def bytes(b: Array[Byte]): Any = b
+
+    override def id(b: Array[Byte]): Any = b
 
     override def floating(d: Double): Any = d
 

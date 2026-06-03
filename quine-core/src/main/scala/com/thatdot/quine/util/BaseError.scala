@@ -5,6 +5,7 @@ import scala.util.control.NoStackTrace
 import com.thatdot.quine.exceptions.{
   DuplicateIngestException,
   FileIngestSecurityException,
+  IngestSourceFormatException,
   KafkaValidationException,
   NamespaceNotFoundException,
   ShardIterationException,
@@ -95,6 +96,7 @@ object QuineError {
     case e: ShardIterationException => Some(e)
     case e: KafkaValidationException => Some(e)
     case e: FileIngestSecurityException => Some(e)
+    case e: IngestSourceFormatException => Some(e)
     case _ => None
   }
 }

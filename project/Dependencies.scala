@@ -51,6 +51,14 @@ object Dependencies {
   val msgPackV = "0.9.12"
   val openApiCirceYamlV = "0.11.10"
   val openCypherV = "9.2.3"
+  val parquet4sCoreV = "2.23.0"
+  // 3.4.3 fixes the native HDFS client CVE-2025-27821 and ships patched commons-lang3 3.18.0
+  // (so no commons-lang3 suppression is needed). We pull Hadoop only so parquet4s can read local
+  // Parquet files; HDFS and the native client are never exercised.
+  val hadoopV = "3.4.3"
+  // parquet4s-core pulls aircompressor 2.0.2, which is vulnerable to CVE-2025-67721. Fixed in 2.0.3.
+  // Remove this override once parquet4s upgrades the transitive.
+  val aircompressorV = "2.0.3"
   val parboiledV = "1.4.1"
   val pegdownV = "1.6.0"
   val pekkoV = "1.5.0"

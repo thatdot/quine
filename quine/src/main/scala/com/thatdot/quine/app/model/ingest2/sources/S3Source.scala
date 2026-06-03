@@ -18,6 +18,7 @@ import com.thatdot.quine.app.model.ingest2.source._
 import com.thatdot.quine.app.model.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes._
+import com.thatdot.quine.serialization.AvroSchemaCache
 import com.thatdot.quine.util.BaseError
 
 case class S3Source(
@@ -30,7 +31,7 @@ case class S3Source(
   ingestBounds: IngestBounds = IngestBounds(),
   meter: IngestMeter,
   decoders: Seq[ContentDecoder] = Seq(),
-)(implicit system: ActorSystem) {
+)(implicit system: ActorSystem, avroSchemaCache: AvroSchemaCache) {
 
   def decodedSource: ValidatedNel[BaseError, DecodedSource] =
     decodedSourceFromFileStream(
