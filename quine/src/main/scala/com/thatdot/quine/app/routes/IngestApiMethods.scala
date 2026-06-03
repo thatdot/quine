@@ -6,7 +6,6 @@ import scala.util.control.NoStackTrace
 
 import org.apache.pekko.stream.{Materializer, StreamDetachedException}
 
-import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.{BaseGraph, NamespaceId}
@@ -48,7 +47,7 @@ trait IngestApiMethods {
     name: String,
     namespace: NamespaceId,
     newState: SwitchMode,
-  )(implicit logConfig: LogConfig): Future[Option[IngestStreamInfoWithName]] =
+  ): Future[Option[IngestStreamInfoWithName]] =
     quineApp.getIngestStreamFromState(name, namespace) match {
       case None => Future.successful(None)
       case Some(ingest: IngestStreamWithControl[UnifiedIngestConfiguration]) =>

@@ -14,7 +14,7 @@ import org.apache.pekko.{Done, NotUsed, pattern}
 import com.codahale.metrics.Metered
 import io.circe.Json
 
-import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Loggable, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Log.Loggable
 import com.thatdot.quine.app.model.ingest.QuineIngestSource
 import com.thatdot.quine.app.model.ingest2.sources.DecodingHub
 import com.thatdot.quine.routes.{IngestStreamStats, IngestStreamStatus, RatesSummary}
@@ -52,19 +52,17 @@ final case class IngestStreamWithControl[+Conf: Loggable](
   var initialStatus: IngestStreamStatus,
   var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None,
   var optWsV2: Option[DecodingHub] = None,
-)(implicit logConfig: LogConfig)
-    extends LazySafeLogging {
+) {
 
-  // Returns a simpler version of status. Only possible values are completed, failed, or running
+  // Returns a simpler version of status. Only possible values are completed, failed, or running.
+  // Failure is logged once via registerTerminationHooks when the stream terminates — not here,
+  // because this method is called on every status poll and would spam logs.
   private def checkTerminated(implicit materializer: Materializer): Future[IngestStreamStatus] = {
     implicit val ec: ExecutionContext = materializer.executionContext
     terminated().map(term =>
       term.value match {
         case Some(Success(Done)) => IngestStreamStatus.Completed
-        case Some(Failure(e)) =>
-          // If exception occurs, it means that the ingest stream has failed
-          logger.warn(log"Ingest stream failed: $settings" withException e)
-          IngestStreamStatus.Failed
+        case Some(Failure(_)) => IngestStreamStatus.Failed
         case None => IngestStreamStatus.Running
       },
     )
@@ -128,7 +126,7 @@ object IngestStreamWithControl {
     metrics: IngestMetrics,
     quineIngestSource: QuineIngestSource,
     initialStatus: IngestStreamStatus,
-  )(implicit logConfig: LogConfig): IngestStreamWithControl[Conf] =
+  ): IngestStreamWithControl[Conf] =
     IngestStreamWithControl(
       settings = conf,
       metrics = metrics,

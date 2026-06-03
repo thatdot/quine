@@ -248,7 +248,7 @@ trait IngestStreamState {
   def getIngestStream(
     name: String,
     namespace: NamespaceId,
-  )(implicit logConfig: LogConfig): Option[IngestStreamWithControl[IngestStreamConfiguration]] =
+  ): Option[IngestStreamWithControl[IngestStreamConfiguration]] =
     getIngestStreamFromState(name, namespace).map(isc => isc.copy(settings = isc.settings.asV1Config))
 
   def getV2IngestStream(
@@ -325,7 +325,7 @@ trait IngestStreamState {
     name: String,
     namespace: NamespaceId,
     newState: SwitchMode,
-  )(implicit logConfig: LogConfig): Future[Option[V2IngestEntities.IngestStreamInfoWithName]] =
+  ): Future[Option[V2IngestEntities.IngestStreamInfoWithName]] =
     getIngestStreamFromState(name, namespace) match {
       case None => Future.successful(None)
       case Some(ingest: IngestStreamWithControl[UnifiedIngestConfiguration]) =>
@@ -380,7 +380,7 @@ trait IngestStreamState {
 
   protected def unifiedIngestStreamToInternalModel(
     conf: IngestStreamWithControl[UnifiedIngestConfiguration],
-  )(implicit logConfig: LogConfig): Future[Option[V2IngestEntities.IngestStreamInfo]] = conf match {
+  ): Future[Option[V2IngestEntities.IngestStreamInfo]] = conf match {
     case IngestStreamWithControl(
           UnifiedIngestConfiguration(Left(v2Config: V2IngestConfiguration)),
           metrics,
