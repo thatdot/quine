@@ -7,6 +7,7 @@ import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.routes.{ClientRoutes, MetricsReport, ShardInMemoryLimit}
+import com.thatdot.quine.webapp.AuthEvents
 import com.thatdot.quine.webapp.components.landing.V2ApiTypes._
 import com.thatdot.quine.webapp.util.PollingStream
 
@@ -108,7 +109,10 @@ final class LandingService(routes: ClientRoutes, fetchShardSizes: Boolean = true
         Future.failed(new RuntimeException("Cannot reach server"))
       }
       .flatMap { response =>
-        if (!response.ok) {
+        if (response.status == 401) {
+          AuthEvents.unauthorized.emit(())
+          Future.failed(new RuntimeException(s"Server returned ${response.status} ${response.statusText}"))
+        } else if (!response.ok) {
           Future.failed(new RuntimeException(s"Server returned ${response.status} ${response.statusText}"))
         } else {
           response.text().toFuture.flatMap { body =>

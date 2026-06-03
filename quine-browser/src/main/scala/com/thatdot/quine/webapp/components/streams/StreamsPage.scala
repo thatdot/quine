@@ -7,8 +7,8 @@ import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.openapi.{OpenApiParser, ParsedSpec, UiHintsSource}
-import com.thatdot.quine.webapp.QuineUiOptions
 import com.thatdot.quine.webapp.util.Pot
+import com.thatdot.quine.webapp.{AuthEvents, QuineUiOptions}
 
 /** Top-level page component for the Streams UI.
   * Fetches the V2 OpenAPI spec, then renders the ingest + standing query panels.
@@ -65,7 +65,10 @@ object StreamsPage {
       response <- dom.fetch(url).toFuture
       text <- response.text().toFuture
     } yield
-      if (response.ok) OpenApiParser.parse(text).map(attachUiHints)
+      if (response.status == 401) {
+        AuthEvents.unauthorized.emit(())
+        Left(s"HTTP ${response.status}")
+      } else if (response.ok) OpenApiParser.parse(text).map(attachUiHints)
       else Left(s"HTTP ${response.status}")).recover { case ex: Throwable =>
       dom.console.error("Failed to load API specification:", ex.getMessage)
       Left("Could not connect to the server.")

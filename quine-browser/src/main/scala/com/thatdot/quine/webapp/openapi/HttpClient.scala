@@ -7,6 +7,7 @@ import io.circe.Json
 import org.scalajs.dom
 
 import com.thatdot.quine.openapi.ApiEndpoint
+import com.thatdot.quine.webapp.AuthEvents
 
 /** Thin wrapper around dom.fetch() for making API calls discovered from the OpenAPI spec.
   * Handles path parameter substitution, JSON request/response bodies, AIP-193 error envelope
@@ -60,7 +61,10 @@ object HttpClient {
       response <- dom.fetch(url, init).toFuture
       text <- response.text().toFuture
     } yield
-      if (response.ok) {
+      if (response.status == 401) {
+        AuthEvents.unauthorized.emit(())
+        Left(s"HTTP ${response.status}: ${if (text.nonEmpty) text else "Unauthorized"}")
+      } else if (response.ok) {
         if (text.isEmpty) Right(Json.Null)
         else
           io.circe.parser.parse(text) match {
