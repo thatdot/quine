@@ -61,7 +61,8 @@ import com.thatdot.quine.app.v2api.definitions.ingest2.{DeadLetterQueueOutput, D
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
-import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
+import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, cypher}
+import com.thatdot.quine.persistor.PrimePersistor
 import com.thatdot.quine.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 import com.thatdot.quine.util.{BaseError, SwitchMode, Valve, ValveSwitch}
@@ -658,7 +659,9 @@ object DecodedSource extends LazySafeLogging {
     meter: IngestMeter,
     system: ActorSystem,
     fileAccessPolicy: FileAccessPolicy,
+    persistor: Option[(PrimePersistor, MemberIdx)] = None,
     kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
+    certTokenAcquirer: Option[OAuthCertificateAuth => Future[String]] = None,
   )(implicit
     protobufCache: ProtobufSchemaCache,
     avroCache: AvroSchemaCache,
@@ -743,7 +746,8 @@ object DecodedSource extends LazySafeLogging {
           numRetries, //TODO not currently supported
           meter,
           recordDecoders.map(ContentDecoder(_)),
-        )(ExecutionContext.parasitic).framedSource.map(_.toDecoded(FrameDecoder(format)))
+        )(ExecutionContext.parasitic) // TODO: parasitic EC is almost certainly wrong!
+          .framedSource.map(_.toDecoded(FrameDecoder(format)))
 
       case KinesisKclIngest(
             kinesisStreamName,
@@ -830,6 +834,28 @@ object DecodedSource extends LazySafeLogging {
         ).framedSource.map(_.toDecoded(FrameDecoder(format)))
       case ReactiveStreamIngest(format, url, port) =>
         ReactiveSource(url, port, meter)(system).framedSource.map(_.toDecoded(FrameDecoder(format)))
+      case deltaCdf: DeltaSharingCdfIngest =>
+        DeltaSharingCdfSource(
+          ingestName = name,
+          endpoint = deltaCdf.endpoint,
+          auth = deltaCdf.auth,
+          shareName = deltaCdf.shareName,
+          schemaName = deltaCdf.schemaName,
+          tableName = deltaCdf.tableName,
+          startingVersion = deltaCdf.startingVersion,
+          snapshotOnFirstRun = deltaCdf.snapshotOnFirstRun,
+          pollIntervalMs = deltaCdf.pollIntervalMs,
+          maxVersionsPerPoll = deltaCdf.maxVersionsPerPoll,
+          serverRequestTimeoutMs = deltaCdf.serverRequestTimeoutMs,
+          parquetFetchTimeoutMs = deltaCdf.parquetFetchTimeoutMs,
+          maxRetries = deltaCdf.maxRetries,
+          skipUnreadableVersions = deltaCdf.skipUnreadableVersions,
+          parquetDownloadParallelism = deltaCdf.parquetDownloadParallelism,
+          responseFormat = deltaCdf.responseFormat,
+          meter = meter,
+          persistor = persistor,
+          certTokenAcquirer = certTokenAcquirer,
+        )(system).decodedSource.valid
       case WebSocketFileUpload(format) =>
         val decoding = FileSource.decodingFoldableFrom(format, meter, Int.MaxValue)
 

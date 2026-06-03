@@ -62,4 +62,28 @@ class GenerateOpenApiTestV2 extends AnyFunSuite with Matchers {
     val hiddenPaths = docs.hiddenPaths
     visiblePaths.intersect(hiddenPaths) shouldBe empty
   }
+
+  test("Experimental Databricks (Delta Sharing) ingest is hidden from the published spec") {
+    import io.circe.syntax._
+    import sttp.apispec.openapi.circe._
+
+    val docs = new GenerateOpenApiV2.QuineOssV2OpenApiDocsImpl
+    val json = docs.api.asJson.spaces2
+
+    // No Databricks/Delta Sharing references anywhere in the document.
+    withClue("published OpenAPI must not mention Databricks/Delta Sharing:\n") {
+      json should not include "DeltaSharing"
+      json should not include "Delta Sharing"
+      json should not include "Databricks"
+    }
+
+    val schemas = docs.api.components.toList.flatMap(_.schemas.keys)
+    // The hidden member and the schemas reachable only through it are gone.
+    schemas should contain noneOf ("DeltaSharingCdf", "DeltaSharingAuth", "BearerToken", "OAuthClientCredentials")
+
+    // But the Avro/Parquet file-format support is still advertised.
+    schemas should contain("FileFormat")
+    json should include("Avro")
+    json should include("Parquet")
+  }
 }

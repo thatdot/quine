@@ -52,6 +52,7 @@ object Dependencies {
   val openApiCirceYamlV = "0.11.10"
   val openCypherV = "9.2.3"
   val parquet4sCoreV = "2.23.0"
+  val deltaKernelV = "4.0.0"
   // 3.4.3 fixes the native HDFS client CVE-2025-27821 and ships patched commons-lang3 3.18.0
   // (so no commons-lang3 suppression is needed). We pull Hadoop only so parquet4s can read local
   // Parquet files; HDFS and the native client are never exercised.

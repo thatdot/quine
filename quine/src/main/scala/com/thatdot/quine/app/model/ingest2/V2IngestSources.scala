@@ -21,6 +21,76 @@ import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
 import com.thatdot.quine.app.util.StringOps.syntax.MultilineTransforms
 import com.thatdot.quine.{routes => V1}
 
+/** Authentication credentials for a Delta Sharing server. */
+sealed trait DeltaSharingAuth
+
+object DeltaSharingAuth {
+  import V1IngestSchemas.secretSchema
+
+  implicit lazy val schema: Schema[DeltaSharingAuth] = Schema.derived
+
+  implicit lazy val encoder: Encoder[DeltaSharingAuth] = {
+    import SecretCodecs.secretEncoder
+    deriveConfiguredEncoder
+  }
+  implicit lazy val decoder: Decoder[DeltaSharingAuth] = {
+    import SecretCodecs.secretDecoder
+    deriveConfiguredDecoder
+  }
+}
+
+@title("Bearer Token Authentication")
+@description(
+  "Static bearer token from a Delta Sharing credential file (v1). Max lifetime 1 year.",
+)
+case class BearerTokenAuth(
+  @description("Bearer token from credential file. Redacted in API responses.")
+  bearerToken: Secret,
+) extends DeltaSharingAuth
+
+@title("OAuth Client Credentials Authentication")
+@description(
+  "OAuth Client Credentials / OIDC federation (credential file v2). Tokens refresh automatically.",
+)
+case class OAuthClientCredentials(
+  @description("OAuth token endpoint URL from the recipient's IdP.")
+  tokenEndpoint: String,
+  @description("OAuth client ID.")
+  clientId: String,
+  @description("OAuth client secret. Redacted in API responses.")
+  clientSecret: Secret,
+  @description("OAuth scope. Required by some IdPs.")
+  scope: Option[String] = None,
+) extends DeltaSharingAuth
+
+@title("OAuth Certificate Authentication")
+@description(
+  "Certificate-based OAuth (private_key_jwt). The client signs a JWT with a private key from a " +
+  "keystore and exchanges it for an access token at the IdP's token endpoint. Requires Quine Enterprise.",
+)
+case class OAuthCertificateAuth(
+  @description("OAuth client ID registered with the IdP.")
+  clientId: String,
+  @description("Path to the keystore file (JKS, PKCS12, or PEM) containing the client certificate and private key.")
+  certFile: String,
+  @description("Password for the keystore file. Redacted in API responses.")
+  certFilePassword: Secret,
+  @description("Keystore format: 'PKCS12', 'JKS', or 'PEM'. Auto-detected if omitted.")
+  certFileType: Option[String] = None,
+  @description("Alias of the certificate entry in the keystore, if multiple entries exist.")
+  certAlias: Option[String] = None,
+  @description("Alias of the private key entry in the keystore, if different from certAlias.")
+  keyAlias: Option[String] = None,
+  @description("Resource URI / audience for the token request.")
+  resourceUri: String,
+  @description("OIDC discovery URL (e.g. https://idp.example.com/realms/myrealm/.well-known/openid-configuration).")
+  discoveryUrl: String,
+  @description("Path to a truststore for HTTPS calls to the IdP (if the IdP uses a private CA).")
+  caCertPath: Option[String] = None,
+  @description("Password for the CA truststore. Redacted in API responses.")
+  caCertPassword: Option[Secret] = None,
+) extends DeltaSharingAuth
+
 /** Ingest supports charset specification. */
 trait IngestCharsetSupport {
   val characterEncoding: Charset
@@ -215,6 +285,8 @@ object IngestSource {
     import SecretCodecs.secretDecoder
     deriveConfiguredDecoder
   }
+  implicit lazy val deltaSharingCdfIngestEncoder: Encoder[DeltaSharingCdfIngest] = deriveConfiguredEncoder
+  implicit lazy val deltaSharingCdfIngestDecoder: Decoder[DeltaSharingCdfIngest] = deriveConfiguredDecoder
 
   implicit lazy val encoder: Encoder[IngestSource] = deriveConfiguredEncoder
   implicit lazy val decoder: Decoder[IngestSource] = deriveConfiguredDecoder
@@ -264,6 +336,8 @@ private object IngestSourcePreservingCodecs {
     implicit val kafkaIngestEncoder: Encoder[KafkaIngest] = deriveConfiguredEncoder
     implicit val reactiveStreamIngestEncoder: Encoder[ReactiveStreamIngest] = deriveConfiguredEncoder
     implicit val webSocketFileUploadEncoder: Encoder[WebSocketFileUpload] = deriveConfiguredEncoder
+    implicit val deltaSharingAuthEncoder: Encoder[DeltaSharingAuth] = deriveConfiguredEncoder
+    implicit val deltaSharingCdfIngestEncoder: Encoder[DeltaSharingCdfIngest] = deriveConfiguredEncoder
 
     deriveConfiguredEncoder[IngestSource]
   }
@@ -517,6 +591,60 @@ case class KafkaIngest(
   recordDecoders: Seq[V1.RecordDecodingType] = Seq(),
 ) extends StreamingIngestSource
     with IngestDecompressionSupport
+
+@title("Delta Sharing CDF Ingest")
+@description(
+  "Continuously poll a Databricks Delta Sharing server for Change Data Feed events from a shared Delta table.",
+)
+case class DeltaSharingCdfIngest(
+  @description("Delta Sharing server endpoint URL.")
+  endpoint: String,
+  @description("Authentication credentials for the Delta Sharing server.")
+  auth: DeltaSharingAuth,
+  @description("Name of the share in Unity Catalog.")
+  shareName: String,
+  @description("Name of the schema within the share.")
+  schemaName: String,
+  @description("Name of the table within the schema.")
+  tableName: String,
+  @description("Delta table version to start from. Omit to start from current live version.")
+  startingVersion: Option[Long] = None,
+  @description("Emit full table snapshot as initial data before CDF polling begins.")
+  snapshotOnFirstRun: Boolean = false,
+  @description("Milliseconds between version polls. Minimum recommended: 10000.")
+  pollIntervalMs: Long = 10000L,
+  @description("Max Delta versions per changes request.")
+  maxVersionsPerPoll: Int = 10,
+  @description("Timeout for Delta Sharing API calls (ms).")
+  serverRequestTimeoutMs: Long = 30000L,
+  @description("Timeout for Parquet file fetches from cloud storage (ms).")
+  parquetFetchTimeoutMs: Long = 120000L,
+  @description("Max retries on transient HTTP errors (5xx, 429) and network errors.")
+  maxRetries: Int = 5,
+  @description(
+    "If true, versions with unreadable files (corrupted, incompatible format) are skipped " +
+    "and the stream continues from the next version. Skipped versions are logged at ERROR level " +
+    "with full context. If false (default), any unreadable version fails the entire stream.",
+  )
+  skipUnreadableVersions: Boolean = false,
+  @description(
+    "Number of Parquet files to download concurrently. While one file's rows are being " +
+    "ingested, this many additional files are downloaded and ready. Higher values reduce " +
+    "latency between files at the cost of memory. Minimum 1.",
+  )
+  parquetDownloadParallelism: Int = 2,
+  @description(
+    "Response format to request from the Delta Sharing server. " +
+    "'parquet' uses the legacy format (no deletion vector or column mapping support). " +
+    "'delta' enables deletion vectors and column mapping via Delta Kernel. " +
+    "If not set, auto-negotiates (tries delta, falls back to parquet). " +
+    "Note: 'delta' format requires local filesystem write access (to /tmp or the path " +
+    "configured by java.io.tmpdir) for temporary Delta log construction during reads.",
+  )
+  responseFormat: Option[String] = None,
+) extends IngestSource {
+  def format: IngestFormat = FileFormat.ParquetFormat
+}
 
 /** Scheduler Checkpoint Settings
   *

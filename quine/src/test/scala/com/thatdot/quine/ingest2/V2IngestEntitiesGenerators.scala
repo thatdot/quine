@@ -234,6 +234,15 @@ object V2IngestEntitiesGenerators {
       Gen.const(FileFormat.ParquetFormat),
     )
 
+    /** File formats compatible with streaming/WebSocket upload (excludes random-access formats like Parquet). */
+    val streamableFileFormat: Gen[FileFormat] = Gen.oneOf(
+      Gen.const(FileFormat.LineFormat),
+      Gen.const(FileFormat.JsonLinesFormat),
+      Gen.const(FileFormat.JsonFormat),
+      csvFormat,
+      avroContainerFormat,
+    )
+
     val protobufFormat: Gen[StreamingFormat.ProtobufFormat] = for {
       schemaUrl <- nonEmptyAlphaNumStr
       typeName <- nonEmptyAlphaNumStr
@@ -331,7 +340,7 @@ object V2IngestEntitiesGenerators {
       port <- smallPosNum
     } yield ReactiveStreamIngest(format, url, port)
 
-    val webSocketFileUpload: Gen[WebSocketFileUpload] = fileFormat.map(WebSocketFileUpload(_))
+    val webSocketFileUpload: Gen[WebSocketFileUpload] = streamableFileFormat.map(WebSocketFileUpload(_))
 
     val stdInputIngest: Gen[StdInputIngest] = for {
       format <- fileFormat

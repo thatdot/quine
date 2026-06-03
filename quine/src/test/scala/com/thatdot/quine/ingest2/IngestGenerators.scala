@@ -78,6 +78,7 @@ object IngestGenerators {
       IngestFormat.FileFormat.CSV(),
       IngestFormat.FileFormat.CSV(Left(true)),
       IngestFormat.FileFormat.CSV(Right(List("A", "N", "C"))),
+      IngestFormat.FileFormat.Parquet,
     )
 
     val streamingFormat: Gen[IngestFormat.StreamingFormat] = Gen.oneOf(

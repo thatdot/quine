@@ -508,6 +508,8 @@ object V2IngestEntities {
           Failure(new Exception("Reactive Streams unsupported in v1 ingests"))
         case _: WebSocketFileUpload =>
           Failure(new Exception("WebSocket File Upload unsupported in v1 ingests"))
+        case _: DeltaSharingCdfIngest =>
+          Failure(new Exception("Delta Sharing CDF ingest unsupported in v1 ingests"))
       }
       tryConfig match {
         case Success(v1Config) => v1Config

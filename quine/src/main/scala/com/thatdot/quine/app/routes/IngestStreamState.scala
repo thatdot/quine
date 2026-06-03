@@ -20,7 +20,7 @@ import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{
 }
 import com.thatdot.quine.app.model.ingest2.source.{DecodedSource, QuineValueIngestQuery}
 import com.thatdot.quine.app.model.ingest2.sources.WebSocketFileUploadSource
-import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities}
+import com.thatdot.quine.app.model.ingest2.{OAuthCertificateAuth, V1ToV2, V2IngestEntities}
 import com.thatdot.quine.app.model.transformation.polyglot
 import com.thatdot.quine.app.model.transformation.polyglot.langauges.JavaScriptTransformation
 import com.thatdot.quine.app.util.QuineLoggables._
@@ -54,6 +54,12 @@ trait IngestStreamState {
     */
   def kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig] =
     KafkaExtensionProvider.empty
+
+  /** Pluggable certificate-based token acquirer for Delta Sharing. Defaults to None for
+    * OSS (certificate auth requires Enterprise). Enterprise overrides this to inject
+    * X509TokenProvider-based token acquisition.
+    */
+  def deltaSharingCertTokenAcquirer: Option[OAuthCertificateAuth => Future[String]] = None
 
   /** Add a new ingest stream to the running application.
     *
@@ -164,6 +170,7 @@ trait IngestStreamState {
     metrics: IngestMetrics,
     meter: IngestMeter,
     graph: CypherOpsGraph,
+    memberIdx: MemberIdx = 0,
   )(implicit
     protobufCache: ProtobufSchemaCache,
     avroCache: AvroSchemaCache,
@@ -181,7 +188,16 @@ trait IngestStreamState {
           determineSwitchModeAndStatus(previousStatus, shouldResumeRestoredIngests)
 
         val decodedSourceNel: ValidatedNel[BaseError, DecodedSource] =
-          DecodedSource.apply(name, settings, meter, graph.system, fileAccessPolicy, kafkaExtensions)(
+          DecodedSource.apply(
+            name,
+            settings,
+            meter,
+            graph.system,
+            fileAccessPolicy,
+            Some((graph.namespacePersistor, memberIdx)),
+            kafkaExtensions,
+            deltaSharingCertTokenAcquirer,
+          )(
             protobufCache,
             avroCache,
             logConfig,

@@ -7,7 +7,7 @@ import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
 import sttp.tapir.{EndpointInput, header}
 
 import com.thatdot.common.logging.Log.LogConfig
-import com.thatdot.quine.app.v2api.definitions.{CommonParameters, CustomMethod}
+import com.thatdot.quine.app.v2api.definitions.{CommonParameters, CustomMethod, V2OpenApiPostProcessing}
 import com.thatdot.quine.app.v2api.endpoints.Visibility
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.routes.exts.NamespaceParameter
@@ -54,6 +54,6 @@ trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
       .toOpenAPI(visibleEndpoints, V2ApiInfo.info)
       .copy(tags = V2ApiInfo.globalTags, servers = List(Server("/")))
 
-    CustomMethod.rewriteOpenAPI(raw)
+    V2OpenApiPostProcessing(raw)
   }
 }

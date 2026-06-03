@@ -44,7 +44,7 @@ object ApiToIngest {
     case Api.IngestFormat.FileFormat.Line => FileFormat.LineFormat
     case Api.IngestFormat.FileFormat.JsonL => FileFormat.JsonLinesFormat
     case Api.IngestFormat.FileFormat.Json => FileFormat.JsonFormat
-    case Api.IngestFormat.FileFormat.Avro(schemaUrl) => FileFormat.AvroContainerFormat(schemaUrl)
+    case Api.IngestFormat.FileFormat.AvroContainer(schemaUrl) => FileFormat.AvroContainerFormat(schemaUrl)
     case Api.IngestFormat.FileFormat.Parquet => FileFormat.ParquetFormat
     case Api.IngestFormat.FileFormat.CSV(headers, delimiter, quoteChar, escapeChar) =>
       FileFormat.CsvFormat(headers, apply(delimiter), apply(quoteChar), apply(escapeChar))
@@ -354,6 +354,42 @@ object ApiToIngest {
       ReactiveStreamIngest(apply(url), port, format)
     case Api.WebSocketFileUpload(format) =>
       WebSocketFileUpload(apply(format))
+    case src: Api.IngestSource.DeltaSharingCdf =>
+      DeltaSharingCdfIngest(
+        endpoint = src.endpoint,
+        auth = src.auth match {
+          case Api.IngestSource.DeltaSharingAuth.BearerToken(token) =>
+            BearerTokenAuth(token)
+          case Api.IngestSource.DeltaSharingAuth.OAuthClientCredentials(tokenEndpoint, clientId, clientSecret, scope) =>
+            OAuthClientCredentials(tokenEndpoint, clientId, clientSecret, scope)
+          case c: Api.IngestSource.DeltaSharingAuth.CertificateAuth =>
+            OAuthCertificateAuth(
+              c.clientId,
+              c.certFile,
+              c.certFilePassword,
+              c.certFileType,
+              c.certAlias,
+              c.keyAlias,
+              c.resourceUri,
+              c.discoveryUrl,
+              c.caCertPath,
+              c.caCertPassword,
+            )
+        },
+        shareName = src.shareName,
+        schemaName = src.schemaName,
+        tableName = src.tableName,
+        startingVersion = src.startingVersion,
+        snapshotOnFirstRun = src.snapshotOnFirstRun,
+        pollIntervalMs = src.pollIntervalMs,
+        maxVersionsPerPoll = src.maxVersionsPerPoll,
+        serverRequestTimeoutMs = src.serverRequestTimeoutMs,
+        parquetFetchTimeoutMs = src.parquetFetchTimeoutMs,
+        maxRetries = src.maxRetries,
+        skipUnreadableVersions = src.skipUnreadableVersions,
+        parquetDownloadParallelism = src.parquetDownloadParallelism,
+        responseFormat = src.responseFormat,
+      )
   }
 
   def apply(handler: Api.OnStreamErrorHandler): Ingest.OnStreamErrorHandler = handler match {

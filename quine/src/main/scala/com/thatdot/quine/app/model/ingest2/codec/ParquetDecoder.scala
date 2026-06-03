@@ -56,7 +56,7 @@ object ParquetDecoder {
     * `DelegatingSeekableInputStream` to layer the convenience methods (`readFully` variants,
     * `ByteBuffer` reads) over our minimal `InputStream + getPos + seek` surface.
     */
-  private[codec] def toParquetInputFile(input: SeekableInput): InputFile = new InputFile {
+  private[ingest2] def toParquetInputFile(input: SeekableInput): InputFile = new InputFile {
     override def getLength: Long = input.length
     override def newStream(): ParquetSeekableInputStream = {
       val inner = input.newStream()

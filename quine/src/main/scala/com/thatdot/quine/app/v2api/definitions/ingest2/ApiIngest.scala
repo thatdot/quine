@@ -721,6 +721,131 @@ object ApiIngest {
       advancedSettings: Option[KCLConfiguration],
     ) extends IngestSource
 
+    /** Authentication credentials for a Delta Sharing server. */
+    sealed trait DeltaSharingAuth
+
+    object DeltaSharingAuth {
+      @title("Bearer Token Authentication")
+      @description("Static bearer token from a Delta Sharing credential file (v1). Max lifetime 1 year.")
+      case class BearerToken(
+        @description("Bearer token from credential file. Redacted in API responses.")
+        bearerToken: Secret,
+      ) extends DeltaSharingAuth
+
+      @title("OAuth Client Credentials Authentication")
+      @description(
+        "OAuth Client Credentials / OIDC federation (credential file v2). Tokens refresh automatically.",
+      )
+      case class OAuthClientCredentials(
+        @description("OAuth token endpoint URL from the recipient's IdP.")
+        tokenEndpoint: String,
+        @description("OAuth client ID.")
+        clientId: String,
+        @description("OAuth client secret. Redacted in API responses.")
+        clientSecret: Secret,
+        @description("OAuth scope. Required by some IdPs.")
+        scope: Option[String] = None,
+      ) extends DeltaSharingAuth
+
+      @title("OAuth Certificate Authentication")
+      @description(
+        "Certificate-based OAuth (private_key_jwt). Signs a JWT with a private key from a " +
+        "keystore and exchanges it for an access token. Requires Quine Enterprise.",
+      )
+      case class CertificateAuth(
+        @description("OAuth client ID registered with the IdP.")
+        clientId: String,
+        @description("Path to the keystore file (JKS, PKCS12, or PEM).")
+        certFile: String,
+        @description("Keystore password. Redacted in API responses.")
+        certFilePassword: Secret,
+        @description("Keystore format: 'PKCS12', 'JKS', or 'PEM'.")
+        certFileType: Option[String] = None,
+        @description("Certificate alias in the keystore.")
+        certAlias: Option[String] = None,
+        @description("Private key alias in the keystore.")
+        keyAlias: Option[String] = None,
+        @description("Resource URI / audience for the token request.")
+        resourceUri: String,
+        @description("OIDC discovery URL.")
+        discoveryUrl: String,
+        @description("Truststore path for HTTPS calls to the IdP (if private CA).")
+        caCertPath: Option[String] = None,
+        @description("Truststore password. Redacted in API responses.")
+        caCertPassword: Option[Secret] = None,
+      ) extends DeltaSharingAuth
+
+      implicit val encoder: Encoder[DeltaSharingAuth] = {
+        import SecretCodecs.secretEncoder
+        deriveConfiguredEncoder
+      }
+      implicit val decoder: Decoder[DeltaSharingAuth] = {
+        import SecretCodecs.secretDecoder
+        deriveConfiguredDecoder
+      }
+      implicit lazy val schema: Schema[DeltaSharingAuth] = Schema.derived
+
+      def preservingEncoder(implicit ev: Secret.UnsafeAccess): Encoder[DeltaSharingAuth] = {
+        implicit val secretEncoder: Encoder[Secret] = SecretCodecs.preservingEncoder
+        deriveConfiguredEncoder
+      }
+    }
+
+    @title("Delta Sharing CDF Ingest")
+    @description(
+      "Continuously poll a Databricks Delta Sharing server for CDF events from a shared Delta table.",
+    )
+    case class DeltaSharingCdf(
+      @description("Delta Sharing server endpoint URL.")
+      endpoint: String,
+      @description("Authentication credentials for the Delta Sharing server.")
+      auth: DeltaSharingAuth,
+      @description("Name of the share in Unity Catalog.")
+      shareName: String,
+      @description("Name of the schema within the share.")
+      schemaName: String,
+      @description("Name of the table within the schema.")
+      tableName: String,
+      @description("Delta table version to start from. Omit to start from current live version.")
+      startingVersion: Option[Long] = None,
+      @default(false)
+      @description("Emit full table snapshot as initial data before CDF polling begins.")
+      snapshotOnFirstRun: Boolean = false,
+      @default(10000L)
+      @description("Milliseconds between version polls. Minimum recommended: 10000.")
+      pollIntervalMs: Long = 10000L,
+      @default(10)
+      @description("Max Delta versions per changes request.")
+      maxVersionsPerPoll: Int = 10,
+      @default(30000L)
+      @description("Timeout for Delta Sharing API calls (ms).")
+      serverRequestTimeoutMs: Long = 30000L,
+      @default(120000L)
+      @description("Timeout for Parquet file fetches from cloud storage (ms).")
+      parquetFetchTimeoutMs: Long = 120000L,
+      @default(5)
+      @description("Max retries on transient HTTP errors (5xx, 429) and network errors.")
+      maxRetries: Int = 5,
+      @default(false)
+      @description(
+        "If true, versions with unreadable files are skipped and the stream continues. " +
+        "Skipped versions are logged at ERROR level and sent to the dead letter queue if configured. " +
+        "If false (default), the stream fails on any unreadable version.",
+      )
+      skipUnreadableVersions: Boolean = false,
+      @default(3)
+      @description(
+        "Number of Parquet files to download concurrently. Minimum 1.",
+      )
+      parquetDownloadParallelism: Int = 3,
+      @description(
+        "Response format: 'parquet', 'delta', or omit for auto-negotiation. " +
+        "'delta' enables tables with deletion vectors and column mapping, but" +
+        "requires local filesystem write access (java.io.tmpdir) for temporary files.",
+      )
+      responseFormat: Option[String] = None,
+    ) extends IngestSource
+
     implicit val encoder: Encoder[IngestSource] = deriveConfiguredEncoder
     implicit val decoder: Decoder[IngestSource] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[IngestSource] = Schema.derived
@@ -733,6 +858,7 @@ object ApiIngest {
       implicit val secretEncoder: Encoder[Secret] = SecretCodecs.preservingEncoder
       implicit val awsCredentialsEncoder: Encoder[AwsCredentials] = AwsCredentials.preservingEncoder
       implicit val saslJaasConfigEncoder: Encoder[SaslJaasConfig] = SaslJaasConfig.preservingEncoder
+      implicit val deltaSharingAuthEncoder: Encoder[DeltaSharingAuth] = DeltaSharingAuth.preservingEncoder
       deriveConfiguredEncoder
     }
   }
@@ -1229,7 +1355,7 @@ object ApiIngest {
           |schema embedded in the file header. An optional reader schema URL may be provided for schema
           |evolution / projection.""".asOneLine,
       )
-      case class Avro(
+      case class AvroContainer(
         @description(
           "Optional URL (or local filename) of an Avro schema file to use as the reader schema for schema evolution. " +
           "If not provided, the writer schema from the file header is used.",

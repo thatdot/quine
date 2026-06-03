@@ -473,6 +473,15 @@ lazy val `quine`: Project = project
       exclude ("commons-logging", "commons-logging"),
       // Override transitive aircompressor to fix CVE-2025-67721 (Snappy/LZ4 decompressor info leak)
       "io.airlift" % "aircompressor" % aircompressorV,
+      // Delta Kernel: used by the Delta Sharing ingest source to read tables with deletion vectors
+      // and column mapping (responseFormat=delta). The defaults module provides DefaultEngine with
+      // Parquet/Hadoop support. Exclude its Hadoop/Parquet transitive deps to use our aligned versions.
+      "io.delta" % "delta-kernel-api" % deltaKernelV,
+      "io.delta" % "delta-kernel-defaults" % deltaKernelV
+      exclude ("org.apache.hadoop", "hadoop-client-api")
+      exclude ("org.apache.hadoop", "hadoop-client-runtime")
+      exclude ("org.apache.hadoop", "hadoop-common")
+      exclude ("org.apache.parquet", "parquet-hadoop"),
       "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
       "org.apache.pekko" %% "pekko-connectors-csv" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,
