@@ -9,8 +9,8 @@ import scala.concurrent.{Await, ExecutionContext, Future, blocking}
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.Done
-import org.apache.pekko.stream.KillSwitches
-import org.apache.pekko.stream.scaladsl.Keep
+import org.apache.pekko.stream.scaladsl.{Keep, Sink}
+import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
 import org.apache.pekko.util.Timeout
 
 import cats.Applicative
@@ -143,6 +143,17 @@ final class QuineApp(
   @volatile
   private[this] var outputTargets: NamespaceOutputTargets = Map(defaultNamespaceId -> Map.empty)
   final private[this] val outputTargetsLock = new AnyRef
+
+  /** Per-SQ "fallback" consumers that keep the results hub drained when no user output is attached.
+    *
+    * Without a consumer, [[org.apache.pekko.stream.scaladsl.BroadcastHub]] backpressures the upstream
+    * results queue once its small internal buffer fills, which eventually stalls ingest. We maintain
+    * the invariant: each SQ in [[outputTargets]] has a drain entry here iff its outputs map is empty.
+    *
+    * Accessed only under [[outputTargetsLock]], in lockstep with [[outputTargets]] mutations.
+    */
+  @volatile
+  private[this] var drainKillSwitches: Map[NamespaceId, Map[FriendlySQName, UniqueKillSwitch]] = Map.empty
 
   final private[this] val ingestStreamsLock = new AnyRef
 
@@ -296,8 +307,7 @@ final class QuineApp(
                       val outputsWithKillSwitches = standingQueryDefinition.outputs.map { workflow =>
                         workflow.name.value -> OutputTarget.V2(workflow, killSwitches(workflow.name.value))
                       }.toMap
-                      val updatedInnerMap = sqOutputTargets + (queryName -> (sq.query.id -> outputsWithKillSwitches))
-                      outputTargets += inNamespace -> updatedInnerMap
+                      putOutputs(inNamespace, queryName, sq.query.id, outputsWithKillSwitches)
                       storeStandingQueryOutputs2().map(_ => StandingQueryInterfaceV2.Result.Success)(
                         ExecutionContext.parasitic,
                       )
@@ -414,8 +424,7 @@ final class QuineApp(
                 val outputsWithKillSwitches = query.outputs.map { case (name, out) =>
                   name -> OutputTarget.V1(out, killSwitches(name))
                 }
-                val updatedInnerMap = namespaceTargets + (queryName -> (sq.query.id -> outputsWithKillSwitches))
-                outputTargets += inNamespace -> updatedInnerMap
+                putOutputs(inNamespace, queryName, sq.query.id, outputsWithKillSwitches)
                 storeStandingQueryOutputs1().map(_ => true)(ExecutionContext.parasitic)
               }
           }(graph.system.dispatcher)
@@ -434,8 +443,7 @@ final class QuineApp(
         v2Outputs = outputs.collect { case (_, target: OutputTarget.V2) => target.definition }
         cancelledSq <- graph.standingQueries(inNamespace).flatMap(_.cancelStandingQuery(sqId))
       } yield {
-        // Remove key from the inner map:
-        outputTargets += inNamespace -> (outputTargets(inNamespace) - queryName)
+        removeOutputs(inNamespace, queryName)
 
         // Map to return type
         cancelledSq.map { case (internalSq, startTime, bufferSize) =>
@@ -471,8 +479,7 @@ final class QuineApp(
         v1Outputs = outputs.collect { case (name, target: OutputTarget.V1) => name -> target.definition }
         cancelledSq <- graph.standingQueries(inNamespace).flatMap(_.cancelStandingQuery(sqId))
       } yield {
-        // Remove key from the inner map:
-        outputTargets += inNamespace -> (outputTargets(inNamespace) - queryName)
+        removeOutputs(inNamespace, queryName)
 
         // Map to return type
         cancelledSq.map { case (internalSq, startTime, bufferSize) =>
@@ -532,9 +539,7 @@ final class QuineApp(
                   .to(graph.masterStream.standingOutputsCompletionSink)
                   .run()
 
-              val updatedInnerMap = outputTargets(inNamespace) +
-                (queryName -> (sqId -> (outputs + (outputName -> OutputTarget.V2(workflow, killSwitch)))))
-              outputTargets += inNamespace -> updatedInnerMap
+              putOutputs(inNamespace, queryName, sqId, outputs + (outputName -> OutputTarget.V2(workflow, killSwitch)))
               storeStandingQueryOutputs2().map(_ => StandingQueryInterfaceV2.Result.Success)(ExecutionContext.parasitic)
           }(graph.nodeDispatcherEC)
         }
@@ -569,9 +574,12 @@ final class QuineApp(
               logConfig,
             ),
           )
-          val updatedInnerMap = outputTargets(inNamespace) +
-            (queryName -> (sqId -> (outputs + (outputName -> OutputTarget.V1(sqResultOutput, killSwitch)))))
-          outputTargets += inNamespace -> updatedInnerMap
+          putOutputs(
+            inNamespace,
+            queryName,
+            sqId,
+            outputs + (outputName -> OutputTarget.V1(sqResultOutput, killSwitch)),
+          )
           storeStandingQueryOutputs1().map(_ => true)(ExecutionContext.parasitic)
         }
       // must be implicit for cats sequence
@@ -591,8 +599,7 @@ final class QuineApp(
         OutputTarget.V2(output, killSwitch) <- outputs.get(outputName)
       } yield {
         killSwitch.shutdown()
-        val updatedInnerMap = outputTargets(inNamespace) + (queryName -> (sqId -> (outputs - outputName)))
-        outputTargets += inNamespace -> updatedInnerMap
+        putOutputs(inNamespace, queryName, sqId, outputs - outputName)
         output
       }
       storeStandingQueryOutputs2().map(_ => outputOpt)(ExecutionContext.parasitic)
@@ -617,8 +624,7 @@ final class QuineApp(
         OutputTarget.V1(output, killSwitch) <- outputs.get(outputName)
       } yield {
         killSwitch.shutdown()
-        val updatedInnerMap = outputTargets(inNamespace) + (queryName -> (sqId -> (outputs - outputName)))
-        outputTargets += inNamespace -> updatedInnerMap
+        putOutputs(inNamespace, queryName, sqId, outputs - outputName)
         output
       }
       storeStandingQueryOutputs1().map(_ => outputOpt)(ExecutionContext.parasitic)
@@ -1349,6 +1355,13 @@ final class QuineApp(
 
       outputTargets = mergeOutputNamespaces(v1OutputNamespaces, so2)
 
+      // Establish drain consumers for any restored SQs that ended up with no attached outputs.
+      outputTargets.foreach { case (ns, queries) =>
+        queries.foreach { case (queryName, (sqId, outputs)) =>
+          reconcileDrain(ns, queryName, sqId, outputs)
+        }
+      }
+
       is.foreach { case (namespace, ingestMap) =>
         ingestMap.foreach { case (name, ingest) =>
           addIngestStream(
@@ -1396,6 +1409,74 @@ final class QuineApp(
       }
     }
   }
+
+  /** Insert or update an SQ's entry in [[outputTargets]] and bring its drain into sync.
+    *
+    * Sole entry point for SQ-lifecycle mutations: ensures [[outputTargets]] and [[drainKillSwitches]]
+    * stay consistent without each call site having to remember to reconcile. Must be called under
+    * [[outputTargetsLock]].
+    */
+  private[this] def putOutputs(
+    inNamespace: NamespaceId,
+    queryName: FriendlySQName,
+    sqId: StandingQueryId,
+    outputs: Map[SQOutputName, OutputTarget],
+  ): Unit = {
+    val nsMap = outputTargets.getOrElse(inNamespace, Map.empty)
+    outputTargets = outputTargets.updated(inNamespace, nsMap + (queryName -> (sqId -> outputs)))
+    reconcileDrain(inNamespace, queryName, sqId, outputs)
+  }
+
+  /** Remove an SQ's entry from [[outputTargets]] and drop its drain bookkeeping.
+    *
+    * For cancellation paths. The drain stream itself terminates naturally when the hub completes;
+    * this only clears the maps. Must be called under [[outputTargetsLock]].
+    */
+  private[this] def removeOutputs(inNamespace: NamespaceId, queryName: FriendlySQName): Unit = {
+    outputTargets.get(inNamespace).foreach { ns =>
+      outputTargets = outputTargets.updated(inNamespace, ns - queryName)
+    }
+    dropDrain(inNamespace, queryName)
+  }
+
+  /** Bring [[drainKillSwitches]] into sync with `outputsAfter` for a single SQ.
+    *
+    * Must be called under [[outputTargetsLock]] after every mutation of [[outputTargets]] that may
+    * change whether the SQ has any attached outputs. Idempotent — safe to call when nothing changes.
+    *
+    * When `outputsAfter` is empty, attaches a [[Sink.ignore]] consumer to the SQ's results hub so
+    * the underlying [[org.apache.pekko.stream.scaladsl.BroadcastHub]] does not stall the upstream
+    * queue. When `outputsAfter` is non-empty, tears down any drain previously attached.
+    */
+  private[this] def reconcileDrain(
+    inNamespace: NamespaceId,
+    queryName: FriendlySQName,
+    sqId: StandingQueryId,
+    outputsAfter: Map[SQOutputName, OutputTarget],
+  ): Unit = {
+    val drainsForNs = drainKillSwitches.getOrElse(inNamespace, Map.empty)
+    val hasDrain = drainsForNs.contains(queryName)
+    if (outputsAfter.isEmpty && !hasDrain) {
+      graph.standingQueries(inNamespace).flatMap(_.standingResultsHub(sqId)).foreach { hub =>
+        val ks = hub.viaMat(KillSwitches.single)(Keep.right).toMat(Sink.ignore)(Keep.left).run()
+        drainKillSwitches = drainKillSwitches.updated(inNamespace, drainsForNs + (queryName -> ks))
+      }
+    } else if (outputsAfter.nonEmpty && hasDrain) {
+      drainsForNs(queryName).shutdown()
+      drainKillSwitches = drainKillSwitches.updated(inNamespace, drainsForNs - queryName)
+    }
+  }
+
+  /** Drop the drain bookkeeping for a cancelled/deleted SQ.
+    *
+    * The drain stream itself terminates naturally when the hub completes; this only clears the map
+    * entry. Must be called under [[outputTargetsLock]].
+    */
+  private[this] def dropDrain(inNamespace: NamespaceId, queryName: FriendlySQName): Unit =
+    drainKillSwitches.get(inNamespace).foreach { drainsForNs =>
+      if (drainsForNs.contains(queryName))
+        drainKillSwitches = drainKillSwitches.updated(inNamespace, drainsForNs - queryName)
+    }
 
   private[this] def storeStandingQueryOutputs(): Future[Unit] = {
     storeStandingQueryOutputs1()

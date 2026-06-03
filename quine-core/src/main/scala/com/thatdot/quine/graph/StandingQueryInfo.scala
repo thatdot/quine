@@ -4,8 +4,8 @@ import java.time.Instant
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import org.apache.pekko.stream.scaladsl.{Sink, Source}
-import org.apache.pekko.stream.{BoundedSourceQueue, Materializer, QueueOfferResult}
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.stream.{BoundedSourceQueue, QueueOfferResult}
 import org.apache.pekko.{Done, NotUsed}
 
 import com.codahale.metrics.{Counter, Meter, Timer}
@@ -161,8 +161,7 @@ final class RunningStandingQuery(
   val resultMeter: Meter,
   val droppedCounter: Counter,
   val startTime: Instant,
-)(implicit materializer: Materializer)
-    extends LazySafeLogging {
+) extends LazySafeLogging {
 
   def this(
     resultsQueue: BoundedSourceQueue[StandingQueryResult.WithQueueTimer],
@@ -171,7 +170,7 @@ final class RunningStandingQuery(
     resultsHub: Source[StandingQueryResult, NotUsed],
     outputTermination: Future[Done],
     metrics: HostQuineMetrics,
-  )(implicit materializer: Materializer) =
+  ) =
     this(
       resultsQueue,
       query,
@@ -187,11 +186,6 @@ final class RunningStandingQuery(
     if (!resultsQueue.isCompleted) {
       resultsQueue.complete()
     }
-
-    // Drain the BroadcastHub buffer so the completion signal can propagate.
-    // Without consumers, the hub backpressures and blocks completion forever.
-    resultsHub.runWith(Sink.ignore)
-
     outputTermination.map(_ => ())(ExecutionContext.parasitic)
   }
 
