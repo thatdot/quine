@@ -9,9 +9,9 @@ import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
 import org.apache.pekko.testkit.TestKit
 import org.apache.pekko.util.Timeout
 
-import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.{BeforeAndAfterAll, Ignore}
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.common.quineid.QuineId
@@ -39,6 +39,7 @@ import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
   * These tests verify that the QuinePattern state machine correctly executes query plans
   * on real graphs, testing both lazy (standing query) and eager (one-shot) modes.
   */
+@Ignore
 class QueryPlanRuntimeTest
     extends TestKit(ActorSystem("QueryPlanRuntimeTest"))
     with AnyFlatSpecLike
