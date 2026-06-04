@@ -13,8 +13,17 @@ object HybridViewsRenderer {
     flex := "1",
     div(
       cls := "h-100",
-      display <-- renderStrategy.map({
-        case RenderAlwaysMountedPage => "block"
+      position := "absolute",
+      top := "0",
+      left := "0",
+      right := "0",
+      bottom := "0",
+      visibility <-- renderStrategy.map({
+        case RenderAlwaysMountedPage => "visible"
+        case RenderRegularlyMountedPages => "hidden"
+      }),
+      pointerEvents <-- renderStrategy.map({
+        case RenderAlwaysMountedPage => "auto"
         case RenderRegularlyMountedPages => "none"
       }),
       alwaysRenderedView,
