@@ -60,7 +60,7 @@ module.exports = {
         })
     ],
     output: {
-        filename: 'quine-browser-bundle.js',
+        filename: 'quine-browser-bundle.[contenthash].js',
         library: 'quineBrowser',
         libraryTarget: 'umd',
         // By default, webpack 5 asset modules include query strings in filenames (e.g., "abc123.svg?64h6xh").

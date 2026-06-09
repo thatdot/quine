@@ -156,6 +156,46 @@ object Util {
     object syntax extends RouteHardeningOps
   }
 
+  /** Cache-Control directives, implicitly available via {{{import CacheControlOps.syntax._}}}.
+    */
+  trait CacheControlOps {
+
+    /** Mark the response as `no-cache`: it may be stored, but must be revalidated with the server
+      * before reuse. Appropriate for the HTML entry pages and runtime-templated JS — both have
+      * stable URLs but content that changes between releases (or per-request).
+      *
+      * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+      */
+    private def noCache(underlying: server.Route): server.Route =
+      respondWithHeader(`Cache-Control`(CacheDirectives.`no-cache`))(underlying)
+
+    /** Mark the response as long-lived and immutable. Appropriate for content-addressed
+      * (hash-in-filename) assets where the URL changes when the bytes change, so the cached copy
+      * never needs to be revalidated.
+      *
+      * pekko-http's `CacheDirectives` does not ship the RFC 8246 `immutable` extension, so we emit
+      * the header as a raw string.
+      *
+      * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+      */
+    private def immutableCache(underlying: server.Route): server.Route =
+      respondWithHeader(
+        RawHeader(
+          com.google.common.net.HttpHeaders.CACHE_CONTROL,
+          "public, max-age=31536000, immutable",
+        ),
+      )(underlying)
+
+    implicit class WithCacheControl(route: server.Route) {
+      def withNoCache: server.Route = noCache(route)
+      def withImmutableCache: server.Route = immutableCache(route)
+    }
+  }
+
+  object CacheControlOps {
+    object syntax extends CacheControlOps
+  }
+
   /** Flow that will time out after some fixed duration, provided that duration
     * is finite and the boolean override is not set
     *

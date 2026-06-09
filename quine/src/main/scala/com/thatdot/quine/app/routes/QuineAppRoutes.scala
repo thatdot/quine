@@ -4,7 +4,6 @@ import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
 import scala.concurrent.ExecutionContext
-import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
@@ -12,8 +11,6 @@ import org.apache.pekko.http.scaladsl.model.{HttpEntity, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.{Directive0, Directives, Route, RouteResult}
 import org.apache.pekko.util.Timeout
-
-import org.webjars.WebJarAssetLocator
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.quineid.QuineId
@@ -49,6 +46,7 @@ class QuineAppRoutes(
   val timeout: Timeout,
 )(implicit val ec: ExecutionContext, protected val logConfig: LogConfig)
     extends BaseAppRoutes
+    with BrowserBundleRoutes
     with QueryUiRoutesImpl
     with WebSocketQueryProtocolServer
     with QueryUiConfigurationRoutesImpl
@@ -71,7 +69,7 @@ class QuineAppRoutes(
   val version = BuildInfo.version
   val gremlin: GremlinQueryRunner = GremlinQueryRunner(graph)(timeout)
 
-  val webJarAssetLocator = new WebJarAssetLocator()
+  protected def bundlePrefix: String = "quine-browser-bundle"
 
   override def hostIndex(qid: QuineId): Int = 0
 
@@ -79,21 +77,26 @@ class QuineAppRoutes(
     graph.getNamespaces.contains(NamespaceId(namespace))
 
   lazy val staticFilesRoute: Route = {
+    import Util.CacheControlOps.syntax._
     Directives.pathEndOrSingleSlash {
       // RFC 8631 — point clients (including AI agents) at the OpenAPI spec for the latest API version.
       Directives.respondWithHeader(RawHeader("Link", "</openapi.json>; rel=\"service-desc\"")) {
         redirect("dashboard", StatusCodes.PermanentRedirect)
       }
     } ~
-    Directives.path("dashboard" | "explorer" | "streams" | "metrics" | "docs" | "v1docs") {
-      getFromResource("web/quine-ui.html")
-    } ~
+    Directives
+      .path("dashboard" | "explorer" | "streams" | "metrics" | "docs" | "v1docs") {
+        getHtmlWithInjectedBundleName("web/quine-ui.html", "quine-browser-bundle.js", hashedBundleName)
+      }
+      .withNoCache ~
     Directives.path("home") {
       redirect("dashboard", StatusCodes.PermanentRedirect)
     } ~
-    Directives.path("quine-ui-startup.js") {
-      getJsWithInjectedConfig("web/quine-ui-startup.js", config.defaultApiVersion == "v2")
-    } ~
+    Directives
+      .path("quine-ui-startup.js") {
+        getJsWithInjectedConfig("web/quine-ui-startup.js", config.defaultApiVersion == "v2")
+      }
+      .withNoCache ~
     Directives.path("browserconfig.xml") {
       getFromResource("web/browserconfig.xml")
     } ~
@@ -118,13 +121,7 @@ class QuineAppRoutes(
     Directives.path("safari-pinned-tab.svg") {
       getFromResource("web/safari-pinned-tab.svg")
     } ~
-    Directives.extractUnmatchedPath { path =>
-      Try(webJarAssetLocator.getFullPath(path.toString)) match {
-        case Success(fullPath) => getFromResource(fullPath)
-        case Failure(_: IllegalArgumentException) => reject
-        case Failure(err) => failWith(err)
-      }
-    }
+    webjarFallbackRoute(hashedBundleName)
   }
 
   /** OpenAPI route */
