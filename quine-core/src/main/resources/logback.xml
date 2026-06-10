@@ -131,6 +131,7 @@
      Log level can be set with `root.loglevel` and `thatdot.loglevel`.
      -->
     <logger name="com.thatdot" level="${thatdot.loglevel:-WARN}"/>
+    <logger name="org.apache.pekko" level="${thatdot.loglevel:-WARN}"/>
 
     <!--
      Logger for audit-worthy events. Off by default. Turn on with `thatdot.audit.loglevel=INFO`.
