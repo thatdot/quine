@@ -24,7 +24,8 @@ object GitVersion extends AutoPlugin {
       currentTagWithPrefix(git, "prerelease/" + tagPrefix.value)
       orElse tagWithPrefix(git, tagPrefix.value)
       orElse tagWithPrefix(git, "v")
-      getOrElse "UNKNOWN",
+      orElse git.headCommitSha.map(sha => s"ManuallyCompiled-${sha.take(10)}")
+      getOrElse "ManuallyCompiled",
     ),
   )
 
