@@ -14,7 +14,7 @@ import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery._
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode.MultipleValues
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern._
-import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryResultWorkflow
+import com.thatdot.quine.app.v2api.definitions.query.standing.{PropagateTo, StandingQueryResultWorkflow}
 import com.thatdot.quine.app.v2api.definitions.{GraphScopedEndpoints, V2QuineEndpointDefinitions}
 import com.thatdot.quine.graph.NamespaceId
 
@@ -97,14 +97,22 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with GraphScopedEnd
           |a Standing Query only matches data ingested after the query is registered; this endpoint
           |backfills it against earlier data.""".asOneLine + "\n\n" +
         """Useful when interactively constructing a Standing Query, or when a newly-registered query
-          |must match recent history.""".asOneLine,
+          |must match recent history.""".asOneLine + "\n\n" +
+        """Propagation applies to all currently-registered Standing Queries, not only a single one.
+          |Propagating multiple Standing Queries has essentially the same cost as propagating
+          |one, because the expensive part is visiting nodes, not checking individual Standing
+          |Query registrations. If you are creating multiple Standing Queries, create them all
+          |first (with `propagateTo=NONE` on the create endpoint), then call this endpoint once
+          |to propagate all Standing Queries in a single pass.""".asOneLine,
       )
       .in(
         query[Boolean]("includeSleeping")
           .default(false)
           .description(
             """If false, only nodes currently in the in-memory cache are evaluated. If true, sleeping
-              |nodes are also woken and evaluated — this can be expensive on large graphs.""".asOneLine,
+              |nodes are also woken and evaluated. This is significantly more expensive because it
+              |requires disk and network IO to iterate through and wake sleeping nodes in the
+              |background.""".asOneLine,
           ),
       )
       .in(query[Int]("wakeUpParallelism").default(4).validate(Validator.positive))
@@ -187,7 +195,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with GraphScopedEnd
 
   protected[endpoints] val createSQ: Endpoint[
     Unit,
-    (NamespaceId, Boolean, StandingQueryDefinition),
+    (NamespaceId, Boolean, PropagateTo, Int, StandingQueryDefinition),
     Either[ServerError, Either[BadRequest, NotFound]],
     RegisteredStandingQuery,
     Any,
@@ -209,6 +217,39 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with GraphScopedEnd
         .default(false)
         .schema(_.hidden(true)),
     )
+    .in(
+      query[PropagateTo]("propagateTo")
+        .default(PropagateTo.ExcludeSleeping)
+        .description(
+          """Controls whether all registered Standing Queries are propagated to existing graph
+            |data after creation. Without propagation, a Standing Query only matches data changed
+            |after it is registered; propagation backfills it against existing data.
+            |Defaults to `EXCLUDE_SLEEPING`.""".asOneLine + "\n\n" +
+          """`NONE`: no propagation. The query only applies to nodes awoken and changed after Standing Query registration.""" + "\n\n" +
+          """`EXCLUDE_SLEEPING` (default): propagates to nodes currently in the in-memory cache only.
+            |This is relatively inexpensive.""".asOneLine + "\n\n" +
+          """`INCLUDE_SLEEPING`: propagates to all nodes, including sleeping nodes that must be
+            |woken from the persistor. This is significantly more expensive than `EXCLUDE_SLEEPING`
+            |because it requires disk and network IO to iterate through and all wake sleeping nodes
+            |in the background. Use `wakeUpParallelism` to control how many
+            |nodes are woken at a time. Higher parallelism will iterate faster, but will also backpressure 
+            |ingest more than lower parallelism.""".asOneLine + "\n\n" +
+          """Propagation applies all currently-registered Standing Queries, not only the
+            |newly-created one. Propagating for multiple Standing Queries has essentially the
+            |same cost as propagating for one. If you are creating multiple Standing Queries,
+            |create them all with `propagateTo=NONE` first, then use the
+            |`propagate-standing-queries` endpoint to propagate them all in a single pass.""".asOneLine,
+        ),
+    )
+    .in(
+      query[Int]("wakeUpParallelism")
+        .default(4)
+        .validate(Validator.positive)
+        .description(
+          """Number of sleeping nodes to wake in parallel when `propagateTo` is
+            |`INCLUDE_SLEEPING`.""".asOneLine,
+        ),
+    )
     .in(jsonOrYamlBody[StandingQueryDefinition](Some(createSqExample)))
     .post
     .errorOut(
@@ -220,19 +261,29 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with GraphScopedEnd
     .out(statusCode(StatusCode.Created))
     .out(jsonBody[RegisteredStandingQuery])
 
-  protected[endpoints] val createSQLogic: ((NamespaceId, Boolean, StandingQueryDefinition)) => Future[
+  protected[endpoints] val createSQLogic: ((NamespaceId, Boolean, PropagateTo, Int, StandingQueryDefinition)) => Future[
     Either[Either[ServerError, Either[BadRequest, NotFound]], RegisteredStandingQuery],
-  ] = { case (namespaceId, shouldCalculateResultHashCode, definition) =>
+  ] = { case (namespaceId, shouldCalculateResultHashCode, propagateTo, wakeUpParallelism, definition) =>
+    val effectivePropagateTo = propagateTo match {
+      case PropagateTo.IncludeSleeping(_) => PropagateTo.IncludeSleeping(wakeUpParallelism)
+      case other => other
+    }
     recoverServerErrorEither(
       appMethods
-        .createSQ(definition.name.value, namespaceId, shouldCalculateResultHashCode, definition),
+        .createSQ(
+          definition.name.value,
+          namespaceId,
+          shouldCalculateResultHashCode,
+          definition,
+          effectivePropagateTo,
+        ),
     )(identity)
   }
 
   private val createSQServerEndpoint: Full[
     Unit,
     Unit,
-    (NamespaceId, Boolean, StandingQueryDefinition),
+    (NamespaceId, Boolean, PropagateTo, Int, StandingQueryDefinition),
     Either[ServerError, Either[BadRequest, NotFound]],
     RegisteredStandingQuery,
     Any,

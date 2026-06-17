@@ -416,6 +416,7 @@ trait QuineApiMethods
     namespaceId: NamespaceId,
     shouldCalculateResultHashCode: Boolean = false,
     sq: ApiStanding.StandingQuery.StandingQueryDefinition,
+    propagateTo: ApiStanding.PropagateTo = ApiStanding.PropagateTo.ExcludeSleeping,
   ): Future[Either[ErrSq, ApiStanding.StandingQuery.RegisteredStandingQuery]] = {
     implicit val ctx: ExecutionContext = graph.nodeDispatcherEC
     graph
@@ -434,6 +435,13 @@ trait QuineApiMethods
                   case StandingQueryInterfaceV2.Result.NotFound(_) =>
                     Future.successful(Left(asBadRequest(s"Graph not found: $namespaceId")))
                   case StandingQueryInterfaceV2.Result.Success =>
+                    propagateTo match {
+                      case ApiStanding.PropagateTo.None => ()
+                      case ApiStanding.PropagateTo.ExcludeSleeping =>
+                        propagateStandingQuery(includeSleeping = false, namespaceId, wakeUpParallelism = 4)
+                      case ApiStanding.PropagateTo.IncludeSleeping(wakeupParallelism) =>
+                        propagateStandingQuery(includeSleeping = true, namespaceId, wakeupParallelism)
+                    }
                     app.getStandingQueryV2(name, namespaceId).map {
                       case Some(value) => Right(value)
                       case None => sys.error("Standing Query not found after adding, this should not happen.")
