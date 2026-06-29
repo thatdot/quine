@@ -15,7 +15,18 @@ import com.thatdot.quine.model.QuineIdProvider
 
 import TapBus.topicForSq
 
-/** Identifies the SQ output pipeline tap, carrying the bus instance for publishing. */
+/** Carries the [[TapBus]] and the identifying triple (namespace / SQ / output) used to
+  * compute tap topic names for one output's pipeline.
+  *
+  * Threaded through workflow construction as an implicit because two layers of `flow`
+  * builders need it ([[StandingQueryResultWorkflow.flow]] for the raw and post-enrichment
+  * taps, [[Workflow.flow]] for the pre-enrichment tap), and we don't want callers passing
+  * the bus through by hand at each layer.
+  *
+  * The tap stages are inserted unconditionally; [[TapBus.hasSubscribers]] gates the
+  * runtime cost — a lock-free read that short-circuits both serialization and publish
+  * when nothing is listening. This is cheaper than forking the stream with a `wireTap`.
+  */
 case class TapContext(
   bus: TapBus,
   sqName: String,
@@ -41,10 +52,15 @@ case class Workflow(
   import StandingQueryResultWorkflow._
   import Workflow._
 
+  /** Builds the flow segment running from `filter` through `enrichmentQuery`, splicing in the
+    * pre-enrichment tap stage between the transformation and the Cypher enrichment.
+    *
+    * @param tapCtx contains a referencet to the tapbus and the identifying triple (namespace / SQ / output) used to compute tap topic names
+    */
   def flow(outputName: String, namespaceId: NamespaceId)(implicit
     graph: CypherOpsGraph,
     logConfig: LogConfig,
-    tapCtx: Option[TapContext] = None,
+    tapCtx: TapContext,
   ): BroadcastableFlow = {
     implicit val idProvider: QuineIdProvider = graph.idProvider
     import com.thatdot.quine.app.data.QuineDataFoldersTo.cypherValueFolder
@@ -70,8 +86,8 @@ case class Workflow(
           override def flow: Flow[StandingQueryResult, Out, NotUsed] = priorFlow.flow.map(transformation.apply)
         }
     }
-    val maybePreEnrichTap: BroadcastableFlow => BroadcastableFlow = tapCtx.fold(identity[BroadcastableFlow] _) { ctx =>
-      val topic = topicForSq(ctx.namespaceId, ctx.sqName, ctx.outputName, SqTapStage.PreEnrichment)
+    val preEnrichTap: BroadcastableFlow => BroadcastableFlow = {
+      val topic = topicForSq(tapCtx.namespaceId, tapCtx.sqName, tapCtx.outputName, SqTapStage.PreEnrichment)
       priorFlow =>
         new BroadcastableFlow {
           override type Out = priorFlow.Out
@@ -81,7 +97,7 @@ case class Workflow(
             //   so in the case where there are no subscribers and the serialization is skipped,
             //   this is actually less expensive than forking the graph with a wireTap
             priorFlow.flow.map { out =>
-              if (ctx.bus.hasSubscribers(topic)) ctx.bus.publish(topic, out)(priorFlow.foldableFrom)
+              if (tapCtx.bus.hasSubscribers(topic)) tapCtx.bus.publish(topic, out)(priorFlow.foldableFrom)
               out
             }
         }
@@ -100,7 +116,7 @@ case class Workflow(
 
     val steps = maybeThenFilter
       .andThen(maybeThenPreEnrich)
-      .andThen(maybePreEnrichTap)
+      .andThen(preEnrichTap)
       .andThen(maybeThenEnrich)
 
     steps(sqOrigin)
@@ -128,28 +144,29 @@ case class StandingQueryResultWorkflow(
   destinationStepsList: NonEmptyList[DataFoldableSink],
 ) {
 
+  /** Builds the end-to-end output flow: raw tap → workflow (filter/transform/pre-tap/enrich) →
+    * post-enrichment tap → fanout to all configured sinks.
+    *
+    * @param tapCtx contains a referencet to the tapbus and the identifying triple (namespace / SQ / output) used to compute tap topic names
+    */
   def flow(graph: CypherOpsGraph)(implicit
     logConfig: LogConfig,
-    tapCtx: Option[TapContext] = None,
+    tapCtx: TapContext,
   ): Flow[StandingQueryResult, Unit, NotUsed] = {
-    val rawTapFlow: Flow[StandingQueryResult, StandingQueryResult, NotUsed] = tapCtx match {
-      case Some(ctx) =>
-        val topic = topicForSq(ctx.namespaceId, ctx.sqName, "_raw_", SqTapStage.Raw)
-        implicit val foldable = StandingQueryResultWorkflow.sqDataFoldableFrom(graph.idProvider)
-        Flow[StandingQueryResult].map { x => if (ctx.bus.hasSubscribers(topic)) ctx.bus.publish(topic, x); x }
-      case None => Flow[StandingQueryResult]
+    val rawTapFlow: Flow[StandingQueryResult, StandingQueryResult, NotUsed] = {
+      val topic = topicForSq(tapCtx.namespaceId, tapCtx.sqName, "_raw_", SqTapStage.Raw)
+      implicit val foldable = StandingQueryResultWorkflow.sqDataFoldableFrom(graph.idProvider)
+      Flow[StandingQueryResult].map { x => if (tapCtx.bus.hasSubscribers(topic)) tapCtx.bus.publish(topic, x); x }
     }
 
     val preBroadcastFlow = workflow.flow(outputName, namespaceId)(graph, logConfig, tapCtx)
 
-    val postEnrichFlow = tapCtx match {
-      case Some(ctx) =>
-        val topic = topicForSq(ctx.namespaceId, ctx.sqName, ctx.outputName, SqTapStage.PostEnrichment)
-        preBroadcastFlow.flow.map { x =>
-          if (ctx.bus.hasSubscribers(topic)) ctx.bus.publish(topic, x)(preBroadcastFlow.foldableFrom)
-          x
-        }
-      case None => preBroadcastFlow.flow
+    val postEnrichFlow = {
+      val topic = topicForSq(tapCtx.namespaceId, tapCtx.sqName, tapCtx.outputName, SqTapStage.PostEnrichment)
+      preBroadcastFlow.flow.map { x =>
+        if (tapCtx.bus.hasSubscribers(topic)) tapCtx.bus.publish(topic, x)(preBroadcastFlow.foldableFrom)
+        x
+      }
     }
 
     val sinks = destinationStepsList

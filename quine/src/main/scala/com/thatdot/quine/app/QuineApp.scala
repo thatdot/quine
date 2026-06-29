@@ -210,8 +210,8 @@ final class QuineApp(
               .traverse(standingQueryDefinition.outputs.toVector) { apiWorkflow =>
                 ApiToStanding(apiWorkflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).map {
                   workflowInterpreter =>
-                    implicit val tapCtx: Option[TapContext] =
-                      Some(TapContext(tapBus, queryName, apiWorkflow.name.value, inNamespace))
+                    implicit val tapCtx: TapContext =
+                      TapContext(tapBus, queryName, apiWorkflow.name.value, inNamespace)
                     apiWorkflow.name.value -> workflowInterpreter
                       .flow(graph)(logConfig, tapCtx)
                       .viaMat(KillSwitches.single)(Keep.right)
@@ -529,8 +529,8 @@ final class QuineApp(
         } else {
           ApiToStanding(workflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).flatMap {
             workflowInterpreter =>
-              implicit val tapCtx: Option[TapContext] =
-                Some(TapContext(tapBus, queryName, outputName, inNamespace))
+              implicit val tapCtx: TapContext =
+                TapContext(tapBus, queryName, outputName, inNamespace)
               val killSwitch =
                 sqResultsHub
                   .viaMat(KillSwitches.single)(Keep.right)
@@ -1269,8 +1269,8 @@ final class QuineApp(
                 .traverse(outputToWorkflowDef.toVector) { case (outputName, workflowDef) =>
                   ApiToStanding(workflowDef, ns)(graph, protobufSchemaCache, kafkaExtensions).map {
                     workflowInterpreter =>
-                      implicit val tapCtx: Option[TapContext] =
-                        Some(TapContext(tapBus, queryName, outputName, ns))
+                      implicit val tapCtx: TapContext =
+                        TapContext(tapBus, queryName, outputName, ns)
                       val killSwitch =
                         resultHub
                           .viaMat(KillSwitches.single)(Keep.right)

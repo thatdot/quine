@@ -100,7 +100,7 @@ trait V2StandingTapWebSocketEndpoints extends V2EndpointDefinitions with CommonP
     .in("outputs")
     .in(
       CustomMethod
-        .colonVerbPath[ResourceName]("standingQueryOutputName", "tap_pre_enrichment")
+        .colonVerbPath[ResourceName]("standingQueryOutputName", "tapPreEnrichment")
         .description("Unique name for a Standing Query Output."),
     )
     .get
