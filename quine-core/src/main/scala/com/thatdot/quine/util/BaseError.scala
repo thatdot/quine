@@ -12,7 +12,12 @@ import com.thatdot.quine.exceptions.{
 }
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
-import com.thatdot.quine.graph.{GraphNotReadyException, QuineRuntimeFutureException, ShardNotAvailableException}
+import com.thatdot.quine.graph.{
+  GraphNotReadyException,
+  QuineRuntimeFutureException,
+  ShardNotAvailableException,
+  UnregisteredUserDefinedException,
+}
 import com.thatdot.quine.persistor.WrappedPersistorException
 
 // Represents either a BaseError or a generic Error
@@ -90,6 +95,7 @@ object QuineError {
     case e: QuineRuntimeFutureException => Some(e)
     case e: GraphNotReadyException => Some(e)
     case e: ShardNotAvailableException => Some(e)
+    case e: UnregisteredUserDefinedException => Some(e)
     case e: WrappedPersistorException => Some(e)
     case e: NamespaceNotFoundException => Some(e)
     case e: DuplicateIngestException => Some(e)

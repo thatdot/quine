@@ -12,7 +12,14 @@ import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLog
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
 import com.thatdot.quine.graph.cypher.Location
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, NamespaceId, ShardNotAvailableException, cypher}
+import com.thatdot.quine.graph.{
+  CypherOpsGraph,
+  GraphNotReadyException,
+  NamespaceId,
+  ShardNotAvailableException,
+  UnregisteredUserDefinedException,
+  cypher,
+}
 import com.thatdot.quine.persistor.WrappedPersistorException
 import com.thatdot.quine.util.Log.implicits._
 
@@ -109,6 +116,12 @@ object AtLeastOnceCypherQuery {
       case _: GraphNotReadyException => Some(e)
       // Shard has dropped out (unavailable) but might be replaced
       case _: ShardNotAvailableException => Some(e)
+      // A UDF/UDP that resolved at compile time is not yet registered on the member evaluating it.
+      // Unknown functions/procedures fail at compile time, so this can only be a transient gap during
+      // that member's startup (registry still populating); it resolves on retry once the member warms.
+      // It is registered in QuineError.fromThrowable + the message pickler, so it survives a relay from
+      // a remote member as its own type (rather than collapsing to AnyError.GenericError).
+      case _: UnregisteredUserDefinedException => Some(e)
       // Some problem from the persistor. This can include ephemeral errors like timeouts, so conservatively retry
       case _: WrappedPersistorException => Some(e)
       case _: com.datastax.oss.driver.api.core.DriverException => Some(e)

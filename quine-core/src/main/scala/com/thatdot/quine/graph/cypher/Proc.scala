@@ -11,7 +11,7 @@ import org.apache.pekko.util.Timeout
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.graph.LiteralOpsGraph
+import com.thatdot.quine.graph.{LiteralOpsGraph, UnregisteredUserDefinedException}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 /** Cypher procedure
@@ -285,7 +285,8 @@ object Proc {
   }
 
   final case class UserDefined(name: String) extends Proc {
-    private lazy val underlying = userDefinedProcedures(name.toLowerCase)
+    private lazy val underlying =
+      userDefinedProcedures.getOrElse(name.toLowerCase, throw UnregisteredUserDefinedException("procedure", name))
 
     def outputColumns = underlying.outputColumns
     def canContainUpdates: Boolean = underlying.canContainUpdates

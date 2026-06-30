@@ -18,6 +18,7 @@ import scala.math.BigDecimal.RoundingMode.{
 }
 
 import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.quine.graph.UnregisteredUserDefinedException
 import com.thatdot.quine.model.QuineIdProvider
 
 /** Scalar Cypher function
@@ -879,7 +880,8 @@ object Func {
   }
 
   final case class UserDefined(name: String) extends Func {
-    private lazy val underlying = userDefinedFunctions(name.toLowerCase)
+    private lazy val underlying =
+      userDefinedFunctions.getOrElse(name.toLowerCase, throw UnregisteredUserDefinedException("function", name))
 
     def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value = underlying.call(args)
 
