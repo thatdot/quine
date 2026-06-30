@@ -72,7 +72,7 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
       // This is a function instead of `val` so that `updateExpiry` is regenerated each time message sending is retried
       def toSendFunc() =
         BaseMessage.DeliveryRelay(
-          BaseMessage.LocalMessageDelivery(updateExpiry(msg), recipient, self),
+          BaseMessage.LocalMessageDelivery(updateExpiry(msg), recipient, Some(self)),
           dedupId,
           needsAck = true,
         )

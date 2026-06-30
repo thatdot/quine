@@ -40,11 +40,13 @@ object BaseMessage {
   }
 
   /** Used to deliver messages to individual nodes from shards
+    *
+    * @param originalSender the actor a reply should be routed to, or `None` if no reply is expected
     */
   final case class LocalMessageDelivery(
     msg: QuineMessage,
     targetQid: SpaceTimeQuineId,
-    originalSender: ActorRef,
+    originalSender: Option[ActorRef],
   ) extends BaseMessage
 
 }

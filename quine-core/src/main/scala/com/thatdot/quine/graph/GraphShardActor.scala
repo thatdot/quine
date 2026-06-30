@@ -301,24 +301,25 @@ final private[quine] class GraphShardActor(
   def deliverLocalMessage(
     message: QuineMessage,
     qid: SpaceTimeQuineId,
-    originalSender: ActorRef,
+    originalSender: Option[ActorRef],
   ): Unit = {
+    val sender = originalSender.getOrElse(ActorRef.noSender)
     log.trace(
-      log"Shard: ${Safe(shardId)} is delivering local message: ${message.toString} to: $qid, from: ${Safe(originalSender)}",
+      log"Shard: ${Safe(shardId)} is delivering local message: ${message.toString} to: $qid, from: ${Safe(sender)}",
     )
     getAwakeNode(qid) match {
-      case LivenessStatus.AlreadyAwake(nodeActor) => nodeActor.tell(message, originalSender)
+      case LivenessStatus.AlreadyAwake(nodeActor) => nodeActor.tell(message, sender)
       case LivenessStatus.WakingUp =>
-        val envelope = Envelope(message, originalSender, system)
+        val envelope = Envelope(message, sender, system)
         // No need for another WakeUp message to the shard, is this node is already waking up
         mailboxSystemExtension.enqueueIntoMessageQueue(qid, envelope)
         ()
       case LivenessStatus.IncompleteActorShutdown(persistingFuture) =>
-        val envelope = Envelope(message, originalSender, system)
+        val envelope = Envelope(message, sender, system)
         if (mailboxSystemExtension.enqueueIntoMessageQueue(qid, envelope))
           persistingFuture.onComplete(_ => self.tell(WakeUp(qid), ActorRef.noSender))(context.dispatcher)
       case LivenessStatus.Nonexistent =>
-        val envelope = Envelope(message, originalSender, system)
+        val envelope = Envelope(message, sender, system)
         if (mailboxSystemExtension.enqueueIntoMessageQueue(qid, envelope))
           self.tell(WakeUp(qid), ActorRef.noSender)
     }
