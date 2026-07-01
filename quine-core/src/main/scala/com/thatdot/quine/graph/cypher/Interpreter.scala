@@ -367,16 +367,31 @@ trait OnNodeInterpreter
       case directed => Some(directed)
     }
 
-    /* Compute the other end of the edge, if available */
-    val literalFarNodeId: Option[QuineId] = toNode map { (toNode: Expr) =>
-      val otherVal = toNode.evalUnsafe(context)
-      getQuineId(otherVal) getOrElse {
-        throw CypherException.TypeMismatch(
-          expected = Seq(Type.Node),
-          actualValue = otherVal,
-          context = "one extremity of an edge we are expanding to",
-        )
-      }
+    /* Compute the other end of the edge, if available.
+     *
+     * If the target endpoint evaluates to null, no edge can point at it, so the
+     * expansion matches nothing. Cypher treats a null endpoint as a silent
+     * non-match rather than an error: `WITH null AS x MATCH (a)-->(x)` returns
+     * zero rows, and likewise a null element flowing through a list
+     * comprehension's pattern predicate is simply dropped. We short-circuit to
+     * an empty result here instead of falling through to `getQuineId` (which
+     * would throw a TypeMismatch). We must *not* map null to `None`: that means
+     * "no target constraint" and would match every edge. A non-null value that
+     * still isn't a node is a genuine type error and keeps throwing. */
+    val literalFarNodeId: Option[QuineId] = toNode match {
+      case None => None
+      case Some(toNode) =>
+        toNode.evalUnsafe(context) match {
+          case Expr.Null => return InterpM.empty
+          case otherVal =>
+            Some(getQuineId(otherVal).getOrElse {
+              throw CypherException.TypeMismatch(
+                expected = Seq(Type.Node),
+                actualValue = otherVal,
+                context = "one extremity of an edge we are expanding to",
+              )
+            })
+        }
     }
 
     // Get edges matching the direction / name constraint.

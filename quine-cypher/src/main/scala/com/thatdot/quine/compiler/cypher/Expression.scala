@@ -31,6 +31,20 @@ object Expression {
   private def scoped[A](wq: WithQueryT[CompM, A]): WithQueryT[CompM, A] =
     WithQueryT(CompM.withIsolatedContext(wq.runWithQuery))
 
+  /** Does a compiled expression's side-effecting query actually do anything?
+    *
+    * Pure expressions compile to a [[WithQuery]] whose query is the no-op [[cypher.Query.Unit]]. A *non*-unit query
+    * means the expression touches the graph (a path pattern, `GetDegree`, `startNode`/`endNode` — see [[compile]]). Such
+    * a query is normally hoisted to run 'before' the expression is evaluated, which is wrong when the expression sits
+    * inside a per-element binding scope (e.g. a list comprehension's loop variable): the hoist lifts the traversal out
+    * of the scope of the binding it depends on. We use this to detect that case and lower it correlated instead.
+    */
+  private def isEffectful(query: cypher.Query[cypher.Location.Anywhere]): Boolean =
+    query match {
+      case cypher.Query.Unit(_) => false
+      case _ => true
+    }
+
   /** Compile an expression into a pure Quine expression
     *
     * The key difference between the input and output here (besides the location
@@ -143,18 +157,54 @@ object Expression {
         val freshVar = variable.renameId(avng.nextName)
         val freshPredOpt = predOpt.map(_.replaceAllOccurrencesBy(variable, freshVar))
         val freshExtOpt = extOpt.map(_.replaceAllOccurrencesBy(variable, freshVar))
+
+        /* The list is evaluated in the *outer* scope: the loop variable is not visible to it. */
         for {
-          (varExpr, predicate, extract) <- scoped {
-            for {
-              varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
-              predicateOpt <- freshPredOpt.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
-              predicate = predicateOpt.getOrElse(cypher.Expr.True)
-              extractOpt <- freshExtOpt.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
-              extract = extractOpt.getOrElse(varExpr)
-            } yield (varExpr, predicate, extract)
-          }
           list1 <- compile(list, avng)
-        } yield cypher.Expr.ListComprehension(varExpr.id, list1, predicate, extract)
+          comprehension <- WithQueryT {
+            CompM.withIsolatedContext {
+              for {
+                varExpr <- CompM.addColumn(freshVar)
+                predWqOpt <- freshPredOpt.traverse(e => compileM(e, avng))
+                extractWqOpt <- freshExtOpt.traverse(e => compileM(e, avng))
+                predWq = predWqOpt.getOrElse(WithQuery(cypher.Expr.True: cypher.Expr))
+                extractWq = extractWqOpt.getOrElse(WithQuery(varExpr: cypher.Expr))
+                comprehensionWq <-
+                  if (!isEffectful(predWq.query) && !isEffectful(extractWq.query)) {
+                    /* Pure comprehension: the predicate/extract don't touch the graph, so the cheap pure expression
+                     * is correct (and avoids the cost of a sub-query + aggregation). */
+                    CompM.pure[WithQuery[cypher.Expr]](
+                      WithQuery(cypher.Expr.ListComprehension(varExpr.id, list1, predWq.result, extractWq.result)),
+                    )
+                  } else {
+                    /* Graph-touching comprehension: `[v IN list WHERE pred(v) | extract(v)]` decorrelated into a
+                     * `collect`-aggregation over `UNWIND list AS v`. Because `v` becomes a real query column, the
+                     * predicate/extract traversals run *correlated* with the binding they depend on rather than being
+                     * hoisted out of its scope. Mirrors the `PatternComprehension` lowering below. */
+                    CompM.addColumn(Symbol(avng.nextName)).map { collectedExpr =>
+                      val perElement = cypher.Query.apply(
+                        predWq.query,
+                        cypher.Query.filter(
+                          predWq.result,
+                          cypher.Query.apply(extractWq.query, cypher.Query.unit),
+                        ),
+                      )
+                      WithQuery[cypher.Expr](
+                        collectedExpr,
+                        cypher.Query.EagerAggregation(
+                          aggregateAlong = Vector.empty,
+                          aggregateWith =
+                            Vector(collectedExpr.id -> cypher.Aggregator.collect(distinct = false, extractWq.result)),
+                          toAggregate = cypher.Query.Unwind(list1, varExpr.id, perElement),
+                          keepExisting = true,
+                        ),
+                      )
+                    }
+                  }
+              } yield comprehensionWq
+            }
+          }
+        } yield comprehension
 
       case expressions.ReduceExpression(expressions.ReduceScope(acc, variable, expr), init, list) =>
         val freshVar = variable.renameId(avng.nextName)
