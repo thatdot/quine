@@ -5,8 +5,10 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
+import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.{Actor, ActorRef}
 import org.apache.pekko.pattern.extended.ask
+import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
 import cats.implicits._
@@ -104,18 +106,23 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
             parameters,
             restartIfAppropriate = true,
             _,
-          ))).mapTo[Either[SkipOptimizationError, InterpM[CypherException, QueryContext]]]
+          ))).mapTo[Either[SkipOptimizationError, Source[QueryContext, NotUsed]]]
 
-        InterpM.futureInterpMUnsafe(requestedSource.map(_.left.map { err =>
-          // Expected for, eg, subqueries. Otherwise, probably indicates end user behavior that isn't compatible with current pagination impl
-          logger.info(
-            log"QueryManagerActor refused to process query. Falling back to naive interpreter. " +
-            log"Re-running the same query " +
-            (if (err.retriable) log"may not " else log"will ") +
-            log"have the same result. Cause: ${err.msg}",
-          )
-          interpretRecursive(query.delegates.naiveStack, context)(parameters, logConfig)
-        }.merge)(cypherEc))
+        // The actor replies with a Source (SkipOptimizingActor.ResumeQuery); `mapTo` can't
+        // check the Either's right side under erasure, so an InterpM there would only fail
+        // at runtime as a ClassCastException. Lift the Source explicitly instead.
+        InterpM.futureInterpMUnsafe(
+          requestedSource.map(_.map(InterpM.liftUnsafe[CypherException, QueryContext]).left.map { err =>
+            // Expected for, eg, subqueries. Otherwise, probably indicates end user behavior that isn't compatible with current pagination impl
+            logger.info(
+              log"QueryManagerActor refused to process query. Falling back to naive interpreter. " +
+              log"Re-running the same query " +
+              (if (err.retriable) log"may not " else log"will ") +
+              log"have the same result. Cause: ${err.msg}",
+            )
+            interpretRecursive(query.delegates.naiveStack, context)(parameters, logConfig)
+          }.merge)(cypherEc),
+        )
       case _ =>
         super.interpretReturn(query, context)
     }
