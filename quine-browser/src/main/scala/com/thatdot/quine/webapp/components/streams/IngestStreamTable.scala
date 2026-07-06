@@ -33,15 +33,17 @@ object IngestStreamTable {
           th("Actions"),
         ),
       ),
-      children <-- entriesSignal.splitSeq(_._1) { strictSignal =>
-        val name = strictSignal.key
-        val jsonSignal = strictSignal.map(_._2)
-        val isExpanded = expandedVar.signal.map(_.contains(name)).distinct
-        tbody(
-          renderRow(name, jsonSignal, isExpanded, expandedVar, onDelete, onPause, onResume),
-          renderExpandedRow(jsonSignal, isExpanded),
-        )
-      },
+      children <-- entriesSignal
+        .splitSeq(_._1) { strictSignal =>
+          val name = strictSignal.key
+          val jsonSignal = strictSignal.map(_._2)
+          val isExpanded = expandedVar.signal.map(_.contains(name)).distinct
+          tbody(
+            renderRow(name, jsonSignal, isExpanded, expandedVar, onDelete, onPause, onResume),
+            renderExpandedRow(jsonSignal, isExpanded),
+          )
+        }
+        .distinct,
     )
   }
 
@@ -56,10 +58,10 @@ object IngestStreamTable {
   ): HtmlElement = {
     val statusSignal = jsonSignal.map { json =>
       json.hcursor.get[String]("status").toOption.map(V2IngestInfo.humanizeStatus).getOrElse("Unknown")
-    }
+    }.distinct
     val messageSignal = jsonSignal.map { json =>
       json.hcursor.get[String]("message").toOption.filter(_.nonEmpty)
-    }
+    }.distinct
     val sourceTypeSignal = jsonSignal.map { json =>
       json.hcursor
         .downField("settings")
@@ -67,8 +69,8 @@ object IngestStreamTable {
         .get[String]("type")
         .toOption
         .getOrElse("?")
-    }
-    val statsSignal = jsonSignal.map(_.hcursor.downField("stats").focus.getOrElse(Json.obj()))
+    }.distinct
+    val statsSignal = jsonSignal.map(_.hcursor.downField("stats").focus.getOrElse(Json.obj())).distinct
 
     tr(
       cls <-- statusSignal.map(s => if (s == "Failed") "table-danger" else ""),
@@ -171,6 +173,14 @@ object IngestStreamTable {
     )
   }
 
+  private val VolatileFields = Set("stats", "status", "message")
+
+  private def configOnly(json: Json): Json =
+    json.asObject.fold(json)(obj => Json.fromJsonObject(obj.filterKeys(k => !VolatileFields.contains(k))))
+
+  private def liveOnly(json: Json): Json =
+    json.asObject.fold(json)(obj => Json.fromJsonObject(obj.filterKeys(VolatileFields.contains)))
+
   private def renderExpandedRow(
     jsonSignal: Signal[Json],
     isExpanded: Signal[Boolean],
@@ -186,7 +196,16 @@ object IngestStreamTable {
           pre(
             cls := "mb-0 mt-1 p-2 bg-body rounded border",
             styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
-            child.text <-- jsonSignal.map(_.spaces2),
+            child.text <-- jsonSignal.map(configOnly(_).spaces2).distinct,
+          ),
+          div(
+            cls := "mt-2",
+            strong("Live Stats"),
+            pre(
+              cls := "mb-0 mt-1 p-2 bg-body rounded border",
+              styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
+              child.text <-- jsonSignal.map(liveOnly(_).spaces2),
+            ),
           ),
         ),
       ),

@@ -43,25 +43,27 @@ object StandingQueryTable {
           th("Actions"),
         ),
       ),
-      children <-- entriesSignal.splitSeq(_._1) { strictSignal =>
-        val name = strictSignal.key
-        val jsonSignal = strictSignal.map(_._2)
-        val isExpanded = expandedVar.signal.map(_.contains(name)).distinct
-        tbody(
-          renderMainRow(name, jsonSignal, isExpanded, expandedVar, onDeleteSq),
-          renderExpandedRow(
-            name,
-            jsonSignal,
-            isExpanded,
-            spec,
-            onRemoveOutput,
-            addingOutputFor,
-            outputFormState,
-            outputSchema,
-            onAddOutput,
-          ),
-        )
-      },
+      children <-- entriesSignal
+        .splitSeq(_._1) { strictSignal =>
+          val name = strictSignal.key
+          val jsonSignal = strictSignal.map(_._2)
+          val isExpanded = expandedVar.signal.map(_.contains(name)).distinct
+          tbody(
+            renderMainRow(name, jsonSignal, isExpanded, expandedVar, onDeleteSq),
+            renderExpandedRow(
+              name,
+              jsonSignal,
+              isExpanded,
+              spec,
+              onRemoveOutput,
+              addingOutputFor,
+              outputFormState,
+              outputSchema,
+              onAddOutput,
+            ),
+          )
+        }
+        .distinct,
     )
 
   private def renderMainRow(
@@ -161,7 +163,7 @@ object StandingQueryTable {
           val n = item.hcursor.get[String]("name").getOrElse("unknown")
           n -> item
         }
-    }
+    }.distinct
 
     val isAddingHere: Signal[Boolean] = addingOutputFor.signal.map(_.contains(name)).distinct
     val configExpanded = Var(false)
@@ -188,7 +190,17 @@ object StandingQueryTable {
               display <-- configExpanded.signal.map(if (_) "block" else "none"),
               cls := "mb-0 mt-1 p-2 bg-body rounded border",
               styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
-              child.text <-- jsonSignal.map(_.spaces2),
+              child.text <-- jsonSignal.map(configOnly(_).spaces2).distinct,
+            ),
+            div(
+              display <-- configExpanded.signal.map(if (_) "block" else "none"),
+              cls := "mt-2",
+              strong("Live Stats"),
+              pre(
+                cls := "mb-0 mt-1 p-2 bg-body rounded border",
+                styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
+                child.text <-- jsonSignal.map(liveOnly(_).spaces2),
+              ),
             ),
           ),
           div(
@@ -257,6 +269,14 @@ object StandingQueryTable {
       ),
     )
   }
+
+  private val VolatileFields = Set("stats", "status", "message")
+
+  private def configOnly(json: Json): Json =
+    json.asObject.fold(json)(obj => Json.fromJsonObject(obj.filterKeys(k => !VolatileFields.contains(k))))
+
+  private def liveOnly(json: Json): Json =
+    json.asObject.fold(json)(obj => Json.fromJsonObject(obj.filterKeys(VolatileFields.contains)))
 
   private def describeOutputType(outputJson: Json): String = {
     val destTypes = outputJson.hcursor

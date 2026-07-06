@@ -18,7 +18,7 @@ import com.thatdot.quine.webapp.util.PollingStream
   */
 object StreamCollectionPanel {
 
-  private val PollIntervalMs = 5.seconds.toMillis.toInt
+  private val PollIntervalMs = 10.seconds.toMillis.toInt
 
   sealed trait PanelView
   object PanelView {
@@ -62,7 +62,7 @@ object StreamCollectionPanel {
     val entriesSignal: Signal[List[(String, Json)]] = dataVar.signal.map {
       case Some(Right(json)) => normalizeList(json)
       case _ => Nil
-    }
+    }.distinct
 
     // `.distinct` is essential: only emits on state-category transitions, so the
     // table element (and any inline form DOM inside it) stays mounted across
