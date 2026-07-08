@@ -769,9 +769,16 @@ case object patternExpressionAsComprehension extends Phase[BaseContext, BaseStat
           false,
           IndexedSeq(patternComp: expressions.PatternComprehension),
         ) if fi.function == functions.Exists =>
-      val emptyList = expressions.ListLiteral(Seq())(fi.position)
-      expressions.NotEquals(patternComp, emptyList)(fi.position)
+      existenceCheck(patternComp)
   })
+
+  /** Rewrite a pattern comprehension into a boolean existence check
+    * (`patternComp <> []`).
+    */
+  private[cypher] def existenceCheck(patternComp: expressions.PatternComprehension): expressions.Expression = {
+    val emptyList = expressions.ListLiteral(Seq())(patternComp.position)
+    expressions.NotEquals(patternComp, emptyList)(patternComp.position)
+  }
 
   def patternExpr2Comp(
     e: expressions.PatternExpression,
@@ -791,6 +798,46 @@ case object patternExpressionAsComprehension extends Phase[BaseContext, BaseStat
   }
 
   // TODO: add to this
+  override def postConditions: Set[Condition] = Set.empty
+}
+
+/** Coerce any pattern comprehension that sits in a boolean position into an existence check
+  * (`patternComp <> []`).
+  *
+  * A bare relationship pattern in expression position compiles (via [[patternExpressionAsComprehension]])
+  * to a list-valued pattern comprehension. Wherever a boolean is expected -- under `NOT`, `AND`/`OR`, in a
+  * `CASE WHEN`, as a boolean function argument, etc. -- that list is a type error, and the only sensible
+  * reading is existence.
+  *
+  * Rather than enumerate every boolean-context parent node, we lean on the semantic analysis that has
+  * already run: it records the *expected* type at each position. We look for pattern comprehensions whose
+  * expected type is `Boolean` and rewrite them to `patternComp <> []`. This mirrors openCypher's own
+  * `normalizeExistsPatternExpressions` (which wraps boolean-position pattern *expressions* in `exists(...)`),
+  * but runs after [[patternExpressionAsComprehension]] has turned them into comprehensions, and -- unlike
+  * that built-in rewriter, which only runs inside `AstRewriting` -- also works in the standing-query
+  * pipeline, which opts out of `AstRewriting`.
+  *
+  * Must run after [[org.opencypher.v9_0.frontend.phases.SemanticAnalysis]] so `from.semantics()` is populated.
+  */
+case object coerceBooleanPatternComprehensions extends Phase[BaseContext, BaseState, BaseState] {
+
+  import org.opencypher.v9_0.ast.semantics.SemanticState
+  import org.opencypher.v9_0.util.{bottomUp, symbols, Rewriter}
+
+  override val phase: CompilationPhase = CompilationPhase.AST_REWRITE
+
+  override def process(from: BaseState, context: BaseContext): BaseState = {
+    val semantics: SemanticState = from.semantics()
+    val rewritten = from
+      .statement()
+      .endoRewrite(bottomUp(Rewriter.lift {
+        case pc: expressions.PatternComprehension
+            if semantics.expressionType(pc).expected.contains(symbols.CTBoolean.invariant) =>
+          patternExpressionAsComprehension.existenceCheck(pc)
+      }))
+    from.withStatement(rewritten)
+  }
+
   override def postConditions: Set[Condition] = Set.empty
 }
 

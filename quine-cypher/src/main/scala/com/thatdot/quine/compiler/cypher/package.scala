@@ -325,6 +325,7 @@ package object cypher {
       PreparatoryRewriting                                                      andThen
       patternExpressionAsComprehension                                          andThen
       SemanticAnalysis(warn = true, supportedFeatures.toIndexedSeq: _*)         andThen
+      coerceBooleanPatternComprehensions                                        andThen
       SyntaxDeprecationWarningsAndReplacements(semanticallyDeprecatedFeatures)  andThen
       AstRewriting()                                                            andThen
       ProjectNamedPathsRewriter                                                 andThen
@@ -399,6 +400,9 @@ package object cypher {
       patternExpressionAsComprehension                                  andThen
       aliasReturns                                                      andThen
       SemanticAnalysis(warn = true, supportedFeatures.toIndexedSeq: _*) // andThen
+      // NB: unlike the main pipeline, standing queries intentionally do NOT run
+      // `coerceBooleanPatternComprehensions`. SQs are a deliberate subset of Cypher; boolean-context
+      // pattern expressions (`NOT (a)-->(b)`, `CASE WHEN (a)-->(b)`, ...) are out of scope here.
       // COMMENTARY ON QU-1292: There is a compilation error thrown when using exists() with
       // pattern expressions/comprehensions in SQ pattern queries. Ethan spent a few days
       // exploring options for fixing the issues, but ultimately it was not the most valuable use of time.

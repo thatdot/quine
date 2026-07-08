@@ -235,6 +235,60 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       ordered = false,
     )
 
+    // A bare pattern expression used directly as a predicate (no `exists`).
+    testQuery(
+      "MATCH (p) WHERE (p)-[:has_father]->({last: 'Weasley'}) RETURN p.first",
+      expectedColumns = Vector("p.first"),
+      expectedRows = Seq(
+        Vector(Expr.Str("Rose")),
+        Vector(Expr.Str("Hugo")),
+        Vector(Expr.Str("Ron")),
+      ),
+      expectedCanContainAllNodeScan = true,
+      ordered = false,
+    )
+
+    // A bare pattern expression negated with `NOT` -- which Weasleys do not
+    // have a father who is also a Weasley.
+    testQuery(
+      "MATCH (p { last: 'Weasley' }) WHERE NOT (p)-[:has_father]->({last: 'Weasley'}) RETURN p.first",
+      expectedColumns = Vector("p.first"),
+      expectedRows = Seq(
+        Vector(Expr.Str("Arthur")),
+        Vector(Expr.Str("Molly")),
+      ),
+      expectedCanContainAllNodeScan = true,
+      ordered = false,
+    )
+
+    // A bare pattern expression combined with another predicate via `AND`.
+    testQuery(
+      "MATCH (p) WHERE (p)-[:has_father]->({last: 'Weasley'}) AND p.last = 'Granger' RETURN p.first",
+      expectedColumns = Vector("p.first"),
+      expectedRows = Seq(
+        Vector(Expr.Str("Rose")),
+        Vector(Expr.Str("Hugo")),
+      ),
+      expectedCanContainAllNodeScan = true,
+      ordered = false,
+    )
+
+    // A bare pattern expression as the condition of a `CASE WHEN` -- another boolean context.
+    // Handled uniformly by the semantic-type-driven coercion (an enumeration of logical connectives
+    // would miss this). Only Ron (whose father Arthur is a Weasley) is true.
+    testQuery(
+      "MATCH (p { last: 'Weasley' }) " +
+      "RETURN p.first, CASE WHEN (p)-[:has_father]->({last: 'Weasley'}) THEN true ELSE false END AS hasWeasleyFather",
+      expectedColumns = Vector("p.first", "hasWeasleyFather"),
+      expectedRows = Seq(
+        Vector(Expr.Str("Arthur"), Expr.False),
+        Vector(Expr.Str("Molly"), Expr.False),
+        Vector(Expr.Str("Ron"), Expr.True),
+      ),
+      expectedCanContainAllNodeScan = true,
+      ordered = false,
+    )
+
     describe("Pattern structure is normalized") {
       testQuery(
         "MATCH (c)-[:has_mother]->(m)-[:has_mother]->(a)<-[:has_father]-(f)<-[:has_father]-(c) RETURN c.first, a.first",
