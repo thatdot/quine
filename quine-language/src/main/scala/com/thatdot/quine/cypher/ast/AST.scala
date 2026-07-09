@@ -33,7 +33,7 @@ case class EdgePattern(
   source: Source,
   maybeBinding: Option[Either[CypherIdentifier, BindingId]],
   direction: Direction,
-  edgeType: Symbol,
+  edgeTypes: Set[Symbol],
 )
 
 case class Connection(edge: EdgePattern, dest: NodePattern)

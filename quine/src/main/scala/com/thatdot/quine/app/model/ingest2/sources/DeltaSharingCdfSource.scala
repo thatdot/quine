@@ -200,7 +200,7 @@ case class DeltaSharingCdfSource(
         * order (enforced by flatMapConcat upstream), the version number
         * monotonically increases.
         */
-      override val ack: Flow[DeltaSharingFrame, Done, NotUsed] =
+      override val ack: Option[Flow[DeltaSharingFrame, Done, NotUsed]] = Some(
         Flow[DeltaSharingFrame].map { frame =>
           val previous = confirmedVersion.getAndUpdate(current => math.max(current, frame.version))
           // Persist when the confirmed version advances
@@ -208,7 +208,8 @@ case class DeltaSharingCdfSource(
             persistConfirmedVersion(frame.version)
           }
           Done
-        }
+        },
+      )
     }
 
   /** DataFoldableFrom for DeltaSharingFrame — delegates to ByteString foldable. */

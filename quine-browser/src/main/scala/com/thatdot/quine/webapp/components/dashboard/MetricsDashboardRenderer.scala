@@ -15,7 +15,9 @@ import com.thatdot.quine.routes.{Counter, MetricsReport, ShardInMemoryLimit}
   */
 object MetricsDashboardRenderer {
 
-  /** The result of a metrics poll. Left is an error message, Right is the metrics data. */
+  /** The result of a metrics poll. Left is an error message, Right is the metrics data
+    * (for a single cluster member; the dashboard's member selector chooses which).
+    */
   type MetricsResult = Either[String, (MetricsReport, Map[Int, ShardInMemoryLimit])]
 
   def extractShardIds(counters: Seq[Counter]): SortedSet[Int] = SortedSet(counters.collect {
@@ -69,7 +71,7 @@ object MetricsDashboardRenderer {
     *
     * @param metricsStream stream of Either[errorMessage, (metrics, shardSizes)]
     */
-  def renderDashboard(metricsStream: EventStream[MetricsResult]): HtmlElement = {
+  def renderDashboard(metricsStream: EventStream[MetricsResult], belowTitle: HtmlElement = div()): HtmlElement = {
     val metricsVar: Var[MetricsReport] = Var(MetricsReport.empty)
     val shardSizesVar: Var[Map[Int, ShardInMemoryLimit]] = Var(Map.empty)
     val errorMessageVar: Var[Option[String]] = Var(None)
@@ -86,6 +88,7 @@ object MetricsDashboardRenderer {
           shardSizesVar.set(newShardSizes)
       },
       h2(cls := "px-3 h2", "System Dashboard"),
+      belowTitle,
       div(
         cls := "dashboard grid px-3",
         // Header row

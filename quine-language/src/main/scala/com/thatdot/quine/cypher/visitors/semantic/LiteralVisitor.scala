@@ -35,6 +35,8 @@ object LiteralVisitor extends CypherBaseVisitor[List[SemanticToken]] {
       }
       .map(List(_))
 
-    requireOne(maybeNumber <+> maybeString <+> maybeList <+> maybeNull <+> maybeBool, "literal")
+    val maybeMap = maybeMatch(ctx.oC_MapLiteral(), MapLiteralVisitor)
+
+    requireOne(maybeNumber <+> maybeString <+> maybeList <+> maybeNull <+> maybeBool <+> maybeMap, "literal")
   }
 }

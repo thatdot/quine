@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <title>@thatdot/query-editor playground</title>
+  </head>
+
+  <body>
+    <main>
+      <h1>@thatdot/query-editor playground</h1>
+      <p class="hint">
+        Dev harness only — not part of the published package. The query bar
+        below is sized like the Quine Explorer's (~600px).
+      </p>
+
+      <div class="query-bar">
+        <div id="query-editor"></div>
+        <div class="buttons">
+          <button id="run-graph" title="Shift+click: run as table">Query &#9656;</button>
+          <button id="run-table">Table</button>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="focus">Focus</button>
+        <button id="set-sample">Set sample query</button>
+        <button id="dispose">Dispose</button>
+        <button id="clear-log">Clear log</button>
+        <span id="mode" class="mode">single-line</span>
+      </div>
+
+      <pre id="log" aria-label="event log"></pre>
+
+      <details>
+        <summary>Behavior checklist (manual verification)</summary>
+        <ul>
+          <li>Typing shows Cypher highlighting (keywords green, labels red-orange, strings amber, numbers purple)</li>
+          <li><kbd>Enter</kbd> on a single-line buffer runs as graph</li>
+          <li><kbd>Shift+Enter</kbd> inserts a newline; line numbers appear</li>
+          <li><kbd>Enter</kbd> on a multi-line buffer inserts a newline (does not run)</li>
+          <li><kbd>Cmd/Ctrl+Enter</kbd> runs in both modes</li>
+          <li>Editor grows per line, caps at 384px with internal scroll</li>
+          <li><kbd>ArrowUp</kbd>/<kbd>ArrowDown</kbd> recall history only when single-line; the unsent draft is preserved</li>
+          <li>Placeholder shows when empty; <kbd>Tab</kbd> moves focus out</li>
+        </ul>
+      </details>
+
+      <p class="hint">
+        LSP (Phase 2, not wired yet): <code id="lsp-uri"></code>
+      </p>
+    </main>
+    <script type="module" src="/playground/main.ts"></script>
+  </body>
+</html>

@@ -159,6 +159,7 @@ final class RunningStandingQuery(
   outputTermination: Future[Done],
   val queueTimer: Timer,
   val resultMeter: Meter,
+  val cancellationMeter: Meter,
   val droppedCounter: Counter,
   val startTime: Instant,
 ) extends LazySafeLogging {
@@ -177,6 +178,7 @@ final class RunningStandingQuery(
       resultsHub,
       outputTermination,
       resultMeter = metrics.standingQueryResultMeter(inNamespace, query.name),
+      cancellationMeter = metrics.standingQueryCancellationMeter(inNamespace, query.name),
       droppedCounter = metrics.standingQueryDroppedCounter(inNamespace, query.name),
       queueTimer = metrics.standingQueryResultQueueTimer(inNamespace, query.name),
       startTime = Instant.now(),
@@ -218,10 +220,11 @@ final class RunningStandingQuery(
         )
         false
     }
-    // On results (but not cancellations) update the relevant metrics
     if (result.meta.isPositiveMatch) {
       if (success) resultMeter.mark()
       else droppedCounter.inc()
+    } else {
+      if (success) cancellationMeter.mark()
     }
     success
   }

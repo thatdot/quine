@@ -1,7 +1,5 @@
 package com.thatdot.quine.language.server
 
-import java.util.Arrays
-
 import scala.jdk.CollectionConverters._
 
 import org.eclipse.lsp4j.services.TextDocumentService
@@ -13,6 +11,8 @@ import org.eclipse.lsp4j.{
   DidCloseTextDocumentParams,
   DidOpenTextDocumentParams,
   DocumentDiagnosticParams,
+  Hover,
+  HoverParams,
   Position,
   SemanticTokensParams,
   TextDocumentContentChangeEvent,
@@ -45,10 +45,17 @@ object TextDocumentServiceHelper {
     uri: String,
     text: String,
   ): Unit =
+    changeTextDocument(textDocumentService, uri, List(new TextDocumentContentChangeEvent(text)))
+
+  def changeTextDocument(
+    textDocumentService: TextDocumentService,
+    uri: String,
+    contentChanges: List[TextDocumentContentChangeEvent],
+  ): Unit =
     textDocumentService.didChange(
       new DidChangeTextDocumentParams(
         new VersionedTextDocumentIdentifier(uri, null),
-        Arrays.asList(new TextDocumentContentChangeEvent(text)),
+        contentChanges.asJava,
       ),
     )
 
@@ -95,6 +102,24 @@ object TextDocumentServiceHelper {
       .getItems()
       .asScala
       .toList
+
+  /** Requests hover information at a position; null means the server has no hover there
+    * (lsp4j's representation of LSP 3.17's null result).
+    */
+  def getHover(
+    textDocumentService: TextDocumentService,
+    uri: String,
+    line: Int,
+    character: Int,
+  ): Hover =
+    textDocumentService
+      .hover(
+        new HoverParams(
+          new TextDocumentIdentifier(uri),
+          new Position(line, character),
+        ),
+      )
+      .get()
 
   def getSemanticTokens(
     textDocumentService: TextDocumentService,

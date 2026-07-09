@@ -1,0 +1,245 @@
+/* Styles for the Monaco-based query editor (@thatdot/query-editor) and its embedded
+   (Streams form) variant. Extracted from common.css so the editor feature owns its own
+   stylesheet; imported alongside common.css from each browser module's index.css. */
+
+/* Host slot for the Monaco-based query editor (@thatdot/query-editor): occupies the old
+   <input>'s place in the bar row. The editor lives in an absolutely-positioned container so
+   that auto-grow (multi-line queries) extends downward OVER the page content instead of
+   stretching the toolbar row. */
+.query-editor-host {
+  /* The editor is absolutely positioned (so it can grow downward), leaving the host without
+     intrinsic width; the flex-basis stands in for the old <input>'s intrinsic width so the
+     bar keeps a comparable footprint on narrow windows. */
+  flex: 1 1 250px;
+  position: relative;
+  margin-left: .4em;
+  align-self: stretch;
+  min-width: 8em;
+}
+/* Chrome wrapper — the absolutely-positioned overlay for the expanded editor. It takes over
+   the overlay role from .query-editor-container so the Monaco mount, the status bar, and the
+   diagnostics panel are in-flow children stacked top-to-bottom; the overlay's height is their
+   sum and it grows downward OVER the page content as the editor expands.
+   z-index 20 places this stacking context above the sample-query dropdown (z-index 10) so
+   Monaco's overflow widgets — suggest/completion, hover — layer over the dropdown when both
+   are open. (Monaco escapes those widgets to document.body via fixedOverflowWidgets, so
+   overflow:hidden here clips only the square-cornered children to the rounded corner, not the
+   widgets.) */
+.query-editor-chrome {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background-color: white;
+  border-radius: .2em 0 0 .2em;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+/* Multi-line mode: the editor expands rightward toward page width, overlapping adjacent
+   nav-bar siblings (z-index 20 on the chrome handles the layering). `right: auto` releases the
+   right anchor so `min-width` can drive the expansion; `min(900px, calc(100vw - 280px))` keeps
+   it from overflowing on narrow viewports (280px approximates left/right nav icons, Query
+   button, and margins). */
+.query-editor-host.query-editor-multi .query-editor-chrome {
+  right: auto;
+  min-width: min(900px, calc(100vw - 280px));
+}
+.query-editor-container {
+  /* In flow inside .query-editor-chrome (the chrome is the overlay now). position:relative
+     anchors the in-editor run button, which is absolutely positioned at this container's
+     top-right corner.
+     The editor package sets this element's height to Monaco's content height (auto-grow with
+     cap). content-box keeps that inline height authoritative for Monaco's layout while the
+     vertical padding vertically centers the editor chrome so its total visual height
+     matches the adjacent Query/Table buttons (48px = 36px Monaco content + 6px × 2;
+     Monaco's single-line content is line-height plus equal internal padding). */
+  position: relative;
+  background-color: white;
+  box-sizing: content-box;
+  padding: 6px 0;
+  overflow: hidden;
+}
+/* Resize handle: rendered inside .query-editor-container by the editor package.
+   Visible only in multi-line mode (toggled by the package's JS in syncMode).
+   Corner grip is expressed as three diagonal gradient bands. */
+.query-editor-resize-handle {
+  position: absolute;
+  bottom: 3px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 1;
+  opacity: 0.4;
+  background-image:
+    linear-gradient(135deg, transparent 30%, rgba(0,0,0,0.5) 30%, rgba(0,0,0,0.5) 40%, transparent 40%),
+    linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.5) 60%, transparent 60%),
+    linear-gradient(135deg, transparent 70%, rgba(0,0,0,0.5) 70%, rgba(0,0,0,0.5) 80%, transparent 80%);
+}
+.query-editor-resize-handle:hover {
+  opacity: 0.7;
+}
+/* Let the container's background (white, the query-result flash classes, and the activequery
+   animation) show through Monaco's own background layers. */
+.query-editor-container .monaco-editor,
+.query-editor-container .monaco-editor .monaco-editor-background,
+.query-editor-container .monaco-editor .margin {
+  background-color: transparent !important;
+}
+/* Disabled state for query-bar run buttons: applies whenever the HTML `disabled` attribute is
+   set — currently when the buffer has error-severity LSP diagnostics, the server verdict is
+   unavailable, or `canRead` is false. Reduced opacity greys out the button using the same
+   visual weight as other disabled/muted elements in the app (e.g. loader spinner, nav-bar
+   disabled icons, which use --cui-tertiary-color at comparable reduced prominence).
+   `cursor: not-allowed` overrides the `.gray-clickable:hover` pointer cursor. */
+.query-input-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* In-editor run affordance for multi-line mode. Anchored to the top-right corner of
+   .query-editor-container (which is z-index 20). The button sits outside the Monaco
+   scrollable text area — Monaco occupies the container's full width up to the right
+   edge, but the editor leaves ~4px of internal right padding before the vertical
+   scrollbar; anchoring at top/right 0 places the button in the container's padding
+   box outside the text viewport. z-index 25 keeps it above the container's stacking
+   context (20) without reaching Monaco's own suggest-widget (z-index ~52+) or the
+   toolbar context-menu (z-index 100). The border-radius override produces a pill
+   shape flush with the top-right corner. */
+.query-editor-run-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 25;
+  border-radius: 0 .2em 0 .2em;
+  /* Compact padding so the button is proportional to the 48px resting bar */
+  padding: .15em .55em;
+  font-size: 1.1em;
+  /* Keep a subtle separator from the container edge */
+  box-shadow: -1px 1px 4px rgba(0, 0, 0, 0.12);
+}
+/* "More lines" hint shown by the editor package while a multi-line query is collapsed
+   by blur: line 1 is visible and this pill indicates the total line count. The badge is
+   only ever visible in this collapsed state, which is exactly when Monaco renders its
+   vertical scrollbar thumb (~14px) on the right edge — so `right: 20px` keeps the pill
+   clear of the scrollbar (scrollbar width plus a small gap) instead of being clipped by
+   it. `pointer-events: none` lets a click fall through to the editor and re-expand it. */
+.query-editor-more-lines {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  z-index: 24;
+  pointer-events: none;
+  user-select: none;
+  font-size: 0.8em;
+  color: #888;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 0.7em;
+  padding: 0 0.5em;
+  line-height: 1.7;
+}
+/* Status bar pinned below the Monaco editor in the expanded chrome: a clickable problems
+   summary on the left and a chevron on the right. Compact, muted, with a top border to
+   separate it from the editor. `user-select: none` keeps a click from selecting its text;
+   the click toggles the diagnostics panel. */
+.query-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 0.8em;
+  cursor: pointer;
+  user-select: none;
+  border-top: 1px solid var(--cui-border-color, #d8dbe0);
+  background-color: var(--cui-tertiary-bg, #f0f1f3);
+  color: var(--cui-body-color, #4f5d73);
+}
+/* Chevron: points right when the panel is collapsed, rotates to point down when open. */
+.query-status-chevron::before {
+  content: "\25B8"; /* ▸ */
+  display: inline-block;
+  transition: transform 0.12s ease;
+}
+.query-status-chevron.open::before {
+  transform: rotate(90deg);
+}
+/* Diagnostics panel: scrollable list below the status bar, height-capped so a long list
+   doesn't push the overlay arbitrarily tall. Toggled open/closed in QueryInput. */
+.query-diagnostics-panel {
+  max-height: 12em;
+  overflow-y: auto;
+  border-top: 1px solid var(--cui-border-color, #d8dbe0);
+  background-color: var(--cui-body-bg, #fff);
+}
+/* A diagnostic row: a severity-colored left border, the message (ellipsized when too long),
+   then a monospace line:column locator pushed to the right edge. Clicking the row jumps the
+   editor cursor to the diagnostic's position, so it reads as clickable. */
+.query-diagnostic-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px 3px 6px;
+  font-size: 0.8em;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+.query-diagnostic-item:hover {
+  background-color: var(--cui-tertiary-bg, #f0f1f3);
+}
+.query-diagnostic-message {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.query-diagnostic-pos {
+  flex: 0 0 auto;
+  font-family: var(--thatdot-font-mono);
+  color: var(--cui-secondary-color, #8a93a2);
+}
+.query-diagnostic-error {
+  border-left-color: var(--cui-danger, #e55353);
+}
+.query-diagnostic-warning {
+  border-left-color: var(--cui-warning, #f9b115);
+}
+.query-diagnostic-info {
+  border-left-color: var(--cui-info, #3399ff);
+}
+/* Embedded (form-field) query editor: the @thatdot/query-editor mounted inside a Streams form
+   Cypher field. Unlike the nav-bar overlay, this is an in-flow bordered box. It wraps the inner
+   Monaco mount plus the shared status bar / diagnostics panel as a flex column, so the box grows
+   to Monaco + bar + (optional) panel. `overflow: hidden` clips the inner square corners to the
+   box's rounded corner. */
+.embedded-query-editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--cui-border-color, #d8dbe0);
+  border-radius: 0.25rem;
+  background-color: var(--cui-body-bg, #fff);
+  overflow: hidden;
+}
+/* Inner Monaco mount inside the embedded box. The editor package grows this element in place —
+   it sets the inline height to Monaco's content height (auto-grow with cap), so no fixed height
+   is set here. `position: relative` anchors the package's resize handle; `content-box` keeps the
+   package-set inline height authoritative for Monaco's layout, matching the nav-bar container.
+   Monaco's own top/bottom padding gives the internal breathing room, so no padding is added here
+   (which would otherwise be clipped by `overflow: hidden`). */
+.embedded-query-editor-container {
+  position: relative;
+  box-sizing: content-box;
+  min-height: 1.5rem;
+  overflow: hidden;
+}
+/* Let the form-field background show through Monaco's own background layers, matching the
+   nav-bar treatment so the editor blends into the form rather than painting a white slab. */
+.embedded-query-editor .monaco-editor,
+.embedded-query-editor .monaco-editor .monaco-editor-background,
+.embedded-query-editor .monaco-editor .margin {
+  background-color: transparent !important;
+}

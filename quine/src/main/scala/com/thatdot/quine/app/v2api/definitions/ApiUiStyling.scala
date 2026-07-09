@@ -96,19 +96,6 @@ object ApiUiStyling {
         edgeLabel = None,
       )
     }
-
-    /** Print out the properties of the node */
-    def getProperties: QuickQuery = {
-      val querySuffix =
-        "RETURN id(n), properties(n)"
-
-      QuickQuery(
-        name = "Local Properties",
-        querySuffix,
-        sort = QuerySort.Text,
-        edgeLabel = None,
-      )
-    }
   }
 
   @title("Graph Node")
@@ -289,7 +276,124 @@ object ApiUiStyling {
     val defaults: Vector[UiNodeQuickQuery] = Vector(
       UiNodeQuickQuery.every(QuickQuery.adjacentNodes),
       UiNodeQuickQuery.every(QuickQuery.refreshNode),
-      UiNodeQuickQuery.every(QuickQuery.getProperties),
     )
+  }
+
+  /** Direction of a synthetic edge added to query results.
+    *
+    *  - `Out`        : edge points from the `fromNode` to the `toNode`.
+    *  - `In`         : edge points from the `toNode` to the `fromNode`.
+    *  - `Undirected` : edge is drawn without an arrow.
+    */
+  sealed trait SyntheticEdgeDirection
+  object SyntheticEdgeDirection {
+    case object Out extends SyntheticEdgeDirection
+    case object In extends SyntheticEdgeDirection
+    case object Undirected extends SyntheticEdgeDirection
+
+    implicit val encoder: Encoder[SyntheticEdgeDirection] = Encoder.encodeString.contramap {
+      case Out => "OUT"
+      case In => "IN"
+      case Undirected => "UNDIRECTED"
+    }
+    implicit val decoder: Decoder[SyntheticEdgeDirection] = Decoder.decodeString.emap {
+      case "OUT" => Right(Out)
+      case "IN" => Right(In)
+      case "UNDIRECTED" => Right(Undirected)
+      case other => Left(s"Unknown SyntheticEdgeDirection: $other (expected OUT, IN, or UNDIRECTED)")
+    }
+    implicit lazy val schema: Schema[SyntheticEdgeDirection] = Schema.string[SyntheticEdgeDirection]
+  }
+
+  /** Where the UI should look up `fromNode` / `toNode` to find the synthetic edge's
+    * endpoint node IDs.
+    *
+    *  - `WiretapMessage`: read dot-paths into the wiretap message JSON envelope, e.g.
+    *    `data.even1`. Currently the only supported source.
+    *
+    * Sealed for future expansion (e.g. `QueryResult` to read columns from the tap
+    * query's own result, or `AuxiliaryQuery` for a separately-configured lookup query).
+    */
+  sealed trait NodeIdsSource
+  object NodeIdsSource {
+    case object WiretapMessage extends NodeIdsSource
+
+    implicit val encoder: Encoder[NodeIdsSource] = Encoder.encodeString.contramap { case WiretapMessage =>
+      "WIRETAP_MESSAGE"
+    }
+    implicit val decoder: Decoder[NodeIdsSource] = Decoder.decodeString.emap {
+      case "WIRETAP_MESSAGE" => Right(WiretapMessage)
+      case other => Left(s"Unknown NodeIdsSource: $other (expected WIRETAP_MESSAGE)")
+    }
+    implicit lazy val schema: Schema[NodeIdsSource] = Schema.string[NodeIdsSource]
+  }
+
+  /** A virtual edge to draw between two nodes referenced by a tap query's data source.
+    *
+    * For each fire of the tap query, the UI extracts node IDs at the `fromNode` and `toNode`
+    * paths/columns of the source named by `nodeIdsFrom`, and adds a visual-only edge between
+    * them with the configured label and direction. The edge is not persisted in the graph.
+    *
+    * @param fromNode     Path/column where the edge's first endpoint node ID is found.
+    * @param toNode       Path/column where the edge's second endpoint node ID is found.
+    * @param label        Label shown on the synthetic edge.
+    * @param direction    Edge direction (Out / In / Undirected).
+    * @param nodeIdsFrom  Which data source to read endpoint IDs from (defaults to `WIRETAP_MESSAGE`).
+    */
+  @title("Synthetic Edge")
+  @description("A visual edge added between two node IDs read from a tap query's data source.")
+  final case class SyntheticEdge(
+    @description("Path/column where the edge's first endpoint node ID is found.") fromNode: String,
+    @description("Path/column where the edge's second endpoint node ID is found.") toNode: String,
+    @description("Label shown on the synthetic edge.") label: String,
+    @description("Edge direction.") direction: SyntheticEdgeDirection,
+    @description("Data source to read endpoint IDs from.")
+    nodeIdsFrom: NodeIdsSource = NodeIdsSource.WiretapMessage,
+  )
+
+  object SyntheticEdge {
+    implicit val encoder: Encoder[SyntheticEdge] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[SyntheticEdge] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[SyntheticEdge] = Schema.derived
+  }
+
+  /** A saved tap query — a wiretap paired with a Cypher query.
+    *
+    * Each tap query identifies a wiretap (a standing query, optionally a specific output)
+    * and a Cypher query that the UI runs against each incoming message — the result is
+    * displayed in the explorer just as if the user had typed it manually.
+    *
+    * If `syntheticEdges` are configured, the UI reads the endpoint node IDs from the wiretap
+    * message JSON (the default `nodeIdsFrom = WIRETAP_MESSAGE`). `fromNode` / `toNode`
+    * are dot-paths into that message (e.g. `"data.even1"`). For each fire of the tap query,
+    * a visual-only edge is drawn between the resolved nodes.
+    *
+    * @param name              Display name shown in Explorer Settings.
+    * @param description       Optional longer-form description of what this tap query does.
+    * @param standingQueryName Name of the standing query to tap.
+    * @param outputName        If set, tap that output's post-enrichment stream; otherwise tap raw results.
+    * @param query             Cypher query run on each incoming message. SQ result fields are available
+    *                          as Cypher variables (e.g. backtick-quoted column names from the SQ).
+    * @param syntheticEdges    Optional virtual edges drawn between paired node-returning columns.
+    */
+  @title("TapQuery")
+  @description("A saved wiretap + Cypher query pair, listed in Explorer Settings.")
+  final case class TapQuery(
+    @description("Display name for this tap query.") name: String,
+    @description("Optional longer description of what this tap query does.") description: Option[String],
+    @description("Name of the standing query to tap.") standingQueryName: String,
+    @description("If set, tap this output's post-enrichment stream; otherwise tap raw results.")
+    outputName: Option[String],
+    @description("Cypher query run against each incoming wiretap message.") query: String,
+    @description("Optional virtual edges drawn between paired node-returning result columns.")
+    syntheticEdges: Vector[SyntheticEdge] = Vector.empty,
+  )
+
+  object TapQuery {
+    implicit val encoder: Encoder[TapQuery] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[TapQuery] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[TapQuery] = Schema.derived
+
+    val defaults: Vector[TapQuery] = Vector.empty
   }
 }

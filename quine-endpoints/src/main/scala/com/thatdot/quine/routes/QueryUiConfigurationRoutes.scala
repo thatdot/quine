@@ -122,7 +122,6 @@ object UiNodeQuickQuery {
   val defaults: Vector[UiNodeQuickQuery] = Vector(
     UiNodeQuickQuery.every(QuickQuery.adjacentNodes(QueryLanguage.Cypher)),
     UiNodeQuickQuery.every(QuickQuery.refreshNode(QueryLanguage.Cypher)),
-    UiNodeQuickQuery.every(QuickQuery.getProperties(QueryLanguage.Cypher)),
   )
 }
 

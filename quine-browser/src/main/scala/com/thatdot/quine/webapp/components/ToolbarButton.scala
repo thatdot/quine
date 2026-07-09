@@ -36,6 +36,10 @@ object ToolbarButton {
     * @param enabled reactive signal controlling the enabled/disabled state
     * @param onClickAction handler for left-click (only fires when enabled)
     * @param menuActions callback returning context menu items (called each time the menu opens)
+    * @param hasExtraOptions reactive signal controlling the subtle under-icon indicator; defaults to
+    *   re-checking `menuActions` whenever `enabled` changes. Callers whose menu contents can change
+    *   independently of `enabled` (e.g. a menu that starts empty and later gains items) should pass
+    *   their own signal.
     */
   def apply(
     ionClass: String,
@@ -43,7 +47,10 @@ object ToolbarButton {
     enabled: Signal[Boolean] = Val(true),
     onClickAction: dom.MouseEvent => Unit = _ => (),
     menuActions: () => Seq[MenuAction] = () => Seq.empty,
+    hasExtraOptions: Signal[Boolean] = Val(true),
   ): HtmlElement = {
+    val hasExtraOptionsSignal =
+      enabled.combineWith(hasExtraOptions).map { case (e, h) => e && h && menuActions().nonEmpty }
     val menuOpenVar = Var(false)
     val menuTopVar = Var(0.0)
     val menuLeftVar = Var(0.0)
@@ -82,6 +89,8 @@ object ToolbarButton {
     div(
       display := "inline-flex",
       alignItems := "center",
+      position := "relative",
+      marginLeft := ".5em",
       onMountCallback { ctx =>
         wrapperEl = Some(ctx.thisNode.ref)
         dom.document.addEventListener("mousedown", handleMouseDown)
@@ -91,6 +100,7 @@ object ToolbarButton {
       },
       // Main icon button
       htmlTag("i")(
+        marginLeft := "0",
         cls <-- enabled.map { e =>
           s"$ionClass ${Styles.navBarButton} ${if (e) Styles.clickable else Styles.disabled}"
         },
@@ -121,6 +131,10 @@ object ToolbarButton {
         onTouchEnd --> { _ => cancelLongPress() },
         onTouchMove --> { _ => cancelLongPress() },
         onTouchCancel --> { _ => cancelLongPress() },
+      ),
+      // Subtle underline shown only while this button has a non-empty right-click menu
+      div(
+        cls <-- hasExtraOptionsSignal.map(has => s"toolbar-menu-indicator${if (has) " visible" else ""}"),
       ),
       // Context menu dropdown
       ul(

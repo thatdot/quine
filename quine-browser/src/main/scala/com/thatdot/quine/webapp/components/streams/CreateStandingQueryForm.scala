@@ -28,6 +28,7 @@ object CreateStandingQueryForm {
     onSubmit: Json => Future[Either[String, Json]],
     onComplete: () => Unit,
     onCancel: () => Unit,
+    editorConfig: EmbeddedEditorConfig,
   ): HtmlElement = {
     val nameVar = Var("")
     val formState = Var(Json.obj())
@@ -58,7 +59,7 @@ object CreateStandingQueryForm {
       // Pattern / outputs / options / ... — all schema-driven.
       renderedSchema match {
         case Some(schema) =>
-          SchemaFormRenderer.render(schema, spec, Nil, formState, isRequired = true)
+          SchemaFormRenderer.render(schema, spec, Nil, formState, editorConfig, isRequired = true)
         case None =>
           div(
             cls := "alert alert-warning",

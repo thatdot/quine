@@ -1,0 +1,15 @@
+{
+  // Library build: plain tsc emit of src/ to dist/ (ESM + .d.ts).
+  // No bundler — the package is consumed only by bundler-equipped apps,
+  // which resolve the monaco-editor peer dependency themselves.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

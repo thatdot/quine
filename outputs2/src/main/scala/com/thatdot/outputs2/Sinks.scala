@@ -8,6 +8,10 @@ import com.thatdot.data.DataFoldableFrom
 import com.thatdot.quine.graph.NamespaceId
 
 trait DataFoldableSink {
+
+  /** Short type identifier for this destination (e.g. "drop", "standard-out", "http", "kafka"). */
+  def slug: String
+
   def sink[In: DataFoldableFrom](outputName: String, namespaceId: NamespaceId)(implicit
     logConfig: LogConfig,
   ): Sink[In, NotUsed]

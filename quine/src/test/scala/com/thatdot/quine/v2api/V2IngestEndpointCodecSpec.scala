@@ -12,6 +12,49 @@ class V2IngestEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
 
   import V2IngestEndpointGenerators.Arbs._
 
+  describe("IngestStreamInfoWithName memberIdx codec") {
+    import java.time.Instant
+
+    import scala.concurrent.duration.DurationInt
+
+    import com.thatdot.api.v2.RatesSummary
+
+    def infoWithMember(settings: Oss.QuineIngestConfiguration, memberIdx: Option[Int]): IngestStreamInfoWithName =
+      IngestStreamInfoWithName(
+        name = ResourceName.unsafeFromString("test-ingest"),
+        status = IngestStreamStatus.Running,
+        message = None,
+        settings = settings,
+        stats = IngestStreamStats(
+          ingestedCount = 0L,
+          rates = RatesSummary(0L, 0, 0, 0, 0),
+          byteRates = RatesSummary(0L, 0, 0, 0, 0),
+          startTime = Instant.EPOCH,
+          totalRuntime = 0.seconds,
+        ),
+        memberIdx = memberIdx,
+      )
+
+    it("should roundtrip the optional memberIdx") {
+      forAll { (settings: Oss.QuineIngestConfiguration, memberIdx: Option[Int]) =>
+        val decoded = infoWithMember(settings, memberIdx).asJson
+          .as[IngestStreamInfoWithName]
+          .getOrElse(fail("Failed to decode IngestStreamInfoWithName"))
+        decoded.memberIdx shouldBe memberIdx
+      }
+    }
+
+    it("should default memberIdx to None when the field is absent (backward compatible)") {
+      forAll { (settings: Oss.QuineIngestConfiguration) =>
+        // A payload produced before memberIdx existed simply omits the field.
+        val withoutMemberIdx = infoWithMember(settings, Some(3)).asJson.mapObject(_.remove("memberIdx"))
+        val decoded =
+          withoutMemberIdx.as[IngestStreamInfoWithName].getOrElse(fail("Failed to decode IngestStreamInfoWithName"))
+        decoded.memberIdx shouldBe None
+      }
+    }
+  }
+
   describe("OnRecordErrorHandler codec") {
     it("should roundtrip encode/decode") {
       forAll { (handler: OnRecordErrorHandler) =>

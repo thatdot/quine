@@ -13,41 +13,62 @@ final class VisNetworkVisualization(
   network: () => Option[vis.Network],
 ) extends GraphVisualization {
 
-  override def pinNode(nodeId: String): Unit = {
-    graphData.nodeSet.update(new vis.Node {
-      override val id = nodeId
-      override val fixed = true
-      override val shadow = true
-    })
-    ()
-  }
+  /** `DataSet.update` on an absent id creates a bare `{id, ...}` entry — a
+    * phantom node with no `uiNode` payload that later casts to
+    * [[QueryUiVisNodeExt]] would choke on. Only update nodes that still exist.
+    */
+  private def updateIfPresent(nodeId: String, node: vis.Node): Unit =
+    if (graphData.nodeSet.get(nodeId) != null) {
+      graphData.nodeSet.update(node)
+      ()
+    }
 
-  override def unpinNode(nodeId: String): Unit = {
-    graphData.nodeSet.update(new vis.Node {
-      override val id = nodeId
-      override val fixed = false
-      override val shadow = false
-    })
-    ()
-  }
+  override def pinNode(nodeId: String): Unit =
+    updateIfPresent(
+      nodeId,
+      new vis.Node {
+        override val id = nodeId
+        override val fixed = true
+        override val shadow = true
+      },
+    )
+
+  override def unpinNode(nodeId: String): Unit =
+    updateIfPresent(
+      nodeId,
+      new vis.Node {
+        override val id = nodeId
+        override val fixed = false
+        override val shadow = false
+      },
+    )
 
   override def unpinNodeWithFlash(nodeId: String): Unit = {
     val visNode: vis.Node = graphData.nodeSet.get(nodeId).merge
-    graphData.nodeSet.update(new vis.Node {
-      override val id = nodeId
-      override val fixed = false
-      override val shadow = false
-      override val icon = new vis.NodeOptions.Icon {
-        override val color = "black"
-      }
-    })
+    updateIfPresent(
+      nodeId,
+      new vis.Node {
+        override val id = nodeId
+        override val fixed = false
+        override val shadow = false
+        override val icon = new vis.NodeOptions.Icon {
+          override val color = "black"
+        }
+      },
+    )
     val originalIcon = visNode.icon
+    // The node may have been removed by the time the flash ends (e.g. a
+    // multi-step undo that empties the canvas right after this unpin) —
+    // updateIfPresent keeps the deferred icon restore from resurrecting it.
     window.setTimeout(
       () =>
-        graphData.nodeSet.update(new vis.Node {
-          override val id = nodeId
-          override val icon = originalIcon
-        }),
+        updateIfPresent(
+          nodeId,
+          new vis.Node {
+            override val id = nodeId
+            override val icon = originalIcon
+          },
+        ),
       500,
     )
     ()
@@ -56,13 +77,14 @@ final class VisNetworkVisualization(
   override def setNodePosition(nodeId: String, x: Double, y: Double): Unit =
     network().foreach(_.moveNode(nodeId, x, y))
 
-  override def unfixForDrag(nodeId: String): Unit = {
-    graphData.nodeSet.update(new vis.Node {
-      override val id = nodeId
-      override val fixed = false
-    })
-    ()
-  }
+  override def unfixForDrag(nodeId: String): Unit =
+    updateIfPresent(
+      nodeId,
+      new vis.Node {
+        override val id = nodeId
+        override val fixed = false
+      },
+    )
 
   override def readNodePositions(): Map[String, (Double, Double)] = {
     val result = Map.newBuilder[String, (Double, Double)]

@@ -10,6 +10,7 @@ import com.thatdot.quine.cypher.phases.SymbolAnalysisModule.{PropertyAccessMappi
 import com.thatdot.quine.language.ast.{BindingId, Expression, Operator, Value}
 import com.thatdot.quine.language.diagnostic.Diagnostic
 import com.thatdot.quine.language.phases.CompilerPhase.{SimpleCompilerPhase, SimpleCompilerPhaseEffect}
+import com.thatdot.quine.language.procedures.ProcedureRegistry
 import com.thatdot.quine.language.types.Type.{PrimitiveType, TypeConstructor, TypeVariable}
 import com.thatdot.quine.language.types.{Constraint, Type}
 
@@ -604,11 +605,15 @@ class TypeCheckingPhase(initialTypeEnv: Map[Symbol, Type])
     case fp: ReadingClause.FromProcedure =>
       for {
         annotatedArgs <- fp.args.traverse(annotateAndCheckExpression)
-        // Add type entries for each yield binding (procedure results have unknown types)
+        // Each yield binding is typed from the procedure registry when the procedure and its
+        // result field are both known there; otherwise it gets a fresh type variable
+        // (unknown type).
         _ <- fp.yields.traverse { yieldItem =>
           for {
-            freshName <- freshen(None)
-            yieldType = TypeVariable(freshName, Constraint.None)
+            yieldType <- ProcedureRegistry.outputType(fp.name.name, yieldItem.resultField.name) match {
+              case Some(declaredType) => declaredType.pure[TCEffect]
+              case None => freshen(None).map(freshName => TypeVariable(freshName, Constraint.None): Type)
+            }
             _ <- addTableEntry(requireBindingId(yieldItem.boundAs), yieldType)
           } yield ()
         }

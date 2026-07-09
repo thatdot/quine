@@ -251,6 +251,9 @@ class ParserTests extends munit.FunSuite {
             char = 0,
             message =
               "mismatched input 'MATC' expecting {FOREACH, OPTIONAL, MATCH, UNWIND, MERGE, CREATE, SET, DETACH, DELETE, REMOVE, CALL, WITH, RETURN}",
+            // The offending MATC token spans columns 0-3, so the exclusive end is 4
+            endLine = 1,
+            endChar = 4,
           ),
         ),
         queryText,
@@ -275,6 +278,9 @@ class ParserTests extends munit.FunSuite {
             char = 0,
             message =
               "mismatched input '<EOF>' expecting {FOREACH, OPTIONAL, MATCH, UNWIND, MERGE, CREATE, SET, DETACH, DELETE, REMOVE, CALL, WITH, RETURN}",
+            // The EOF token has no extent, so the error range is zero-width
+            endLine = 1,
+            endChar = 0,
           ),
         ),
         queryText,

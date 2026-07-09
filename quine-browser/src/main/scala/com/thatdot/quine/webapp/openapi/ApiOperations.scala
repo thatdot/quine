@@ -69,12 +69,13 @@ class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
     op: StreamOp,
     pathValues: Seq[String],
     extraPathParams: Map[String, String] = Map.empty,
+    headers: Map[String, String] = Map.empty,
   )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
     findEndpoint(op) match {
       case Some(ep) =>
         val remainingParams = ep.pathParams.filterNot(extraPathParams.contains)
         val params = extraPathParams ++ remainingParams.zip(pathValues).toMap
-        HttpClient.call(ep, pathParams = params, baseUrl = baseUrl)
+        HttpClient.call(ep, pathParams = params, headers = headers, baseUrl = baseUrl)
       case None =>
         Future.successful(Left(s"Endpoint for $op not found in API spec."))
     }
@@ -84,8 +85,9 @@ class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
     op: StreamOp,
     pathValue: String,
     extraPathParams: Map[String, String],
+    headers: Map[String, String],
   )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-    executeAction(op, Seq(pathValue), extraPathParams)
+    executeAction(op, Seq(pathValue), extraPathParams, headers)
 
   private def matchesOp(e: ApiEndpoint, op: StreamOp): Boolean = {
     val m = e.method.toUpperCase

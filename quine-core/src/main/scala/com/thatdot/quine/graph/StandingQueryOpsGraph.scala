@@ -305,7 +305,9 @@ trait StandingQueryOpsGraph extends BaseGraph {
        */
       val inBuffer = new AtomicInteger()
 
-      val ((queue, term), resultsHub: Source[StandingQueryResult.WithQueueTimer, NotUsed]) = Source
+      val consumptionMeter = metrics.standingQueryConsumptionMeter(namespace, sq.name)
+
+      val ((queue, term), timedResultsHub: Source[StandingQueryResult, NotUsed]) = Source
         .queue[StandingQueryResult.WithQueueTimer](
           sq.queueMaxSize, // Queue of top-level results for this StandingQueryId on this member
         )
@@ -323,18 +325,20 @@ trait StandingQueryOpsGraph extends BaseGraph {
           }
           x
         }
+        // Count and time each result exactly once, as it drains from the queue — BEFORE the broadcast
+        // hub fans it out to N outputs. Metering after the hub counted each result once per consumer,
+        // inflating the consumption rate to N times the production rate.
+        .map { case StandingQueryResult.WithQueueTimer(r, timerCtx) =>
+          timerCtx.stop()
+          consumptionMeter.mark()
+          r
+        }
         .named(s"sq-results-for-${sq.name}")
         .toMat(
-          BroadcastHub.sink[StandingQueryResult.WithQueueTimer](bufferSize = 8).named(s"sq-results-hub-for-${sq.name}"),
+          BroadcastHub.sink[StandingQueryResult](bufferSize = 8).named(s"sq-results-hub-for-${sq.name}"),
         )(Keep.both)
         // bufferSize = 8 ensures all consumers attached to the hub are kept within 8 elements of each other
         .run() // materialize the stream from result queue to broadcast hub
-
-      val timedResultsHub: Source[StandingQueryResult, NotUsed] = resultsHub.map {
-        case StandingQueryResult.WithQueueTimer(r, timerCtx) =>
-          timerCtx.stop()
-          r
-      }
 
       term.onComplete {
         case Failure(err) =>

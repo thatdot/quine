@@ -278,7 +278,7 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
 
     val interpreter = makeInterpreter(recipe)
     try {
-      interpreter.run(memberIdx = 0)
+      interpreter.run()
       val sq = Await.result(quineApp.getStandingQueryV2(sqName.value, namespace), 5.seconds)
       assert(sq.isDefined)
       assert(sq.get.name == sqName)
@@ -300,7 +300,7 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
 
     val interpreter = makeInterpreter(recipe)
     try {
-      interpreter.run(memberIdx = 0)
+      interpreter.run()
       assert(quineApp.getIngestStream(ingestName.value, namespace).isDefined)
     } finally { val _ = interpreter.cancel() }
   }
@@ -320,7 +320,7 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
 
     val interpreter = makeInterpreter(recipe)
     try {
-      interpreter.run(memberIdx = 0)
+      interpreter.run()
       eventually(Eventually.timeout(10.seconds), interval(500.millis)) {
         val ingestedCount = quineApp
           .getIngestStream(ingestName.value, namespace)

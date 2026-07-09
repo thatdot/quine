@@ -4,8 +4,10 @@ import scala.concurrent.Future
 
 import com.raquo.laminar.api.L._
 import io.circe.Json
+import org.scalajs.dom.window
 
 import com.thatdot.quine.openapi._
+import com.thatdot.quine.webapp.queryui.{WiretapHandler, WiretapOwner, WiretapStatus, WiretapStore}
 
 /** Renders the standing queries table with expandable output rows.
   *
@@ -29,6 +31,9 @@ object StandingQueryTable {
     outputSchema: Option[SchemaNode],
     spec: ParsedSpec,
     onAddOutput: (String, Json) => Future[Either[String, Json]],
+    namespace: String,
+    wiretapStore: WiretapStore,
+    editorConfig: EmbeddedEditorConfig,
   ): HtmlElement =
     table(
       cls := "table table-hover mb-0",
@@ -60,6 +65,9 @@ object StandingQueryTable {
               outputFormState,
               outputSchema,
               onAddOutput,
+              namespace,
+              wiretapStore,
+              editorConfig,
             ),
           )
         }
@@ -92,19 +100,9 @@ object StandingQueryTable {
         .flatMap(j => j.asObject.map(_.size).orElse(j.asArray.map(_.size)))
         .getOrElse(0)
     }.distinct
-    val rateSignal: Signal[String] = jsonSignal.map { json =>
-      json.hcursor
-        .downField("stats")
-        .focus
-        .flatMap { statsJson =>
-          statsJson.asObject
-            .flatMap(_.values.headOption)
-            .orElse(Some(statsJson))
-            .flatMap(_.hcursor.downField("rates").get[Double]("oneMinute").toOption)
-        }
-        .map(r => f"$r%.1f/s")
-        .getOrElse("-")
-    }.distinct
+    val rateSignal: Signal[String] = jsonSignal
+      .map(json => clusterRatePerSecond(json).fold("-")(r => f"$r%.1f/s"))
+      .distinct
 
     tr(
       td(
@@ -151,6 +149,9 @@ object StandingQueryTable {
     outputFormState: OutputForm.State,
     outputSchema: Option[SchemaNode],
     onAddOutput: (String, Json) => Future[Either[String, Json]],
+    namespace: String,
+    wiretapStore: WiretapStore,
+    editorConfig: EmbeddedEditorConfig,
   ): HtmlElement = {
     val outputEntriesSignal: Signal[List[(String, Json)]] = jsonSignal.map { json =>
       json.hcursor
@@ -254,6 +255,7 @@ object StandingQueryTable {
                 spec = spec,
                 outputSchema = outputSchema,
                 state = outputFormState,
+                editorConfig = editorConfig,
                 onSubmit = body => onAddOutput(name, body),
                 onComplete = { () =>
                   outputFormState.reset()
@@ -265,8 +267,170 @@ object StandingQueryTable {
                 },
               )
           },
+          renderWiretapsSection(name, outputEntriesSignal.map(_.map(_._1)), jsonSignal, namespace, wiretapStore),
         ),
       ),
+    )
+  }
+
+  // Cluster-wide one-minute match rate, summed across members. A standing query is
+  // registered on every cluster member and each one reports its own stats keyed by
+  // host; taking any one host's value would show arbitrary, load-balancer-routed
+  // throughput rather than the SQ's true workload.
+  private def clusterRatePerSecond(json: Json): Option[Double] = {
+    val perHostRates = json.hcursor
+      .downField("stats")
+      .focus
+      .map(statsJson => statsJson.asObject.map(_.values.toVector).getOrElse(Vector(statsJson)))
+      .getOrElse(Vector.empty)
+      .flatMap(_.hcursor.downField("rates").get[Double]("oneMinute").toOption)
+    if (perHostRates.isEmpty) None else Some(perHostRates.sum)
+  }
+
+  // Threshold above which opening a wiretap forces a confirmation. A wiretap stream
+  // aggregates matches across cluster members, so each match becomes cross-host
+  // chatter; high-rate SQs can pin a sizable fraction of the cluster's coordination
+  // capacity if the user isn't ready for it.
+  private val HighRateWarningThreshold: Double = 100.0
+
+  // Owner for wiretaps opened from the streams page. Lets the per-SQ section filter
+  // the shared `WiretapStore.active` map to just the taps it owns; tap queries enabled
+  // from Explorer Settings use a different owner, so handlers don't collide. The
+  // per-handler `key` within this owner is the source key (one tap per source).
+  private val StreamsWiretapOwner = WiretapOwner("streams")
+
+  private def streamsHandlerKey(sqName: String, outputName: Option[String]): String =
+    WiretapHandler.sourceKey(sqName, outputName)
+
+  private val RawTapSentinel = "__raw_tap__"
+
+  private def renderWiretapsSection(
+    sqName: String,
+    outputNamesSignal: Signal[List[String]],
+    sqJsonSignal: Signal[Json],
+    namespace: String,
+    wiretapStore: WiretapStore,
+  ): HtmlElement = {
+    // Per-row picker state, persisted across polling rebuilds (the per-row signal stays
+    // stable thanks to `splitSeq(_._1)` in the table body).
+    val selectedOutputVar: Var[Option[String]] = Var(None)
+    // Mirror the latest cluster-wide match rate into a Var the click handler can sample.
+    // `Signal.now` is protected, so we materialize a writable copy bound to the source.
+    val latestRateVar: Var[Double] = Var(0.0)
+
+    // Live list of handlers this section owns, filtered by owner + SQ name.
+    val sectionHandlersSignal: Signal[List[WiretapHandler]] =
+      wiretapStore.active.map { active =>
+        active.getOrElse((namespace, StreamsWiretapOwner), List.empty).filter(_.sqName == sqName)
+      }
+
+    div(
+      cls := "mt-3",
+      sqJsonSignal.map(clusterRatePerSecond(_).getOrElse(0.0)) --> latestRateVar.writer,
+      div(
+        cls := "d-flex justify-content-between align-items-center mb-2",
+        strong("Wiretaps"),
+      ),
+      // Picker row: tap-point dropdown + Start button.
+      div(
+        cls := "d-flex align-items-center gap-2 mb-2",
+        select(
+          cls := "form-select form-select-sm",
+          styleAttr := "max-width: 24em",
+          value <-- selectedOutputVar.signal.map(_.getOrElse(RawTapSentinel)),
+          onChange.mapToValue --> { v =>
+            selectedOutputVar.set(if (v == RawTapSentinel) None else Some(v))
+          },
+          children <-- outputNamesSignal.distinct.map { outs =>
+            option(value := RawTapSentinel, "Raw (before any output workflow)") ::
+            outs.map(n => option(value := n, s"Post-enrichment: $n"))
+          },
+        ),
+        button(
+          cls := "btn btn-sm btn-primary",
+          i(cls := "cil-media-play me-1"),
+          "Start wiretap",
+          onClick --> { _ =>
+            val outputName = selectedOutputVar.now()
+            val rate = latestRateVar.now()
+            val proceed =
+              if (rate >= HighRateWarningThreshold)
+                window.confirm(
+                  f"""Standing query "$sqName" is currently matching at $rate%.1f/s (1-minute rate).
+                     |
+                     |Opening a wiretap on a high-rate standing query streams every match to your browser and can noticeably slow down quine.
+                     |
+                     |Open the wiretap anyway?""".stripMargin,
+                )
+              else true
+            if (proceed)
+              wiretapStore.open(
+                namespace,
+                StreamsWiretapOwner,
+                streamsHandlerKey(sqName, outputName),
+                sqName,
+                outputName,
+              )
+          },
+        ),
+      ),
+      // Active wiretaps list — one card per handler with results.
+      div(
+        cls := "d-flex flex-column gap-2",
+        children <-- sectionHandlersSignal.splitSeq(_.key) { strictSignal =>
+          renderActiveWiretap(
+            strictSignal.now(),
+            key => wiretapStore.close(namespace, StreamsWiretapOwner, key),
+          )
+        },
+      ),
+    )
+  }
+
+  private def statusBadge(status: WiretapStatus): HtmlElement = status match {
+    case WiretapStatus.Connecting => span(cls := "badge bg-warning text-dark", "Connecting")
+    case WiretapStatus.Live => span(cls := "badge bg-success", "Live")
+    case WiretapStatus.Error(msg) => span(cls := "badge bg-danger", title := msg, "Error")
+    case WiretapStatus.Closed => span(cls := "badge bg-secondary", "Closed")
+  }
+
+  private def renderActiveWiretap(handler: WiretapHandler, onClose: String => Unit): HtmlElement = {
+    val displayName = handler.outputName.fold(s"${handler.sqName} (raw)")(out => s"${handler.sqName} / $out")
+    div(
+      cls := "border rounded p-2 bg-body",
+      div(
+        cls := "d-flex justify-content-between align-items-center mb-2",
+        div(
+          cls := "d-flex align-items-center gap-2 flex-grow-1 me-2",
+          styleAttr := "min-width: 0",
+          span(cls := "fw-semibold text-truncate", displayName),
+          child <-- handler.status.signal.map(statusBadge),
+          span(
+            cls := "small text-body-secondary",
+            child.text <-- handler.matchCount.signal.map(n => s"$n ${if (n == 1) "match" else "matches"}"),
+          ),
+        ),
+        button(
+          cls := "btn btn-sm btn-outline-danger py-0 px-2 flex-shrink-0",
+          title := "Stop wiretap",
+          "✕",
+          onClick --> { _ => onClose(handler.key) },
+        ),
+      ),
+      // Result log — newest at the bottom. WiretapHandler caps `messages` at MaxMessages,
+      // so this list won't grow unbounded.
+      child <-- handler.messages.signal.map(_.isEmpty).distinct.map {
+        case true =>
+          div(cls := "text-body-secondary small", "No matches yet.")
+        case false =>
+          pre(
+            cls := "mb-0 p-2 bg-body-tertiary rounded border small",
+            styleAttr := "max-height: 16em; overflow: auto;",
+            children <-- handler.messages.signal.map { msgs =>
+              msgs.toList.map(m => div(cls := "text-break", m))
+            },
+          )
+      },
     )
   }
 

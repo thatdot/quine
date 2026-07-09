@@ -1,0 +1,87 @@
+version: 2
+title: Backpressure Gauge Test
+contributor: https://github.com/rrwright
+summary: Creates ingests and standing queries to exercise and test the backpressure monitoring system.
+description: >
+  This recipe creates two number iterator ingests at different rates and a standing query with
+  multiple outputs to test fan-out visualization, per-output rate differentiation, and
+  per-destination backpressure detection.
+  drop-and-log has TWO destinations (Drop + StandardOut) to test multi-destination fan-out.
+  drop-matches uses an enrichment query to multiply each result into 10 outputs.
+  log-every-other-match filters to ~50% of results via an enrichment query.
+
+ingestStreams:
+  - name: fast-ingest
+    source:
+      type: NumberIterator
+      startOffset: 0
+    query: >
+      MATCH (n) WHERE id(n) = idFrom($that)
+      SET n.num = $that, n.kind = 'fast', n.mod100 = $that % 100
+
+  - name: slow-ingest
+    source:
+      type: NumberIterator
+      startOffset: 1000000
+    maxPerSecond: 100
+    query: >
+      MATCH (n) WHERE id(n) = idFrom($that)
+      SET n.num = $that, n.kind = 'slow'
+
+  - name: sse-ingest
+    source:
+      type: ServerSentEvent
+      url: "http://localhost:8000/mined_transactions.ndjson?rate=50"
+      format:
+        type: Json
+    query: >
+      MATCH (tx) WHERE id(tx) = idFrom("tx", $that.hash)
+      SET tx.from = $that.from, tx.to = $that.to, tx.blockNumber = $that.blockNumber, tx.kind = 'sse'
+
+standingQueries:
+  - name: find-mod100-zero
+    pattern:
+      type: Cypher
+      query: >
+        MATCH (n)
+        WHERE n.mod100 = 0
+        RETURN DISTINCT id(n) AS id
+    outputs:
+      - name: log-every-other-match
+        filter:
+          type: OnlyPositiveMatch
+        resultEnrichment:
+          query: >
+            MATCH (n) WHERE id(n) = $that.data.id
+            UNWIND range(1, 5000) AS i
+            SET n.tick = i
+            RETURN id(n) AS id, n.num AS num, i
+        destinations:
+          - type: StandardOut
+      - name: print-matches
+        destinations:
+          - type: StandardOut
+      - name: drop-matches
+        resultEnrichment:
+          query: >
+            UNWIND range(1, 10) AS i
+            RETURN $that AS result, i AS copy
+        destinations:
+          - type: Drop
+      - name: multi-dest
+        destinations:
+          - type: Drop
+          - type: StandardOut
+          - type: HttpEndpoint
+            url: http://localhost:19999/blackhole
+
+quineConfig:
+  store:
+    type: rocks-db
+
+statusQuery:
+  cypherQuery: >
+    MATCH (n)
+    RETURN count(n) AS nodeCount,
+           count(CASE WHEN n.kind = 'fast' THEN 1 END) AS fastNodes,
+           count(CASE WHEN n.kind = 'slow' THEN 1 END) AS slowNodes

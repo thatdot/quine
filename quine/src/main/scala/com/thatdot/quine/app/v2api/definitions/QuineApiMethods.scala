@@ -28,10 +28,11 @@ import com.thatdot.quine.app.model.ingest2.source.QuineValueIngestQuery
 import com.thatdot.quine.app.model.outputs2.query.{AllNodeScanException, CypherQuery => CypherQueryModel}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.v2api.converters._
-import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, TapQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest, DeadLetterQueueOutput}
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
+import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
 import com.thatdot.quine.app.{BaseApp, BuildInfo, SchemaCache}
 import com.thatdot.quine.compiler.cypher
@@ -63,7 +64,7 @@ object ProductVersion {
 }
 
 trait ApplicationApiMethods {
-  val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph
+  val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph with StandingQueryOpsGraph
   val app: BaseApp with SchemaCache with QueryUiConfigurationState
   def productVersion: ProductVersion
   implicit def timeout: Timeout
@@ -115,7 +116,203 @@ trait ApplicationApiMethods {
   def metrics(memberIdx: Option[MemberIdx]): Future[V1.MetricsReport] =
     Future.successful(GenerateMetrics.metricsReport(graph))
 
-  def shardSizes(resizes: Map[Int, V1.ShardInMemoryLimit]): Future[Map[Int, V1.ShardInMemoryLimit]] =
+  def backpressureSnapshot(): Future[V2AdministrationEndpointEntities.BackpressureSnapshot] = {
+    import V2AdministrationEndpointEntities._
+    import com.thatdot.quine.util.BackpressureLevel
+    val gaugeSnapshot = graph.pressureGaugeRegistry.snapshot()
+    val closedCount = graph.ingestValve.getClosedCount
+
+    def bpState(level: BackpressureLevel): String = level match {
+      case BackpressureLevel.Flowing => "FLOWING"
+      case BackpressureLevel.Constrained => "CONSTRAINED"
+      case BackpressureLevel.Backpressured => "BACKPRESSURED"
+    }
+
+    // ── Host info ──
+    val webserverConfig = config.loadedConfigJson.hcursor.downField("quine").downField("webserver")
+    val hostInfo = HostInfo(
+      version = BuildInfo.version,
+      address = webserverConfig.downField("address").as[String].getOrElse("unknown"),
+      port = webserverConfig.downField("port").as[Int].getOrElse(0),
+      pid = ProcessHandle.current.pid(),
+    )
+
+    // ── Persistor ──
+    val metricsReport = GenerateMetrics.metricsReport(graph)
+    val persistor = PersistorSnapshot(
+      `type` = config.loadedConfigJson.hcursor
+        .downField("quine")
+        .downField("store")
+        .downField("type")
+        .as[String]
+        .getOrElse("unknown"),
+      writeLatencyMs = metricsReport.timers.find(_.name == "persistor.persist-event").map(_.mean).getOrElse(0.0),
+      readLatencyMs = metricsReport.timers.find(_.name == "persistor.get-latest-snapshot").map(_.mean).getOrElse(0.0),
+    )
+
+    // ── Global valve ──
+    val globalValve = GlobalValve(
+      isOpen = closedCount == 0,
+      closedCount = closedCount,
+      oneMinuteClosures = graph.ingestValve.recentClosureCount,
+    )
+
+    // ── Ingests ──
+    val ingestStreamState: Option[IngestStreamState] = app match {
+      case iss: IngestStreamState => Some(iss)
+      case _ => None
+    }
+
+    val gaugesByPipeline = gaugeSnapshot.groupBy { case (k, _) => (k.pipelineType, k.namespace, k.streamName) }
+
+    // Per-stage gauge states for an ingest — present only while it is actively running.
+    def ingestStages(ns: String, name: String): IngestStages = {
+      val stageMap = gaugesByPipeline
+        .getOrElse(("ingest", ns, name), Seq.empty)
+        .map { case (k, v) => k.stagePosition -> bpState(v) }
+        .toMap
+      IngestStages(
+        source = stageMap.getOrElse("source", "FLOWING"),
+        preGraphWrite = stageMap.getOrElse("pre-graph-write", "FLOWING"),
+        postGraphWrite = stageMap.get("post-graph-write"),
+      )
+    }
+
+    // Enumerate ingests from the authoritative ingest manager, not the gauge registry, so that failed /
+    // restored / terminal ingests stay visible with their real (live) status. A terminated ingest has
+    // already deregistered its gauges, so a gauge-driven list would silently drop it.
+    val ingestsF: Future[Seq[IngestSnapshot]] = ingestStreamState match {
+      case None => Future.successful(Seq.empty)
+      case Some(iss) =>
+        implicit val ec: ExecutionContext = graph.nodeDispatcherEC
+        Future
+          .traverse(graph.getNamespaces.toSeq) { nsId =>
+            iss.getV2IngestStreams(nsId, None).map { streams =>
+              val ns = nsId.name
+              streams.map { case (_, name, info) =>
+                IngestSnapshot(
+                  name = name,
+                  namespace = ns,
+                  sourceType = info.settings.source.getClass.getSimpleName.stripSuffix("$"),
+                  status = info.status.toString.toUpperCase,
+                  rateLimit = info.settings.maxPerSecond,
+                  rate = info.stats.rates.oneMinute,
+                  totalCount = info.stats.ingestedCount,
+                  stages = ingestStages(ns, name),
+                )
+              }
+            }
+          }
+          .map(_.flatten)
+    }
+
+    // ── Standing queries ──
+    // Group SQ output gauges by (ns, sqName) → outputs
+    import scala.jdk.CollectionConverters._
+    val allMeters = graph.metrics.metricRegistry.getMeters.asScala
+
+    val sqOutputPipelines: Seq[((String, String), SqOutputSnapshot)] = gaugesByPipeline.toSeq.collect {
+      case (("sq-output", ns, streamName), stages) =>
+        val parts = streamName.split('/')
+        val sqName = parts.head
+        val outputName = if (parts.length > 1) parts.tail.mkString("/") else streamName
+
+        // Destinations from gauge keys
+        val destinations = stages.collect {
+          case (k, v) if k.stagePosition.startsWith("destination-") =>
+            // stagePosition is "destination-<index>-<type-slug>"; drop the numeric index that
+            // disambiguates multiple destinations of the same type, leaving the type slug.
+            val slug = k.stagePosition.stripPrefix("destination-").dropWhile(_ != '-').stripPrefix("-")
+            // Capitalize slug to match API class naming: "standard-out" → "StandardOut", "drop" → "Drop"
+            val destType = slug.split('-').map(_.capitalize).mkString
+            DestinationSnapshot(`type` = destType, state = bpState(v))
+        }.toSeq
+
+        // Enrichment detection
+        val hasPreWorkflow = stages.keys.exists(_.stagePosition == "pre-workflow")
+        val hasPostEnrichMeter = allMeters.contains(s"sq.output.$ns.$streamName.post-enrichment")
+        val hasEnrichment = hasPreWorkflow || hasPostEnrichMeter
+        val enrichmentState =
+          if (hasEnrichment)
+            stages
+              .collectFirst { case (k, v) if k.stagePosition == "pre-workflow" => bpState(v) }
+              .orElse(Some("FLOWING"))
+          else None
+
+        // Throughput meter
+        val meterSuffix = if (hasEnrichment) "post-enrichment" else "throughput"
+        val throughputMeter = graph.metrics.metricRegistry.meter(s"sq.output.$ns.$streamName.$meterSuffix")
+
+        (ns, sqName) -> SqOutputSnapshot(
+          name = outputName,
+          rate = throughputMeter.getOneMinuteRate,
+          totalCount = throughputMeter.getCount,
+          hasEnrichment = hasEnrichment,
+          enrichmentState = enrichmentState,
+          destinations = destinations,
+        )
+    }
+
+    // Outputs grouped by (ns, sqName). Only outputs register gauges, so an SQ with no outputs has no
+    // entry here — which is why the SQ list below is driven by the authoritative running-SQ list.
+    val outputsBySq: Map[(String, String), Seq[SqOutputSnapshot]] =
+      sqOutputPipelines.groupBy(_._1).map { case (key, entries) => key -> entries.map(_._2) }
+
+    // Enumerate standing queries from the LOCAL running-SQ list (this member only — not the cluster
+    // interface), so SQs with no outputs still appear. Queue metrics come from the local running SQ;
+    // outputs (with their gauges) are attached where present.
+    val standingQueries: Seq[StandingQuerySnapshot] = for {
+      nsId <- graph.getNamespaces.toSeq
+      nsSqs <- graph.standingQueries(nsId).toSeq
+      (_, runningSq) <- nsSqs.runningStandingQueries
+    } yield {
+      val sqInfo = runningSq.query
+      val ns = nsId.name
+      val threshold = sqInfo.queueBackpressureThreshold
+      val maxSize = sqInfo.queueMaxSize
+      val bufferCount = runningSq.bufferCount
+      val consumptionMeter = graph.metrics.standingQueryConsumptionMeter(nsId, sqInfo.name)
+      val queue = SqQueue(
+        bufferCount = bufferCount,
+        backpressureThreshold = threshold,
+        maxSize = maxSize,
+        thresholdRatio = if (threshold > 0) math.min(bufferCount.toDouble / threshold, 1.0) else 0.0,
+        capacityRatio = if (maxSize > 0) math.min(bufferCount.toDouble / maxSize, 1.0) else 0.0,
+        totalProduced = runningSq.resultMeter.getCount,
+        totalCancellations = runningSq.cancellationMeter.getCount,
+        totalDropped = runningSq.droppedCounter.getCount,
+        totalConsumed = consumptionMeter.getCount,
+        productionRate = runningSq.resultMeter.getOneMinuteRate,
+        consumptionRate = consumptionMeter.getOneMinuteRate,
+      )
+      StandingQuerySnapshot(
+        name = sqInfo.name,
+        namespace = ns,
+        queue = queue,
+        outputs = outputsBySq.getOrElse((ns, sqInfo.name), Seq.empty),
+      )
+    }
+
+    ingestsF.map { ingests =>
+      BackpressureSnapshot(
+        timestamp = java.time.Instant.now(),
+        host = hostInfo,
+        cluster = None, // Overridden by enterprise
+        globalValve = globalValve,
+        ingests = ingests,
+        standingQueries = standingQueries,
+        persistor = persistor,
+      )
+    }(ExecutionContext.parasitic)
+  }
+
+  /** @param memberIdx cluster position whose shards to report; ignored here (the local graph
+    *   is the only member), overridden where member targeting is meaningful.
+    */
+  def shardSizes(
+    resizes: Map[Int, V1.ShardInMemoryLimit],
+    memberIdx: Option[MemberIdx],
+  ): Future[Map[Int, V1.ShardInMemoryLimit]] =
     graph
       .shardInMemoryLimits(resizes.fmap(l => InMemoryNodeLimit(l.softLimit, l.hardLimit)))
       .map(_.collect { case (shardIdx, Some(InMemoryNodeLimit(soft, hard))) =>
@@ -165,7 +362,12 @@ trait QuineApiMethods
     with QueryUiConfigurationState
     with SchemaCache
 
-  def thisMemberIdx: Int
+  /** Cluster position to target when a request doesn't specify one; `None` when this node
+    * has no cluster positions to target (single node). Not necessarily the serving host's
+    * own position — implementations may choose another member (e.g. to route requests
+    * served by a host that holds no position).
+    */
+  def defaultTargetMemberIdx: Option[Int]
 
   def tapBus: com.thatdot.quine.app.model.outputs2.query.standing.TapBus
 
@@ -207,10 +409,13 @@ trait QuineApiMethods
   def listStandingQueries(
     namespaceId: NamespaceId,
   ): Future[Either[NotFound, List[ApiStanding.StandingQuery.RegisteredStandingQuery]]] =
-    graph
-      .requiredGraphIsReadyFuture {
-        app.getStandingQueriesV2(namespaceId).map(Right(_))(ExecutionContext.parasitic)
-      }
+    // Readiness is the App's concern: implementations serving from local state guard
+    // internally, and those that route the request elsewhere need no ready local graph.
+    app
+      .getStandingQueriesV2(namespaceId)
+      .map(Right(_): Either[NotFound, List[ApiStanding.StandingQuery.RegisteredStandingQuery]])(
+        ExecutionContext.parasitic,
+      )
       .recoverWith { case _: NamespaceNotFoundException =>
         Future.successful(Left(NotFound(s"Graph ${namespaceId.name} not found")))
       }(ExecutionContext.parasitic)
@@ -386,6 +591,12 @@ trait QuineApiMethods
   def setNodeAppearances(newNodeAppearances: Vector[UiNodeAppearance]): Future[Unit] =
     graph.requiredGraphIsReadyFuture(app.setNodeAppearances(newNodeAppearances.map(ApiToUiStyling.apply)))
 
+  def getTapQueries(namespace: NamespaceId): Future[Vector[TapQuery]] =
+    graph.requiredGraphIsReadyFuture(app.getTapQueries(namespace))
+
+  def setTapQueries(namespace: NamespaceId, newTapQueries: Vector[TapQuery]): Future[Unit] =
+    graph.requiredGraphIsReadyFuture(app.setTapQueries(namespace, newTapQueries))
+
   def deleteSQOutput(
     name: String,
     outputName: String,
@@ -501,6 +712,9 @@ trait QuineApiMethods
     configOf: ApiToIngest.OfApiMethod[V2IngestConfiguration, Conf],
   ): Future[Either[ErrC, (ApiIngest.IngestStreamInfoWithName, Warnings)]] = {
     val ingestConfig = configOf(ingestStreamConfig)
+    // Behind a load balancer a request without an explicit position resolves to whichever
+    // member served it; resolve once so the response reports where the ingest actually ran.
+    val resolvedMemberIdx = memberIdx.orElse(defaultTargetMemberIdx)
 
     def asBadRequest(errors: Seq[String]): ErrC =
       Coproduct[ErrC](BadRequest.ofErrorStrings(errors.toList))
@@ -523,13 +737,13 @@ trait QuineApiMethods
             settings = ingestConfig,
             intoNamespace = ns,
             timeout = timeout,
-            memberIdx = memberIdx.getOrElse(thisMemberIdx),
+            memberIdx = resolvedMemberIdx,
           )
           .map(_.leftMap(asBadRequest))
           .map(_.map(_ => QuineValueIngestQuery.getQueryWarnings(ingestConfig.query, ingestConfig.parameter))),
       )
       stream <- EitherT.fromOptionF(
-        ingestStreamStatus(ingestStreamName, ns, memberIdx),
+        ingestStreamStatus(ingestStreamName, ns, resolvedMemberIdx),
         asServerError("Ingest was not found after creation"),
       )
     } yield (stream, warnings)
@@ -541,51 +755,59 @@ trait QuineApiMethods
     ingestName: String,
     namespaceId: NamespaceId,
     memberIdx: Option[Int],
-  ): Future[Option[ApiIngest.IngestStreamInfoWithName]] =
+  ): Future[Option[ApiIngest.IngestStreamInfoWithName]] = {
+    val resolvedMemberIdx = memberIdx.orElse(defaultTargetMemberIdx)
     app
-      .removeV2IngestStream(ingestName, namespaceId, memberIdx.getOrElse(thisMemberIdx))
+      .removeV2IngestStream(ingestName, namespaceId, resolvedMemberIdx)
       .map { maybeIngest =>
-        maybeIngest.map(IngestToApi.apply)
+        maybeIngest.map(IngestToApi.apply(_, resolvedMemberIdx))
       }(ExecutionContext.parasitic)
+  }
 
   def pauseIngestStream(
     ingestName: String,
     namespaceId: NamespaceId,
     memberIdx: Option[Int],
-  ): Future[Either[BadRequest, Option[ApiIngest.IngestStreamInfoWithName]]] =
+  ): Future[Either[BadRequest, Option[ApiIngest.IngestStreamInfoWithName]]] = {
+    val resolvedMemberIdx = memberIdx.orElse(defaultTargetMemberIdx)
     app
-      .pauseV2IngestStream(ingestName, namespaceId, memberIdx.getOrElse(thisMemberIdx))
+      .pauseV2IngestStream(ingestName, namespaceId, resolvedMemberIdx)
       .map {
         case None => Right(None)
         case Some(ingest) =>
-          Right(Some(IngestToApi(ingest)))
+          Right(Some(IngestToApi(ingest, resolvedMemberIdx)))
       }(ExecutionContext.parasitic)
       .recover(mkPauseOperationError("pause"))(ExecutionContext.parasitic)
+  }
 
   def unpauseIngestStream(
     ingestName: String,
     namespaceId: NamespaceId,
     memberIdx: Option[Int],
-  ): Future[Either[BadRequest, Option[ApiIngest.IngestStreamInfoWithName]]] =
+  ): Future[Either[BadRequest, Option[ApiIngest.IngestStreamInfoWithName]]] = {
+    val resolvedMemberIdx = memberIdx.orElse(defaultTargetMemberIdx)
     app
-      .unpauseV2IngestStream(ingestName, namespaceId, memberIdx.getOrElse(thisMemberIdx))
+      .unpauseV2IngestStream(ingestName, namespaceId, resolvedMemberIdx)
       .map {
         case None => Right(None)
         case Some(ingest) =>
-          Right(Some(IngestToApi(ingest)))
+          Right(Some(IngestToApi(ingest, resolvedMemberIdx)))
       }(ExecutionContext.parasitic)
       .recover(mkPauseOperationError("resume"))(ExecutionContext.parasitic)
+  }
 
   def ingestStreamStatus(
     ingestName: String,
     namespaceId: NamespaceId,
     memberIdx: Option[Int],
-  ): Future[Option[ApiIngest.IngestStreamInfoWithName]] =
-    graph.requiredGraphIsReadyFuture {
-      app
-        .getV2IngestStream(ingestName, namespaceId, memberIdx.getOrElse(thisMemberIdx))
-        .map(maybeIngestInfo => maybeIngestInfo.map(IngestToApi.apply))(graph.nodeDispatcherEC)
-    }
+  ): Future[Option[ApiIngest.IngestStreamInfoWithName]] = {
+    val resolvedMemberIdx = memberIdx.orElse(defaultTargetMemberIdx)
+    app
+      .getV2IngestStream(ingestName, namespaceId, resolvedMemberIdx)
+      .map(maybeIngestInfo => maybeIngestInfo.map(IngestToApi.apply(_, resolvedMemberIdx)))(
+        graph.nodeDispatcherEC,
+      )
+  }
 
   def listIngestStreams(
     namespaceId: NamespaceId,
@@ -594,14 +816,18 @@ trait QuineApiMethods
     if (!graph.getNamespaces.contains(namespaceId))
       Future.successful(Left(NotFound(s"Graph ${namespaceId.name} not found")))
     else
-      graph.requiredGraphIsReadyFuture {
-        app
-          .getV2IngestStreams(namespaceId, memberIdx.getOrElse(thisMemberIdx))
-          .map(ingestMap =>
-            Right(ingestMap.map { case (name, ingest) =>
-              IngestToApi.apply(ingest.withName(name))
-            }.toSeq),
-          )(ExecutionContext.parasitic)
-      }
+      app
+        .getV2IngestStreams(namespaceId, memberIdx)
+        .map(streams =>
+          // Default order: by ingest name, then member position. Same-named ingests on different
+          // members are independent today (there are no managed cluster ingests yet), but ordering
+          // by name keeps them adjacent, matching how users tend to reason about them.
+          // Deterministic behind a load balancer.
+          Right(
+            streams
+              .sortBy { case (idx, name, _) => (name, idx.getOrElse(Int.MaxValue)) }
+              .map { case (idx, name, ingest) => IngestToApi.apply(ingest.withName(name), idx) },
+          ): Either[NotFound, Seq[ApiIngest.IngestStreamInfoWithName]],
+        )(ExecutionContext.parasitic)
 
 }

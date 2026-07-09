@@ -15,6 +15,7 @@ object Dependencies {
   val d3V = "7.9.0"
   val coreuiIconsV = "3.0.1"
   val fontsourceInterV = "5.2.8"
+  val fontsourceJetBrainsMonoV = "5.2.8"
   val caffeineV = "3.2.4"
   val cassandraClientV = "4.19.2"
   val catsV = "2.13.0"
@@ -75,6 +76,9 @@ object Dependencies {
   val protobufCommonV = "2.14.2"
   val pureconfigV = "0.17.10"
   val antlr4RuntimeV = "4.13.2"
+  // Code-completion candidate collection on ANTLR parser ATNs; its ANTLR version must stay
+  // in lockstep with antlr4RuntimeV (antlr4-c3-java 1.2.0 is built against ANTLR 4.13.2).
+  val antlr4C3V = "1.2.0"
   val lsp4jV = "0.24.0"
   val guavaV = "33.3.0-jre"
   val memeid4sV = "0.8.0"
@@ -105,6 +109,27 @@ object Dependencies {
   val circeGenericExtrasV = "0.14.4"
   val circeOpticsV = "0.15.1"
   val webjarsLocatorV = "0.52"
+
+  // === Frontend Build Tooling ===
+  // Overrides scalajs-bundler 0.21.1's default of webpack 5.24.3. Webpack ≥5.75.0 is required to
+  // correctly bundle packages that use ES2022 class static initialization blocks (e.g.
+  // monaco-editor ≥0.53): earlier versions fail to rewrite imported bindings referenced inside
+  // static blocks, producing bundles that throw ReferenceError at runtime despite a green build.
+  val webpackV = "5.107.2"
+
+  // === Query Editor (Monaco) ===
+  // The @thatdot/query-editor package lives in-tree at public/query-editor; its TypeScript
+  // source is compiled directly by each browser module's webpack (resolved via a ts-loader
+  // alias in common.webpack.config.js), so it is not an npm dependency.
+  // monaco-editor is that package's peer dependency and must be pinned EXACTLY, in lockstep
+  // with the version the package targets: Monaco breaks APIs in 0.x minors and the package
+  // deep-imports unstable `esm/vs/` paths. yarn 1 does not auto-install peer dependencies, so
+  // the pin lives here in each consuming browser module.
+  val monacoEditorV = "0.55.1"
+
+  // zod is a runtime dependency of the in-tree query editor package (its JSON-RPC / LSP payload
+  // parsing). Pinned in lockstep with public/query-editor/package.json, like monaco-editor above.
+  val zodV = "3.25.76"
 
   // === Vis-Network and Peer Dependencies
   val visNetworkV = "10.0.2"

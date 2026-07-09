@@ -8,10 +8,7 @@ import com.thatdot.quine.webapp.components.landing.{LandingPage, LandingService,
 /** View wiring for the landing page.
   *
   * Creates the service (capability), store (orchestration), and page (component).
-  * The store owns the command bus; components receive its writer end.
-  *
-  * OSS has no auth, so no permission set is threaded through — the page renders
-  * every card unconditionally.
+  * OSS has no auth, so no permission set is threaded through.
   */
 object LandingView {
   def apply(routes: ClientRoutes): HtmlElement = {
@@ -19,9 +16,7 @@ object LandingView {
     val store = new LandingStore(service)
     LandingPage(
       metricsSignal = store.metricsSignal,
-      ingestsSignal = store.ingestsSignal,
-      standingQueriesSignal = store.standingQueriesSignal,
-      configSignal = store.configSignal,
+      backpressureSignal = store.backpressureSignal,
       subscriptions = store.subscriptions,
     )
   }

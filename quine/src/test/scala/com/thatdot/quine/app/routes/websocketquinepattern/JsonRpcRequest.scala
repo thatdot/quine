@@ -12,6 +12,12 @@ case class Position(line: Int, character: Int)
 case class TextDocumentIdentifier(uri: String)
 case class CompletionParams(textDocument: TextDocumentIdentifier, position: Position) extends JsonRpcRequestParams
 
+case class HoverParams(textDocument: TextDocumentIdentifier, position: Position) extends JsonRpcRequestParams
+
+case class QueryKindParams(textDocument: TextDocumentIdentifier) extends JsonRpcRequestParams
+
+case class SemanticTokensParams(textDocument: TextDocumentIdentifier) extends JsonRpcRequestParams
+
 case class Capabilities()
 case class InitializeParams(capabilities: Capabilities) extends JsonRpcRequestParams
 
@@ -26,9 +32,15 @@ object JsonRpcRequest {
     case completionParams: CompletionParams => completionParams.asJson
     case initializeParams: InitializeParams => initializeParams.asJson
     case diagnosticParams: DiagnosticParams => diagnosticParams.asJson
+    case hoverParams: HoverParams => hoverParams.asJson
+    case queryKindParams: QueryKindParams => queryKindParams.asJson
+    case semanticTokensParams: SemanticTokensParams => semanticTokensParams.asJson
   }
 
   implicit val diagnosticParamsEncoder: Encoder[DiagnosticParams] = deriveEncoder
+  implicit val hoverParamsEncoder: Encoder[HoverParams] = deriveEncoder
+  implicit val queryKindParamsEncoder: Encoder[QueryKindParams] = deriveEncoder
+  implicit val semanticTokensParamsEncoder: Encoder[SemanticTokensParams] = deriveEncoder
   implicit val completionParamsEncoder: Encoder[CompletionParams] = deriveEncoder
   implicit val initializeParamsEncoder: Encoder[InitializeParams] = deriveEncoder
 

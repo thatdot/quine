@@ -706,7 +706,7 @@ object QueryPlanner {
   // ============================================================
 
   /** Connection from one node to another via edge */
-  case class ConnectionInfo(edgeLabel: Symbol, direction: Direction, tree: GraphPatternTree)
+  case class ConnectionInfo(edgeLabel: Option[Symbol], direction: Direction, tree: GraphPatternTree)
 
   /** Tree representation of graph pattern for planning */
   sealed trait GraphPatternTree
@@ -728,7 +728,10 @@ object QueryPlanner {
         case head :: tail =>
           val destBinding = nodeBinding(head.dest)
           val destLabels = head.dest.labels
-          val edgeLabel = head.edge.edgeType
+          // An untyped relationship (e.g. `-[]->`) has no edge types, so the label is None and the
+          // downstream Expand matches any edge type. A multi-type relationship keeps the first type,
+          // which preserves the prior single-Symbol behavior for this engine.
+          val edgeLabel = head.edge.edgeTypes.headOption
 
           val childTree = loop(destBinding, destLabels, tail)
           val connection = ConnectionInfo(edgeLabel, head.edge.direction, childTree)
@@ -831,7 +834,9 @@ object QueryPlanner {
   private def findPathAndReroot(
     tree: GraphPatternTree.Branch,
     newRoot: BindingId,
-    parentInfo: Option[(BindingId, Set[Symbol], Symbol, Direction)], // (parentBinding, parentLabels, edgeLabel, edgeDir)
+    parentInfo: Option[
+      (BindingId, Set[Symbol], Option[Symbol], Direction),
+    ], // (parentBinding, parentLabels, edgeLabel, edgeDir)
   ): Option[GraphPatternTree.Branch] =
     if (tree.binding == newRoot) {
       // Found the target - build new tree with this as root
@@ -1135,7 +1140,7 @@ object QueryPlanner {
           case Direction.Left => EdgeDirection.Incoming
           case Direction.Right => EdgeDirection.Outgoing
         }
-        QueryPlan.Expand(Some(conn.edgeLabel), direction, childPlan)
+        QueryPlan.Expand(conn.edgeLabel, direction, childPlan)
       }
 
       // Combine watches and expansions
@@ -1870,8 +1875,9 @@ object QueryPlanner {
         }
       }
 
-      // Create half-edges on both sides
-      val label = conn.edge.edgeType
+      // Create half-edges on both sides. A created relationship must have exactly one type, so take it
+      // from the parsed set (an empty/multi-type set would be an invalid CREATE rejected upstream).
+      val label = conn.edge.edgeTypes.head
       val (leftDir, rightDir) = conn.edge.direction match {
         case Pattern.Direction.Right => (EdgeDirection.Outgoing, EdgeDirection.Incoming)
         case Pattern.Direction.Left => (EdgeDirection.Incoming, EdgeDirection.Outgoing)

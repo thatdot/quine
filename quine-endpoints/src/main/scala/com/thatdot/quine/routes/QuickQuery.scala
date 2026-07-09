@@ -108,22 +108,4 @@ object QuickQuery {
       edgeLabel = None,
     )
   }
-
-  /** Print out the properties of the node */
-  def getProperties(queryLanguage: QueryLanguage): QuickQuery = {
-    val querySuffix = queryLanguage match {
-      case QueryLanguage.Gremlin =>
-        ".as('n').valueMap().as('properties').select('n').id().as('id').select('id','properties')"
-      case QueryLanguage.Cypher =>
-        "RETURN id(n), properties(n)"
-    }
-
-    QuickQuery(
-      name = "Local Properties",
-      querySuffix,
-      queryLanguage,
-      sort = QuerySort.Text,
-      edgeLabel = None,
-    )
-  }
 }

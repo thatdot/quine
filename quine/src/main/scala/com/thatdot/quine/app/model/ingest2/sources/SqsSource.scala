@@ -119,8 +119,8 @@ case class SqsSource(
       meter,
       message => ContentDecoder.decode(decoders, message.body().getBytes()),
       messageFolder,
-      ack,
-      () => onTermination(),
+      ackFlow = if (deleteReadMessages) Some(ack) else None,
+      terminationHook = () => onTermination(),
     ).valid
   }
 

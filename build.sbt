@@ -79,6 +79,9 @@ lazy val `quine-language`: Project = project
   .settings(
     libraryDependencies ++= Seq(
       "org.antlr" % "antlr4-runtime" % antlr4RuntimeV,
+      // CodeCompletionCore (the antlr4-c3 Java port); the antlr4 tool jar its POM declares is
+      // excluded because only the ANTLR runtime (already a direct dependency) is used.
+      "com.strumenta.antlr4-c3" % "antlr4-c3-java" % antlr4C3V exclude ("org.antlr", "antlr4"),
       "org.typelevel" %% "cats-effect" % catsEffectV,
       "org.eclipse.lsp4j" % "org.eclipse.lsp4j" % lsp4jV,
       "com.chuusai" %% "shapeless" % shapelessV,
@@ -385,8 +388,14 @@ lazy val `quine-browser`: Project = project
       "@coreui/coreui" -> coreuiV,
       "@coreui/icons" -> coreuiIconsV,
       "@fontsource-variable/inter" -> fontsourceInterV,
+      "@fontsource-variable/jetbrains-mono" -> fontsourceJetBrainsMonoV,
       "@popperjs/core" -> "2.11.8",
       "d3" -> d3V,
+      // monaco-editor: peer dependency of the in-tree query editor package
+      // (public/query-editor), exact-pinned in lockstep — see Dependencies.scala.
+      "monaco-editor" -> monacoEditorV,
+      // zod: runtime dependency of the in-tree query editor package — see Dependencies.scala.
+      "zod" -> zodV,
     ),
     // Force patched dependency versions via yarn resolutions (see NPM Override Versions in Dependencies.scala)
     Compile / additionalNpmConfig := Map(
@@ -400,6 +409,7 @@ lazy val `quine-browser`: Project = project
         "js-cookie" -> str(jsCookieV),
       ),
     ),
+    webpack / version := webpackV,
     webpackNodeArgs := nodeLegacySslIfAvailable,
     // Scalajs-bundler 0.21.1 updates to webpack 5 but doesn't inform webpack that the scalajs-based file it emits is
     // an entrypoint -- therefore webpack emits an error saying effectively, "no entrypoint" that we must ignore.

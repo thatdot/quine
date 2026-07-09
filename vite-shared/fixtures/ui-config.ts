@@ -64,17 +64,4 @@ export const quickQueries = [
       },
     },
   },
-  {
-    predicate: {
-      propertyKeys: [],
-      knownValues: {},
-    },
-    quickQuery: {
-      name: "Local Properties",
-      querySuffix: "RETURN id(n), properties(n)",
-      sort: {
-        type: "Text",
-      },
-    },
-  },
 ];

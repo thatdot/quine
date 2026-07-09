@@ -10,14 +10,17 @@ trait V2MetricsRoutes extends AdministrationRoutes with V2QuerySchemas {
 
   protected val v2MetricsTag: Tag = Tag("Administration V2")
 
-  val metricsV2: Endpoint[Unit, Either[ClientErrors, Option[MetricsReport]]] =
+  // The optional position selects a single cluster member (sent as the `Quine-Member-Idx` header,
+  // matching the server). When omitted, the request resolves to the member serving it.
+  val metricsV2: Endpoint[Option[String], Either[ClientErrors, Option[MetricsReport]]] =
     endpoint(
-      request = get(v2System / "metrics"),
+      request = get(v2System / "metrics", headers = optRequestHeader("Quine-Member-Idx")),
       response = customBadRequest("runtime error accessing metrics")
         .orElse(wheneverFound(ok(jsonResponse[MetricsReport]))),
     )
 
-  val shardSizesV2: Endpoint[Unit, Either[ClientErrors, Option[Map[Int, ShardInMemoryLimit]]]] = {
+  // Same optional position selection as `metricsV2`.
+  val shardSizesV2: Endpoint[Option[String], Either[ClientErrors, Option[Map[Int, ShardInMemoryLimit]]]] = {
 
     implicit val shardMapLimitSchema: JsonSchema[Map[Int, ShardInMemoryLimit]] = mapJsonSchema[ShardInMemoryLimit]
       .xmap[Map[Int, ShardInMemoryLimit]](
@@ -29,6 +32,7 @@ trait V2MetricsRoutes extends AdministrationRoutes with V2QuerySchemas {
     endpoint(
       request = get(
         url = v2System / "shardSizeLimits",
+        headers = optRequestHeader("Quine-Member-Idx"),
       ),
       response = customBadRequest("runtime error updating shard sizes")
         .orElse(wheneverFound(ok(jsonResponse[Map[Int, ShardInMemoryLimit]]))),

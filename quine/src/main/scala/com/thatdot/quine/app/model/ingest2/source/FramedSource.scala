@@ -44,11 +44,11 @@ trait FramedSource {
 
   def foldableFrame: DataFoldableFrom[SrcFrame]
 
-  /** Note that the ack flow is only applied at the usage site (e.g. directly
-    * in quine/novelty). This is because the ack is applied after the platform
-    * specific use (e.g. insert into graph).
+  /** Acknowledgment flow, if this source requires one (e.g. Kafka offset commit, Kinesis checkpoint).
+    * When `None`, no ack step is performed.
+    * When `Some(flow)`, the flow is applied after graph writes and instrumented for backpressure.
     */
-  val ack: Flow[SrcFrame, Done, NotUsed] = Flow.fromFunction(_ => Done)
+  val ack: Option[Flow[SrcFrame, Done, NotUsed]] = None
 
   /** Close any associated resources after terminating the stream. */
   def onTermination(): Unit = ()
@@ -79,7 +79,7 @@ trait FramedSource {
           decoded -> envelope
         }
 
-      override def ack: Flow[SrcFrame, Done, NotUsed] = FramedSource.this.ack
+      override val ack: Option[Flow[SrcFrame, Done, NotUsed]] = FramedSource.this.ack
 
       override def onTermination(): Unit = FramedSource.this.onTermination()
 
@@ -98,7 +98,7 @@ object FramedSource {
     ingestMeter: IngestMeter,
     decodeFrame: Frame => Array[Byte],
     foldableFrameInp: DataFoldableFrom[Frame],
-    ackFlow: Flow[Frame, Done, NotUsed] = Flow.fromFunction[Frame, Done](_ => Done),
+    ackFlow: Option[Flow[Frame, Done, NotUsed]] = None,
     terminationHook: () => Unit = () => (),
   ): FramedSource =
     new FramedSource {

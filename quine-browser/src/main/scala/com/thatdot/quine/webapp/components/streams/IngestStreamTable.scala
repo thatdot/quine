@@ -3,7 +3,7 @@ package com.thatdot.quine.webapp.components.streams
 import com.raquo.laminar.api.L._
 import io.circe.Json
 
-import com.thatdot.quine.webapp.components.landing.V2ApiTypes.V2IngestInfo
+import com.thatdot.quine.webapp.v2api.V2ApiTypes.V2IngestInfo
 
 /** Renders the ingest streams table with status badges and action icons.
   *
@@ -12,19 +12,29 @@ import com.thatdot.quine.webapp.components.landing.V2ApiTypes.V2IngestInfo
   */
 object IngestStreamTable {
 
+  /** The action observers carry the resource's `(name, memberIdx)` so the parent can
+    * route the mutation to the cluster member running that ingest.
+    *
+    * @param memberIndices known cluster member positions; empty on single-node deployments
+    */
   def apply(
     entriesSignal: Signal[List[(String, Json)]],
-    onDelete: Observer[String],
-    onPause: Observer[String],
-    onResume: Observer[String],
+    memberIndices: Signal[Seq[Int]],
+    onDelete: Observer[(String, Option[Int])],
+    onPause: Observer[(String, Option[Int])],
+    onResume: Observer[(String, Option[Int])],
   ): HtmlElement = {
     val expandedVar: Var[Set[String]] = Var(Set.empty)
+    // Gate the Member column on actual cluster membership — the same gate as the
+    // create-form's position selector, so the column and selector appear together.
+    val showMember: Signal[Boolean] = memberIndices.map(_.nonEmpty).distinct
     table(
       cls := "table table-hover mb-0",
       thead(
         tr(
           th(styleAttr := "width: 40px"),
           th("Name"),
+          child <-- showMember.map(if (_) th("Member") else emptyNode),
           th("Type"),
           th("Status"),
           th("Ingested"),
@@ -35,27 +45,32 @@ object IngestStreamTable {
       ),
       children <-- entriesSignal
         .splitSeq(_._1) { strictSignal =>
-          val name = strictSignal.key
+          val key = strictSignal.key
           val jsonSignal = strictSignal.map(_._2)
-          val isExpanded = expandedVar.signal.map(_.contains(name)).distinct
+          val isExpanded = expandedVar.signal.map(_.contains(key)).distinct
           tbody(
-            renderRow(name, jsonSignal, isExpanded, expandedVar, onDelete, onPause, onResume),
-            renderExpandedRow(jsonSignal, isExpanded),
+            renderRow(key, jsonSignal, showMember, isExpanded, expandedVar, onDelete, onPause, onResume),
+            renderExpandedRow(jsonSignal, showMember, isExpanded),
           )
         }
         .distinct,
     )
   }
 
+  private def memberIdxOf(json: Json): Option[Int] = json.hcursor.get[Int]("memberIdx").toOption
+
   private def renderRow(
-    name: String,
+    key: String,
     jsonSignal: Signal[Json],
+    showMember: Signal[Boolean],
     isExpanded: Signal[Boolean],
     expandedVar: Var[Set[String]],
-    onDelete: Observer[String],
-    onPause: Observer[String],
-    onResume: Observer[String],
+    onDelete: Observer[(String, Option[Int])],
+    onPause: Observer[(String, Option[Int])],
+    onResume: Observer[(String, Option[Int])],
   ): HtmlElement = {
+    val nameSignal = jsonSignal.map(_.hcursor.get[String]("name").getOrElse("unknown"))
+    val memberSignal = jsonSignal.map(memberIdxOf)
     val statusSignal = jsonSignal.map { json =>
       json.hcursor.get[String]("status").toOption.map(V2IngestInfo.humanizeStatus).getOrElse("Unknown")
     }.distinct
@@ -81,11 +96,12 @@ object IngestStreamTable {
             if (exp) i(cls := "cil-chevron-bottom") else i(cls := "cil-chevron-right")
           },
           onClick --> { _ =>
-            expandedVar.update(exp => if (exp.contains(name)) exp - name else exp + name)
+            expandedVar.update(exp => if (exp.contains(key)) exp - key else exp + key)
           },
         ),
       ),
-      td(name),
+      td(child.text <-- nameSignal),
+      child <-- showMember.map(if (_) td(child.text <-- memberSignal.map(_.fold("—")(_.toString))) else emptyNode),
       td(
         child <-- sourceTypeSignal.map { st =>
           span(
@@ -132,7 +148,8 @@ object IngestStreamTable {
       // Actions cell
       td(
         cls := "text-nowrap",
-        child <-- statusSignal.map { status =>
+        child <-- statusSignal.combineWith(nameSignal, memberSignal).map { case (status, name, memberIdx) =>
+          val target = (name, memberIdx)
           val isRunning = status == "Running"
           val isResumable = Set("Paused", "Restored").contains(status)
           val isFailed = status == "Failed"
@@ -142,7 +159,7 @@ object IngestStreamTable {
                 cls := "btn btn-sm btn-ghost-danger",
                 title := "Delete",
                 i(cls := "cil-trash"),
-                onClick --> { _ => onDelete.onNext(name) },
+                onClick --> { _ => onDelete.onNext(target) },
               ),
             )
           else
@@ -152,20 +169,20 @@ object IngestStreamTable {
                 title := "Resume",
                 disabled := !isResumable,
                 i(cls := "cil-media-play"),
-                onClick --> { _ => onResume.onNext(name) },
+                onClick --> { _ => onResume.onNext(target) },
               ),
               button(
                 cls := "btn btn-sm btn-ghost-warning me-1",
                 title := "Pause",
                 disabled := !isRunning,
                 i(cls := "cil-media-pause"),
-                onClick --> { _ => onPause.onNext(name) },
+                onClick --> { _ => onPause.onNext(target) },
               ),
               button(
                 cls := "btn btn-sm btn-ghost-danger",
                 title := "Delete",
                 i(cls := "cil-trash"),
-                onClick --> { _ => onDelete.onNext(name) },
+                onClick --> { _ => onDelete.onNext(target) },
               ),
             )
         },
@@ -183,13 +200,14 @@ object IngestStreamTable {
 
   private def renderExpandedRow(
     jsonSignal: Signal[Json],
+    showMember: Signal[Boolean],
     isExpanded: Signal[Boolean],
   ): HtmlElement =
     tr(
       cls := "bg-body-tertiary",
       display <-- isExpanded.map(if (_) "table-row" else "none"),
       td(
-        colSpan := 8,
+        colSpan <-- showMember.map(if (_) 9 else 8),
         div(
           cls := "ms-4 py-2",
           strong("Configuration"),

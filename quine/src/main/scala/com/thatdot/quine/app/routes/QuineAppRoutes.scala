@@ -64,12 +64,14 @@ class QuineAppRoutes(
   implicit val system: ActorSystem = graph.system
 
   val currentConfig = config.loadedConfigJson
-  private val webSocketQuinePatternServer = new WebSocketQuinePatternServer(system)
+  protected val webSocketQuinePatternServer = new WebSocketQuinePatternServer(system)
 
   val version = BuildInfo.version
   val gremlin: GremlinQueryRunner = GremlinQueryRunner(graph)(timeout)
 
   protected def bundlePrefix: String = "quine-browser-bundle"
+
+  protected def webJarName: String = "quine"
 
   override def hostIndex(qid: QuineId): Int = 0
 
@@ -85,7 +87,7 @@ class QuineAppRoutes(
       }
     } ~
     Directives
-      .path("dashboard" | "explorer" | "streams" | "metrics" | "docs" | "v1docs") {
+      .path("dashboard" | "explorer-settings" | "explorer" | "streams" | "metrics" | "docs" | "v1docs") {
         getHtmlWithInjectedBundleName("web/quine-ui.html", "quine-browser-bundle.js", hashedBundleName)
       }
       .withNoCache ~
@@ -152,13 +154,12 @@ class QuineAppRoutes(
   /** Rest API route */
   lazy val apiRoute: Route = {
 
-    val enableLanguageServerRoute: Boolean = sys.props.get("ls.enabled").flatMap(_.toBooleanOption).getOrElse(false)
-
     val v1Routes = warnFirstV1Use {
       namespacesUnsupportedRoute ~
       queryUiRoutes ~
       queryProtocolWS ~
-      (if (enableLanguageServerRoute) webSocketQuinePatternServer.languageServerWebsocketRoute else reject) ~
+      (if (QuinePatternSettings.isEnabled) webSocketQuinePatternServer.languageServerWebsocketRoute
+       else reject) ~
       queryUiConfigurationRoutes ~
       debugRoutes ~
       algorithmRoutes ~

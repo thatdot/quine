@@ -7,7 +7,9 @@ import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.openapi.{OpenApiParser, ParsedSpec, UiHintsSource}
+import com.thatdot.quine.webapp.queryui.WiretapStore
 import com.thatdot.quine.webapp.util.Pot
+import com.thatdot.quine.webapp.v2api.SystemStatusApi
 import com.thatdot.quine.webapp.{AuthEvents, QuineUiOptions}
 
 /** Top-level page component for the Streams UI.
@@ -16,24 +18,44 @@ import com.thatdot.quine.webapp.{AuthEvents, QuineUiOptions}
   */
 object StreamsPage {
 
-  def apply(options: QuineUiOptions): HtmlElement = {
+  /** @param clusterStatusEnabled fetch the cluster member list and pass it down to the "create
+    *   ingest at a position" selector. Only useful when the server exposes
+    *   `/api/v2/system/status` (multi-node Enterprise deployments).
+    */
+  def apply(
+    options: QuineUiOptions,
+    wiretapStore: WiretapStore,
+    clusterStatusEnabled: Boolean = false,
+  ): HtmlElement = {
     val specState = Var[Pot[ParsedSpec]](Pot.Empty)
+    // Cluster member positions, for the "create ingest at a position" selector. Empty
+    // when the status endpoint is absent (single node) or reports no members.
+    val memberIndices = Var[Seq[Int]](Seq.empty)
 
     val specUrl = options.documentationV2Url
+    val serverUrl = options.serverUrl.getOrElse("")
+    // Empty string means "same origin" (mirrors ClientRoutes.baseUrlOpt)
+    val baseUrlOpt = options.serverUrl.toOption.filter(_.nonEmpty)
+    // QuinePattern feature flag, threaded down to the embedded Cypher editors so they connect to
+    // the language server only when it exists (mirrors the nav-bar query bar's gating).
+    val qpEnabled = options.qpEnabled.getOrElse(false)
+    // Editor-connection config threaded to the embedded Cypher editors (see EmbeddedEditorConfig).
+    val editorConfig = EmbeddedEditorConfig(qpEnabled, baseUrlOpt)
 
     div(
-      cls := "container-fluid px-3 py-3",
+      cls := "container-fluid px-3",
       onMountCallback { _ =>
         specState.set(Pot.Pending)
         fetchAndParse(specUrl).foreach {
           case Right(spec) => specState.set(Pot.Ready(spec))
           case Left(err) => specState.set(Pot.Failed(err))
         }
+        if (clusterStatusEnabled) SystemStatusApi.memberIndices(baseUrlOpt).foreach(memberIndices.set)
       },
-      // Header
       div(
-        cls := "d-flex justify-content-between align-items-center mb-3",
-        h2(cls := "mb-0", "Streams"),
+        cls := "d-flex align-items-center",
+        height := "var(--cui-sidebar-header-height, 4rem)",
+        h5(cls := "mb-0", "Streams"),
       ),
       // Content
       child <-- specState.signal.map {
@@ -48,11 +70,11 @@ object StreamsPage {
           div(cls := "alert alert-danger", msg)
 
         case Pot.Ready(spec) =>
-          val client = StreamsApiClient(spec, options.serverUrl.getOrElse(""))
+          val client = StreamsApiClient(spec, serverUrl)
           div(
-            IngestStreamPanel(client),
+            IngestStreamPanel(client, memberIndices.signal, editorConfig),
             div(cls := "mt-4"),
-            StandingQueryPanel(client),
+            StandingQueryPanel(client, wiretapStore, editorConfig),
           )
 
         case _ => emptyNode

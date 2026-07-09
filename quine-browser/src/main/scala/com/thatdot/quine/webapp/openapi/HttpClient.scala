@@ -31,6 +31,7 @@ object HttpClient {
     pathParams: Map[String, String] = Map.empty,
     queryParams: Map[String, String] = Map.empty,
     body: Option[Json] = None,
+    headers: Map[String, String] = Map.empty,
     baseUrl: String,
   )(implicit ec: ExecutionContext): Future[Either[String, Json]] = {
     val resolvedPath = pathParams.foldLeft(path) { case (p, (k, v)) =>
@@ -49,6 +50,7 @@ object HttpClient {
     val reqHeaders = new dom.Headers()
     reqHeaders.set("Accept", "application/json")
     body.foreach(_ => reqHeaders.set("Content-Type", "application/json"))
+    headers.foreach { case (k, v) => reqHeaders.set(k, v) }
 
     val httpMethod = method.toUpperCase.asInstanceOf[dom.HttpMethod]
     val init = new dom.RequestInit {
@@ -106,6 +108,7 @@ object HttpClient {
     pathParams: Map[String, String] = Map.empty,
     queryParams: Map[String, String] = Map.empty,
     body: Option[Json] = None,
+    headers: Map[String, String] = Map.empty,
     baseUrl: String,
   )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
     execute(
@@ -114,6 +117,7 @@ object HttpClient {
       pathParams = pathParams,
       queryParams = queryParams,
       body = body,
+      headers = headers,
       baseUrl = baseUrl,
     )
 

@@ -5,7 +5,6 @@ import io.circe.Json
 
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.AnySchema
-import com.thatdot.quine.v2api.routes.V2QuerySort.{Node, Text}
 
 final case class V2UiNodePredicate(
   propertyKeys: Vector[String],
@@ -14,37 +13,54 @@ final case class V2UiNodePredicate(
     Json,
   ],
   dbLabel: Option[String],
-)
+) {
+  def matches(node: UiNode[String]): Boolean = {
+    def hasRightLabel = dbLabel.forall(_ == node.label)
+    def hasRightKeys = propertyKeys.forall(node.properties.contains)
+    def hasRightValues = knownValues.forall { case (k, v) =>
+      node.properties.get(k).fold(false)(nodeV => v == nodeV)
+    }
+    hasRightLabel && hasRightKeys && hasRightValues
+  }
+}
+
+object V2UiNodePredicate {
+  val every: V2UiNodePredicate = V2UiNodePredicate(Vector.empty, Map.empty, None)
+}
+
 sealed abstract class V2QuerySort
 object V2QuerySort {
   case object Node extends V2QuerySort
   case object Text extends V2QuerySort
 }
-final case class V2QuickQuery(name: String, querySuffix: String, sort: V2QuerySort, edgeLabel: Option[String])
-final case class V2UiNodeQuickQuery(predicate: V2UiNodePredicate, quickQuery: V2QuickQuery)
 
-trait V2QueryUiConfigurationRoutesConverters {
-  def convertToV1UiNodeQuickQuery(v2: Vector[V2UiNodeQuickQuery]): Vector[UiNodeQuickQuery] =
-    v2.map(v1NodeQuickQuery =>
-      UiNodeQuickQuery(
-        predicate = UiNodePredicate(
-          propertyKeys = v1NodeQuickQuery.predicate.propertyKeys,
-          knownValues = v1NodeQuickQuery.predicate.knownValues,
-          dbLabel = v1NodeQuickQuery.predicate.dbLabel,
-        ),
-        quickQuery = QuickQuery(
-          name = v1NodeQuickQuery.quickQuery.name,
-          querySuffix = v1NodeQuickQuery.quickQuery.querySuffix,
-          queryLanguage = QueryLanguage.Cypher,
-          sort = v1NodeQuickQuery.quickQuery.sort match {
-            case Node => QuerySort.Node
-            case Text => QuerySort.Text
-          },
-          edgeLabel = v1NodeQuickQuery.quickQuery.edgeLabel,
-        ),
-      ),
-    )
+final case class V2QuickQuery(name: String, querySuffix: String, sort: V2QuerySort, edgeLabel: Option[String]) {
+  def fullQuery(startingIds: Seq[String]): String = {
+    val simpleNumberId = startingIds.forall(_ matches "-?\\d+")
+    val idOrStrIds = startingIds
+      .map(id => if (simpleNumberId) id else ujson.Str(id).toString)
+      .mkString(", ")
+    if (startingIds.length == 1)
+      s"MATCH (n) WHERE ${if (simpleNumberId) "id" else "strId"}(n) = $idOrStrIds $querySuffix"
+    else
+      s"UNWIND [$idOrStrIds] AS nId MATCH (n) WHERE ${if (simpleNumberId) "id" else "strId"}(n) = nId $querySuffix"
+  }
 }
+
+object V2QuickQuery {
+  val defaults: Vector[V2UiNodeQuickQuery] = Vector(
+    V2UiNodeQuickQuery(
+      V2UiNodePredicate.every,
+      V2QuickQuery("Adjacent Nodes", "MATCH (n)--(m) RETURN DISTINCT m", V2QuerySort.Node, None),
+    ),
+    V2UiNodeQuickQuery(
+      V2UiNodePredicate.every,
+      V2QuickQuery("Refresh", "RETURN n", V2QuerySort.Node, None),
+    ),
+  )
+}
+
+final case class V2UiNodeQuickQuery(predicate: V2UiNodePredicate, quickQuery: V2QuickQuery)
 
 trait V2QueryUiConfigurationRoutesSchemas extends AnySchema with JsonSchemas {
   implicit lazy val v2JsonSchema: JsonSchema[Json] = anySchema(None)
@@ -59,7 +75,6 @@ trait V2QueryUiConfigurationRoutesSchemas extends AnySchema with JsonSchemas {
 trait V2QueryUiConfigurationRoutes
     extends QueryUiConfigurationSchemas
     with V2QueryUiConfigurationRoutesSchemas
-    with V2QueryUiConfigurationRoutesConverters
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with exts.QuineEndpoints {
 
@@ -102,7 +117,7 @@ trait V2QueryUiConfigurationRoutes
         url = v2SampleQueries,
         entity = jsonOrYamlRequestWithExample[Vector[SampleQuery]](SampleQuery.defaults),
       ),
-      response = ok(jsonResponse[Unit]),
+      response = noContent(),
       docs = EndpointDocs()
         .withSummary(Some("Replace Sample Queries V2"))
         .withDescription(
@@ -139,7 +154,7 @@ trait V2QueryUiConfigurationRoutes
         url = v2NodeAppearances,
         entity = jsonOrYamlRequestWithExample[Vector[UiNodeAppearance]](UiNodeAppearance.defaults),
       ),
-      response = ok(jsonResponse[Unit]),
+      response = noContent(),
       docs = EndpointDocs()
         .withSummary(Some("Replace Node Appearances V2"))
         .withDescription(
@@ -150,26 +165,21 @@ trait V2QueryUiConfigurationRoutes
         .withTags(List(v2QueryUiTag)),
     )
 
-  final val queryUiQuickQueriesV2: Endpoint[Unit, Vector[UiNodeQuickQuery]] =
+  final val queryUiQuickQueriesV2: Endpoint[Unit, Vector[V2UiNodeQuickQuery]] =
     endpoint(
       request = get(
         url = v2QuickQueries,
       ),
-      response = ok(jsonResponse[Vector[V2UiNodeQuickQuery]])
-        .xmap[Vector[UiNodeQuickQuery]](convertToV1UiNodeQuickQuery)(_ =>
-          throw new UnsupportedOperationException(
-            "Client-endpoint only, not needed",
-          ),
-        ),
+      response = ok(jsonResponse[Vector[V2UiNodeQuickQuery]]),
     )
 
-  final val updateQueryUiQuickQueriesV2: Endpoint[Vector[UiNodeQuickQuery], Unit] =
+  final val updateQueryUiQuickQueriesV2: Endpoint[Vector[V2UiNodeQuickQuery], Unit] =
     endpoint(
       request = put(
         url = v2QuickQueries,
-        entity = jsonOrYamlRequestWithExample[Vector[UiNodeQuickQuery]](UiNodeQuickQuery.defaults),
+        entity = jsonOrYamlRequestWithExample[Vector[V2UiNodeQuickQuery]](V2QuickQuery.defaults),
       ),
-      response = ok(jsonResponse[Unit]),
+      response = noContent(),
       docs = EndpointDocs()
         .withSummary(Some("Replace Quick Queries V2"))
         .withDescription(Some("""Quick queries are queries that appear when right-clicking
@@ -178,4 +188,5 @@ trait V2QueryUiConfigurationRoutes
             |""".stripMargin))
         .withTags(List(v2QueryUiTag)),
     )
+
 }

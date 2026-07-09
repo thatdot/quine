@@ -1,5 +1,6 @@
 package com.thatdot.quine.util
 
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic._
 
 import scala.concurrent.{Future, Promise}
@@ -70,16 +71,34 @@ class SharedValve(val name: String) {
     }
   }
 
+  /** Rolling window of closure timestamps for observability.
+    * Each entry is a `System.nanoTime()` when the valve transitioned from open to closed.
+    */
+  private val closureTimestamps = new ConcurrentLinkedQueue[Long]()
+  private val closureWindowNanos = 60L * 1_000_000_000L // 1 minute
+
+  /** Number of times the valve has transitioned from open to closed in the last 60 seconds. */
+  def recentClosureCount: Int = {
+    val cutoff = System.nanoTime() - closureWindowNanos
+    // Evict old entries from the head (they're in chronological order)
+    while (!closureTimestamps.isEmpty && closureTimestamps.peek() < cutoff)
+      closureTimestamps.poll()
+    closureTimestamps.size()
+  }
+
   /** Close the valve once
     *
     * @note this must only be called after the valve has been opened at least once!
     */
   def close(): Unit = {
-    state.updateAndGet { (s: SharedValve.ValveState) =>
+    val newState = state.updateAndGet { (s: SharedValve.ValveState) =>
       val newClosedCount = s.closedCount + 1
       val newCompletion = if (newClosedCount == 1) Promise[Unit]() else s.completion
       new SharedValve.ValveState(newClosedCount, newCompletion)
     }
+    // Record the transition timestamp if this close brought us from open (0) to closed (1)
+    if (newState.closedCount == 1)
+      closureTimestamps.add(System.nanoTime())
     ()
   }
 

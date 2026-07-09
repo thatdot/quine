@@ -9,28 +9,24 @@ final class PinTracker(visualization: GraphVisualization) {
 
   val pinned: Signal[Set[String]] = pinnedVar.signal
 
-  def isPinned(nodeId: String): Boolean = pinnedVar.now().contains(nodeId)
+  def current: Set[String] = pinnedVar.now()
 
-  def pin(nodeIds: Iterable[String]): Unit = {
-    val current = pinnedVar.now()
-    val toAdd = nodeIds.filterNot(current.contains)
-    if (toAdd.nonEmpty) pinnedVar.update(_ ++ toAdd)
-    nodeIds.foreach(visualization.pinNode)
-  }
+  def isPinned(nodeId: String): Boolean = pinnedVar.now().contains(nodeId)
 
   def beginDrag(nodeIds: Iterable[String]): Unit =
     nodeIds.filter(isPinned).foreach(visualization.unfixForDrag)
 
-  def unpinWithFlash(nodeIds: Iterable[String]): Unit = {
-    val current = pinnedVar.now()
-    val toRemove = nodeIds.filter(current.contains)
-    if (toRemove.nonEmpty) {
-      pinnedVar.update(_ -- toRemove)
-      toRemove.foreach(visualization.unpinNodeWithFlash)
-    }
+  def pin(nodeIds: Iterable[String]): Unit = {
+    nodeIds.foreach(visualization.pinNode)
+    pinnedVar.update(_ ++ nodeIds)
   }
 
-  /** Bulk-set pin state (e.g., history replay). Bypasses visualization sync. */
+  def unpinWithFlash(nodeIds: Iterable[String]): Unit = {
+    nodeIds.foreach(visualization.unpinNodeWithFlash)
+    pinnedVar.update(_ -- nodeIds)
+  }
+
+  /** Bulk-set pin state (e.g., snapshot restore). Bypasses visualization sync. */
   def resetStateOnly(pinned: Set[String]): Unit = pinnedVar.set(pinned)
 
   def removeNodes(nodeIds: Iterable[String]): Unit =

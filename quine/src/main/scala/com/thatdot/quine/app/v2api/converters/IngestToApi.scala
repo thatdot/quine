@@ -507,12 +507,16 @@ object IngestToApi {
     case Ingest.IngestStreamStatus.Restored => Api.IngestStreamStatus.Restored
   }
 
-  def apply(info: Ingest.IngestStreamInfoWithName): Api.IngestStreamInfoWithName =
+  def apply(
+    info: Ingest.IngestStreamInfoWithName,
+    memberIdx: Option[Int] = None,
+  ): Api.IngestStreamInfoWithName =
     Api.IngestStreamInfoWithName(
       name = ResourceName.unsafeFromString(info.name),
       status = apply(info.status),
       message = info.message,
       settings = apply(info.settings),
       stats = apply(info.stats),
+      memberIdx = memberIdx,
     )
 }

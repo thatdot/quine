@@ -24,6 +24,9 @@ object SchemaFormRenderer {
     * @param spec       the full parsed spec (for $ref resolution)
     * @param path       the JSON path for this field within the form state
     * @param stateVar   the root form state
+    * @param editorConfig the embedded-editor connection config, forwarded to each embedded Cypher
+    *                   editor ([[EmbeddedQueryEditor]]); threaded through every recursive call
+    *                   because query fields can appear at any nesting depth
     * @param depth      current recursion depth (to prevent infinite loops)
     * @param isRequired whether this field is required by its parent. Drives two things:
     *                   - Primitive renderers show a red asterisk on required labels and
@@ -39,6 +42,7 @@ object SchemaFormRenderer {
     spec: ParsedSpec,
     path: List[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     depth: Int = 0,
     isRequired: Boolean = false,
     // Human-facing label override for this field, supplied by the parent object's
@@ -60,7 +64,17 @@ object SchemaFormRenderer {
       // The resolved node carries its originating schema name (populated by the
       // parser and preserved through resolveRef / copy), so UI hints lookup works
       // regardless of whether a ref was followed or the caller already resolved.
-      renderResolved(resolved, spec, path, stateVar, depth, isRequired, resolved.schemaName, labelOverride)
+      renderResolved(
+        resolved,
+        spec,
+        path,
+        stateVar,
+        editorConfig,
+        depth,
+        isRequired,
+        resolved.schemaName,
+        labelOverride,
+      )
     }
 
   private def renderResolved(
@@ -68,6 +82,7 @@ object SchemaFormRenderer {
     spec: ParsedSpec,
     path: List[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     depth: Int,
     isRequired: Boolean,
     schemaName: Option[String],
@@ -75,25 +90,25 @@ object SchemaFormRenderer {
   ): HtmlElement = {
     def obj =
       if (node.properties.forall(_.isEmpty)) div() // no fields to render
-      else if (isRequired) renderObject(node, spec, path, stateVar, depth, schemaName)
-      else renderOptionalObject(node, spec, path, stateVar, depth, schemaName, labelOverride)
+      else if (isRequired) renderObject(node, spec, path, stateVar, editorConfig, depth, schemaName)
+      else renderOptionalObject(node, spec, path, stateVar, editorConfig, depth, schemaName, labelOverride)
     SchemaAnalysis.discriminatedUnion(node, spec) match {
       case Some(union) =>
-        renderOneOfWithDiscriminator(node, union, spec, path, stateVar, depth, isRequired, labelOverride)
+        renderOneOfWithDiscriminator(node, union, spec, path, stateVar, editorConfig, depth, isRequired, labelOverride)
       case None =>
         node.oneOf match {
           case Some(variants) if variants.nonEmpty =>
-            renderOneOfWithoutDiscriminator(node, variants, spec, path, stateVar, depth)
+            renderOneOfWithoutDiscriminator(node, variants, spec, path, stateVar, editorConfig, depth)
           case _ =>
             node.typ match {
               case Some("object") => obj
-              case Some("array") => renderArray(node, spec, path, stateVar, depth)
+              case Some("array") => renderArray(node, spec, path, stateVar, editorConfig, depth)
               case Some("string") if node.`enum`.exists(_.nonEmpty) => renderEnum(node, path, stateVar, isRequired)
-              case Some("string") => renderString(node, path, stateVar, isRequired)
+              case Some("string") => renderString(node, path, stateVar, editorConfig, isRequired)
               case Some("integer") | Some("number") => renderNumber(node, path, stateVar, isRequired)
               case Some("boolean") => renderBoolean(node, path, stateVar, isRequired)
               case _ if node.properties.exists(_.nonEmpty) => obj
-              case _ => renderString(node, path, stateVar, isRequired) // fallback
+              case _ => renderString(node, path, stateVar, editorConfig, isRequired) // fallback
             }
         }
     }
@@ -113,6 +128,7 @@ object SchemaFormRenderer {
     spec: ParsedSpec,
     path: List[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     depth: Int,
     schemaName: Option[String],
     labelOverride: Option[String],
@@ -160,7 +176,7 @@ object SchemaFormRenderer {
         if (enabled)
           div(
             cls := "mt-2 ps-3 border-start border-secondary-subtle",
-            renderObject(node, spec, path, stateVar, depth, schemaName),
+            renderObject(node, spec, path, stateVar, editorConfig, depth, schemaName),
           )
         else emptyNode
       },
@@ -183,6 +199,7 @@ object SchemaFormRenderer {
     node: SchemaNode,
     path: List[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     isRequired: Boolean,
   ): HtmlElement = {
     val currentValue = stateVar.signal.map(json => SchemaFormState.getAt(json, path).flatMap(_.asString).getOrElse(""))
@@ -200,7 +217,7 @@ object SchemaFormRenderer {
 
     div(
       cls := "mb-2",
-      if (isQuery) renderCollapsibleTextarea(node, path, currentValue, stateVar, isRequired)
+      if (isQuery) renderCollapsibleTextarea(node, path, currentValue, stateVar, editorConfig, isRequired)
       else
         div(
           renderLabel(node, path, isRequired),
@@ -228,6 +245,7 @@ object SchemaFormRenderer {
     path: List[String],
     currentValue: Signal[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     isRequired: Boolean,
   ): HtmlElement = {
     val expanded = Var(isRequired)
@@ -253,22 +271,22 @@ object SchemaFormRenderer {
           case _ => span(display := "none")
         },
       ),
-      // Textarea — shown when expanded
+      // Monaco Cypher editor — lazily mounted on first expand and disposed on collapse.
+      // Buffer content survives across collapse because it lives in the form `Var[Json]`;
+      // required fields start expanded, so they mount once. Brings the Query bar's Cypher
+      // highlighting, diagnostics, and completions to these form fields.
       div(
-        display <-- expanded.signal.map(if (_) "block" else "none"),
         cls := "mt-1",
-        textArea(
-          cls := "form-control form-control-sm",
-          rows := 4,
-          styleAttr := "font-family: monospace; font-size: 0.8rem",
-          placeholder := node.description.getOrElse(""),
-          controlled(
-            value <-- currentValue,
-            onInput.mapToValue --> { v =>
-              stateVar.update(SchemaFormState.setAt(_, path, Json.fromString(v)))
-            },
-          ),
-        ),
+        child <-- expanded.signal.map { isExpanded =>
+          if (isExpanded)
+            EmbeddedQueryEditor(
+              currentValue,
+              v => stateVar.update(SchemaFormState.setAt(_, path, Json.fromString(v))),
+              node.description.getOrElse(""),
+              editorConfig,
+            )
+          else emptyNode
+        },
       ),
     )
   }
@@ -470,6 +488,7 @@ object SchemaFormRenderer {
     spec: ParsedSpec,
     path: List[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     depth: Int,
   ): HtmlElement =
     div(
@@ -483,6 +502,7 @@ object SchemaFormRenderer {
             spec,
             path :+ propName,
             stateVar,
+            editorConfig,
             depth + 1,
             requiredFields.contains(propName),
             labels.get(propName),
@@ -496,6 +516,7 @@ object SchemaFormRenderer {
     spec: ParsedSpec,
     path: List[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     depth: Int,
     schemaName: Option[String],
   ): HtmlElement = {
@@ -525,12 +546,12 @@ object SchemaFormRenderer {
 
     if (optional.isEmpty)
       // All fields are required — render flat
-      renderFieldList(primary, requiredFields, hints.labels, spec, path, stateVar, depth)
+      renderFieldList(primary, requiredFields, hints.labels, spec, path, stateVar, editorConfig, depth)
     else {
       // Some or all fields are optional — collapse them into "More Options"
       val advancedExpanded = Var(false)
       div(
-        renderFieldList(primary, requiredFields, hints.labels, spec, path, stateVar, depth),
+        renderFieldList(primary, requiredFields, hints.labels, spec, path, stateVar, editorConfig, depth),
         div(
           cls := "mt-3 pt-2 border-top",
           div(
@@ -542,7 +563,7 @@ object SchemaFormRenderer {
           ),
           div(
             display <-- advancedExpanded.signal.map(if (_) "block" else "none"),
-            renderFieldList(optional, requiredFields, hints.labels, spec, path, stateVar, depth),
+            renderFieldList(optional, requiredFields, hints.labels, spec, path, stateVar, editorConfig, depth),
           ),
         ),
       )
@@ -554,6 +575,7 @@ object SchemaFormRenderer {
     spec: ParsedSpec,
     path: List[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     depth: Int,
   ): HtmlElement = {
     // We intentionally avoid `splitSeq` here. Keying by positional index causes
@@ -586,9 +608,9 @@ object SchemaFormRenderer {
                   // it is what the trash icon is for. Without this, object-typed items
                   // would get wrapped in the "Include …" optional-object toggle, which is
                   // redundant with add/remove and would allow a nonsensical empty slot.
-                  render(itemSchema, spec, path :+ idx.toString, stateVar, depth + 1, isRequired = true)
+                  render(itemSchema, spec, path :+ idx.toString, stateVar, editorConfig, depth + 1, isRequired = true)
                 case None =>
-                  renderString(SchemaNode(), path :+ idx.toString, stateVar, isRequired = false)
+                  renderString(SchemaNode(), path :+ idx.toString, stateVar, editorConfig, isRequired = false)
               },
             ),
             button(
@@ -631,6 +653,7 @@ object SchemaFormRenderer {
     spec: ParsedSpec,
     path: List[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     depth: Int,
     isRequired: Boolean,
     labelOverride: Option[String],
@@ -778,7 +801,7 @@ object SchemaFormRenderer {
               // isRequired = true: the user already selected this variant (or the
               // schema offered only one), so render its fields directly without the
               // optional-object toggle.
-              render(filteredSchema, spec, path, stateVar, depth + 1, isRequired = true)
+              render(filteredSchema, spec, path, stateVar, editorConfig, depth + 1, isRequired = true)
             case None =>
               div(cls := "text-body-secondary small", "Select a type to configure")
           }
@@ -792,6 +815,7 @@ object SchemaFormRenderer {
     spec: ParsedSpec,
     path: List[String],
     stateVar: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
     depth: Int,
   ): HtmlElement = {
     val namedVariants: List[(String, SchemaNode)] = variants.zipWithIndex.map { case (v, idx) =>
@@ -830,7 +854,7 @@ object SchemaFormRenderer {
       ),
       child <-- selectedVar.signal.map { selected =>
         namedVariants.find(_._1 == selected) match {
-          case Some((_, schema)) => render(schema, spec, path, stateVar, depth + 1)
+          case Some((_, schema)) => render(schema, spec, path, stateVar, editorConfig, depth + 1)
           case None => div()
         }
       },

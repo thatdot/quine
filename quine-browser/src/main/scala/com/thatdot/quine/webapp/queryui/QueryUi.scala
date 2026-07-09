@@ -1,5 +1,6 @@
 package com.thatdot.quine.webapp.queryui
 
+import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.concurrent._
 import scala.scalajs.js
@@ -10,7 +11,6 @@ import cats.data.Validated
 import com.raquo.laminar.api.L._
 import endpoints4s.Invalid
 import io.circe.Json
-import io.circe.Printer.{noSpaces, spaces2}
 import org.scalajs.dom
 import org.scalajs.dom.{document, window}
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
@@ -19,11 +19,17 @@ import com.thatdot.api.v2.QueryWebSocketProtocol.QueryInterpreter
 import com.thatdot.quine.Util.escapeHtml
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
+import com.thatdot.quine.v2api.routes.{V2QuerySort, V2QuickQuery, V2UiNodeQuickQuery}
 import com.thatdot.quine.webapp.components.{
   ContextMenu,
   ContextMenuItem,
-  CypherResultsTable,
+  ContextMenuModel,
   Loader,
+  MenuAction,
+  MenuSection,
+  Toast,
+  ToastMessage,
+  ToastVariant,
   ToolbarButton,
   VisData,
   VisIndirectMouseEvent,
@@ -33,8 +39,6 @@ import com.thatdot.quine.webapp.queryui.{
   DownloadUtils,
   HistoryJsonSchema,
   HistoryNavigationButtons,
-  MessageBar,
-  MessageBarContent,
   NetworkLayout,
   QueryMethod,
   QueryUiEvent,
@@ -44,6 +48,22 @@ import com.thatdot.quine.webapp.queryui.{
   TopBar,
   UiQueryType,
 }
+import com.thatdot.quine.webapp.resultspanel.{
+  CanvasDoor,
+  HistoryEntry,
+  HistoryState,
+  ResultOutcome,
+  ResultsAction,
+  ResultsContent,
+  ResultsPanel,
+  ResultsStore,
+  StructuredError,
+  TapCatalogEntry,
+  TapOutput,
+}
+import com.thatdot.quine.webapp.util.Pot
+import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2Page, V2StandingQueryInfo}
+import com.thatdot.quine.webapp.v2api.{V2ApiTypes, V2Fetch, V2Paths}
 import com.thatdot.quine.webapp.{History, QueryUiOptions, Styles}
 import com.thatdot.{visnetwork => vis}
 
@@ -63,10 +83,15 @@ object QueryUi {
     initialLayout: NetworkLayout = NetworkLayout.Graph,
     edgeQueryLanguage: QueryLanguage = QueryLanguage.Cypher,
     queryMethod: QueryMethod = QueryMethod.WebSocket,
+    qpEnabled: Boolean = false,
     initialNamespace: NamespaceParameter = NamespaceParameter.defaultNamespaceParameter,
     permissions: Option[Set[String]] = None,
     namespaceSignal: Option[Signal[NamespaceParameter]] = None,
     refreshSignal: Option[EventStream[Unit]] = None,
+    queryBarTrailing: Option[HtmlElement] = None,
+    invalidatedNamespaces: Option[EventStream[NamespaceParameter]] = None,
+    wiretapStore: WiretapStore,
+    externalActiveTapQueryMetadataVar: Option[Var[Map[String, V2ApiTypes.V2TapQuery]]] = None,
   )
 
   case class State(
@@ -79,14 +104,14 @@ object QueryUi {
     foundNodesCount: Option[Int],
     foundEdgesCount: Option[Int],
     runningQueryCount: Long,
-    uiNodeQuickQueries: Vector[UiNodeQuickQuery],
+    uiNodeQuickQueries: Vector[V2UiNodeQuickQuery],
     uiNodeAppearances: Vector[UiNodeAppearance],
     atTime: Option[Long],
     namespace: NamespaceParameter,
     areSampleQueriesVisible: Boolean,
   )
 
-  private case class ContextMenuState(x: Double, y: Double, items: Seq[ContextMenuItem])
+  private case class ContextMenuState(x: Double, y: Double, model: ContextMenuModel)
 
   def apply(props: Props): HtmlElement = {
 
@@ -101,7 +126,7 @@ object QueryUi {
         foundNodesCount = None,
         foundEdgesCount = None,
         runningQueryCount = 0,
-        uiNodeQuickQueries = UiNodeQuickQuery.defaults,
+        uiNodeQuickQueries = V2QuickQuery.defaults,
         uiNodeAppearances = Vector.empty,
         atTime = props.initialAtTime,
         namespace = props.initialNamespace,
@@ -111,7 +136,84 @@ object QueryUi {
 
     // Separate Vars for state containing Laminar elements (to avoid remounting issues)
     val contextMenuVar = Var(Option.empty[ContextMenuState])
-    val bottomBarVar = Var(Option.empty[MessageBarContent])
+    val nodePopupVar = Var(Option.empty[NodePopupState])
+    // How to return from an open node-properties popup to the context menu that spawned it.
+    // Takes (x, y) so the context menu reopens where the user dragged the popup, not
+    // where the original right-click happened.
+    val nodePopupBackVar = Var(Option.empty[(Double, Double) => Unit])
+    // Re-fetch properties for the currently open popup at a given position.
+    // Set alongside nodePopupBackVar when "View Properties" opens the popup.
+    val nodePopupRefreshVar = Var(Option.empty[(Double, Double) => Unit])
+    val toastVar = Var(Option.empty[ToastMessage])
+    val resultsVar = Var(Option.empty[ResultsContent])
+    val bookmarkDraftVar: Var[Option[SampleQueryDraft]] = Var(None)
+
+    /** True while a namespace snapshot (initial-load or namespace-switch) is being applied to
+      * the canvas, driving the loading spinner. Exactly one in-flight restore owns this flag at
+      * a time: each restore sets it true before applying, then clears it in a `finally`. Stale,
+      * superseded restores (see `applySnapshot`'s `stillCurrent` guard) never touch it, so a
+      * slow restore can't clear the flag out from under a newer one still in progress.
+      */
+    val restoringVar: Var[Boolean] = Var(false)
+
+    // The shared cross-namespace WiretapStore, hoisted to app-entry. `active` is keyed by
+    // (namespace, owner) so consumers filter to whichever graph they care about.
+    val wiretapStore: WiretapStore = props.wiretapStore
+    // Per-tap-query metadata for currently-enabled tap queries, keyed by the wiretap
+    // key the settings page used to open the handler. The dispatch subscription mounted
+    // below joins this with `wiretapStore.active` so it can reach `tapQuery.query` /
+    // `tapQuery.syntheticEdges` for each live match — keeping tap-query-specific
+    // context out of the store, which only knows about handlers.
+    //
+    // Cleared on namespace change alongside `wiretapStore.closeAll(oldNs)`. The set of
+    // currently-open handlers themselves lives in `WiretapStore.active`, not here.
+    val activeTapQueryMetadataVar: Var[Map[String, V2ApiTypes.V2TapQuery]] =
+      props.externalActiveTapQueryMetadataVar.getOrElse(Var(Map.empty))
+    val resultsCollapsedVar = Var(false)
+    val resultsHistory = HistoryState.empty
+    // The Source picker's standing-query catalog (refreshed per namespace in the wiretap lifecycle).
+    val tapCatalogVar: Var[Pot[Vector[TapCatalogEntry]]] = Var(Pot.Empty)
+    // Taps open under the explorer's own owner; the facade scopes the panel's source list to it.
+    val tapSubscriptions = new PanelTapSubscriptions(
+      wiretapStore,
+      stateVar.signal.map(_.namespace.namespaceId),
+      WiretapOwner("explorer"),
+    )
+    // The results-surface store. History + collapse are owned by the host (persisted/restored to
+    // session storage above); the rest of the panel's state lives inside the store.
+    val resultsStore = new ResultsStore(
+      liveContent = resultsVar.signal,
+      subscriptions = tapSubscriptions,
+      catalog = tapCatalogVar.signal,
+      history = resultsHistory,
+      collapsedVar = resultsCollapsedVar,
+      onUseQuery = Observer[String](q => stateVar.update(_.copy(queryBarColor = None, query = q))),
+    )
+
+    val currentQueryBookmarked: Signal[Boolean] =
+      stateVar.signal.map(_.query.trim).combineWith(stateVar.signal.map(_.sampleQueries)).map { case (query, sqs) =>
+        query.nonEmpty && sqs.exists(_.query.trim == query)
+      }
+
+    def toggleBookmarkDialog(): Unit = {
+      val query = stateVar.now().query.trim
+      if (query.nonEmpty) {
+        bookmarkDraftVar.update {
+          case Some(_) => None
+          case None =>
+            val existing = stateVar.now().sampleQueries.zipWithIndex.find(_._1.query.trim == query)
+            Some(SampleQueryDraft.forQuery(query, existing))
+        }
+      }
+    }
+
+    /** Show an error in the results surface. `query` is echoed in the error block
+      * (empty for non-query errors, e.g. a bad history upload).
+      */
+    def showResultError(message: String, query: String = "", actions: Seq[ResultsAction] = Seq.empty): Unit =
+      resultsVar.set(
+        Some(ResultsContent(ResultOutcome.ErrorResult(StructuredError.parse(message, query), actions), query)),
+      )
 
     // Mutable refs
     var network: Option[vis.Network] = None
@@ -124,13 +226,361 @@ object QueryUi {
     val wsClients = mutable.Map.empty[String, Future[WebSocketQueryClient]]
     val wsClientsV2 = mutable.Map.empty[String, Future[V2WebSocketQueryClient]]
     var uiDataLoaded: Boolean = false
+    // Bumped on every setNamespace call; a snapshot-restore callback only applies its result
+    // if this still matches the version it captured, so an older in-flight switch can't
+    // clobber state after a newer switch has already started.
+    var setNamespaceVersion: Int = 0
+    // Set on history mutations; the periodic autosave only writes when this is true. Viewport
+    // pan/zoom and pin/unpin don't set it — they're flushed on namespace switch and
+    // beforeunload instead, which both save unconditionally.
+    var persistenceDirty: Boolean = false
+
+    final case class CollapsedCluster(nodeIds: Seq[String], clusterId: String, name: String)
+
+    final case class NamespaceSnapshot(
+      nodes: js.Array[vis.Node],
+      edges: js.Array[vis.Edge],
+      query: String,
+      history: History[QueryUiEvent],
+      foundNodesCount: Option[Int],
+      foundEdgesCount: Option[Int],
+      /** Historical-query timestamp from the time-travel control (`None` = live/latest), not
+        * when this snapshot was taken.
+        */
+      atTime: Option[Long],
+      pinnedNodes: Set[String],
+      viewPosition: CanvasPosition,
+      viewScale: Double,
+      layout: NetworkLayout,
+      collapsedClusters: Seq[CollapsedCluster],
+      clusterPositions: Map[String, CanvasPosition],
+      resultsEntries: Vector[HistoryEntry],
+      resultsCurrentIdx: Int,
+      resultsCollapsed: Boolean,
+    )
+
+    /** In-memory cache of full graph state (nodes, edges, history, results) for namespaces
+      * visited this tab session, keyed by `namespaceKeyFor`. Checked before `ExplorerStore`
+      * (IndexedDB) on namespace switch, so revisiting a namespace already seen this session
+      * skips the async DB read. Entries are overwritten on every switch-away, not removed on
+      * switch-into, so this holds one entry per distinct namespace ever visited — unbounded,
+      * no eviction by size or recency. Only cleared via explicit user action (remove/reset a
+      * namespace) or server-side namespace invalidation.
+      */
+    val namespaceSnapshots = mutable.Map.empty[String, NamespaceSnapshot]
+
+    /** Convert the in-memory `NamespaceSnapshot` (live `vis.Node`/`vis.Edge` JS facade objects)
+      * into the plain-data `FullSnapshot` that `ExplorerStore` can circe-encode and write to
+      * IndexedDB. The facade objects aren't directly serializable, so node/edge data is pulled
+      * out into `FullSerializableNode`/`SerializableEdge` here. See `fromFullSnapshot` for the
+      * reverse direction.
+      */
+    def toFullSnapshot(snap: NamespaceSnapshot): FullSnapshot = {
+      val nodes = snap.nodes.map { visNode =>
+        val ext = visNode.asInstanceOf[QueryUiVisNodeExt]
+        val xOpt = visNode.asInstanceOf[js.Dynamic].x.asInstanceOf[js.UndefOr[Double]].toOption
+        val yOpt = visNode.asInstanceOf[js.Dynamic].y.asInstanceOf[js.UndefOr[Double]].toOption
+        FullSerializableNode(
+          ext.uiNode.id,
+          ext.uiNode.hostIndex,
+          ext.uiNode.label,
+          ext.uiNode.properties,
+          xOpt,
+          yOpt,
+          snap.pinnedNodes.contains(ext.uiNode.id),
+        )
+      }.toSeq
+      val edges = snap.edges.map { visEdge =>
+        val ext = visEdge.asInstanceOf[QueryUiVisEdgeExt]
+        SerializableEdge(ext.uiEdge, ext.isSyntheticEdge)
+      }.toSeq
+      val clusters = collapsedClusterIds(snap.history)
+      val serializedClusters = snap.history.past.reverse.collect {
+        case QueryUiEvent.Collapse(nodeIds, clusterId, name) if clusters.contains(clusterId) =>
+          SerializableCluster(nodeIds, clusterId, name)
+      }
+      FullSnapshot(
+        nodes = nodes,
+        edges = edges,
+        history = snap.history,
+        query = snap.query,
+        foundNodesCount = snap.foundNodesCount,
+        foundEdgesCount = snap.foundEdgesCount,
+        atTime = snap.atTime,
+        pinnedNodes = snap.pinnedNodes,
+        viewPosition = (snap.viewPosition.x, snap.viewPosition.y),
+        viewScale = snap.viewScale,
+        layout = snap.layout match {
+          case NetworkLayout.Graph => "graph"
+          case NetworkLayout.Tree => "tree"
+        },
+        collapsedClusters = serializedClusters,
+        clusterPositions = snap.clusterPositions.view.mapValues(p => (p.x, p.y)).toMap,
+        resultsEntries = snap.resultsEntries.map { entry =>
+          val (wasError, errorMessage) = entry.content.outcome match {
+            case ResultOutcome.ErrorResult(err, _) => (true, Some(err.raw))
+            case _ => (false, None)
+          }
+          SerializableHistoryEntry(
+            query = entry.content.queryEcho,
+            pinned = entry.pinned,
+            timeLabel = entry.timeLabel,
+            wasError = wasError,
+            errorMessage = errorMessage,
+          )
+        },
+        resultsCurrentIdx = snap.resultsCurrentIdx,
+        resultsCollapsed = snap.resultsCollapsed,
+        savedAt = js.Date.now(),
+      )
+    }
+
+    /** Convert a `FullSnapshot` loaded from `ExplorerStore` (IndexedDB) back into a
+      * `NamespaceSnapshot`, rebuilding `vis.Node`/`vis.Edge` facade objects via
+      * `nodeUi2Vis`/`edgeUi2Vis` so it can be applied to the canvas. Reverse of
+      * `toFullSnapshot`.
+      */
+    def fromFullSnapshot(snap: FullSnapshot): NamespaceSnapshot = {
+      import js.JSConverters._
+      val visNodes = snap.nodes.map { sn =>
+        val pos = for { x <- sn.x; y <- sn.y } yield CanvasPosition(x, y)
+        val uiNode = UiNode[String](sn.id, sn.hostIndex, sn.label, sn.properties)
+        val node = nodeUi2Vis(uiNode, pos)
+        if (sn.fixed) node.asInstanceOf[js.Dynamic].fixed = true
+        node
+      }.toJSArray
+      val visEdges =
+        snap.edges.map(se => edgeUi2Vis(se.uiEdge, if (se.isSynthetic) EdgeKind.Synthetic else EdgeKind.Real)).toJSArray
+      NamespaceSnapshot(
+        nodes = visNodes,
+        edges = visEdges,
+        query = snap.query,
+        history = snap.history,
+        foundNodesCount = snap.foundNodesCount,
+        foundEdgesCount = snap.foundEdgesCount,
+        atTime = snap.atTime,
+        pinnedNodes = snap.pinnedNodes,
+        viewPosition = CanvasPosition(snap.viewPosition._1, snap.viewPosition._2),
+        viewScale = snap.viewScale,
+        layout = snap.layout match {
+          case "tree" => NetworkLayout.Tree
+          case _ => NetworkLayout.Graph
+        },
+        collapsedClusters = snap.collapsedClusters.map(c => CollapsedCluster(c.nodeIds, c.clusterId, c.name)),
+        clusterPositions = snap.clusterPositions.view.mapValues { case (x, y) => CanvasPosition(x, y) }.toMap,
+        resultsEntries = snap.resultsEntries.map { entry =>
+          val outcome =
+            if (entry.wasError) ResultOutcome.Restored(entry.errorMessage)
+            else ResultOutcome.Restored(None)
+          HistoryEntry(
+            content = ResultsContent(outcome, entry.query),
+            pinned = entry.pinned,
+            timeLabel = entry.timeLabel,
+          )
+        }.toVector,
+        resultsCurrentIdx = snap.resultsCurrentIdx,
+        resultsCollapsed = snap.resultsCollapsed,
+      )
+    }
+
+    def snapshotFor(state: State): Option[(String, NamespaceSnapshot)] = {
+      val nsKey = namespaceKeyFor(state.namespace)
+      network.map { _ =>
+        val positions = visualization.readNodePositions()
+        val nodesWithPositions = props.graphData.nodeSet.get().map { node =>
+          positions.get(node.id.toString).fold(node) { case (x, y) =>
+            js.Object
+              .assign(js.Dynamic.literal(), node, js.Dynamic.literal(x = x, y = y))
+              .asInstanceOf[vis.Node]
+          }
+        }
+        val clusterIds = collapsedClusterIds(state.history)
+        val liveClusters = state.history.past.reverse.collect {
+          case QueryUiEvent.Collapse(nodeIds, clusterId, name) if clusterIds.contains(clusterId) =>
+            CollapsedCluster(nodeIds, clusterId, name)
+        }
+        nsKey -> NamespaceSnapshot(
+          nodes = nodesWithPositions,
+          edges = props.graphData.edgeSet.get(),
+          query = state.query,
+          history = state.history,
+          foundNodesCount = state.foundNodesCount,
+          foundEdgesCount = state.foundEdgesCount,
+          atTime = state.atTime,
+          pinnedNodes = pinTracker.current,
+          viewPosition = network
+            .map { net =>
+              val p = net.getViewPosition()
+              CanvasPosition(p.x, p.y)
+            }
+            .getOrElse(CanvasPosition(0d, 0d)),
+          viewScale = network.map(_.getScale()).getOrElse(1d),
+          layout = layout,
+          collapsedClusters = liveClusters,
+          clusterPositions = readClusterPositions(state.history).view.mapValues { case (x, y) =>
+            CanvasPosition(x, y)
+          }.toMap,
+          resultsEntries = resultsHistory.entries.now(),
+          resultsCurrentIdx = resultsHistory.currentIdx.now(),
+          resultsCollapsed = resultsCollapsedVar.now(),
+        )
+      }
+    }
+
+    def snapshotCurrentNamespace(): Option[(String, NamespaceSnapshot)] =
+      snapshotFor(stateVar.now())
+
+    def persistCurrentNamespace(): Unit =
+      snapshotCurrentNamespace().foreach { case (k, v) =>
+        ExplorerStore.save(k, toFullSnapshot(v))
+      }
+
+    /** Reset the canvas and all namespace-scoped UI state to empty — nodes, edges, history,
+      * results, pins, context menu, and the query-count/pending-query trackers. Does not touch
+      * persistence (`namespaceSnapshots`/`ExplorerStore`) or the query text/namespace/atTime
+      * fields; callers that are dropping a namespace entirely handle those themselves.
+      */
+    def clearCanvas(): Unit = {
+      props.graphData.nodeSet.remove(props.graphData.nodeSet.getIds())
+      props.graphData.edgeSet.remove(props.graphData.edgeSet.getIds())
+      stateVar.update(
+        _.copy(
+          history = History.empty,
+          foundNodesCount = None,
+          foundEdgesCount = None,
+          runningQueryCount = 0,
+          pendingTextQueries = Set.empty,
+        ),
+      )
+      pinTracker.resetStateOnly(Set.empty)
+      contextMenuVar.set(None)
+      resultsVar.set(None)
+      resultsHistory.entries.set(Vector.empty)
+      resultsHistory.currentIdx.set(-1)
+      resultsCollapsedVar.set(false)
+    }
+
+    /** Apply a saved namespace view to the canvas: disable physics, re-add nodes/
+      * edges, clusters and pins, restore the results history, re-fetch properties,
+      * and finally recenter the viewport. Shared by the on-reload restore
+      * ([[afterNetworkInit]]) and the namespace-switch restore ([[setNamespace]]).
+      *
+      * @param pending by-name; the namespace snapshot lookup. `ExplorerStore.load` reads
+      *        IndexedDB asynchronously, so this yields a `Future` — `None` if no snapshot
+      *        is stored for the namespace.
+      * @param namespace the namespace these results belong to (also written to state).
+      * @param reapplyAppearancesEagerly re-derive node appearances before the async
+      *        property re-fetch. Safe on a namespace switch (config already loaded);
+      *        skipped on first load, where the appearance config may still be loading.
+      * @param stillCurrent checked once `pending` resolves and again after the two
+      *        deferred animation frames, so a restore superseded by a newer `setNamespace`
+      *        call (see its `setNamespaceVersion` guard) can never clobber state applied by
+      *        that newer switch. Every caller passes a `setNamespaceVersion`-based guard,
+      *        including the page-load restore — its IndexedDB read is async, so a user
+      *        namespace switch can race it.
+      */
+    def applySnapshot(
+      pending: => Future[Option[NamespaceSnapshot]],
+      namespace: NamespaceParameter,
+      reapplyAppearancesEagerly: Boolean,
+      stillCurrent: () => Boolean,
+    ): Unit =
+      pending.foreach { snapshotOpt =>
+        // Only take ownership of restoringVar while still current: a superseded restore that
+        // set it true here would never reach the guarded clear below, leaving the loading
+        // spinner stuck on after the newer restore already finished.
+        if (stillCurrent()) {
+          restoringVar.set(true)
+          val _ = window.requestAnimationFrame { (_: Double) =>
+            val _ = window.requestAnimationFrame { (_: Double) =>
+              // If a newer restore has since started, it now owns restoringVar — leave it
+              // alone so this stale restore can't clear it out from under the newer one.
+              if (stillCurrent())
+                try snapshotOpt.foreach { snapshot =>
+                  if (snapshot.layout != layout) {
+                    layout = snapshot.layout
+                    applyLayoutMode(layout)
+                  }
+                  if (!stateVar.now().animating)
+                    network.foreach(_.setOptions(new vis.Network.Options {
+                      override val physics = new vis.Network.Options.Physics { override val enabled = false }
+                    }))
+                  props.graphData.nodeSet.add(snapshot.nodes)
+                  props.graphData.edgeSet.add(snapshot.edges)
+                  snapshot.collapsedClusters.foreach { c =>
+                    collapseIntoCluster(c.nodeIds, c.clusterId, c.name)
+                  }
+                  network.foreach { net =>
+                    snapshot.clusterPositions.foreach { case (clusterId, CanvasPosition(x, y)) =>
+                      if (net.isCluster(clusterId)) net.moveNode(clusterId, x, y)
+                    }
+                  }
+                  pinTracker.resetStateOnly(snapshot.pinnedNodes)
+                  snapshot.pinnedNodes.foreach(visualization.pinNode)
+                  stateVar.update(
+                    _.copy(
+                      query = snapshot.query,
+                      queryBarColor = None,
+                      history = snapshot.history,
+                      animating = false,
+                      foundNodesCount = snapshot.foundNodesCount,
+                      foundEdgesCount = snapshot.foundEdgesCount,
+                      atTime = snapshot.atTime,
+                      namespace = namespace,
+                    ),
+                  )
+                  if (reapplyAppearancesEagerly) reapplyAppearances()
+                  resultsHistory.entries.set(snapshot.resultsEntries)
+                  resultsHistory.currentIdx.set(snapshot.resultsCurrentIdx)
+                  resultsCollapsedVar.set(snapshot.resultsCollapsed)
+                  rerunRestoredEntries()
+                  refetchNodeProperties(namespace, snapshot.atTime)
+                  window.requestAnimationFrame { _ =>
+                    network.foreach(
+                      _.moveTo(
+                        new vis.MoveToOptions {
+                          override val position = new vis.Position {
+                            val x = snapshot.viewPosition.x
+                            val y = snapshot.viewPosition.y
+                          }
+                          override val scale = snapshot.viewScale
+                        },
+                      ),
+                    )
+                  }
+                } finally restoringVar.set(false)
+            }
+          }
+        }
+      }
+
+    /** Cluster ids currently collapsed, per the applied (past) history events */
+    def collapsedClusterIds(history: History[QueryUiEvent]): Set[String] =
+      history.past.reverse.foldLeft(Set.empty[String]) {
+        case (acc, QueryUiEvent.Collapse(_, clusterId, _)) => acc + clusterId
+        case (acc, QueryUiEvent.Expand(_, clusterId, _)) => acc - clusterId
+        case (acc, _) => acc
+      }
+
+    /** Positions of the currently collapsed cluster nodes. These live in the vis
+      * network, not the DataSet, so [[GraphVisualization.readNodePositions]] does
+      * not see them.
+      */
+    def readClusterPositions(history: History[QueryUiEvent]): Map[String, (Double, Double)] =
+      network.fold(Map.empty[String, (Double, Double)]) { net =>
+        import js.JSConverters._
+        val ids = collapsedClusterIds(history).filter(net.isCluster(_)).toSeq
+        net
+          .getPositions(ids.map(id => id: vis.IdType).toJSArray)
+          .map { case (clusterId, pos) => clusterId -> ((pos.x, pos.y)) }
+          .toMap
+      }
 
     def selectedInterpreter: QueryInterpreter = QueryInterpreter.Cypher
 
     // --- WebSocket client management ---
 
-    def namespaceKeyFor(ns: NamespaceParameter): String =
-      if (ns == NamespaceParameter.defaultNamespaceParameter) "__default__" else ns.namespaceId
+    def namespaceKeyFor(ns: NamespaceParameter): String = ns.namespaceId
 
     def namespaceOptFor(ns: NamespaceParameter): Option[String] =
       if (ns == NamespaceParameter.defaultNamespaceParameter) None else Some(ns.namespaceId)
@@ -217,7 +667,9 @@ object QueryUi {
             props.routes
               .queryUiQuickQueries(())
               .future
-              .foreach(qqs => stateVar.update(_.copy(uiNodeQuickQueries = qqs)))
+              .foreach(qqs =>
+                stateVar.update(_.copy(uiNodeQuickQueries = qqs.map(ExplorerSettingsPage.v1ToV2QuickQuery))),
+              )
           case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 =>
             props.routes.queryUiAppearanceV2(()).future.foreach(nas => stateVar.update(_.copy(uiNodeAppearances = nas)))
             props.routes.queryUiSampleQueriesV2(()).future.foreach(sqs => stateVar.update(_.copy(sampleQueries = sqs)))
@@ -229,11 +681,29 @@ object QueryUi {
       }
     }
 
+    // --- Save helpers ---
+
+    def saveSampleQueries(sqs: Vector[SampleQuery]): Unit = {
+      stateVar.update(_.copy(sampleQueries = sqs))
+      val fut = props.queryMethod match {
+        case QueryMethod.WebSocket | QueryMethod.Restful =>
+          props.routes.updateQueryUiSampleQueries(sqs).future
+        case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 =>
+          props.routes.updateQueryUiSampleQueriesV2(sqs).future
+      }
+      fut.onComplete {
+        case Success(_) =>
+          toastVar.set(Some(ToastMessage("Sample queries saved", ToastVariant.Success)))
+        case Failure(err) =>
+          toastVar.set(Some(ToastMessage(s"Save failed: ${err.getMessage}", ToastVariant.Error)))
+      }
+    }
+
     // --- Node appearance and quick queries ---
 
-    def quickQueriesFor(node: UiNode[String]): Seq[QuickQuery] =
+    def quickQueriesFor(node: UiNode[String]): Seq[V2QuickQuery] =
       stateVar.now().uiNodeQuickQueries.collect {
-        case UiNodeQuickQuery(predicate, qq) if predicate.matches(node) => qq
+        case V2UiNodeQuickQuery(predicate, qq) if predicate.matches(node) => qq
       }
 
     def appearanceFor(node: UiNode[String]): (String, vis.NodeOptions.Icon) = {
@@ -245,6 +715,7 @@ object QueryUi {
         .getOrElse((None, None, None, None))
 
       val visIcon = new vis.NodeOptions.Icon {
+        override val face = "Ionicons"
         override val color =
           colorOpt.getOrElse[String](props.hostColors(Math.floorMod(node.hostIndex, props.hostColors.length)))
         override val code = iconOpt.getOrElse[String]("\uf3a6")
@@ -265,7 +736,7 @@ object QueryUi {
 
     // --- Conversion helpers ---
 
-    def nodeUi2Vis(node: UiNode[String], startingPosition: Option[(Double, Double)]): vis.Node = {
+    def nodeUi2Vis(node: UiNode[String], startingPosition: Option[CanvasPosition]): vis.Node = {
       val (uiLabel, iconStyle) = appearanceFor(node)
 
       new QueryUiVisNodeExt {
@@ -275,11 +746,11 @@ object QueryUi {
         override val uiNode = node
 
         override val x = startingPosition match {
-          case Some((xPos, _)) => xPos
+          case Some(pos) => pos.x
           case None => js.undefined
         }
         override val y = startingPosition match {
-          case Some((_, yPos)) => yPos
+          case Some(pos) => pos.y
           case None => js.undefined
         }
 
@@ -304,20 +775,60 @@ object QueryUi {
     def edgeId(edge: UiEdge[String]): String =
       s"${edge.from}-${edge.edgeType}->${edge.to}"
 
-    def edgeUi2Vis(edge: UiEdge[String], isSynEdge: Boolean): vis.Edge = new QueryUiVisEdgeExt {
-      override val id = edgeId(edge)
-      override val from = edge.from
-      override val to = edge.to
-      override val label = if (props.showEdgeLabels) edge.edgeType else js.undefined
-      override val arrows = if (edge.isDirected) "to" else ""
-      override val smooth = isSynEdge
-      override val uiEdge = edge
-      override val isSyntheticEdge = isSynEdge
-      override val color = if (isSynEdge) "purple" else js.undefined
-      override val dashes = if (isSynEdge) true else js.undefined
+    def edgeUi2Vis(edge: UiEdge[String], kind: EdgeKind): vis.Edge = {
+      val isSyn = EdgeKind.isSynthetic(kind)
+      new QueryUiVisEdgeExt {
+        override val id = edgeId(edge)
+        override val from = edge.from
+        override val to = edge.to
+        override val label = if (props.showEdgeLabels) edge.edgeType else js.undefined
+        override val arrows = if (edge.isDirected) "to" else ""
+        override val smooth = isSyn
+        override val uiEdge = edge
+        override val isSyntheticEdge = isSyn
+        override val color = if (isSyn) "purple" else js.undefined
+        override val dashes = if (isSyn) true else js.undefined
+      }
     }
 
     // --- History event application ---
+
+    /** Collapse the given nodes into a vis cluster. Used when applying Collapse
+      * history events and when rebuilding clusters on namespace-snapshot restore.
+      * Does not touch physics; callers decide whether a re-settle is wanted.
+      */
+    def collapseIntoCluster(nodes: Seq[String], clusterId: String, name: String): Unit = {
+      import js.JSConverters._
+      val nodeIds: Set[vis.IdType] = nodes.map(id => id: vis.IdType).toSet
+      network.foreach(_.cluster(new vis.ClusterOptions {
+        override val joinCondition =
+          Some[js.Function1[js.Any, Boolean]]((n: js.Any) => nodeIds.contains(n.asInstanceOf[vis.Node].id)).orUndefined
+
+        override val processProperties = Some[js.Function3[js.Any, js.Any, js.Any, js.Any]] {
+          (clusterOptionsAny: js.Any, childNodes: js.Any, childEdges: js.Any) =>
+            trait MutableClusterOptions extends js.Object {
+              var id: js.UndefOr[vis.IdType]
+              var label: js.UndefOr[String]
+              var title: js.UndefOr[String]
+              var collapsedNodes: js.UndefOr[js.Array[String]]
+            }
+
+            val clusterOptions = clusterOptionsAny.asInstanceOf[MutableClusterOptions]
+            clusterOptions.id = clusterId
+            clusterOptions.label = name
+            clusterOptions.collapsedNodes = nodes.toJSArray
+
+            clusterOptions
+        }.orUndefined
+
+        override val clusterNodeProperties = new vis.NodeOptions {
+          override val icon = new vis.NodeOptions.Icon {
+            override val code = "\uf413"
+            override val size = 54
+          }
+        }
+      }))
+    }
 
     implicit lazy val queryUiEvent: History.Event[QueryUiEvent] = new History.Event[QueryUiEvent] {
       import QueryUiEvent._
@@ -325,15 +836,20 @@ object QueryUi {
 
       def applyEvent(event: QueryUiEvent): Unit = event match {
         case Add(nodes, edges, updateNodes, syntheticEdges, explodeFromId) =>
-          withPhysics() {
-            val posOpt: Option[(Double, Double)] = explodeFromId.map { startingId =>
-              val bb = network.get.getBoundingBox(startingId)
-              ((bb.left + bb.right) / 2, (bb.top + bb.bottom) / 2)
+          // Skip physics when the event is update-only (no new nodes/edges) so editing a
+          // node's properties doesn't kick off a layout pass and send nodes flying around.
+          val hasNewContent = nodes.nonEmpty || edges.nonEmpty || syntheticEdges.nonEmpty
+          def body(): Unit = {
+            val posOpt: Option[CanvasPosition] = explodeFromId.flatMap { startingId =>
+              Option(props.graphData.nodeSet.get(startingId)).map { _ =>
+                val bb = network.get.getBoundingBox(startingId)
+                CanvasPosition((bb.left + bb.right) / 2, (bb.top + bb.bottom) / 2)
+              }
             }
 
             props.graphData.nodeSet.add(nodes.map(nodeUi2Vis(_, posOpt)).toJSArray)
-            props.graphData.edgeSet.add(edges.map(edgeUi2Vis(_, isSynEdge = false)).toJSArray)
-            props.graphData.edgeSet.add(syntheticEdges.map(edgeUi2Vis(_, isSynEdge = true)).toJSArray)
+            props.graphData.edgeSet.add(edges.map(edgeUi2Vis(_, EdgeKind.Real)).toJSArray)
+            props.graphData.edgeSet.add(syntheticEdges.map(edgeUi2Vis(_, EdgeKind.Synthetic)).toJSArray)
             props.graphData.nodeSet.update(updateNodes.map(nodeUi2Vis(_, None)).toJSArray)
 
             if (layout == NetworkLayout.Tree) {
@@ -344,6 +860,7 @@ object QueryUi {
               })
             }
           }
+          if (hasNewContent) withPhysics()(body()) else body()
 
         case Remove(nodes, edges, _, syntheticEdges, _) =>
           props.graphData.nodeSet.remove(nodes.map(n => n.id: vis.IdType).toJSArray)
@@ -353,37 +870,8 @@ object QueryUi {
           ()
 
         case Collapse(nodes, clusterId, name) =>
-          val nodeIds: Set[vis.IdType] = nodes.map(id => id: vis.IdType).toSet
           withPhysics() {
-            network.get.cluster(new vis.ClusterOptions {
-              override val joinCondition = Some[js.Function1[js.Any, Boolean]]((n: js.Any) =>
-                nodeIds.contains(n.asInstanceOf[vis.Node].id),
-              ).orUndefined
-
-              override val processProperties = Some[js.Function3[js.Any, js.Any, js.Any, js.Any]] {
-                (clusterOptionsAny: js.Any, childNodes: js.Any, childEdges: js.Any) =>
-                  trait MutableClusterOptions extends js.Object {
-                    var id: js.UndefOr[vis.IdType]
-                    var label: js.UndefOr[String]
-                    var title: js.UndefOr[String]
-                    var collapsedNodes: js.UndefOr[js.Array[String]]
-                  }
-
-                  val clusterOptions = clusterOptionsAny.asInstanceOf[MutableClusterOptions]
-                  clusterOptions.id = clusterId
-                  clusterOptions.label = name
-                  clusterOptions.collapsedNodes = nodes.toJSArray
-
-                  clusterOptions
-              }.orUndefined
-
-              override val clusterNodeProperties = new vis.NodeOptions {
-                override val icon = new vis.NodeOptions.Icon {
-                  override val code = "\uf413"
-                  override val size = 54
-                }
-              }
-            })
+            collapseIntoCluster(nodes, clusterId, name)
           }
 
         case Expand(_, clusterId, _) =>
@@ -392,11 +880,20 @@ object QueryUi {
           }
 
         case Checkpoint(_) =>
+
         case Layout(positions) =>
           pinTracker.resetStateOnly(positions.collect { case (id, NodePosition(_, _, true)) => id }.toSet)
           for ((nodeId, NodePosition(x, y, isFixed)) <- positions) {
-            visualization.setNodePosition(nodeId, x, y)
-            if (isFixed) visualization.pinNode(nodeId) else visualization.unpinNode(nodeId)
+            val nodeExists = props.graphData.nodeSet.get(nodeId) != null
+            val isCluster = network.exists(_.isCluster(nodeId))
+            if (nodeExists || isCluster) {
+              visualization.setNodePosition(nodeId, x, y)
+              // Pin updates write to the DataSet, which would create a phantom
+              // entry for a cluster id — clusters only get their position moved
+              if (isCluster) ()
+              else if (isFixed) visualization.pinNode(nodeId)
+              else visualization.unpinNode(nodeId)
+            }
           }
       }
 
@@ -410,6 +907,7 @@ object QueryUi {
       callback: () => Unit = () => (),
     ): Unit = {
       stateVar.update(s => update(s.history).fold(s)(h => s.copy(history = h)))
+      persistenceDirty = true
       callback()
     }
 
@@ -419,7 +917,7 @@ object QueryUi {
     def uploadHistory(files: dom.FileList): Unit = {
       val file = if (files.length != 1) {
         val msg = s"Expected one file, but got ${files.length}"
-        bottomBarVar.set(Some(MessageBarContent(pre(msg), Styles.queryResultError)))
+        showResultError(msg)
         return
       } else {
         files(0)
@@ -427,7 +925,7 @@ object QueryUi {
 
       if (file.`type` != "application/json") {
         val msg = s"Expected JSON file, but `${file.name}' has type '${file.`type`}'."
-        bottomBarVar.set(Some(MessageBarContent(pre(msg), Styles.queryResultError)))
+        showResultError(msg)
         return
       }
 
@@ -440,13 +938,22 @@ object QueryUi {
                         |
                         |Do you wish to continue?""".stripMargin
             if (window.confirm(msg)) {
+              // Replaying onto a non-empty canvas throws on the first Add whose
+              // node already exists (vis DataSet duplicate-id), aborting the
+              // replay mid-way. Start from a blank canvas like setAtTime does.
+              props.graphData.nodeSet.remove(props.graphData.nodeSet.getIds())
+              props.graphData.edgeSet.remove(props.graphData.edgeSet.getIds())
+              pinTracker.resetStateOnly(Set.empty)
               stateVar.update(_.copy(history = hist))
               hist.past.reverse.foreach(queryUiEvent.applyEvent(_))
+              // Persist only after the events are applied to the canvas, so the saved
+              // snapshot's nodes/edges match the uploaded history rather than the old graph.
+              persistCurrentNamespace()
             }
 
           case Validated.Invalid(errs) =>
             val msg = s"Malformed JSON history file:${errs.toList.mkString("\n  ", "\n  ", "")}"
-            bottomBarVar.set(Some(MessageBarContent(pre(msg), Styles.queryResultError)))
+            showResultError(msg)
         }
       }
       reader.readAsText(file)
@@ -507,10 +1014,9 @@ object QueryUi {
       )
     }
 
+    // JSON-LD output has no positions, so there is nothing to capture in history
     def downloadGraphJsonLd(): Unit =
-      networkLayout { () =>
-        DownloadUtils.downloadGraphJsonLd(props.graphData.nodeSet, props.graphData.edgeSet)
-      }
+      DownloadUtils.downloadGraphJsonLd(props.graphData.nodeSet, props.graphData.edgeSet)
 
     // --- Query logic ---
 
@@ -792,11 +1298,18 @@ object QueryUi {
 
     lazy val ObserveStandingQuery = "(?:OBSERVE|observe) [\"']?(.*)[\"']?".r
 
+    /** Submit a query and load its results into the graph (or render them in the bottom bar
+      * for text queries). The returned Future resolves once the query has finished applying
+      * its results (or fails on error). Useful for callers that need to chain follow-up work
+      * after the graph is updated, like overlaying synthetic edges.
+      */
     def submitQuery(
       uiQueryType: UiQueryType,
       queryOverride: Option[String] = None,
       namespaceOverride: Option[NamespaceParameter] = None,
-    ): Unit = {
+      parameters: Map[String, Json] = Map.empty,
+    ): Future[Unit] = {
+      loadUiData()
       val state = stateVar.now()
       val namespace = namespaceOverride.getOrElse(state.namespace)
 
@@ -808,7 +1321,7 @@ object QueryUi {
         case other =>
           other
       }
-      if (query.isBlank) return
+      if (query.isBlank) return Future.successful(())
 
       val language = guessQueryLanguage(query)
 
@@ -818,8 +1331,10 @@ object QueryUi {
             |Pending queries can be cancelled by clicking on the spinning loader in the top right.
             |""".stripMargin,
         )
-        return
+        return Future.successful(())
       }
+
+      val done = Promise[Unit]()
 
       stateVar.update(s =>
         s.copy(
@@ -829,173 +1344,300 @@ object QueryUi {
           runningQueryCount = s.runningQueryCount + 1,
         ),
       )
-      bottomBarVar.set(None)
+      resultsVar.set(None)
 
-      if (uiQueryType == UiQueryType.Text) {
+      uiQueryType match {
+        case UiQueryType.Text | UiQueryType.SideEffectsText =>
+          // SideEffectsText intentionally never populates the result panel — the query returns no
+          // rows by design (only the query-bar color flash signals completion). Plain Text renders
+          // its results in the panel as usual.
+          def updateResults(result: Either[Seq[Json], CypherQueryResult]): Unit =
+            if (uiQueryType == UiQueryType.Text) {
+              val outcome = result match {
+                case Left(values) => ResultOutcome.TextResults(values)
+                case Right(results) => ResultOutcome.Tabular(results)
+              }
+              resultsVar.set(Some(ResultsContent(outcome, query)))
+            }
 
-        def updateResults(result: Either[Seq[Json], CypherQueryResult]): Unit = {
-          val rendered: HtmlElement = result match {
-            case Left(results) =>
-              val json = Json.fromValues(results)
-              val indent = json.isObject || json.asArray.exists(_.exists(_.isObject))
-              pre(if (indent) spaces2.print(json) else noSpaces.print(json))
-            case Right(results) => CypherResultsTable(results)
-          }
-          bottomBarVar.set(Some(MessageBarContent(rendered, Styles.queryResultSuccess)))
-        }
-
-        textQuery(query, state.atTime, namespace, language, Map.empty, updateResults).onComplete {
-          case Success(outcome) =>
-            val outcomeColor = if (outcome.isEmpty) Styles.queryResultEmpty else Styles.queryResultSuccess
-            stateVar.update(s =>
-              s.copy(
-                queryBarColor = Some(outcomeColor),
-                runningQueryCount = s.runningQueryCount - 1,
-              ),
-            )
-            bottomBarVar.update(_.map {
-              case MessageBarContent(res, Styles.queryResultSuccess) => MessageBarContent(res, outcomeColor)
-              case other => other
-            })
-            window.setTimeout(
-              () => stateVar.update(_.copy(queryBarColor = None)),
-              750,
-            )
-            ()
-
-          case Failure(err) =>
-            val failureBar = MessageBarContent(pre(err.getMessage), Styles.queryResultError)
-            stateVar.update(s =>
-              s.copy(
-                queryBarColor = Some(Styles.queryResultError),
-                runningQueryCount = s.runningQueryCount - 1,
-              ),
-            )
-            bottomBarVar.set(Some(failureBar))
-        }
-
-      } else {
-
-        val nodesEdgesFut = for {
-          rawNodesOpt <- nodeQuery(query, namespace, state.atTime, language, Map.empty)
-          dedupedNodesOpt = rawNodesOpt.map { rawNodes =>
-            val dedupedIds = mutable.Set.empty[String]
-            rawNodes.filter(n => dedupedIds.add(n.id))
-          }
-
-          nodes = dedupedNodesOpt match {
-            case Some(dedupedNodes) if dedupedNodes.length > props.nodeResultSizeLimit =>
-              val limitedCount: Option[Int] = Option(
-                window.prompt(
-                  s"You are about to render ${dedupedNodes.length} nodes.\nHow many do you want to render?",
-                  dedupedNodes.length.toString,
+          textQuery(query, state.atTime, namespace, language, parameters, updateResults).onComplete {
+            case Success(outcome) =>
+              // Text: a query that returned nothing gets the distinct empty state. SideEffectsText:
+              // leave the panel unpopulated (it stays None from submit-start).
+              if (uiQueryType == UiQueryType.Text && outcome.isEmpty)
+                resultsVar.update {
+                  case Some(c) => Some(c.copy(outcome = ResultOutcome.toEmpty(c.outcome)))
+                  case None => Some(ResultsContent(ResultOutcome.EmptyResult(wasTabular = true, Nil), query))
+                }
+              // SideEffectsText flashes grey (ran cleanly, no rows by design); Text flashes grey when
+              // empty, green otherwise.
+              val outcomeColor =
+                if (uiQueryType == UiQueryType.SideEffectsText) Styles.queryResultEmpty
+                else if (outcome.isEmpty) Styles.queryResultEmpty
+                else Styles.queryResultSuccess
+              stateVar.update(s =>
+                s.copy(
+                  queryBarColor = Some(outcomeColor),
+                  runningQueryCount = s.runningQueryCount - 1,
                 ),
-              ).map(_.toInt)
-              stateVar.update(s => s.copy(foundNodesCount = limitedCount))
-              limitedCount.fold(Seq.empty[UiNode[String]])(dedupedNodes.take(_))
+              )
+              window.setTimeout(
+                () => stateVar.update(_.copy(queryBarColor = None)),
+                750,
+              )
+              done.success(())
+              ()
 
-            case Some(dedupedNodes) =>
-              stateVar.update(s => s.copy(foundNodesCount = Some(dedupedNodes.length)))
-              dedupedNodes
-
-            case None =>
-              Nil
+            case Failure(err) =>
+              showResultError(Option(err.getMessage).getOrElse(""), query)
+              stateVar.update(s =>
+                s.copy(
+                  queryBarColor = Some(Styles.queryResultError),
+                  runningQueryCount = s.runningQueryCount - 1,
+                ),
+              )
+              done.failure(err)
           }
 
-          newNodes = nodes.map(_.id).toSet
-          edgesOpt <-
-            if (newNodes.isEmpty) {
-              Future.successful(Some(Nil))
-            } else {
-              val edgeQueryStr = props.edgeQueryLanguage match {
-                case QueryLanguage.Gremlin =>
-                  """g.V(new).bothE().dedup().where(_.and(
+        case popup: UiQueryType.TextPopup =>
+          val (popupX, popupY) = (popup.x, popup.y)
+
+          def updateResults(result: Either[Seq[Json], CypherQueryResult]): Unit =
+            nodePopupVar.set(
+              Some(
+                NodePopupState(
+                  popupX,
+                  popupY,
+                  NodePropertiesPopup.parseContent(result),
+                  popup.iconCode,
+                  popup.iconColor,
+                ),
+              ),
+            )
+
+          textQuery(query, state.atTime, namespace, language, parameters, updateResults).onComplete {
+            case Success(outcome) =>
+              val outcomeColor = if (outcome.isEmpty) Styles.queryResultEmpty else Styles.queryResultSuccess
+              stateVar.update(s =>
+                s.copy(
+                  queryBarColor = Some(outcomeColor),
+                  runningQueryCount = s.runningQueryCount - 1,
+                ),
+              )
+              window.setTimeout(
+                () => stateVar.update(_.copy(queryBarColor = None)),
+                750,
+              )
+              ()
+
+            case Failure(err) =>
+              stateVar.update(s =>
+                s.copy(
+                  queryBarColor = Some(Styles.queryResultError),
+                  runningQueryCount = s.runningQueryCount - 1,
+                ),
+              )
+              nodePopupVar.set(
+                Some(
+                  NodePopupState(
+                    popupX,
+                    popupY,
+                    NodePopupContent.Fallback(pre(cls := "wrap", err.getMessage)),
+                    popup.iconCode,
+                    popup.iconColor,
+                  ),
+                ),
+              )
+          }
+
+        case UiQueryType.Node | (_: UiQueryType.NodeFromId) =>
+          val nodesEdgesFut = for {
+            rawNodesOpt <- nodeQuery(query, namespace, state.atTime, language, parameters)
+            dedupedNodesOpt = rawNodesOpt.map { rawNodes =>
+              val dedupedIds = mutable.Set.empty[String]
+              rawNodes.filter(n => dedupedIds.add(n.id))
+            }
+
+            nodes = dedupedNodesOpt match {
+              case Some(dedupedNodes) if dedupedNodes.length > props.nodeResultSizeLimit =>
+                val limitedCount: Option[Int] = Option(
+                  window.prompt(
+                    s"You are about to render ${dedupedNodes.length} nodes.\nHow many do you want to render?",
+                    dedupedNodes.length.toString,
+                  ),
+                ).map(_.toInt)
+                stateVar.update(s => s.copy(foundNodesCount = limitedCount))
+                limitedCount.fold(Seq.empty[UiNode[String]])(dedupedNodes.take(_))
+
+              case Some(dedupedNodes) =>
+                stateVar.update(s => s.copy(foundNodesCount = Some(dedupedNodes.length)))
+                dedupedNodes
+
+              case None =>
+                Nil
+            }
+
+            newNodes = nodes.map(_.id).toSet
+            edgesOpt <-
+              if (newNodes.isEmpty) {
+                Future.successful(Some(Nil))
+              } else {
+                val edgeQueryStr = props.edgeQueryLanguage match {
+                  case QueryLanguage.Gremlin =>
+                    """g.V(new).bothE().dedup().where(_.and(
                     | _.outV().strId().is(within(all)),
                     | _.inV().strId().is(within(all))))""".stripMargin
 
-                case QueryLanguage.Cypher =>
-                  """UNWIND $new AS newId
+                  case QueryLanguage.Cypher =>
+                    """UNWIND $new AS newId
                     |CALL getFilteredEdges(newId, [], [], $all) YIELD edge
                     |RETURN DISTINCT edge AS e""".stripMargin
+                }
+                val existingNodes = props.graphData.nodeSet.getIds().map(_.toString).toVector
+                val queryParameters = Map(
+                  "new" -> Json.fromValues(newNodes.map(Json.fromString)),
+                  "all" -> Json.fromValues((existingNodes ++ newNodes).map(Json.fromString)),
+                )
+                edgeQuery(edgeQueryStr, state.atTime, namespace, props.edgeQueryLanguage, queryParameters)
               }
-              val existingNodes = props.graphData.nodeSet.getIds().map(_.toString).toVector
-              val queryParameters = Map(
-                "new" -> Json.fromValues(newNodes.map(Json.fromString)),
-                "all" -> Json.fromValues((existingNodes ++ newNodes).map(Json.fromString)),
+            edges = edgesOpt match {
+              case Some(edges) =>
+                if (rawNodesOpt.nonEmpty) stateVar.update(s => s.copy(foundEdgesCount = Some(edges.length)))
+                edges
+              case None =>
+                Nil
+            }
+          } yield (nodes, edges)
+
+          nodesEdgesFut.onComplete {
+            case Success((nodes, edges)) =>
+              val (syntheticEdges, explodeFromIdOpt) = uiQueryType match {
+                case UiQueryType.NodeFromId(explodeFromId, Some(syntheticEdgeLabel)) =>
+                  nodes.map(n => UiEdge(explodeFromId, syntheticEdgeLabel, n.id)) -> Some(explodeFromId)
+                case UiQueryType.NodeFromId(explodeFromId, None) =>
+                  (Seq.empty, Some(explodeFromId))
+                case UiQueryType.Node | UiQueryType.Text | UiQueryType.SideEffectsText |
+                    UiQueryType.TextPopup(_, _, _, _) =>
+                  (Seq.empty, None)
+              }
+
+              val (newNodes, existingNodes) = nodes.partition(n => props.graphData.nodeSet.get(n.id) == null)
+              val nodesToUpdate = existingNodes.filter { (node: UiNode[String]) =>
+                val currentNode: vis.Node = props.graphData.nodeSet.get(node.id).merge
+                val currentUiNode = currentNode.asInstanceOf[QueryUiVisNodeExt].uiNode
+                node != currentUiNode
+              }
+
+              val addEvent = QueryUiEvent.Add(
+                newNodes,
+                edges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
+                nodesToUpdate,
+                syntheticEdges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
+                explodeFromIdOpt,
               )
-              edgeQuery(edgeQueryStr, state.atTime, namespace, props.edgeQueryLanguage, queryParameters)
-            }
-          edges = edgesOpt match {
-            case Some(edges) =>
-              if (rawNodesOpt.nonEmpty) stateVar.update(s => s.copy(foundEdgesCount = Some(edges.length)))
-              edges
-            case None =>
-              Nil
-          }
-        } yield (nodes, edges)
 
-        nodesEdgesFut.onComplete {
-          case Success((nodes, edges)) =>
-            val (syntheticEdges, explodeFromIdOpt) = uiQueryType match {
-              case UiQueryType.NodeFromId(explodeFromId, Some(syntheticEdgeLabel)) =>
-                nodes.map(n => UiEdge(explodeFromId, syntheticEdgeLabel, n.id)) -> Some(explodeFromId)
-              case UiQueryType.NodeFromId(explodeFromId, None) =>
-                (Seq.empty, Some(explodeFromId))
-              case UiQueryType.Node | UiQueryType.Text =>
-                (Seq.empty, None)
-            }
+              if (addEvent.nonEmpty) {
+                updateHistory(hist => Some(hist.observe(addEvent)))
+              }
+              stateVar.update(s => s.copy(runningQueryCount = s.runningQueryCount - 1))
+              done.success(())
 
-            val (newNodes, existingNodes) = nodes.partition(n => props.graphData.nodeSet.get(n.id) == null)
-            val nodesToUpdate = existingNodes.filter { (node: UiNode[String]) =>
-              val currentNode: vis.Node = props.graphData.nodeSet.get(node.id).merge
-              val currentUiNode = currentNode.asInstanceOf[QueryUiVisNodeExt].uiNode
-              node != currentUiNode
-            }
-
-            val addEvent = QueryUiEvent.Add(
-              newNodes,
-              edges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
-              nodesToUpdate,
-              syntheticEdges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
-              explodeFromIdOpt,
-            )
-
-            if (addEvent.nonEmpty) {
-              updateHistory(hist => Some(hist.observe(addEvent)))
-            }
-            stateVar.update(s => s.copy(runningQueryCount = s.runningQueryCount - 1))
-
-          case Failure(err) =>
-            val message = err.getMessage
-            val contents = Seq.newBuilder[HtmlElement]
-            contents += pre(cls := "wrap", if (message.isEmpty) "Cannot connect to server" else message)
-            if (message.startsWith("TypeMismatchError Expected type(s) Node but got value")) {
-              val failedQuery = stateVar.now().query
-              contents += button(
-                cls := "btn btn-link",
-                onClick --> { _ =>
-                  stateVar.update(_.copy(query = failedQuery))
-                  submitQuery(UiQueryType.Text, queryOverride = None, namespaceOverride = None)
-                },
-                "Run again as text query",
-              )
-            }
-            stateVar.update(s =>
-              s.copy(
-                queryBarColor = Some(Styles.queryResultError),
-                runningQueryCount = s.runningQueryCount - 1,
-              ),
-            )
-            bottomBarVar.set(
-              Some(
-                MessageBarContent(
-                  div(contents.result()),
-                  Styles.queryResultError,
+            case Failure(err) =>
+              val message = Option(err.getMessage).filter(_.nonEmpty).getOrElse("Cannot connect to server")
+              val actions =
+                if (message.startsWith("TypeMismatchError Expected type(s) Node but got value")) {
+                  val failedQuery = stateVar.now().query
+                  Seq(
+                    ResultsAction(
+                      "Run again as text query",
+                      () => {
+                        stateVar.update(_.copy(query = failedQuery))
+                        val _ = submitQuery(
+                          UiQueryType.Text,
+                          queryOverride = None,
+                          namespaceOverride = None,
+                          parameters = parameters,
+                        )
+                      },
+                    ),
+                  )
+                } else Seq.empty
+              stateVar.update(s =>
+                s.copy(
+                  queryBarColor = Some(Styles.queryResultError),
+                  runningQueryCount = s.runningQueryCount - 1,
                 ),
-              ),
+              )
+              showResultError(message, query, actions)
+              done.failure(err)
+          }
+      }
+      done.future
+    }
+
+    /** Run the tap query's Cypher to populate the graph, then overlay any configured synthetic
+      * edges by reading their endpoint IDs out of the wiretap message.
+      *
+      * For each spec, `fromNode` / `toNode` are dot-paths into the wiretap message JSON
+      * (today the only supported `nodeIdsFrom`). We chain on `submitQuery`'s completion so
+      * the synthetic edges land after the query's nodes/edges — vis-network would handle the
+      * other ordering too, but this keeps the visual transition crisp.
+      */
+    def submitQueryWithSyntheticEdges(
+      query: String,
+      message: Json,
+      syntheticEdgeSpecs: Vector[V2ApiTypes.V2SyntheticEdge],
+      parameters: Map[String, Json],
+    ): Unit = {
+      val graphFut = submitQuery(UiQueryType.Node, queryOverride = Some(query), parameters = parameters)
+      if (syntheticEdgeSpecs.nonEmpty) {
+        graphFut.foreach { _ =>
+          val edges = syntheticEdgeSpecs.flatMap { spec =>
+            spec.nodeIdsFrom match {
+              case "WIRETAP_MESSAGE" =>
+                for {
+                  fromId <- readStringAtPath(message, spec.fromNode)
+                  toId <- readStringAtPath(message, spec.toNode)
+                } yield buildEdgeWithDirection(fromId, toId, spec.label, spec.direction)
+              case _ => Seq.empty // unknown source — silently skip
+            }
+          }
+
+          if (edges.nonEmpty) {
+            val addEvent = QueryUiEvent.Add(
+              nodes = Seq.empty,
+              edges = Seq.empty,
+              updatedNodes = Seq.empty,
+              syntheticEdges = edges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
+              explodeFromId = None,
             )
+            if (addEvent.nonEmpty) updateHistory(hist => Some(hist.observe(addEvent)))
+          }
         }
       }
+    }
+
+    /** Walk a dot-separated path into a JSON value and return its string contents, if any.
+      *
+      *   readStringAtPath({"data":{"even1":"abc"}}, "data.even1") == Some("abc")
+      */
+    def readStringAtPath(json: Json, path: String): Option[String] =
+      path
+        .split('.')
+        .foldLeft(Option(json.hcursor: io.circe.ACursor)) { (cur, key) =>
+          cur.map(_.downField(key))
+        }
+        .flatMap(_.as[String].toOption)
+
+    def buildEdgeWithDirection(
+      fromId: String,
+      toId: String,
+      label: String,
+      direction: String,
+    ): UiEdge[String] = direction match {
+      case "IN" => UiEdge(toId, label, fromId, isDirected = true)
+      case "UNDIRECTED" => UiEdge(fromId, label, toId, isDirected = false)
+      case _ => UiEdge(fromId, label, toId, isDirected = true) // default OUT
     }
 
     // --- Network management ---
@@ -1040,40 +1682,52 @@ object QueryUi {
       }
     }
 
+    /** Apply the vis network options for a layout mode. Does not touch physics
+      * or the `layout` var; callers handle both. Tree mode recomputes positions
+      * deterministically, so it needs no physics; graph mode honors node x/y.
+      */
+    def applyLayoutMode(target: NetworkLayout): Unit = target match {
+      case NetworkLayout.Tree =>
+        network.foreach(
+          _.setOptions(
+            new vis.Network.Options {
+              override val layout = new vis.Network.Options.Layout {
+                override val hierarchical = jsObj(
+                  enabled = true,
+                  sortMethod = "directed",
+                  shakeTowards = "roots",
+                )
+              }
+            },
+          ),
+        )
+
+      case NetworkLayout.Graph =>
+        network.foreach { net =>
+          net.setOptions(
+            new vis.Network.Options {
+              override val layout = new vis.Network.Options.Layout {
+                override val hierarchical = false: js.Any
+              }
+            },
+          )
+
+          net.setOptions(new vis.Network.Options {
+            override val edges = new vis.EdgeOptions {
+              override val smooth = false
+              override val arrows = "to"
+            }
+          })
+        }
+    }
+
     lazy val toggleNetworkLayout: () => Unit = { () =>
       withPhysics() {
-        layout match {
-          case NetworkLayout.Graph =>
-            layout = NetworkLayout.Tree
-            network.get.setOptions(
-              new vis.Network.Options {
-                override val layout = new vis.Network.Options.Layout {
-                  override val hierarchical = jsObj(
-                    enabled = true,
-                    sortMethod = "directed",
-                    shakeTowards = "roots",
-                  )
-                }
-              },
-            )
-
-          case NetworkLayout.Tree =>
-            layout = NetworkLayout.Graph
-            network.get.setOptions(
-              new vis.Network.Options {
-                override val layout = new vis.Network.Options.Layout {
-                  override val hierarchical = false: js.Any
-                }
-              },
-            )
-
-            network.get.setOptions(new vis.Network.Options {
-              override val edges = new vis.EdgeOptions {
-                override val smooth = false
-                override val arrows = "to"
-              }
-            })
+        layout = layout match {
+          case NetworkLayout.Graph => NetworkLayout.Tree
+          case NetworkLayout.Tree => NetworkLayout.Graph
         }
+        applyLayoutMode(layout)
       }
     }
 
@@ -1124,7 +1778,7 @@ object QueryUi {
     }
 
     /** Unfix pinned nodes at drag start so vis-network allows repositioning.
-      * They're re-pinned at drag end via `NodesMoved` → `pinTracker.pin`.
+      * They're re-pinned at drag end by [[networkDragEnd]].
       */
     def networkDragStart(event: vis.ClickEvent): Unit = {
       val draggedIds = event.nodes.toSeq
@@ -1133,19 +1787,24 @@ object QueryUi {
       pinTracker.beginDrag(draggedIds)
     }
 
+    /** Dragging a node pins it in place. Pins are visual state, not history
+      * events — they persist via the namespace snapshot's `pinnedNodes`.
+      */
     def networkDragEnd(event: vis.ClickEvent): Unit = {
       val draggedIds = event.nodes.toSeq
         .map(_.asInstanceOf[String])
         .filterNot(nodeId => network.exists(_.isCluster(nodeId)))
-      if (draggedIds.nonEmpty)
-        processVisualizationEvent(GraphVisualizationEvent.NodesMoved(draggedIds))
+      pinTracker.pin(draggedIds)
+      // Pins/positions live only in the persisted snapshot, so a drag must
+      // mark it dirty or the autosave skips it until the next history event.
+      persistenceDirty = true
     }
 
     /** Shift+hold = unpin. The target set is the live selection ∪ {held node},
-      * filtered to actually-pinned nodes by `unpinWithFlash`. Also re-adds the
-      * held node to the selection: when the held node was already selected,
-      * vis-network's hold path deselects it; prepending undoes that without
-      * needing a pre-gesture snapshot (year-ago technique).
+      * filtered to actually-pinned nodes. Also re-adds the held node to the
+      * selection: when the held node was already selected, vis-network's hold
+      * path deselects it; prepending undoes that without needing a pre-gesture
+      * snapshot (year-ago technique).
       */
     def networkHold(event: vis.ClickEvent): Unit = {
       val shift = event.event.asInstanceOf[VisIndirectMouseEvent].srcEvent.shiftKey
@@ -1157,8 +1816,8 @@ object QueryUi {
       val selected = network.get.getSelectedNodes().toSeq.map(_.asInstanceOf[String])
       val unionSet = selected.toSet ++ heldOpt
       val targets = unionSet.toSeq.filterNot(id => network.exists(_.isCluster(id)))
-      if (targets.nonEmpty)
-        processVisualizationEvent(GraphVisualizationEvent.UnpinRequested(targets))
+      pinTracker.unpinWithFlash(targets.filter(pinTracker.isPinned))
+      persistenceDirty = true
       if (heldOpt.nonEmpty) {
         network.get.selectNodes(
           js.Array[vis.IdType](unionSet.toSeq.map(s => s: vis.IdType): _*),
@@ -1185,19 +1844,10 @@ object QueryUi {
       network.get.selectNodes(js.Array[vis.IdType](next.map(s => s: vis.IdType): _*))
     }
 
-    def processVisualizationEvent(event: GraphVisualizationEvent): Unit = event match {
-      case GraphVisualizationEvent.NodesMoved(nodeIds) =>
-        pinTracker.pin(nodeIds)
-
-      case GraphVisualizationEvent.UnpinRequested(nodeIds) =>
-        pinTracker.unpinWithFlash(nodeIds)
-    }
-
-    def getContextMenuItems(nodeId: String, selectedIds: Seq[String]): Seq[ContextMenuItem] = {
-      val contextMenuItems = Seq.newBuilder[ContextMenuItem]
+    def buildContextMenu(nodeId: String, selectedIds: Seq[String], x: Double, y: Double): ContextMenuModel = {
 
       if (network.get.isCluster(nodeId)) {
-        val expandOpt = stateVar
+        val expandActions = stateVar
           .now()
           .history
           .past
@@ -1206,23 +1856,89 @@ object QueryUi {
             case _ => false
           }
           .map(queryUiEvent.invert)
+          .toVector
+          .map { expand =>
+            MenuAction(
+              name = "Expand cluster",
+              action = () => {
+                contextMenuVar.set(None)
+                updateHistory(hist => Some(hist.observe(expand)))
+              },
+            )
+          }
 
-        contextMenuItems ++= expandOpt.toList.map { expand =>
-          ContextMenuItem(
-            item = "Expand cluster",
-            title = "Expand cluster back into nodes",
+        ContextMenuModel.actionsOnly(expandActions)
+      } else {
+        val startingNodes: Seq[String] = if (selectedIds.contains(nodeId)) selectedIds else Seq(nodeId)
+        val visNode: vis.Node = props.graphData.nodeSet.get(nodeId).merge
+        val uiNode: UiNode[String] = visNode.asInstanceOf[QueryUiVisNodeExt].uiNode
+
+        val appearance = stateVar.now().uiNodeAppearances.find(_.predicate.matches(uiNode))
+        val iconCode = appearance.flatMap(_.icon).getOrElse[String]("")
+        val iconColor = appearance
+          .flatMap(_.color)
+          .getOrElse[String](props.hostColors(Math.floorMod(uiNode.hostIndex, props.hostColors.length)))
+
+        val header: Modifier[HtmlElement] = div(
+          cls := Styles.nodePropertiesEyebrowRow,
+          NodePropertiesPopup.nodeIcon(iconCode, iconColor),
+          span(cls := Styles.nodePropertiesEyebrow, "Node"),
+          span(cls := "context-menu-node-id", uiNode.id),
+        )
+
+        val actionItems = Vector.newBuilder[MenuAction]
+        if (startingNodes.size == 1) {
+          actionItems += MenuAction(
+            name = "View properties",
             action = () => {
+              // Read the context menu's current offset position (may have been
+              // dragged from the original right-click location). offsetLeft/Top
+              // are parent-relative, matching the coordinate space the popup uses.
+              val menuEl = Option(dom.document.querySelector("." + Styles.contextMenu))
+                .map(_.asInstanceOf[dom.html.Element])
+              val cx = menuEl.fold(x)(_.offsetLeft)
+              val cy = menuEl.fold(y)(_.offsetTop)
               contextMenuVar.set(None)
-              updateHistory(hist => Some(hist.observe(expand)))
+              // Remember how to return to this node's context menu from the popup's back button.
+              // The popup passes its current (posX, posY) so the menu reopens where
+              // the user dragged the popup, not where the original right-click was.
+              nodePopupBackVar.set(Some { (bx, by) =>
+                nodePopupVar.set(None)
+                contextMenuVar.set(Some(ContextMenuState(bx, by, buildContextMenu(nodeId, selectedIds, bx, by))))
+              })
+              val propertiesQuery =
+                V2QuickQuery("Get Node Details", "RETURN n", V2QuerySort.Text, None).fullQuery(startingNodes)
+              nodePopupRefreshVar.set(Some { (rx, ry) =>
+                val _ = submitQuery(
+                  UiQueryType.TextPopup(rx, ry, iconCode, iconColor),
+                  queryOverride = Some(propertiesQuery),
+                )
+              })
+              val _ = submitQuery(
+                UiQueryType.TextPopup(cx, cy, iconCode, iconColor),
+                queryOverride = Some(propertiesQuery),
+              )
             },
           )
         }
-      } else {
-        val startingNodes: Seq[String] = if (selectedIds.contains(nodeId)) selectedIds else Seq(nodeId)
+        if (selectedIds.length > 1) {
+          actionItems += MenuAction(
+            name = "Collapse selected nodes",
+            action = () => {
+              contextMenuVar.set(None)
+              Option(window.prompt("Name your cluster:")).foreach { name =>
+                updateHistory { hist =>
+                  val clusterId = "CLUSTER-" + (Random.nextInt().toLong.abs).toString
+                  val clusterEvent = QueryUiEvent.Collapse(selectedIds, clusterId, name)
+                  Some(hist.observe(clusterEvent))
+                }
+              }
+            },
+          )
+        }
+        val actionsSection = MenuSection("Actions", actionItems.result())
 
-        val visNode: vis.Node = props.graphData.nodeSet.get(nodeId).merge
-        val uiNode: UiNode[String] = visNode.asInstanceOf[QueryUiVisNodeExt].uiNode
-        val quickQueries = if (startingNodes.size == 1) {
+        val matchedQueries = if (startingNodes.size == 1) {
           quickQueriesFor(uiNode)
         } else {
           val intersectionOfPossibleQuickQueries = startingNodes.iterator
@@ -1235,71 +1951,65 @@ object QueryUi {
           quickQueriesFor(uiNode).filter(intersectionOfPossibleQuickQueries contains _)
         }
 
-        contextMenuItems ++= quickQueries
-          .map { qq: QuickQuery =>
+        val quickQuerySection = MenuSection(
+          "Quick Queries",
+          matchedQueries.toVector.map { qq =>
             val queryType = qq.sort match {
-              case QuerySort.Text => UiQueryType.Text
-              case QuerySort.Node if startingNodes.size == 1 => UiQueryType.NodeFromId(uiNode.id, qq.edgeLabel)
-              case QuerySort.Node => UiQueryType.Node
+              case V2QuerySort.Text => UiQueryType.Text
+              case V2QuerySort.Node if startingNodes.size == 1 => UiQueryType.NodeFromId(uiNode.id, qq.edgeLabel)
+              case V2QuerySort.Node => UiQueryType.Node
             }
-            ContextMenuItem(
-              item = qq.name,
-              title = qq.querySuffix,
+            MenuAction(
+              name = qq.name,
               action = () => {
                 stateVar.update(_.copy(query = qq.fullQuery(startingNodes)))
                 contextMenuVar.set(None)
-                submitQuery(queryType)
+                val _ = submitQuery(queryType)
               },
             )
-          }
-      }
-
-      if (selectedIds.length > 1) {
-        contextMenuItems += ContextMenuItem(
-          item = "Collapse selected nodes",
-          title = "Create a cluster node from selected nodes",
-          action = () => {
-            contextMenuVar.set(None)
-            Option(window.prompt("Name your cluster:")).foreach { name =>
-              updateHistory { hist =>
-                val clusterId = "CLUSTER-" + Random.nextInt().toString.take(10)
-                val clusterEvent = QueryUiEvent.Collapse(selectedIds, clusterId, name)
-                Some(hist.observe(clusterEvent))
-              }
-            }
           },
         )
-      }
 
-      contextMenuItems.result()
+        val filteredSections = Vector(actionsSection, quickQuerySection)
+          .filter(_.actions.nonEmpty)
+        ContextMenuModel(
+          header = Some(header),
+          sections = filteredSections,
+          primarySectionIndex = Some(filteredSections.indexOf(quickQuerySection)).filter(_ >= 0),
+        )
+      }
     }
 
     def networkRightClick(event: vis.ClickEvent): Unit = {
-      val contextMenuItems = network.get.getNodeAt(event.pointer.DOM).toOption match {
+      val menu = network.get.getNodeAt(event.pointer.DOM).toOption match {
         case None =>
-          Seq(
-            ContextMenuItem(
-              item = "Export SVG",
-              title = "Download the current graph as an SVG image",
-              action = () => {
-                contextMenuVar.set(None)
-                downloadSvgSnapshot()
-              },
+          ContextMenuModel.actionsOnly(
+            Vector(
+              MenuAction(
+                name = "Export SVG",
+                action = () => {
+                  contextMenuVar.set(None)
+                  downloadSvgSnapshot()
+                },
+              ),
             ),
           )
         case Some(nodeId) =>
-          getContextMenuItems(
+          buildContextMenu(
             nodeId.asInstanceOf[String],
             event.nodes.toSeq.asInstanceOf[Seq[String]],
+            event.pointer.DOM.x,
+            event.pointer.DOM.y,
           )
       }
 
+      nodePopupVar.set(None)
       contextMenuVar.set(
         Some(
           ContextMenuState(
             x = event.pointer.DOM.x,
             y = event.pointer.DOM.y,
-            items = contextMenuItems,
+            model = menu,
           ),
         ),
       )
@@ -1312,12 +2022,14 @@ object QueryUi {
         return
       }
 
-      val contextMenuItems = getContextMenuItems(clickedId, Seq.empty)
-      contextMenuItems.headOption.foreach(_.action())
+      val menu = buildContextMenu(clickedId, Seq.empty, event.pointer.DOM.x, event.pointer.DOM.y)
+      menu.firstQueryAction.foreach(_.action())
     }
 
     def networkKeyDown(event: dom.KeyboardEvent): Unit =
-      if (event.key == "Delete" || event.key == "Backspace") {
+      if (event.key == "Escape") {
+        if (contextMenuVar.now().isDefined) contextMenuVar.set(None)
+      } else if (event.key == "Delete" || event.key == "Backspace") {
         event.preventDefault()
         val selectedIds = network.get.getSelectedNodes()
         if (selectedIds.nonEmpty) {
@@ -1332,13 +2044,17 @@ object QueryUi {
         network.get.selectNodes(props.graphData.nodeSet.getIds())
       }
 
-    def networkLayout(callback: () => Unit): Unit = {
+    def currentLayoutEvent(): QueryUiEvent.Layout = {
       val coords = visualization.readNodePositions()
       val positions = coords.map { case (nodeId, (x, y)) =>
         nodeId -> QueryUiEvent.NodePosition(x, y, pinTracker.isPinned(nodeId))
       }
-      val layoutEvent = QueryUiEvent.Layout(positions)
-      updateHistory(hist => Some(hist.observe(layoutEvent)), callback)
+      // Cluster nodes are not in the DataSet, so record their positions
+      // separately or checkpoints would lose where dragged clusters sit
+      val clusterPositions = readClusterPositions(stateVar.now().history).map { case (clusterId, (x, y)) =>
+        clusterId -> QueryUiEvent.NodePosition(x, y, false)
+      }
+      QueryUiEvent.Layout(positions ++ clusterPositions)
     }
 
     def afterNetworkInit(net: vis.Network): Unit = {
@@ -1369,26 +2085,215 @@ object QueryUi {
           },
         )
       }
+
+      // Restore the current namespace's graph from IndexedDB after reload.
+      // Non-current namespaces are lazily restored via ExplorerStore.load when
+      // setNamespace switches to them; this handles the active one.
+      // Read the persisted namespace selection so we restore the correct graph
+      // immediately, avoiding a flash of the default namespace's data.
+      val persistedNs = Option(window.sessionStorage.getItem("thatdot.explorer.selectedGraph"))
+        .filter(_.nonEmpty)
+        .flatMap(NamespaceParameter(_))
+      val currentKey = persistedNs.map(namespaceKeyFor).getOrElse(namespaceKeyFor(stateVar.now().namespace))
+      val restoredNamespace = persistedNs.getOrElse(stateVar.now().namespace)
+      // Set namespace synchronously so that setNamespace (fired later from
+      // namespaceSignal when fetchNamespaces completes) sees the namespace
+      // already matches and skips, avoiding a race that clears the canvas
+      // mid-restore.
+      stateVar.update(_.copy(namespace = restoredNamespace))
+
+      // The IndexedDB read is async, so a user switching namespaces before it resolves would
+      // otherwise get this stale restore applied on top of the new namespace's canvas. Capture
+      // the current version so any setNamespace call in the interim supersedes this restore.
+      val mountVersion = setNamespaceVersion
+      applySnapshot(
+        pending = namespaceSnapshots.remove(currentKey) match {
+          case Some(snap) => Future.successful(Some(snap))
+          case None => ExplorerStore.load(currentKey).map(_.map(fromFullSnapshot))
+        },
+        namespace = restoredNamespace,
+        reapplyAppearancesEagerly = false,
+        stillCurrent = () => setNamespaceVersion == mountVersion,
+      )
+
+      ExplorerStore.purgeStale().foreach { count =>
+        if (count > 0) dom.console.log(s"[Explorer] Purged $count stale IndexedDB entries")
+      }
+    }
+
+    def rerunRestoredEntries(): Unit = {
+      val entries = resultsHistory.entries.now()
+      val state = stateVar.now()
+      entries.zipWithIndex.foreach { case (entry, idx) =>
+        entry.content.outcome match {
+          case _: ResultOutcome.Restored =>
+            val query = entry.content.queryEcho
+            val language = guessQueryLanguage(query)
+            textQuery(
+              query,
+              state.atTime,
+              state.namespace,
+              language,
+              Map.empty,
+              { result =>
+                val outcome = result match {
+                  case Left(values) => ResultOutcome.TextResults(values)
+                  case Right(results) => ResultOutcome.Tabular(results)
+                }
+                val updated = entry.copy(content = ResultsContent(outcome, query))
+                resultsHistory.entries.update(es => es.updated(idx, updated))
+              },
+            ).recover { case err: Throwable =>
+              val errorContent = ResultsContent(
+                ResultOutcome.ErrorResult(StructuredError.parse(Option(err.getMessage).getOrElse(""), query)),
+                query,
+              )
+              resultsHistory.entries.update(es => es.updated(idx, entry.copy(content = errorContent)))
+              Option.empty[Unit]
+            }
+          case _ => ()
+        }
+      }
+    }
+
+    def reapplyAppearances(): Unit =
+      props.graphData.nodeSet.get().foreach { visNode =>
+        val ext = visNode.asInstanceOf[QueryUiVisNodeExt]
+        val (uiLabel, iconStyle) = appearanceFor(ext.uiNode)
+        props.graphData.nodeSet.update(new vis.Node {
+          override val id = ext.uiNode.id
+          override val label = uiLabel
+          override val icon = iconStyle
+        })
+      }
+
+    def refetchNodeProperties(namespace: NamespaceParameter, atTime: Option[Long]): Unit = {
+      val nodeIds = props.graphData.nodeSet.getIds().map(_.toString).toVector
+      if (nodeIds.isEmpty) return
+      val idList = nodeIds.map(id => s""""$id"""").mkString("[", ",", "]")
+      val query = s"UNWIND $idList AS nId MATCH (n) WHERE strId(n) = nId RETURN n"
+      nodeQuery(query, namespace, atTime, QueryLanguage.Cypher, Map.empty).onComplete {
+        case Success(Some(freshNodes)) =>
+          import js.JSConverters._
+          props.graphData.nodeSet.update(freshNodes.map(nodeUi2Vis(_, None)).toJSArray)
+          freshNodes.foreach { fresh =>
+            val existing = props.graphData.nodeSet.get(fresh.id)
+            if (existing != null)
+              existing.asInstanceOf[js.Dynamic].uiNode = fresh.asInstanceOf[js.Any]
+          }
+          reapplyAppearances()
+        case Success(None) =>
+          dom.console.warn("[Explorer] Node property refetch returned no results")
+        case Failure(err) =>
+          dom.console.warn(s"[Explorer] Failed to refetch node properties: ${err.getMessage}")
+      }
     }
 
     // --- Checkpoint navigation ---
 
-    def stepBackToCheckpoint(name: Option[String] = None): Unit =
-      stateVar.now().history.past match {
-        case Nil =>
-        case QueryUiEvent.Checkpoint(n) :: (layout: QueryUiEvent.Layout) :: _ if name.forall(_ == n) =>
+    /** Events that don't count as a user-visible history step: checkpoint
+      * markers (applying one does nothing) and the layout events recorded
+      * alongside them at checkpoint creation. Undo/redo slide over these
+      * rather than stopping — sliding still applies them, so a layout's
+      * positions are restored in passing without ever costing a dead click.
+      */
+    def isMarker(event: QueryUiEvent): Boolean = event match {
+      case _: QueryUiEvent.Checkpoint | _: QueryUiEvent.Layout => true
+      case _ => false
+    }
+
+    /** Plain undo: slide over any markers, then invert one real event. The
+      * step count is computed from a single state read because Laminar queues
+      * Var updates issued inside an event-handler transaction: a loop that
+      * re-reads `stateVar.now()` after each update would spin forever on the
+      * stale head event.
+      */
+    def undoOne(): Unit = {
+      val past = stateVar.now().history.past
+      val steps = past.indexWhere(e => !isMarker(e)) match {
+        case -1 => past.length
+        case realEventIdx => realEventIdx + 1
+      }
+      for (_ <- 0 until steps) updateHistory(_.stepBack())
+    }
+
+    /** Plain redo, mirroring [[undoOne]] — but also consume any markers
+      * immediately after the real event. Undo slides a checkpoint's marker
+      * pair into the future ahead of the event it annotates; a redo that
+      * stopped at the real event would strand those markers at the head of
+      * the future, costing a dead click to slide back over them. With no real
+      * event ahead the whole (marker-only) future is a checkpoint: consume it
+      * all, landing on the checkpoint with its layout applied in passing.
+      */
+    def redoOne(): Unit = {
+      val future = stateVar.now().history.future
+      val steps = future.indexWhere(e => !isMarker(e)) match {
+        case -1 => future.length
+        case realEventIdx =>
+          val afterReal = realEventIdx + 1
+          afterReal + future.drop(afterReal).takeWhile(isMarker).length
+      }
+      for (_ <- 0 until steps) updateHistory(_.stepForward())
+    }
+
+    /** Walk the stream back to the nearest (or named) checkpoint marker,
+      * replaying inverses along the way. The marker stays in the past (the
+      * "present" position); the layout recorded under it at creation is then
+      * re-applied transiently so node positions match the checkpoint. With no
+      * marker found this undoes everything.
+      */
+    def stepBackToCheckpoint(name: Option[String] = None): Unit = {
+      val past = stateVar.now().history.past
+      // Unnamed = "Previous Checkpoint". Standing at a checkpoint leaves its
+      // marker pair at the head of the past; searching from index 0 would
+      // match it again and go nowhere, so skip the pair to reach the one
+      // before it. A named jump may target the head marker deliberately (the
+      // menu's "(present)" entry re-snaps positions), so it searches from 0.
+      val searchFrom = (name, past) match {
+        case (None, QueryUiEvent.Checkpoint(_) :: (_: QueryUiEvent.Layout) :: _) => 2
+        case (None, QueryUiEvent.Checkpoint(_) :: _) => 1
+        case _ => 0
+      }
+      val steps = past.indexWhere(
+        {
+          case QueryUiEvent.Checkpoint(n) => name.forall(_ == n)
+          case _ => false
+        },
+        searchFrom,
+      ) match {
+        case -1 => past.length
+        case markerIdx => markerIdx
+      }
+      for (_ <- 0 until steps) updateHistory(_.stepBack())
+      past.drop(steps) match {
+        case QueryUiEvent.Checkpoint(_) :: (layout: QueryUiEvent.Layout) :: _ =>
+          // After the queued step-backs have run, not before
           val _ = window.setTimeout(() => queryUiEvent.applyEvent(layout), 0)
-        case QueryUiEvent.Checkpoint(n) :: _ if name.forall(_ == n) =>
-        case _ => updateHistory(_.stepBack(), () => stepBackToCheckpoint(name))
+        case _ =>
       }
+    }
 
-    def stepForwardToCheckpoint(name: Option[String] = None): Unit =
-      stateVar.now().history.future match {
-        case Nil =>
-        case QueryUiEvent.Checkpoint(n) :: _ if name.forall(_ == n) => updateHistory(_.stepForward())
-        case _ => updateHistory(_.stepForward(), () => stepForwardToCheckpoint(name))
+    /** Forward mirror of [[stepBackToCheckpoint]]; consumes the marker (and
+      * the layout event preceding it, which restores the checkpoint's node
+      * positions on the way through) so the checkpoint ends at the "present"
+      * position.
+      */
+    def stepForwardToCheckpoint(name: Option[String] = None): Unit = {
+      val future = stateVar.now().history.future
+      val steps = future.indexWhere {
+        case QueryUiEvent.Checkpoint(n) => name.forall(_ == n)
+        case _ => false
+      } match {
+        case -1 => future.length
+        case markerIdx => markerIdx + 1
       }
+      for (_ <- 0 until steps) updateHistory(_.stepForward())
+    }
 
+    /** One menu entry per checkpoint marker in the stream, labeled by where
+      * it sits relative to the present; selecting one walks the timeline to
+      * it (never truncating the redo stack).
+      */
     def checkpointContextMenuItems(): Seq[ContextMenuItem] = {
       val state = stateVar.now()
       val contextItems = Seq.newBuilder[ContextMenuItem]
@@ -1396,13 +2301,11 @@ object QueryUi {
       for (event <- state.history.future.reverse)
         event match {
           case QueryUiEvent.Checkpoint(name) =>
-            val stepForward =
-              () => {
-                contextMenuVar.set(None)
-                stepForwardToCheckpoint(Some(name))
-              }
+            val stepForward = () => {
+              contextMenuVar.set(None)
+              stepForwardToCheckpoint(Some(name))
+            }
             contextItems += ContextMenuItem(div(name, em(" (future)")), name, stepForward)
-
           case _ =>
         }
 
@@ -1410,13 +2313,11 @@ object QueryUi {
         event match {
           case QueryUiEvent.Checkpoint(name) =>
             val item: HtmlElement = div(name, em(if (idx == 0) " (present)" else " (past)"))
-            val stepBack =
-              () => {
-                contextMenuVar.set(None)
-                stepBackToCheckpoint(Some(name))
-              }
+            val stepBack = () => {
+              contextMenuVar.set(None)
+              stepBackToCheckpoint(Some(name))
+            }
             contextItems += ContextMenuItem(item, name, stepBack)
-
           case _ =>
         }
 
@@ -1427,6 +2328,7 @@ object QueryUi {
       if (atTime != stateVar.now().atTime) {
         props.graphData.nodeSet.remove(props.graphData.nodeSet.getIds())
         props.graphData.edgeSet.remove(props.graphData.edgeSet.getIds())
+        ExplorerStore.remove(namespaceKeyFor(stateVar.now().namespace))
         stateVar.update(
           _.copy(
             queryBarColor = None,
@@ -1437,47 +2339,118 @@ object QueryUi {
             atTime = atTime,
           ),
         )
-        bottomBarVar.set(None)
+        resultsVar.set(None)
         contextMenuVar.set(None)
       }
 
+    /** Switch the explorer to `namespace`. No-op if already on it. Snapshots and persists the
+      * outgoing namespace (in-memory `namespaceSnapshots` and `ExplorerStore`), closes its
+      * websocket clients, then restores the target namespace from the first source that has
+      * it: the in-memory cache, then `ExplorerStore` (IndexedDB), then a fresh/empty state.
+      * Every restore path is guarded by `setNamespaceVersion` (via `stillCurrent`) so a rapid
+      * second switch can't be clobbered by a slower first one resolving late.
+      */
     def setNamespace(namespace: NamespaceParameter): Unit = {
       if (!uiDataLoaded) {
         uiDataLoaded = true
         loadUiData()
       }
-      if (namespace != stateVar.now().namespace) {
+      val previous = stateVar.now()
+      if (namespace != previous.namespace) {
         // Close websockets for the old namespace — the new namespace gets
         // its own connection lazily via getWebSocketClient/getWebSocketClientV2
-        val oldNs = stateVar.now().namespace
-        val oldKey = namespaceKeyFor(oldNs)
+        val oldKey = namespaceKeyFor(previous.namespace)
         wsClients.remove(oldKey).foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
         wsClientsV2.remove(oldKey).foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
-        // Clear graph and update state
+
+        // Clear in-flight query state so the spinner and "pending text query"
+        // guard don't leak into the target namespace
+        stateVar.update(_.copy(runningQueryCount = 0, pendingTextQueries = Set.empty))
+
+        // Snapshot the outgoing namespace's view so its tab can be restored later.
+        // Live positions are merged into the stored nodes; physics is disabled at
+        // rest, so they hold when the nodes are added back.
+        snapshotFor(previous).foreach { case (key, snap) =>
+          namespaceSnapshots(key) = snap
+          ExplorerStore.save(key, toFullSnapshot(snap))
+        }
+
+        // Clear the graph and swap in the target namespace's saved view, if any
         props.graphData.nodeSet.remove(props.graphData.nodeSet.getIds())
         props.graphData.edgeSet.remove(props.graphData.edgeSet.getIds())
-        stateVar.set(
-          stateVar
-            .now()
-            .copy(
-              query = props.initialQuery,
-              queryBarColor = None,
-              history = History.empty,
-              animating = false,
-              foundNodesCount = None,
-              foundEdgesCount = None,
-              namespace = namespace,
-            ),
-        )
-        bottomBarVar.set(None)
+        resultsVar.set(None)
         contextMenuVar.set(None)
-        // Re-run the initial query against the new namespace
-        if (props.initialQuery.nonEmpty)
-          submitQuery(
-            UiQueryType.Node,
-            queryOverride = Some(props.initialQuery),
-            namespaceOverride = Some(namespace),
-          )
+        setNamespaceVersion += 1
+        val myVersion = setNamespaceVersion
+        def stillCurrent(): Boolean = setNamespaceVersion == myVersion
+        val targetKey = namespaceKeyFor(namespace)
+
+        namespaceSnapshots.get(targetKey) match {
+          case Some(snapshot) =>
+            applySnapshot(
+              pending = Future.successful(Some(snapshot)),
+              namespace = namespace,
+              reapplyAppearancesEagerly = true,
+              stillCurrent = () => stillCurrent(),
+            )
+
+          case None =>
+            ExplorerStore.load(targetKey).recover { case _ => None }.foreach {
+              case Some(fullSnapshot) =>
+                applySnapshot(
+                  pending = Future.successful(Some(fromFullSnapshot(fullSnapshot))),
+                  namespace = namespace,
+                  reapplyAppearancesEagerly = true,
+                  stillCurrent = () => stillCurrent(),
+                )
+
+              case None =>
+                // No saved view for this namespace — set up a fresh/default state. Deferred
+                // two animation frames and version-guarded the same way applySnapshot is, so a
+                // rapid second switch can't be clobbered by this one resolving late. Only take
+                // ownership of restoringVar while still current: a superseded restore that set
+                // it true here would never reach the guarded clear below, leaving the loading
+                // spinner stuck on after the newer restore already finished.
+                if (stillCurrent()) {
+                  restoringVar.set(true)
+                  val _ = window.requestAnimationFrame { (_: Double) =>
+                    val _ = window.requestAnimationFrame { (_: Double) =>
+                      if (stillCurrent())
+                        try {
+                          if (layout != props.initialLayout) {
+                            layout = props.initialLayout
+                            applyLayoutMode(layout)
+                          }
+                          pinTracker.resetStateOnly(Set.empty)
+                          stateVar.update(
+                            _.copy(
+                              query = props.initialQuery,
+                              queryBarColor = None,
+                              history = History.empty,
+                              animating = false,
+                              foundNodesCount = None,
+                              foundEdgesCount = None,
+                              atTime = props.initialAtTime,
+                              namespace = namespace,
+                            ),
+                          )
+                          resultsHistory.entries.set(Vector.empty)
+                          resultsHistory.currentIdx.set(-1)
+                          resultsCollapsedVar.set(false)
+                          // Run the initial query the first time a namespace is opened
+                          if (props.initialQuery.nonEmpty) {
+                            val _ = submitQuery(
+                              UiQueryType.Node,
+                              queryOverride = Some(props.initialQuery),
+                              namespaceOverride = Some(namespace),
+                            )
+                          }
+                        } finally restoringVar.set(false)
+                    }
+                  }
+                }
+            }
+        }
       }
     }
 
@@ -1507,12 +2480,106 @@ object QueryUi {
 
     // --- Build the UI ---
 
-    def stepBackMany(): Unit = updateHistory(_.stepBack(), () => stepBackToCheckpoint())
-    def stepForwardMany(): Unit = updateHistory(_.stepForward(), () => stepForwardToCheckpoint())
+    // Step counts come from one state read: Var updates issued inside an
+    // event-handler transaction are queued, so a re-reading loop never
+    // observes progress (see undoOne)
     def stepBackAll(): Unit =
-      if (stateVar.now().history.canStepBackward) updateHistory(_.stepBack(), () => stepBackAll())
+      for (_ <- 0 until stateVar.now().history.past.length) updateHistory(_.stepBack())
     def stepForwardAll(): Unit =
-      if (stateVar.now().history.canStepForward) updateHistory(_.stepForward(), () => stepForwardAll())
+      for (_ <- 0 until stateVar.now().history.future.length) updateHistory(_.stepForward())
+
+    /** Hidden lifecycle host that (a) keeps the Source picker's standing-query catalog
+      * fresh, (b) tears down the shared [[WiretapStore]]'s handlers for a namespace when
+      * we leave it, and (c) runs the tap-query match dispatch subscription. Mounted
+      * unconditionally so the dispatch stays alive for the full lifetime of QueryUi;
+      * the namespace-keyed inner child handles per-namespace onMount / onUnmount work.
+      */
+    val wiretapLifecycle: HtmlElement =
+      div(
+        display := "none",
+        child <-- stateVar.signal.map(_.namespace.namespaceId).distinct.map { graphName =>
+          val canReadStandingQueries = props.permissions match {
+            case Some(perms) => perms.contains("StandingQueryRead")
+            case None => true
+          }
+          // Fetch the Source picker's standing-query catalog for this namespace. When
+          // `showPending` is false the in-place catalog is preserved during the request
+          // so the picker UI does not flicker between Ready and Pending each refresh.
+          def loadCatalog(showPending: Boolean): Unit = if (canReadStandingQueries) {
+            if (showPending) tapCatalogVar.set(Pot.Pending)
+            V2Fetch[V2Page[V2StandingQueryInfo]](V2Paths.standingQueries(graphName), props.routes.baseUrlOpt)
+              .onComplete {
+                case scala.util.Success(page) =>
+                  tapCatalogVar.set(
+                    Pot.Ready(
+                      page.items
+                        .map(sq => TapCatalogEntry(sq.name, sq.outputs.map(o => TapOutput(o.name, o.hasEnrichment))))
+                        .toVector,
+                    ),
+                  )
+                case scala.util.Failure(err) =>
+                  tapCatalogVar.set(Pot.Failed(Option(err.getMessage).getOrElse("Failed to load standing queries")))
+              }
+          }
+          div(
+            display := "none",
+            // Poll the catalog so newly created/deleted standing queries surface in the
+            // Source picker without forcing a namespace switch.
+            EventStream.periodic(intervalMs = 5000).mapTo(()) --> { _ => loadCatalog(showPending = false) },
+            onMountCallback { _ =>
+              activeTapQueryMetadataVar.set(Map.empty)
+              loadCatalog(showPending = true)
+            },
+            onUnmountCallback { _ =>
+              // Close every wiretap opened against this namespace (across owners) so a
+              // future revisit starts fresh rather than picking up stale sockets.
+              wiretapStore.closeAll(graphName)
+            },
+          )
+        },
+        // Tap query dispatch host — joins `activeTapQueryMetadataVar` (the V2TapQuery
+        // context registered by whichever UI enabled the tap query locally, keyed by
+        // tap-query name) with `wiretapStore.active`'s handlers under (currentNs,
+        // TapQueryOwner); only names present in both get a dispatch span. `splitSeq`
+        // keys those by tap-query name so each span is created once when a tap query
+        // becomes (enabled AND live) and torn down when either condition drops — without
+        // disturbing the others when the entry set changes.
+        children <-- activeTapQueryMetadataVar.signal
+          .combineWith(wiretapStore.active, stateVar.signal.map(_.namespace.namespaceId))
+          .map { case (meta, active, ns) =>
+            val tapHandlersByName: Map[String, WiretapHandler] =
+              active
+                .getOrElse((ns, TapQueryRuntime.TapQueryOwner), List.empty)
+                .map(h => h.key -> h)
+                .toMap
+            meta.iterator.flatMap { case (name, tapQuery) =>
+              tapHandlersByName.get(name).map(h => (name, tapQuery, h))
+            }.toList
+          }
+          .splitSeq(_._1) { strictSignal =>
+            val handler = strictSignal.now()._3
+            span(
+              display := "none",
+              handler.matches --> Observer[Json] { message =>
+                // Read the tap query fresh on each match rather than capturing it at span
+                // creation, so edits to the query or synthetic edges apply live: the tap-query
+                // name (and thus this span) is unchanged, so `strictSignal` carries the update.
+                val tapQuery = strictSignal.now()._2
+                // The wiretap envelope is always a JSON object (`{meta: ..., data: ...}`), so each
+                // top-level field becomes a Cypher parameter: queries reference `$data.foo`,
+                // `$meta.isPositiveMatch`, etc. Values flow via the parameter map, so no
+                //  risk of injection from the wiretap message itself.
+                val params = message.asObject.map(_.toMap).getOrElse(Map.empty[String, Json])
+                submitQueryWithSyntheticEdges(
+                  tapQuery.query,
+                  message,
+                  tapQuery.syntheticEdges,
+                  parameters = params,
+                )
+              },
+            )
+          },
+      )
 
     div(
       height := "100%",
@@ -1523,13 +2590,71 @@ object QueryUi {
       // Using signal --> (not _.updates) so we receive the current value on mount,
       // avoiding a race where fetchNamespaces completes before the subscription is active.
       props.namespaceSignal.map(_ --> { ns => setNamespace(ns) }).getOrElse(emptyMod),
+      // Drop saved view state and connections for namespaces deleted server-side,
+      // so a recreated graph with the same name starts fresh
+      props.invalidatedNamespaces
+        .map(_ --> { ns =>
+          val key = namespaceKeyFor(ns)
+          namespaceSnapshots.remove(key)
+          ExplorerStore.remove(key)
+          wsClients.remove(key).foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
+          wsClientsV2.remove(key).foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
+          // If the deleted namespace is the one currently displayed, clear its
+          // graph data so the user doesn't see stale nodes from a gone namespace
+          if (ns == stateVar.now().namespace) {
+            props.graphData.nodeSet.remove(props.graphData.nodeSet.getIds())
+            props.graphData.edgeSet.remove(props.graphData.edgeSet.getIds())
+            stateVar.update(
+              _.copy(
+                history = History.empty,
+                foundNodesCount = None,
+                foundEdgesCount = None,
+                runningQueryCount = 0,
+                pendingTextQueries = Set.empty,
+              ),
+            )
+          }
+        })
+        .getOrElse(emptyMod),
       // Subscribe to external refresh trigger (if provided) — re-runs initial query
       props.refreshSignal
         .map(_ --> { _ =>
-          if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node, queryOverride = Some(props.initialQuery))
+          loadUiData()
+          if (props.initialQuery.nonEmpty) {
+            val _ = submitQuery(UiQueryType.Node, queryOverride = Some(props.initialQuery))
+          }
         })
         .getOrElse(emptyMod),
+      // Results-panel changes (new runs, history navigation, collapse) don't go through
+      // updateHistory, so mark persistence dirty here for the periodic autosave. Restores
+      // also set these Vars, which costs at most one redundant save per interval.
+      resultsHistory.entries.signal.updates --> { _ => persistenceDirty = true },
+      resultsHistory.currentIdx.signal.updates --> { _ => persistenceDirty = true },
+      resultsCollapsedVar.signal.updates --> { _ => persistenceDirty = true },
       onMountCallback { _ =>
+        val PeriodicSaveIntervalMs = 30000d
+        // Force a save at least this often even when nothing is dirty, so this tab's
+        // savedAt stays fresh and another tab's purgeStale can't GC a live-but-idle
+        // tab's current snapshot as if its tab had closed.
+        val KeepAliveTicks = 20 // 10 minutes
+        var ticksSinceSave = 0
+        val periodicSaveInterval = window.setInterval(
+          () => {
+            ticksSinceSave += 1
+            if (persistenceDirty || ticksSinceSave >= KeepAliveTicks) {
+              persistenceDirty = false
+              ticksSinceSave = 0
+              persistCurrentNamespace()
+            }
+          },
+          PeriodicSaveIntervalMs,
+        )
+        val beforeUnloadHandler: js.Function1[dom.BeforeUnloadEvent, Unit] = { (_: dom.BeforeUnloadEvent) =>
+          window.clearInterval(periodicSaveInterval)
+          persistCurrentNamespace()
+        }
+        window.addEventListener("beforeunload", beforeUnloadHandler)
+
         // When a namespaceSignal is provided, the signal --> subscription above handles
         // initialization (including the initial value on mount). Otherwise, initialize directly.
         if (props.namespaceSignal.isDefined) () // signal --> handles everything
@@ -1542,7 +2667,9 @@ object QueryUi {
           }
           uiDataLoaded = true
           loadUiData()
-          if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node)
+          if (props.initialQuery.nonEmpty) {
+            val _ = submitQuery(UiQueryType.Node)
+          }
         }
       },
       // TopBar
@@ -1555,33 +2682,67 @@ object QueryUi {
           sampleQueries = stateVar.signal.map(_.sampleQueries),
           foundNodesCount = stateVar.signal.map(_.foundNodesCount),
           foundEdgesCount = stateVar.signal.map(_.foundEdgesCount),
-          submitButton = (shiftHeld: Boolean) => submitQuery(if (shiftHeld) UiQueryType.Text else UiQueryType.Node),
+          submitButton = (uiQueryType: UiQueryType) => {
+            val _ = submitQuery(uiQueryType)
+          },
           cancelButton = () => cancelQueries(Some(stateVar.now().pendingTextQueries)),
+          // baseUrlOpt is ClientRoutes' effective base URL (empty ⇒ same origin); MonacoQueryInput
+          // derives the LSP WebSocket URL from it via lspWebSocketUrl.
+          serverUrl = props.routes.baseUrlOpt,
           navButtons = HistoryNavigationButtons(
-            canStepBackward = stateVar.signal.map(_.history.canStepBackward),
-            canStepForward = stateVar.signal.map(_.history.canStepForward),
+            // Backward is marker-aware: markers at the head of the past mean
+            // "standing at a checkpoint now", so undoing only them changes
+            // nothing visible. Forward is not: markers only enter the future as
+            // a checkpoint's [Layout, Checkpoint] pair, so a marker-only future
+            // still holds a whole checkpoint that redoOne can step onto.
+            canStepBackward = stateVar.signal.map(_.history.past.exists(e => !isMarker(e))),
+            canStepForward = stateVar.signal.map(_.history.future.nonEmpty),
             isAnimating = stateVar.signal.map(_.animating),
-            undo = () => updateHistory(_.stepBack()),
-            undoMany = () => stepBackMany(),
+            undo = () => undoOne(),
+            undoMany = () => stepBackToCheckpoint(),
             undoAll = () => stepBackAll(),
             animate = () => stateVar.update(s => s.copy(animating = !s.animating)),
-            redo = () => updateHistory(_.stepForward()),
-            redoMany = () => stepForwardMany(),
+            redo = () => redoOne(),
+            redoMany = () => stepForwardToCheckpoint(),
             redoAll = () => stepForwardAll(),
             makeCheckpoint = () => {
-              Option(window.prompt("Name your checkpoint")).foreach { name =>
-                networkLayout(() => updateHistory(hist => Some(hist.observe(QueryUiEvent.Checkpoint(name)))))
+              val hist = stateVar.now().history
+              val existingNames = (hist.past.iterator ++ hist.future.iterator).collect {
+                case QueryUiEvent.Checkpoint(n) => n
+              }.toSet
+              // Checkpoint names key the navigation menu, so blank or duplicate
+              // names would make its entries ambiguous — re-prompt instead
+              @tailrec def promptName(message: String): Option[String] =
+                Option(window.prompt(message)).map(_.trim) match {
+                  case None => None
+                  case Some("") => promptName("Name your checkpoint (a name is required)")
+                  case Some(name) if existingNames.contains(name) =>
+                    promptName(s"""A checkpoint named "$name" already exists. Pick another name""")
+                  case some => some
+                }
+              promptName("Name your checkpoint").foreach { name =>
+                // Record the current layout under the marker so checkpoint
+                // navigation restores node positions; undo/redo slide over
+                // both without costing a click (see isMarker)
+                updateHistory(hist => Some(hist.observe(currentLayoutEvent())))
+                updateHistory(hist => Some(hist.observe(QueryUiEvent.Checkpoint(name))))
               }
             },
             checkpointMenuItems = () =>
               checkpointContextMenuItems().map { item =>
                 ToolbarButton.MenuAction(item.item, item.title, item.action)
               },
+            checkpointMenuItemsAvailable = stateVar.signal.map(_.history match {
+              case History(past, future) =>
+                (past.iterator ++ future.iterator).exists(_.isInstanceOf[QueryUiEvent.Checkpoint])
+            }),
             downloadHistory = (snapshotOnly: Boolean) => {
-              networkLayout { () =>
-                val history = if (snapshotOnly) makeSnapshot() else stateVar.now().history
-                downloadHistoryFile(history, if (snapshotOnly) "snapshot.json" else "history.json")
-              }
+              // Prepend current positions to the downloaded file only: recording a
+              // Layout event into live history would truncate the redo stack.
+              val layout = currentLayoutEvent()
+              val base = if (snapshotOnly) makeSnapshot() else stateVar.now().history
+              val history = base.copy(past = layout :: base.past)
+              downloadHistoryFile(history, if (snapshotOnly) "snapshot.json" else "history.json")
             },
             downloadGraphJsonLd = () => downloadGraphJsonLd(),
             uploadHistory = files => uploadHistory(files),
@@ -1590,18 +2751,74 @@ object QueryUi {
             setTime = setAtTime(_),
             toggleLayout = toggleNetworkLayout,
             recenterViewport = recenterNetworkViewport,
+            resetGraph = () =>
+              if (
+                window.confirm(
+                  "Reset Canvas?\n\nThis will clear all nodes, edges, and results from the canvas " +
+                  "and delete persisted browser session storage for this namespace.",
+                )
+              ) {
+                val nsKey = namespaceKeyFor(stateVar.now().namespace)
+                namespaceSnapshots.remove(nsKey)
+                ExplorerStore.remove(nsKey)
+                clearCanvas()
+              },
+            resetAllNamespaces = () =>
+              if (
+                window.confirm(
+                  "Clear All Namespaces?\n\nThis will clear the canvas and delete all persisted " +
+                  "browser state for every namespace in this tab.",
+                )
+              ) {
+                namespaceSnapshots.clear()
+                ExplorerStore.clear()
+                wsClients.values.foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
+                wsClientsV2.values.foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
+                wsClients.clear()
+                wsClientsV2.clear()
+                clearCanvas()
+              },
           ),
+          useV2Api = props.queryMethod match {
+            case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 => true
+            case QueryMethod.Restful | QueryMethod.WebSocket => false
+          },
+          qpEnabled = props.qpEnabled,
+          trailing = props.queryBarTrailing,
           permissions = props.permissions,
+          bookmark = BookmarkUi(
+            button = SampleQueryBookmark.queryBarToggle(currentQueryBookmarked, () => toggleBookmarkDialog()),
+            dialog = SampleQueryBookmark.editDialog(
+              bookmarkDraftVar,
+              onSave = (existingIdx, sq) => {
+                val current = stateVar.now().sampleQueries
+                val updated = existingIdx match {
+                  case Some(idx) if idx < current.size => current.updated(idx, sq)
+                  case _ => current :+ sq
+                }
+                saveSampleQueries(updated)
+              },
+              onDelete = idx => {
+                val current = stateVar.now().sampleQueries
+                saveSampleQueries(current.patch(idx, Nil, 1))
+              },
+            ),
+          ),
         )
       } else emptyNode,
-      // Loader
-      child <-- stateVar.signal.map { s =>
-        Loader(
-          s.runningQueryCount,
-          if (props.queryMethod == QueryMethod.WebSocket || props.queryMethod == QueryMethod.WebSocketV2)
-            Some(() => cancelQueries())
-          else None,
-        )
+      // Loader — shows for running queries and during graph restore
+      child <-- stateVar.signal.map(_.runningQueryCount).combineWith(restoringVar.signal).map {
+        case (queryCount, restoring) =>
+          val pendingCount = queryCount + (if (restoring) 1 else 0)
+          Loader(
+            pendingCount,
+            if (
+              queryCount > 0 &&
+              (props.queryMethod == QueryMethod.WebSocket || props.queryMethod == QueryMethod.WebSocketV2)
+            )
+              Some(() => cancelQueries())
+            else None,
+          )
       },
       // VisNetwork
       VisNetwork(
@@ -1612,6 +2829,9 @@ object QueryUi {
         keyDownHandler = networkKeyDown,
         options = networkOptions,
       ),
+      stateVar.signal.map(_.uiNodeAppearances).distinct.updates --> { _ =>
+        reapplyAppearances()
+      },
       // Physics toggle
       // `.distinct` is essential: `Signal.map` does not dedupe, so without it this
       // subscriber fires on every unrelated `stateVar` update and overrides the
@@ -1623,16 +2843,42 @@ object QueryUi {
           }
         }))
       },
-      // MessageBar
-      child <-- bottomBarVar.signal.map {
-        case Some(content) => MessageBar(content, () => bottomBarVar.set(None))
+      // Node properties popup
+      child <-- nodePopupVar.signal.map {
+        case Some(state) =>
+          val canWrite = props.permissions match {
+            case Some(perms) => Set("GraphWrite").subsetOf(perms)
+            case None => true
+          }
+          NodePropertiesPopup(
+            state,
+            closePopup = () => nodePopupVar.set(None),
+            submitQuery = query => submitQuery(UiQueryType.Node, queryOverride = Some(query)),
+            onBack = (bx, by) => nodePopupBackVar.now().fold(nodePopupVar.set(None))(_(bx, by)),
+            onRefreshProperties = (rx, ry) => nodePopupRefreshVar.now().foreach(_(rx, ry)),
+            canWrite = canWrite,
+          )
         case None => emptyNode
       },
+      // Results surface (mounted persistently so its view/height/drawer state
+      // survives across queries) + its canvas-layer collapse control. Both read the
+      // shared session history; the surface auto-captures each live result into it.
+      // (The per-namespace tap wiring lives with the shared WiretapStore setup above —
+      // integration scoped it to owners so Streams-page taps and panel taps coexist.)
+      ResultsPanel.surface(resultsStore),
+      CanvasDoor(resultsStore.doorReads),
       // ContextMenu
       child <-- contextMenuVar.signal.map {
-        case Some(ContextMenuState(x, y, items)) => ContextMenu(x, y, items)
+        case Some(ContextMenuState(x, y, model)) => ContextMenu.fromModel(x, y, model)
         case None => emptyNode
       },
+      // WiretapStore lifecycle + tap-query dispatch host. Mounted as long as QueryUi is
+      // mounted so subscriptions survive across UI state; the namespace-keyed inner child
+      // renews the WiretapStore on namespace change and tears down all open WebSockets
+      // on unmount.
+      wiretapLifecycle,
+      // Toast notifications
+      Toast(toastVar),
     )
   }
 
@@ -1644,6 +2890,10 @@ object QueryUi {
     namespaceSignal: Option[Signal[NamespaceParameter]] = None,
     initialNamespace: NamespaceParameter = NamespaceParameter.defaultNamespaceParameter,
     refreshSignal: Option[EventStream[Unit]] = None,
+    queryBarTrailing: Option[HtmlElement] = None,
+    invalidatedNamespaces: Option[EventStream[NamespaceParameter]] = None,
+    wiretapStore: WiretapStore,
+    externalActiveTapQueryMetadataVar: Option[Var[Map[String, V2ApiTypes.V2TapQuery]]] = None,
   ): HtmlElement = {
     val nodeSet = options.visNodeSet.getOrElse(new vis.DataSet(js.Array[vis.Node]()))
     val edgeSet = options.visEdgeSet.getOrElse(new vis.DataSet(js.Array[vis.Edge]()))
@@ -1670,10 +2920,15 @@ object QueryUi {
           case "graph" | _ => NetworkLayout.Graph
         },
         queryMethod = queryMethod,
+        qpEnabled = options.qpEnabled.getOrElse(false),
         permissions = permissions,
         namespaceSignal = namespaceSignal,
         initialNamespace = initialNamespace,
         refreshSignal = refreshSignal,
+        queryBarTrailing = queryBarTrailing,
+        invalidatedNamespaces = invalidatedNamespaces,
+        wiretapStore = wiretapStore,
+        externalActiveTapQueryMetadataVar = externalActiveTapQueryMetadataVar,
       ),
     )
   }

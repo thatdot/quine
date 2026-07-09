@@ -37,4 +37,29 @@ class QuineLanguageServerTest extends munit.FunSuite {
 
     assertNotEquals(tokenModifiers.length, 0)
   }
+
+  test("queryKind is exposed as the custom JSON-RPC request method quine/queryKind") {
+    // lsp4j discovers @JsonRequest-annotated methods on the local service object
+    // (AnnotationUtil.findRpcMethods walks the concrete class), so this annotation
+    // is the wire-level method registration.
+    val method = classOf[QuineLanguageServer].getMethod("queryKind", classOf[QueryKindParams])
+    val annotation = method.getAnnotation(classOf[org.eclipse.lsp4j.jsonrpc.services.JsonRequest])
+
+    assertEquals(annotation.value, "quine/queryKind")
+  }
+
+  test("queryKind classifies an open document and answers unknown for unopened documents") {
+    val uri = "file:///tmp/test.txt"
+    TextDocumentServiceHelper.openTextDocument(languageServer.getTextDocumentService, uri, "MATCH (n) RETURN n")
+
+    val openResult = languageServer
+      .queryKind(new QueryKindParams(new org.eclipse.lsp4j.TextDocumentIdentifier(uri)))
+      .get()
+    assertEquals(openResult.getKind, QueryKind.NODE)
+
+    val unopenedResult = languageServer
+      .queryKind(new QueryKindParams(new org.eclipse.lsp4j.TextDocumentIdentifier("file:///tmp/other.txt")))
+      .get()
+    assertEquals(unopenedResult.getKind, QueryKind.UNKNOWN)
+  }
 }

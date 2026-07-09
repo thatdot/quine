@@ -19,8 +19,15 @@ var urlParams = new URLSearchParams(window.location.search);
 // Template variable - replaced by backend with config value
 // WARNING: Do NOT change the 'true' literal below! The backend searches for the exact string
 // "/*{{DEFAULT_V2_API}}*/true" and replaces it with the config value (true or false).
-// See: BaseAppRoutes.scala:50 - content.replace("/*{{DEFAULT_V2_API}}*/true", defaultV2Api.toString)
+// See: BrowserBundleRoutes.scala getJsWithInjectedConfig
 var defaultQueriesOverV2Api = /*{{DEFAULT_V2_API}}*/true;
+
+// Template variable - replaced by backend with the qp.enabled config value.
+// WARNING: Do NOT change the 'false' literal below! The backend searches for the exact string
+// "/*{{QP_ENABLED}}*/false" and replaces it with the config value (true or false).
+// See: BrowserBundleRoutes.scala getJsWithInjectedConfig. When false, the query editor stays on
+// basic (Monarch-only) highlighting and does not connect to the language server.
+var qpEnabled = /*{{QP_ENABLED}}*/false;
 
 // Compute the path prefix (Quine's base path with a terminal slash).
 // This ASSUMES that any valid URL accessing this single-page application will be Quine's
@@ -57,6 +64,7 @@ window.onload = function() {
         layout: urlParams.get("layout") || "graph",
         queriesOverWs: urlParams.get("wsQueries") != "false",
         queriesOverV2Api: urlParams.get("v2Api") !== null ? urlParams.get("v2Api") != "false" : defaultQueriesOverV2Api,
+        qpEnabled: qpEnabled,
         queryHistoricalTime: parseMillis(urlParams.get("atTime")),
         onNetworkCreate: function(n) {
             network = n;

@@ -10,10 +10,12 @@ import sttp.tapir.{Endpoint, emptyOutputAs, statusCode}
 import com.thatdot.api.v2.ErrorResponse
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
-import com.thatdot.quine.app.v2api.definitions.V2QuineEndpointDefinitions
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, TapQuery, UiNodeAppearance, UiNodeQuickQuery}
+import com.thatdot.quine.app.v2api.definitions.{GraphScopedEndpoints, V2QuineEndpointDefinitions}
+import com.thatdot.quine.app.v2api.endpoints.Visibility
+import com.thatdot.quine.graph.NamespaceId
 
-trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
+trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps with GraphScopedEndpoints {
 
   private val uiStylingBase: EndpointBase = rawEndpoint("queryUi")
     .tag("UI Styling")
@@ -180,6 +182,64 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
     Future,
   ] = updateQueryUiQuickQueries.serverLogic[Future](updateQueryUiQuickQueriesLogic)
 
+  // Tap queries are graph-scoped: each one targets a standing query that only exists in
+  // one graph (namespace), so the storage and URL follow the graph
+  // (`/api/v2/graph/{graphName}/queryUi/tapQueries`).
+  protected[endpoints] val queryUiTapQueries
+    : Endpoint[Unit, NamespaceId, ErrorResponse.ServerError, Vector[TapQuery], Any] =
+    graphScopedEndpoint("queryUi", "tapQueries")
+      .tag("UI Styling")
+      .errorOut(serverError())
+      .name("list-tap-queries")
+      .summary("List Tap Queries")
+      .description(
+        "Named wiretap + Cypher query pairs scoped to a graph, listed in the Explorer Settings page.",
+      )
+      .get
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[Vector[TapQuery]].example(TapQuery.defaults))
+      .attribute(Visibility.attributeKey, Visibility.Hidden)
+
+  protected[endpoints] val queryUiTapQueriesLogic
+    : NamespaceId => Future[Either[ErrorResponse.ServerError, Vector[TapQuery]]] =
+    ns => recoverServerError(appMethods.getTapQueries(ns))(identity)
+
+  private val queryUiTapQueriesServerEndpoint
+    : Full[Unit, Unit, NamespaceId, ErrorResponse.ServerError, Vector[TapQuery], Any, Future] =
+    queryUiTapQueries.serverLogic[Future](queryUiTapQueriesLogic)
+
+  protected[endpoints] val updateQueryUiTapQueries
+    : Endpoint[Unit, (NamespaceId, Vector[TapQuery]), ErrorResponse.ServerError, Unit, Any] =
+    graphScopedEndpoint("queryUi", "tapQueries")
+      .tag("UI Styling")
+      .errorOut(serverError())
+      .name("replace-tap-queries")
+      .summary("Replace Tap Queries")
+      .description(
+        "Replace all tap queries for the given graph in the Explorer Settings page.\n\n" +
+        "Tap queries applied here will replace any currently existing tap queries for that graph.",
+      )
+      .put
+      .in(jsonOrYamlBody[Vector[TapQuery]](Some(TapQuery.defaults)))
+      .out(statusCode(StatusCode.NoContent))
+      .out(emptyOutputAs(()))
+      .attribute(Visibility.attributeKey, Visibility.Hidden)
+
+  protected[endpoints] val updateQueryUiTapQueriesLogic
+    : ((NamespaceId, Vector[TapQuery])) => Future[Either[ErrorResponse.ServerError, Unit]] = { case (ns, m) =>
+    recoverServerError(appMethods.setTapQueries(ns, m))(_ => ())
+  }
+
+  private val updateQueryUiTapQueriesServerEndpoint: Full[
+    Unit,
+    Unit,
+    (NamespaceId, Vector[TapQuery]),
+    ErrorResponse.ServerError,
+    Unit,
+    Any,
+    Future,
+  ] = updateQueryUiTapQueries.serverLogic[Future](updateQueryUiTapQueriesLogic)
+
   lazy val uiEndpoints: List[ServerEndpoint[Any, Future]] = List(
     queryUiSampleQueriesServerEndpoint,
     updateQueryUiSampleQueriesServerEndpoint,
@@ -187,6 +247,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps {
     updateQueryUiAppearanceServerEndpoint,
     queryUiQuickQueriesServerEndpoint,
     updateQueryUiQuickQueriesServerEndpoint,
+    queryUiTapQueriesServerEndpoint,
+    updateQueryUiTapQueriesServerEndpoint,
   )
 
 }

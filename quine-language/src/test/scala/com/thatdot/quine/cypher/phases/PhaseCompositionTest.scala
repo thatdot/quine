@@ -56,6 +56,9 @@ class PhaseCompositionTest extends munit.FunSuite {
       line = 1,
       char = 9,
       message = "no viable alternative at input 'MATCH (n RETURN'",
+      // The offending RETURN token spans columns 9-14, so the exclusive end is 15
+      endLine = 1,
+      endChar = 15,
     )
     assertEquals(finalState.diagnostics.head, expectedError)
   }

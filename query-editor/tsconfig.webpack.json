@@ -1,0 +1,25 @@
+{
+  // Compilation config used by the consuming browser modules' webpack ts-loader
+  // (see each module's common.webpack.config.js). It is standalone — NOT an extension
+  // of tsconfig.json — because the repo's ts-loader runs TypeScript 4.9.5, which rejects
+  // the TS 5.x options (moduleResolution "bundler", noUncheckedSideEffectImports) that the
+  // package's own dev/typecheck config uses.
+  //
+  // ts-loader runs here in transpileOnly mode: it transpiles syntax only, leaving module
+  // resolution to webpack (which finds monaco-editor in the bundler's node_modules). Type
+  // safety is enforced separately by `npm run typecheck` under TypeScript 5.9.
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "sourceMap": false,
+    "noEmit": false
+  },
+  "include": ["src"]
+}

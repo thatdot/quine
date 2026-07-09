@@ -103,6 +103,7 @@ object ApiIngest {
     @description("Error message about the ingest, if any.") message: Option[String],
     @description("Configuration of the ingest stream.") settings: Oss.QuineIngestConfiguration,
     @description("Statistics on progress of running ingest stream") stats: IngestStreamStats,
+    @description("Index of the cluster member running this ingest stream, if applicable.") memberIdx: Option[Int] = None,
   )
 
   object IngestStreamInfoWithName {

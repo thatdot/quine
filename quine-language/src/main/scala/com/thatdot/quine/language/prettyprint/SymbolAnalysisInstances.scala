@@ -9,7 +9,7 @@ trait SymbolAnalysisInstances extends CypherASTInstances {
 
   implicit val diagnosticPrettyPrint: PrettyPrint[Diagnostic] =
     PrettyPrint.instance {
-      case Diagnostic.ParseError(line, char, message) =>
+      case Diagnostic.ParseError(line, char, message, _, _) =>
         concat(text(s"ParseError($line:$char): "), text(message))
       case Diagnostic.SymbolAnalysisWarning(message) =>
         concat(text("SymbolAnalysisWarning: "), text(message))

@@ -77,6 +77,9 @@ class ParserPhaseTest extends munit.FunSuite {
       char = 0,
       message =
         "mismatched input '<EOF>' expecting {FOREACH, OPTIONAL, MATCH, UNWIND, MERGE, CREATE, SET, DETACH, DELETE, REMOVE, CALL, WITH, RETURN}",
+      // The EOF token has no extent, so the error range is zero-width
+      endLine = 1,
+      endChar = 0,
     )
     assertEquals(resultState.diagnostics.head, expectedError)
   }
@@ -94,6 +97,9 @@ class ParserPhaseTest extends munit.FunSuite {
       line = 1,
       char = 9,
       message = "no viable alternative at input 'MATCH (n RETURN'",
+      // The offending RETURN token spans columns 9-14, so the exclusive end is 15
+      endLine = 1,
+      endChar = 15,
     )
     assertEquals(resultState.diagnostics.head, expectedError)
   }

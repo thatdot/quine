@@ -27,7 +27,10 @@ class QuineOssRoutes(apiV1: Boolean, basePath: String) {
   private val docsV1Route: Route.Total[DocsV1.type, Unit] =
     Route.static(staticPage = DocsV1, pattern = root / "v1docs", basePath = basePath)
 
+  private val configurationRoute: Route.Total[ExplorerSettings.type, Unit] =
+    Route.static(staticPage = ExplorerSettings, pattern = root / "explorer-settings", basePath = basePath)
+
   val routes: List[Route.Total[_ <: QuineOssPage, Unit]] =
-    List(dashboardRoute, explorationUiRoute, metricsRoute, docsV1Route, docsV2Route) ++
+    List(dashboardRoute, explorationUiRoute, configurationRoute, metricsRoute, docsV1Route, docsV2Route) ++
     (if (!apiV1) List(streamsRoute) else Nil)
 }

@@ -14,8 +14,22 @@ object ServiceIcons {
   @js.native
   private object QuineIcon extends js.Object
 
-  /** URL for the white-on-transparent Quine "Q" icon. */
+  @JSImport("shared-resources/icons/logo-icon.svg", JSImport.Default)
+  @js.native
+  private object QuineIconSvg extends js.Object
+
+  /** URL for the white-on-transparent Quine "Q" icon (PNG). */
   def quineIcon: String = QuineIcon.toString
+
+  /** URL for the blue gradient Quine "Q" icon (SVG). */
+  def quineIconSvg: String = QuineIconSvg.toString
+
+  @JSImport("shared-resources/icons/quine-wordmark.svg", JSImport.Default)
+  @js.native
+  private object QuineWordmarkSvg extends js.Object
+
+  /** URL for the branded "Quine" wordmark (blue gradient SVG text). */
+  def quineWordmark: String = QuineWordmarkSvg.toString
 
   @JSImport("shared-resources/icons/kafka.svg", JSImport.Default)
   @js.native
@@ -37,6 +51,10 @@ object ServiceIcons {
   @js.native
   private object HttpSvg extends js.Object
 
+  @JSImport("shared-resources/icons/sqs.svg", JSImport.Default)
+  @js.native
+  private object SqsSvg extends js.Object
+
   @JSImport("shared-resources/icons/stdout.svg", JSImport.Default)
   @js.native
   private object StdoutSvg extends js.Object
@@ -53,22 +71,32 @@ object ServiceIcons {
   @js.native
   private object ClickhouseSvg extends js.Object
 
+  @JSImport("shared-resources/icons/file.svg", JSImport.Default)
+  @js.native
+  private object FileSvg extends js.Object
+
   @JSImport("shared-resources/icons/number-iterator.png", JSImport.Default)
   @js.native
   private object NumberIteratorPng extends js.Object
 
-  /** Get icon URL for a given source/output/persistor type. */
-  def forType(nodeType: String): Option[String] = nodeType.toLowerCase match {
+  /** Get icon URL for a given source/output/persistor type.
+    * Matches all known type names: API class names (e.g. "StandardOut"), config keys (e.g. "rocks-db"),
+    * and source class names (e.g. "NumberIteratorIngest"). Case-insensitive, strips hyphens/underscores.
+    */
+  def forType(nodeType: String): Option[String] = nodeType.toLowerCase.replace("-", "").replace("_", "") match {
     case "kafka" => Some(KafkaSvg.toString)
-    case "s3" | "file" => Some(S3Svg.toString)
+    case "s3" => Some(S3Svg.toString)
+    case "file" => Some(FileSvg.toString)
     case "kinesis" | "kinesiskcl" => Some(KinesisSvg.toString)
+    case "sqs" => Some(SqsSvg.toString)
     case "slack" => Some(SlackSvg.toString)
     case "http" | "httpendpoint" => Some(HttpSvg.toString)
-    case "stdout" | "standardout" | "console" => Some(StdoutSvg.toString)
+    case "standardout" | "stdout" | "console" => Some(StdoutSvg.toString)
     case "cassandra" | "keyspaces" => Some(CassandraSvg.toString)
     case "rocksdb" => Some(RocksdbSvg.toString)
     case "clickhouse" => Some(ClickhouseSvg.toString)
-    case "numberiterator" => Some(NumberIteratorPng.toString)
+    case "numberiterator" | "numberiteratoringest" => Some(NumberIteratorPng.toString)
+    case "serversentevent" | "serversenteventingest" | "sse" => Some(HttpSvg.toString)
     case _ => None
   }
 

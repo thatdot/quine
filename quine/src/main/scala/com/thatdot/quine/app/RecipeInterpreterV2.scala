@@ -21,7 +21,7 @@ import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationStat
 import com.thatdot.quine.app.v2api.converters.{ApiToIngest, ApiToUiStyling}
 import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
 import com.thatdot.quine.graph.cypher.{RunningCypherQuery, Value}
-import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId}
+import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.Log.implicits._
@@ -66,7 +66,7 @@ case class RecipeInterpreterV2(
   /** Returns true if all the tasks report isCancelled true. */
   override def isCancelled: Boolean = tasks.forall(_.isCancelled)
 
-  def run(memberIdx: MemberIdx)(implicit logConfig: LogConfig): Unit = {
+  def run()(implicit logConfig: LogConfig): Unit = {
 
     // Set UI appearances using V2 -> V1 converters
     if (recipe.nodeAppearances.nonEmpty) {
@@ -165,7 +165,7 @@ case class RecipeInterpreterV2(
         settings = v2IngestConfig,
         intoNamespace = namespace,
         timeout = 5.seconds,
-        memberIdx = memberIdx,
+        memberIdx = None, // recipes run on the member interpreting them
       )
 
       try Await.result(result, 10.seconds) match {

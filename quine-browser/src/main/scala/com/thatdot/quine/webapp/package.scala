@@ -20,6 +20,11 @@ package object webapp {
   object InterFontCSS extends js.Object
   InterFontCSS
 
+  @JSImport("@fontsource-variable/jetbrains-mono/index.css", JSImport.Namespace)
+  @js.native
+  object JetBrainsMonoFontCSS extends js.Object
+  JetBrainsMonoFontCSS
+
   @JSImport("@coreui/coreui/dist/css/coreui.min.css", JSImport.Namespace)
   @js.native
   object CoreuiCSS extends js.Object
@@ -44,7 +49,7 @@ package object webapp {
   @js.native
   object QuineLogo extends js.Object
 
-  @JSImport("resources/logo-icon.svg", JSImport.Default)
+  @JSImport("shared-resources/icons/logo-icon.svg", JSImport.Default)
   @js.native
   object QuineIcon extends js.Object
 
@@ -56,6 +61,7 @@ package object webapp {
   @JSExportTopLevel("quineAppMount")
   def quineAppMount(target: dom.Element, options: QuineUiOptions): RootNode = {
     val clientRoutes = new ClientRoutes(options.serverUrl)
+    val wiretapStore = new com.thatdot.quine.webapp.queryui.WiretapStore(clientRoutes)
     val queryMethod = QueryMethod.parseQueryMethod(options)
     val apiV1 = queryMethod match {
       case QueryMethod.Restful | QueryMethod.WebSocket => true
@@ -78,6 +84,7 @@ package object webapp {
         views = QuineOssViews(
           router,
           clientRoutes,
+          wiretapStore,
           queryMethod,
           options = options,
         ),
@@ -130,6 +137,9 @@ package webapp {
 
     /** should we use API v2 REST endpoints instead of v1 when not using WebSocket */
     val queriesOverV2Api: js.UndefOr[Boolean] = js.undefined
+
+    /** whether QuinePattern is enabled (mirrors the server's `qp.enabled`); when false the editor runs in basic mode */
+    val qpEnabled: js.UndefOr[Boolean] = js.undefined
 
     /** should the layout be in tree form or graph? */
     val layout: js.UndefOr[String] = js.undefined

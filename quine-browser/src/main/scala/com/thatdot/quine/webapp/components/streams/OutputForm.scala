@@ -41,6 +41,7 @@ object OutputForm {
     spec: ParsedSpec,
     outputSchema: Option[SchemaNode],
     state: State,
+    editorConfig: EmbeddedEditorConfig,
     onSubmit: Json => Future[Either[String, Json]],
     onComplete: () => Unit,
     onCancel: () => Unit,
@@ -75,7 +76,7 @@ object OutputForm {
       // directly instead of being wrapped in the optional-object "Include ..." toggle.
       renderedSchema match {
         case Some(schema) =>
-          SchemaFormRenderer.render(schema, spec, Nil, state.formState, isRequired = true)
+          SchemaFormRenderer.render(schema, spec, Nil, state.formState, editorConfig, isRequired = true)
         case None =>
           div(cls := "alert alert-warning", "Output schema not found in API spec.")
       },

@@ -30,7 +30,7 @@ import com.thatdot.quine.graph.messaging.{
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PrimePersistor, WrappedPersistenceAgent}
-import com.thatdot.quine.util.{QuineDispatchers, SharedValve, ValveFlow}
+import com.thatdot.quine.util.{PressureGaugeRegistry, QuineDispatchers, SharedValve, ValveFlow}
 
 trait BaseGraph extends StrictSafeLogging {
 
@@ -64,6 +64,11 @@ trait BaseGraph extends StrictSafeLogging {
   // TODO: put this in some other class which is a field here
   val ingestValve: SharedValve = new SharedValve("ingest")
   metrics.registerGaugeValve(ingestValve)
+
+  val pressureGaugeRegistry: PressureGaugeRegistry = new PressureGaugeRegistry
+  private val pressureGaugeSampler: org.apache.pekko.actor.Cancellable = pressureGaugeRegistry.startSampling(system)
+  // Stop the 500ms sampling scheduler when the actor system terminates so it does not outlive the graph.
+  system.registerOnTermination(pressureGaugeSampler.cancel())
 
   val masterStream: MasterStream = new MasterStream
 

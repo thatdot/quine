@@ -20,6 +20,7 @@ sealed trait DestinationSteps {
 }
 
 sealed trait FoldableDestinationSteps extends DestinationSteps with DataFoldableSink {
+  override def slug: String = destination.slug
   def sink[In: DataFoldableFrom](outputName: String, namespaceId: NamespaceId)(implicit
     logConfig: LogConfig,
   ): Sink[In, NotUsed]

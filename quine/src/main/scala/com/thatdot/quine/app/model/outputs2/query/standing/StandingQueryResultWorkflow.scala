@@ -12,6 +12,7 @@ import com.thatdot.quine.app.model.outputs2.query.CypherQuery
 import com.thatdot.quine.graph.cypher.QueryContext
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, StandingQueryResult, cypher}
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.{GaugeKey, PressureGauge}
 
 import TapBus.topicForSq
 
@@ -169,10 +170,41 @@ case class StandingQueryResultWorkflow(
       }
     }
 
-    val sinks = destinationStepsList
-      .map(_.sink(outputName, namespaceId)(preBroadcastFlow.foldableFrom, logConfig))
-      .toList
-    rawTapFlow.via(postEnrichFlow).alsoToAll(sinks: _*).map(_ => ())
+    // Wrap each destination sink with a PressureGauge to detect per-destination backpressure
+    val sqName = tapCtx.sqName
+    val outputKey = s"$sqName/$outputName"
+    val registry = graph.pressureGaugeRegistry
+
+    val instrumentedSinks = destinationStepsList.toList.zipWithIndex.map { case (destStep, idx) =>
+      val rawSink = destStep.sink(outputName, namespaceId)(preBroadcastFlow.foldableFrom, logConfig)
+      // Include the destination index so multiple destinations of the same type get distinct gauge
+      // keys. Without it, same-type destinations collide on the key and only one appears in the diagram.
+      val gaugeKey = GaugeKey("sq-output", namespaceId.name, outputKey, s"destination-$idx-${destStep.slug}")
+      Flow[preBroadcastFlow.Out].via(PressureGauge(registry, gaugeKey)).to(rawSink)
+    }
+
+    // Throughput meter: counts results entering the destination fan-out (before alsoToAll).
+    // Named ".post-enrichment" when enrichment is configured, ".throughput" otherwise.
+    val hasEnrichment = workflow.enrichmentQuery.isDefined || workflow.preEnrichmentTransformation.isDefined
+    val meterSuffix = if (hasEnrichment) "post-enrichment" else "throughput"
+    val throughputMeter = graph.metrics.metricRegistry.meter(s"sq.output.${namespaceId.name}.$outputKey.$meterSuffix")
+
+    // Pre-workflow backpressure gauge, registered only when an enrichment stage exists to observe.
+    // Registering it here (rather than in each caller) keeps OSS and enterprise consistent and ensures
+    // the "pre-workflow" gauge is present iff enrichment is configured — so the diagram reports real
+    // enrichment backpressure instead of always reporting FLOWING.
+    val entryFlow: Flow[StandingQueryResult, StandingQueryResult, NotUsed] =
+      if (hasEnrichment) {
+        val preGaugeKey = GaugeKey("sq-output", namespaceId.name, outputKey, "pre-workflow")
+        Flow[StandingQueryResult].via(PressureGauge(registry, preGaugeKey))
+      } else Flow[StandingQueryResult]
+
+    entryFlow
+      .via(rawTapFlow)
+      .via(postEnrichFlow)
+      .map { x => throughputMeter.mark(); x }
+      .alsoToAll(instrumentedSinks: _*)
+      .map(_ => ())
   }
 }
 

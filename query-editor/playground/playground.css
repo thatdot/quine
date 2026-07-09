@@ -1,0 +1,90 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #f6f7f9;
+  color: #1f2328;
+}
+
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 {
+  font-size: 18px;
+}
+
+.hint {
+  color: #57606a;
+  font-size: 13px;
+}
+
+/* ~600px bar mimicking the Quine Explorer query input. */
+.query-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 660px;
+  max-width: 100%;
+}
+
+#query-editor {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+button {
+  padding: 6px 12px;
+  font-size: 13px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #eef1f4;
+}
+
+.buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.mode {
+  font-size: 12px;
+  color: #57606a;
+  font-family: ui-monospace, monospace;
+}
+
+#log {
+  min-height: 120px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 8px;
+  font-size: 12px;
+}
+
+kbd {
+  border: 1px solid #d0d7de;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 12px;
+  background: #ffffff;
+}

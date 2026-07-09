@@ -64,6 +64,7 @@ object HistoryNavigationButtons {
     redoAll: () => Unit,
     makeCheckpoint: () => Unit,
     checkpointMenuItems: () => Seq[ToolbarButton.MenuAction],
+    checkpointMenuItemsAvailable: Signal[Boolean],
     downloadHistory: Boolean => Unit,
     downloadGraphJsonLd: () => Unit,
     uploadHistory: dom.FileList => Unit,
@@ -72,6 +73,8 @@ object HistoryNavigationButtons {
     setTime: Option[Long] => Unit,
     toggleLayout: () => Unit,
     recenterViewport: () => Unit,
+    resetGraph: () => Unit,
+    resetAllNamespaces: () => Unit,
   ): HtmlElement = {
     var uploadInputEl: Option[dom.html.Input] = None
 
@@ -117,6 +120,7 @@ object HistoryNavigationButtons {
         "Create a checkpoint (right-click to navigate checkpoints)",
         onClickAction = _ => makeCheckpoint(),
         menuActions = checkpointMenuItems,
+        hasExtraOptions = checkpointMenuItemsAvailable,
       ),
       // Data button: left-click = download history, right-click = {History Log, Snapshot, Graph, Upload}
       ToolbarButton(
@@ -204,6 +208,22 @@ object HistoryNavigationButtons {
         "ion-pinpoint",
         "Recenter the viewport to the initial location",
         onClickAction = _ => recenterViewport(),
+      ),
+      // Reset canvas: left-click = this namespace, right-click = all namespaces for this tab
+      ToolbarButton(
+        "ion-android-refresh",
+        "Clear the canvas and persisted state for this namespace (right-click for more options)",
+        onClickAction = _ => resetGraph(),
+        menuActions = () =>
+          Seq(
+            ToolbarButton
+              .MenuAction("This Namespace", "Clear canvas and persisted state for this namespace", resetGraph),
+            ToolbarButton.MenuAction(
+              "All Namespaces",
+              "Clear all persisted state for this browser tab",
+              resetAllNamespaces,
+            ),
+          ),
       ),
     )
   }

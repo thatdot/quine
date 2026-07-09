@@ -90,13 +90,16 @@ trait IngestStreamState {
   ): Try[Boolean]
 
   /** Create ingest stream using updated V2 Ingest api.
+    *
+    * @param memberIdx cluster position that should run the ingest; `None` targets the member
+    *                  serving the call. Single-node implementations have no positions and ignore it.
     */
   def addV2IngestStream(
     name: String,
     settings: V2IngestConfiguration,
     intoNamespace: NamespaceId,
     timeout: Timeout,
-    memberIdx: MemberIdx,
+    memberIdx: Option[MemberIdx],
   )(implicit logConfig: LogConfig): Future[Either[Seq[String], Unit]]
 
   /** Create an ingest stream on this member.
@@ -270,7 +273,7 @@ trait IngestStreamState {
   def getV2IngestStream(
     name: String,
     namespace: NamespaceId,
-    memberIdx: MemberIdx,
+    memberIdx: Option[MemberIdx],
   )(implicit logConfig: LogConfig): Future[Option[V2IngestEntities.IngestStreamInfoWithName]]
 
   /** Get the unified ingest stream stored in memory. The value returned here will _not_ be a copy.
@@ -287,8 +290,8 @@ trait IngestStreamState {
 
   def getV2IngestStreams(
     namespace: NamespaceId,
-    memberIdx: MemberIdx,
-  ): Future[Map[String, V2IngestEntities.IngestStreamInfo]]
+    memberIdx: Option[MemberIdx],
+  ): Future[Seq[(Option[MemberIdx], IngestName, V2IngestEntities.IngestStreamInfo)]]
 
   protected def getIngestStreamsFromState(
     namespace: NamespaceId,
@@ -308,19 +311,19 @@ trait IngestStreamState {
   def removeV2IngestStream(
     name: String,
     namespace: NamespaceId,
-    memberIdx: MemberIdx,
+    memberIdx: Option[MemberIdx],
   ): Future[Option[V2IngestEntities.IngestStreamInfoWithName]]
 
   def pauseV2IngestStream(
     name: String,
     namespace: NamespaceId,
-    memberIdx: MemberIdx,
+    memberIdx: Option[MemberIdx],
   ): Future[Option[V2IngestEntities.IngestStreamInfoWithName]]
 
   def unpauseV2IngestStream(
     name: String,
     namespace: NamespaceId,
-    memberIdx: MemberIdx,
+    memberIdx: Option[MemberIdx],
   ): Future[Option[V2IngestEntities.IngestStreamInfoWithName]]
 
   /** Close the ingest stream and return a future that completes when the stream terminates, including an error message
@@ -430,4 +433,5 @@ trait IngestStreamState {
       case Completed | Failed | Terminated => statusAtTermination
     }
   }
+
 }

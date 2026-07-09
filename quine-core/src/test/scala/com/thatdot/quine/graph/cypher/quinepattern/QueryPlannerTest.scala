@@ -25,6 +25,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
 
   // Type helpers for constructing expected typed expressions
   private val NodeTy: Option[Type] = Some(PrimitiveType.NodeType)
+  private val EdgeTy: Option[Type] = Some(PrimitiveType.EdgeType)
 
   private val IntTy: Option[Type] = Some(PrimitiveType.Integer)
   private val StrTy: Option[Type] = Some(PrimitiveType.String)
@@ -3092,7 +3093,7 @@ class QueryPlannerTest extends AnyFlatSpec with Matchers {
           .SynthesizeId(ts(31, 44), List(Expression.AtomicLiteral(ts(38, 43), Value.Text("root"), StrTy)), AnyTy),
       ),
       QueryPlan.Project(
-        List(Projection(Expression.Ident(ts(119, 122), Right(BindingId(2)), tv("type_4")), BindingId(2))),
+        List(Projection(Expression.Ident(ts(119, 122), Right(BindingId(2)), EdgeTy), BindingId(2))),
         true,
         QueryPlan.Sequence(
           QueryPlan.Unit,

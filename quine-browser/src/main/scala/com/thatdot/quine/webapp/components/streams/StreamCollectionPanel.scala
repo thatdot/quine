@@ -145,6 +145,11 @@ object StreamCollectionPanel {
   /** Parse a V2 list response: `[{"name": "n1", ...}, ...]`. Items missing a
     * `name` field are tagged "unknown" so the row still appears (matches the
     * original per-panel behaviour).
+    *
+    * The first tuple element is a stable row identity, not a display name. When an
+    * item carries a `memberIdx` (clustered ingests, which can repeat the same name
+    * across positions) it is folded into the key so the rows don't collide; the
+    * renderer reads the actual name/position back out of the JSON.
     */
   private def normalizeList(json: Json): List[(String, Json)] =
     json.asArray
@@ -152,6 +157,7 @@ object StreamCollectionPanel {
       .toList
       .map { item =>
         val name = item.hcursor.get[String]("name").getOrElse("unknown")
-        name -> item
+        val key = item.hcursor.get[Int]("memberIdx").toOption.fold(name)(idx => s"$name#$idx")
+        key -> item
       }
 }

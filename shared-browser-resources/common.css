@@ -17,6 +17,11 @@
   /* Brand color extensions — unofficial */
   --thatdot-gradient-middle: #ebebf3;
 
+  /* Results-surface accent token (muted danger, not pure red) */
+  --error-accent: #c4453d;
+  /* Live-tap accent (teal) — distinct from the blue of query results */
+  --tap-accent: #0e7d83;
+
   /* Layout tokens */
   --topbar-height: 4rem;
 
@@ -26,6 +31,10 @@
      (quine-ui.html and dev/index.html); the emoji fonts are CSS-only since
      the pre-bundle window renders no emoji UI. */
   --cui-font-sans-serif: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+
+  /* Data / queries / code typeface — JetBrains Mono (loaded via @fontsource-variable
+     in each browser project's package.scala) with a system-mono fallback. */
+  --thatdot-font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* Map brand colors to CoreUI taxonomy */
   --cui-body-bg: var(--thatdot-gradient-end);
@@ -88,17 +97,7 @@ pre.wrap {
   word-wrap: break-word;
 }
 
-.message-bar {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  box-sizing: content-box;
-}
-.message-bar-resize-handle {
-  background-color: var(--cui-emphasis-color);
-}
-
-/* Query result sentiment colors */
+/* Query result sentiment colors (query-bar flash) */
 .query-result-error {
   background-color: var(--cui-danger-bg-subtle);
 }
@@ -107,13 +106,6 @@ pre.wrap {
 }
 .query-result-empty {
   background-color: var(--cui-secondary-bg-subtle);
-}
-
-.message-bar-button {
-  cursor: pointer;
-  font-size: 2em;
-  position: absolute;
-  right: 0.4em; /* matches message bar padding */
 }
 
 .nav-bar > * {
@@ -148,6 +140,122 @@ pre.wrap {
   font-size: 1.2em;
   border: none;
   border-radius: 0 .2em .2em 0;
+}
+.query-bookmark-toggle {
+  display: flex;
+  align-items: center;
+  background-color: white;
+  color: var(--cui-tertiary-color);
+  padding: 0 .5em;
+  font-size: 1.2em;
+  cursor: pointer;
+}
+.query-bookmark-toggle:hover {
+  color: var(--cui-primary);
+}
+.query-bookmark-toggle.active {
+  color: var(--cui-primary);
+}
+.bookmark-dialog {
+  position: absolute;
+  top: 100%;
+  left: 9em;
+  width: 23em;
+  max-width: 85vw;
+  background-color: var(--cui-body-bg);
+  color: var(--cui-body-color);
+  border-radius: .4em;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  padding: 1em 1.25em 1.25em;
+  z-index: 30;
+  font-size: .95rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35em;
+  cursor: default;
+}
+.bookmark-dialog-title {
+  font-weight: 700;
+  margin-bottom: .35em;
+}
+.bookmark-global-warning {
+  font-size: .78em;
+  color: var(--cui-warning-text, #997404);
+  background: var(--cui-warning-bg, #fff3cd);
+  border: 1px solid var(--cui-warning-border, #ffe69c);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: .5em;
+}
+.bookmark-field-label {
+  font-size: .8em;
+  font-weight: 600;
+  color: var(--cui-secondary-color);
+  margin-top: .35em;
+}
+.bookmark-field-label-optional {
+  font-weight: 400;
+}
+.bookmark-field-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 1em;
+  padding: .45em .6em;
+  border: 1px solid var(--cui-border-color, #ccc);
+  border-radius: .3em;
+  background-color: var(--cui-body-bg);
+  color: var(--cui-body-color);
+  resize: vertical;
+}
+.bookmark-field-input:focus {
+  outline: none;
+  border-color: var(--cui-primary);
+}
+.bookmark-query-preview {
+  font-family: monospace;
+  font-size: .9em;
+  background-color: var(--cui-tertiary-bg);
+  border-radius: .3em;
+  padding: .5em .6em;
+  overflow-wrap: anywhere;
+  max-height: 6em;
+  overflow-y: auto;
+}
+.bookmark-dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: .75em;
+  margin-top: .75em;
+}
+.bookmark-dialog-footer button {
+  font-family: inherit;
+  font-size: .95em;
+  border: none;
+  border-radius: .3em;
+  padding: .45em .9em;
+  cursor: pointer;
+}
+.bookmark-remove-button {
+  background: none;
+  color: var(--cui-danger, #c0392b);
+  margin-right: auto;
+  padding-left: 0;
+}
+.bookmark-cancel-button {
+  background: none;
+  color: var(--cui-body-color);
+  font-weight: 600;
+  margin-left: auto;
+}
+.bookmark-save-button {
+  background-color: var(--cui-primary);
+  color: white;
+  font-weight: 600;
+}
+.bookmark-save-button:disabled {
+  opacity: .55;
+  cursor: default;
 }
 .sample-query-dropdown {
   position: absolute;
@@ -229,6 +337,173 @@ pre.wrap {
   margin-right: .5em;
   margin-left: 0em;
 }
+/* Trailing slot at the far right of the nav-bar: vertical divider + graph
+   selector. Pinned right; the nav buttons (flex-grow) absorb the slack, so
+   adding this never shrinks the query input. */
+.nav-bar-trailing {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-right: .6em;
+  flex-shrink: 0;
+}
+.nav-bar-divider {
+  width: 1px;
+  height: 1.6em;
+  background-color: rgba(255, 255, 255, 0.3);
+  margin: 0 .6em;
+  flex-shrink: 0;
+}
+/* Graph (namespace) selector button: graph icon, current graph name, chevron.
+   Fixed footprint — the name ellipsizes so long graph names never resize the
+   bar. */
+.graph-selector {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.graph-selector-button {
+  display: flex;
+  align-items: center;
+  gap: .45em;
+  max-width: 14em;
+  padding: .35em .6em;
+  border: none;
+  background-color: transparent;
+  color: var(--thatdot-gradient-end);
+  font-family: inherit;
+  font-size: 1.1em;
+  border-radius: .25em;
+  cursor: pointer;
+  transition: background-color .15s ease-in-out, color .15s ease-in-out;
+}
+.graph-selector-button:hover {
+  background-color: var(--cui-tertiary-bg);
+  color: var(--cui-body-color);
+}
+.graph-selector-button:focus-visible {
+  outline: 2px solid var(--thatdot-brite-blue);
+  outline-offset: -2px;
+}
+.graph-selector-icon {
+  font-size: 1.1em;
+  flex-shrink: 0;
+}
+.graph-selector-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.graph-selector-chevron {
+  font-size: .8em;
+  opacity: .85;
+  flex-shrink: 0;
+}
+/* Selector dropdown: graph list (with per-graph delete) + create action */
+.graph-selector-menu {
+  display: none;
+  position: fixed;
+  z-index: 100;
+  background-color: var(--cui-body-bg);
+  border: 1px solid var(--cui-primary);
+  border-radius: .5em;
+  min-width: 240px;
+  padding: .5em 0;
+  margin: 0;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+}
+.graph-selector-menu.open {
+  display: block;
+}
+.graph-selector-menu-header {
+  padding: .5em 1.2em .45em;
+  font-size: .72em;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--cui-secondary-color);
+}
+.graph-selector-menu-filter {
+  display: block;
+  width: calc(100% - 2.4em);
+  box-sizing: border-box;
+  margin: .15em 1.2em .45em;
+  padding: .4em .6em;
+  font-family: inherit;
+  font-size: .9em;
+  color: var(--cui-body-color);
+  background-color: var(--cui-body-bg);
+  border: 1px solid var(--cui-primary);
+  border-radius: .35em;
+}
+.graph-selector-menu-filter:focus {
+  outline: none;
+  border-color: var(--thatdot-brite-blue);
+}
+/* Long graph lists scroll; header, filter, and create row stay pinned */
+.graph-selector-menu-list {
+  max-height: 40vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.graph-selector-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5em;
+  padding: .6em 1.2em;
+  cursor: pointer;
+  color: var(--cui-body-color);
+}
+.graph-selector-menu-item:hover {
+  background-color: var(--cui-tertiary-bg);
+}
+.graph-selector-menu-item.active {
+  font-weight: 600;
+  background-color: var(--cui-tertiary-bg);
+}
+.graph-selector-menu-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.graph-selector-menu-delete {
+  display: inline-flex;
+  align-items: center;
+  padding: .2em .3em;
+  border-radius: .25em;
+  font-size: .9em;
+  color: var(--cui-tertiary-color);
+}
+.graph-selector-menu-delete:hover {
+  background-color: var(--cui-tertiary-bg);
+  color: var(--cui-danger, #b02a37);
+}
+.graph-selector-menu-separator {
+  border-top: 1px solid var(--cui-primary);
+  margin: .45em 0;
+}
+.graph-selector-menu-create {
+  display: flex;
+  align-items: center;
+  gap: .7em;
+  padding: .6em 1.2em;
+  cursor: pointer;
+  color: var(--cui-body-color);
+}
+.graph-selector-menu-create:hover {
+  background-color: var(--cui-tertiary-bg);
+}
+.graph-selector-menu-create-plus {
+  color: var(--cui-secondary-color);
+}
+.graph-selector-menu-empty {
+  padding: .6em 1.2em;
+  color: var(--cui-secondary-color);
+  cursor: default;
+}
 /* Cypher results table */
 table.cypher-results {
   border: 1px solid black;
@@ -241,15 +516,878 @@ table.cypher-results td, table.cypher-results th {
   border-collapse: collapse;
 }
 
+/* ============================================================================
+   Node properties popup
+   Ported from the Quine Design System "NodeDetail" component. Color/diff
+   semantics are mapped onto CoreUI intent tokens:
+     text/added    -> success    number -> brite-blue    boolean/edit -> warning
+     null/json     -> secondary   removed -> danger        view accent  -> primary
+   ============================================================================ */
+.node-properties-popup {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--cui-white);
+  border: 1px solid var(--cui-border-color);
+  border-top: 3px solid var(--cui-primary);
+  border-radius: 0.4em;
+  box-shadow: 0 6px 20px rgba(10, 41, 91, 0.18);
+  min-width: 320px;
+  max-width: 460px;
+  transition: border-color 0.18s ease-in-out;
+}
+.node-properties-popup.editing {
+  border-top-color: var(--cui-warning);
+  /* Fixed width in edit mode: the footer's inline items (Show Cypher query ·
+     diff summary · Apply changes) always fit on one line, and — since an
+     absolutely-positioned popup otherwise sizes to its widest content — the
+     revealed Cypher query can no longer grow the popup. */
+  width: 520px;
+  max-width: 520px;
+}
+
+/* ---- header ---- */
+.node-properties-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75em;
+  padding: 0.7em 0.8em 0.6em;
+  /* view-mode accent: a faint blue top, mirroring edit mode's light yellow */
+  background-color: var(--thatdot-gradient-middle);
+  border-bottom: 1px solid var(--cui-border-color);
+  /* the popup no longer clips its corners, so round the header's own top corners */
+  border-top-left-radius: calc(0.4em - 1px);
+  border-top-right-radius: calc(0.4em - 1px);
+  transition: background-color 0.18s ease-in-out;
+}
+.node-properties-popup.editing .node-properties-popup-header {
+  background-color: var(--cui-warning-bg-subtle);
+}
+.node-properties-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
+  flex: 1;
+  min-width: 0;
+  /* sit above the action buttons so the revealed (single-line) id can overlay them */
+  position: relative;
+  z-index: 1;
+}
+.node-properties-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  flex: none;
+  position: relative;
+  z-index: 0;
+}
+.node-properties-eyebrow-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  min-width: 0;
+}
+.node-properties-node-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--cui-primary);
+  background-color: var(--cui-white);
+  flex: none;
+}
+.node-properties-popup.editing .node-properties-node-dot {
+  border-color: var(--cui-warning);
+}
+.node-properties-node-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-family: "Ionicons";
+  font-size: 17px;
+  line-height: 1;
+}
+.node-properties-eyebrow {
+  flex: none;
+  white-space: nowrap;
+  font-size: 0.7em;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cui-secondary-color);
+}
+.node-properties-popup.editing .node-properties-eyebrow-row .node-properties-eyebrow {
+  color: var(--cui-warning-text-emphasis);
+}
+
+/* ---- labels ---- */
+.node-properties-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3em;
+}
+.node-properties-label {
+  display: inline-flex;
+  align-items: center;
+  /* white chip that lifts off both the light-blue view header and the
+     light-yellow edit header; added/deleted variants override below */
+  background-color: var(--cui-white);
+  color: var(--cui-body-color);
+  border: 1px solid var(--cui-border-color);
+  border-radius: 1em;
+  padding: 0.22em 0.7em;
+  font-size: 0.82em;
+  font-weight: normal;
+  box-shadow: 0 1px 2px rgba(10, 41, 91, 0.08);
+}
+.node-properties-label--added {
+  background-color: var(--cui-success-bg-subtle);
+  color: var(--cui-success-text-emphasis);
+  border-color: var(--cui-success-border-subtle);
+}
+.node-properties-label--deleted {
+  background-color: var(--cui-danger-bg-subtle);
+  color: var(--cui-danger-text-emphasis);
+  border-color: var(--cui-danger-border-subtle);
+  text-decoration: line-through;
+}
+.node-properties-label-remove-btn {
+  cursor: pointer;
+  margin-left: 0.3em;
+  font-size: 1.1em;
+  line-height: 1;
+  opacity: 0.6;
+}
+.node-properties-label-remove-btn:hover {
+  opacity: 1;
+}
+/* the input dressed up as a nascent label pill — mirrors the white
+   .node-properties-label chips but with a dashed border (solid + warning on
+   focus) so typing reads as "making a new pill" */
+.np-new-label-pill {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--cui-white);
+  color: var(--cui-body-color);
+  border: 1px dashed var(--cui-border-color);
+  border-radius: 1em;
+  padding: 0.22em 0.7em;
+  font-size: 0.82em;
+  box-shadow: 0 1px 2px rgba(10, 41, 91, 0.08);
+  cursor: text;
+}
+.np-new-label-pill:focus-within {
+  border-style: solid;
+  border-color: var(--cui-warning);
+}
+.np-new-label-colon {
+  color: var(--cui-secondary-color);
+}
+.np-new-label-sizer-wrap {
+  position: relative;
+  display: inline-block;
+}
+/* invisible mirror of the input text; its intrinsic width sizes the wrap, and
+   the input overlays it exactly. white-space: pre keeps spaces measured. */
+.np-new-label-sizer {
+  display: inline-block;
+  white-space: pre;
+  visibility: hidden;
+  /* room for the caret at the end so it isn't clipped */
+  padding-right: 2px;
+}
+.node-properties-new-label-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  outline: none;
+  padding: 0;
+  /* must match the mirror span's metrics, since inputs don't inherit font */
+  font: inherit;
+  color: inherit;
+}
+.node-properties-new-label-input::placeholder {
+  color: var(--cui-secondary-color);
+  font-style: italic;
+}
+
+/* ---- body / fields ---- */
+.node-properties-popup-content {
+  overflow-y: auto;
+  max-height: 360px;
+}
+.node-properties-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  padding: 0.8em 0;
+}
+
+/* ---- masked id ----
+   Mirrors the property-name hover: plain text until hovered, then a grey
+   single-line highlight (no outline) that grows in flow to fit the full id and
+   overflows over the action buttons. Height is unchanged, so nothing reflows. */
+.node-properties-id {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  /* size to the id text, not the whole row, so the blank space to the right
+     isn't part of the hover target */
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0.05em 0.25em;
+  border-radius: 0.2em;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.8em;
+  color: var(--cui-body-color);
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+.node-properties-id .np-id-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Full id, shown on hover/copy. Absolutely positioned so it sits out of flow:
+   it doesn't contribute to the box's intrinsic width, so the popup keeps its
+   collapsed size while the id spills (as a grey pill) over the right edge. */
+.np-id-full {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  align-items: center;
+  gap: 0.3em;
+  width: max-content;
+  padding: 0.05em 0.25em;
+  border-radius: 0.2em;
+  white-space: nowrap;
+  background-color: var(--cui-tertiary-bg);
+}
+.node-properties-id.open .np-id-full {
+  display: flex;
+}
+.node-properties-id.copied {
+  color: var(--cui-success-text-emphasis);
+}
+.node-properties-id.copied .np-id-full {
+  background-color: var(--cui-success-bg-subtle);
+}
+
+/* ---- view-mode property list ---- */
+.node-properties-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.3em;
+  overflow: hidden;
+}
+.node-properties-row {
+  display: grid;
+  grid-template-columns: minmax(84px, 38%) 1fr;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.45em 0.6em;
+}
+.node-properties-row + .node-properties-row {
+  border-top: 1px solid var(--cui-border-color);
+}
+.node-properties-row--multiline {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35em;
+}
+.node-properties-val-cell {
+  min-width: 0;
+  overflow: visible;
+  display: flex;
+}
+.node-properties-empty {
+  margin: 0;
+  font-size: 0.85em;
+  font-style: italic;
+  color: var(--cui-secondary-color);
+}
+
+/* copyable key */
+.node-properties-key {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  justify-self: start;
+  max-width: 100%;
+  padding: 0.05em 0.25em;
+  border-radius: 0.2em;
+  color: var(--cui-secondary-color);
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.85em;
+  cursor: pointer;
+  user-select: none;
+}
+.node-properties-key .np-key-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.node-properties-key:hover {
+  background-color: var(--cui-tertiary-bg);
+}
+.node-properties-key.copied {
+  background-color: var(--cui-success-bg-subtle);
+  color: var(--cui-success-text-emphasis);
+}
+
+/* inline, type-colored value */
+.node-properties-val {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.05em 0.3em;
+  border-radius: 0.2em;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  transition: background-color 0.12s, color 0.12s;
+}
+.node-properties-val .np-val-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Full value, revealed on hover/after-copy. Like .np-id-full it sits out of
+   flow so it doesn't grow the popup, but uses position: fixed (pinned over the
+   chip from NodePropertiesPopup.scala) so it can overflow the popup's right
+   edge without being clipped by the scrolling content area. Same padding/font
+   as the chip ⇒ its text lands exactly over the collapsed text. */
+.np-val-full {
+  display: none;
+  position: fixed;
+  z-index: 60;
+  align-items: center;
+  gap: 0.35em;
+  width: max-content;
+  max-width: 80vw;
+  padding: 0.05em 0.3em;
+  border-radius: 0.2em;
+  white-space: nowrap;
+  background-color: var(--cui-info-bg-subtle);
+}
+.node-properties-val.open .np-val-full {
+  display: inline-flex;
+}
+.node-properties-val.copied {
+  color: var(--cui-success-text-emphasis) !important;
+}
+.node-properties-val.copied .np-val-full {
+  background-color: var(--cui-success-bg-subtle);
+}
+.node-properties-val--text {
+  color: var(--cui-success-text-emphasis);
+}
+.node-properties-val--number {
+  color: var(--thatdot-brite-blue);
+}
+.node-properties-val--boolean {
+  color: var(--cui-warning-text-emphasis);
+}
+.node-properties-val--null,
+.node-properties-val--JSON {
+  color: var(--cui-secondary-color);
+}
+.np-empty-string {
+  color: var(--cui-secondary-color);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* multiline value box */
+.node-properties-multiline-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+.node-properties-multiline {
+  position: relative;
+  border: 1px solid var(--cui-border-color);
+  border-radius: 0.3em;
+  background-color: var(--cui-tertiary-bg);
+  padding: 0.45em 0.55em;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.82em;
+  line-height: 1.45;
+  color: var(--cui-success-text-emphasis);
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.node-properties-multiline.clamped {
+  max-height: 8.4em;
+  overflow: hidden;
+}
+.node-properties-multiline.clamped::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.4em;
+  background: linear-gradient(to bottom, transparent, var(--cui-tertiary-bg));
+  pointer-events: none;
+}
+.node-properties-multiline:hover {
+  border-color: var(--cui-primary);
+}
+.node-properties-multiline.copied {
+  border-color: var(--cui-success-border-subtle);
+  background-color: var(--cui-success-bg-subtle);
+}
+.node-properties-multiline-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+  padding-left: 0.15em;
+}
+.node-properties-show-all-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: var(--cui-primary);
+  font-size: 0.72em;
+  font-weight: 600;
+}
+.node-properties-charcount {
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.66em;
+  color: var(--cui-secondary-color);
+}
+
+/* shared copy glyph */
+.node-properties-copy-glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  color: var(--cui-secondary-color);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.node-properties-id:hover .node-properties-copy-glyph,
+.node-properties-key:hover .node-properties-copy-glyph,
+.node-properties-val:hover .node-properties-copy-glyph {
+  opacity: 0.6;
+}
+.node-properties-copied-check {
+  color: var(--cui-success);
+  opacity: 1 !important;
+}
+
+/* ---- edit-mode rows (git-style diff) ---- */
+.node-properties-edit-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.3em;
+  overflow: hidden;
+}
+.node-properties-prow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
+  padding: 0.5em 0.55em;
+  border-left: 3px solid transparent;
+  background-color: var(--cui-white);
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.node-properties-prow + .node-properties-prow,
+.node-properties-prow + .node-properties-add-btn {
+  border-top: 1px solid var(--cui-border-color);
+}
+.node-properties-prow--added {
+  background-color: var(--cui-success-bg-subtle);
+  border-left-color: var(--cui-success);
+}
+.node-properties-prow--altered {
+  background-color: var(--cui-warning-bg-subtle);
+  border-left-color: var(--cui-warning);
+}
+.node-properties-prow--deleted {
+  background-color: var(--cui-danger-bg-subtle);
+  border-left-color: var(--cui-danger);
+}
+.node-properties-prow-key {
+  display: flex;
+  gap: 0.4em;
+  align-items: center;
+}
+.node-properties-prow-key .node-properties-text-input {
+  flex: 1;
+  min-width: 0;
+}
+.np-deleted-key {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.85em;
+  color: var(--cui-danger-text-emphasis);
+  text-decoration: line-through;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.np-readonly-key {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.85em;
+  color: var(--cui-body-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node-properties-prow-val {
+  display: flex;
+  gap: 0.4em;
+  align-items: flex-start;
+}
+.np-deleted-val {
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.85em;
+  color: var(--cui-danger-text-emphasis);
+  opacity: 0.8;
+  text-decoration: line-through;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding-left: 0.15em;
+}
+.np-null-value {
+  flex: 1;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.85em;
+  color: var(--cui-secondary-color);
+  padding: 0.25em;
+}
+.node-properties-status-tag {
+  flex: none;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.66em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.node-properties-status-tag--added {
+  color: var(--cui-success-text-emphasis);
+}
+.node-properties-status-tag--altered {
+  color: var(--cui-warning-text-emphasis);
+}
+.node-properties-status-tag--deleted {
+  color: var(--cui-danger-text-emphasis);
+}
+
+/* edit-mode controls */
+.node-properties-text-input {
+  box-sizing: border-box;
+  border: 1px solid var(--cui-border-color);
+  border-radius: 0.25em;
+  padding: 0.2em 0.4em;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.85em;
+  background-color: var(--cui-white);
+  color: var(--cui-body-color);
+  outline: none;
+}
+.node-properties-text-input:focus {
+  border-color: var(--cui-primary);
+}
+.node-properties-text-input.np-input-invalid,
+.node-properties-text-input.np-input-invalid:focus,
+.node-properties-edit-input.np-input-invalid,
+.node-properties-edit-input.np-input-invalid:focus {
+  border-color: var(--cui-danger);
+  background-color: var(--cui-danger-bg-subtle);
+}
+.node-properties-edit-input {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--cui-border-color);
+  border-radius: 0.25em;
+  padding: 0.2em 0.4em;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.85em;
+  line-height: 1.4;
+  background-color: var(--cui-white);
+  color: var(--cui-body-color);
+  resize: none;
+  overflow-y: auto;
+  max-height: 200px;
+  outline: none;
+}
+.node-properties-edit-input:focus {
+  border-color: var(--cui-primary);
+}
+.node-properties-type-select,
+.node-properties-bool-select {
+  flex: none;
+  border: 1px solid var(--cui-border-color);
+  border-radius: 0.25em;
+  background-color: var(--cui-white);
+  color: var(--cui-secondary-color);
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.78em;
+  padding: 0.2em 0.35em;
+  cursor: pointer;
+}
+.node-properties-bool-select {
+  flex: 1;
+  color: var(--cui-warning-text-emphasis);
+}
+.node-properties-icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--cui-border-color);
+  border-radius: 0.25em;
+  background-color: var(--cui-white);
+  color: var(--cui-secondary-color);
+  cursor: pointer;
+  font-size: 1.1em;
+  line-height: 1;
+}
+.node-properties-icon-btn--danger {
+  border-color: var(--cui-danger-border-subtle);
+  color: var(--cui-danger);
+}
+.node-properties-icon-btn:hover {
+  background-color: var(--cui-tertiary-bg);
+}
+.node-properties-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  padding: 0.5em;
+  border: none;
+  background: transparent;
+  color: var(--cui-secondary-color);
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+}
+.node-properties-add-btn:hover {
+  background-color: var(--cui-tertiary-bg);
+  color: var(--cui-primary);
+}
+
+/* ---- footer (guarded apply) ---- */
+.node-properties-footer:not(:empty) {
+  border-top: 1px solid var(--cui-warning-border-subtle);
+  background-color: var(--cui-warning-bg-subtle);
+  padding: 0.6em 0.8em;
+  /* match the popup's rounded bottom corners now that the popup no longer clips */
+  border-bottom-left-radius: calc(0.4em - 1px);
+  border-bottom-right-radius: calc(0.4em - 1px);
+}
+.node-properties-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+}
+.node-properties-footer-row > * {
+  /* one line each; the popup widens (see .editing max-width) so the items
+     never collide */
+  white-space: nowrap;
+}
+/* Show Cypher query stays on the left; this pushes the diff summary (and the
+   Apply button after it) into a group on the right */
+.node-properties-footer-row .node-properties-diff-summary {
+  margin-left: auto;
+}
+.node-properties-diff-summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  /* hold a constant width so the box doesn't jiggle when toggling between
+     "No changes yet" and the three-count view; content hugs the right (next to
+     Apply) */
+  min-width: 8.5em;
+  gap: 0.75em;
+  font-size: 0.85em;
+}
+.node-properties-diff-summary.np-no-changes {
+  color: var(--cui-secondary-color);
+}
+.node-properties-diff-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  font-family: var(--thatdot-font-mono);
+  font-weight: 700;
+  font-size: 0.85em;
+}
+.node-properties-diff-item.zero {
+  opacity: 0.3;
+}
+.node-properties-diff-item--added {
+  color: color-mix(in srgb, var(--cui-success-text-emphasis), var(--cui-success) 50%);
+}
+.node-properties-diff-item--altered {
+  color: color-mix(in srgb, var(--cui-warning-text-emphasis), var(--cui-warning) 50%);
+}
+.node-properties-diff-item--deleted {
+  color: color-mix(in srgb, var(--cui-danger-text-emphasis), var(--cui-danger) 50%);
+}
+.node-properties-diff-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+.node-properties-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+}
+.node-properties-confirm-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.85em;
+  color: var(--cui-body-color);
+}
+.node-properties-confirm-text i {
+  color: var(--cui-warning);
+  font-size: 1.1em;
+}
+.node-properties-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5em;
+}
+
+/* ---- buttons ---- */
+.node-properties-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.3em 0.7em;
+  border: 1px solid transparent;
+  border-radius: 0.25em;
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.node-properties-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.node-properties-btn--secondary {
+  background-color: var(--cui-white);
+  border-color: var(--cui-border-color);
+  color: var(--cui-body-color);
+}
+.node-properties-btn--secondary:hover:not(:disabled) {
+  background-color: var(--cui-tertiary-bg);
+}
+.node-properties-btn--primary {
+  background-color: var(--cui-primary);
+  border-color: var(--cui-primary);
+  color: var(--thatdot-gradient-end);
+}
+.node-properties-btn--primary:hover:not(:disabled) {
+  background-color: var(--thatdot-brite-blue);
+}
+.node-properties-btn--edit {
+  background-color: var(--cui-warning);
+  border-color: var(--cui-warning);
+  color: var(--cui-dark, #0a295b);
+}
+.node-properties-btn--edit:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+.node-properties-btn--ghost {
+  background: transparent;
+  color: var(--cui-secondary-color);
+}
+.node-properties-btn--ghost:hover:not(:disabled) {
+  background-color: var(--cui-tertiary-bg);
+}
+
+/* ---- constructed-query disclosure (edit mode) ----
+   The read-only box mirrors .node-properties-multiline, but stays body-colored:
+   the multiline green carries "text value" meaning in this popup's type-color
+   scheme, which would be misleading for a whole Cypher statement. */
+.node-properties-cypher {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  margin-top: 0.6em;
+}
+.node-properties-cypher-box {
+  position: relative;
+  border: 1px solid var(--cui-border-color);
+  border-radius: 0.3em;
+  background-color: var(--cui-tertiary-bg);
+  padding: 0.45em 0.55em;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.82em;
+  line-height: 1.45;
+  color: var(--cui-body-color);
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.node-properties-cypher-box:hover {
+  border-color: var(--cui-primary);
+}
+.node-properties-cypher-box.copied {
+  border-color: var(--cui-success-border-subtle);
+  background-color: var(--cui-success-bg-subtle);
+}
+
 /* Context menu */
 .context-menu {
   z-index: 6;
   position: absolute;
-  background-color: var(--cui-body-bg);
-  border: 1px solid var(--cui-primary);
-  border-radius: .2em;
+  background-color: var(--cui-white);
+  border: 1px solid var(--cui-border-color);
+  border-top: 3px solid var(--cui-primary);
+  border-radius: 0.4em;
   margin: 0;
   list-style: none;
+  box-shadow: 0 6px 20px rgba(10, 41, 91, 0.18);
+  min-width: 280px;
+  max-height: calc(100vh - 16px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .context-menu ul {
   padding: 0;
@@ -258,6 +1396,672 @@ table.cypher-results td, table.cypher-results th {
 .context-menu ul li {
   list-style: none;
   padding: 0.5em 0.75em;
+}
+.context-menu-header {
+  background-color: var(--thatdot-gradient-middle);
+  border-bottom: 1px solid var(--cui-border-color);
+  color: inherit;
+  padding: 0.7em 0.8em 0.6em;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  min-width: 0;
+}
+.context-menu-header-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4a90d9;
+  flex-shrink: 0;
+}
+.context-menu-node-id {
+  display: flex;
+  align-items: center;
+  padding: 0.05em 0.25em;
+  font-family: var(--thatdot-font-mono);
+  font-size: 0.8em;
+  color: var(--cui-body-color);
+  white-space: nowrap;
+}
+.context-menu-section {
+  padding: 10px 16px 4px;
+  font-size: 0.68em;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a93b5;
+  cursor: default;
+}
+.context-menu-divider {
+  border-top: 1px solid #e2e5f0;
+  margin: 0;
+  padding: 0;
+  height: 0;
+  cursor: default;
+}
+.context-menu-action {
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  transition: background 0.1s;
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+}
+.context-menu-action:hover {
+  background: rgba(47, 123, 217, 0.06);
+}
+.context-menu-action-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #56618f;
+  font-size: 0.9em;
+  margin-top: 1px;
+}
+.context-menu-action-body {
+  flex: 1;
+  min-width: 0;
+}
+.context-menu-action-name {
+  font-size: 0.92em;
+  font-weight: 600;
+  color: #1b2a4e;
+}
+.context-menu-action-suffix {
+  font-size: 0.78em;
+  font-family: var(--thatdot-font-mono);
+  color: #8a93b5;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.context-menu-section-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.context-menu-section-body.scrollable {
+  max-height: 200px;
+}
+.context-menu-section-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 12px 4px;
+  padding: 5px 8px;
+  border: 1px solid #e2e5f0;
+  border-radius: 6px;
+  font-size: 0.85em;
+  color: #8a93b5;
+}
+.context-menu-section-search input {
+  border: none;
+  outline: none;
+  flex-grow: 1;
+  font-family: inherit;
+  font-size: 1em;
+  background: transparent;
+  color: #1b2a4e;
+}
+.context-menu-section-search input::placeholder {
+  color: #b0b8d4;
+}
+
+/* Slide-over panel */
+.slide-over-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 400px;
+  height: 100%;
+  z-index: 7;
+  background-color: var(--cui-body-bg);
+  border-left: 1px solid var(--cui-border-color, #e2e5f0);
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  transform: translateX(100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.slide-over-panel.open {
+  transform: translateX(0);
+}
+/* The slide transition is enabled one painted frame after mount (the
+   slide-over-panel-animated class added by SlideOverPanel.scala) so the panel never animates
+   open->closed on initial page load. */
+.slide-over-panel-animated {
+  transition: transform 0.25s ease-in-out;
+}
+.slide-over-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--cui-border-color, #e2e5f0);
+  flex-shrink: 0;
+}
+.slide-over-panel-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.slide-over-panel-close {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: var(--cui-tertiary-color);
+  padding: 0 4px;
+  line-height: 1;
+}
+.slide-over-panel-close:hover {
+  color: var(--cui-body-color);
+}
+.slide-over-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  scrollbar-width: thin;
+}
+.slide-over-panel-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--cui-border-color, #e2e5f0);
+  flex-shrink: 0;
+  font-size: 0.85em;
+  color: var(--cui-tertiary-color);
+}
+
+.slide-over-panel-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+.slide-over-panel-resize-handle:hover,
+.slide-over-panel-resize-handle:active {
+  background: var(--cui-primary, #2f7bd9);
+  opacity: 0.3;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  padding: 10px 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  animation: toast-in 0.3s ease-out;
+}
+.toast-info {
+  background-color: #dcebfb;
+  color: #2f59a8;
+}
+.toast-success {
+  background-color: #e4f3ea;
+  color: #1f8a5b;
+}
+.toast-error {
+  background-color: #fde8e8;
+  color: #c53030;
+}
+.toast-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+  padding: 0;
+  line-height: 1;
+}
+.toast-close:hover {
+  opacity: 1;
+}
+@keyframes toast-in {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Predicate builder */
+.predicate-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.predicate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.predicate-field > label {
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--cui-tertiary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.predicate-input {
+  padding: 6px 10px;
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: var(--cui-body-bg);
+  color: var(--cui-body-color);
+}
+.predicate-input:focus {
+  outline: none;
+  border-color: var(--cui-primary);
+}
+.predicate-input-small {
+  padding: 4px 8px;
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  width: 100px;
+  background: var(--cui-body-bg);
+  color: var(--cui-body-color);
+}
+.predicate-input-small:focus {
+  outline: none;
+  border-color: var(--cui-primary);
+}
+.predicate-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.predicate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #dcebfb;
+  color: #2f59a8;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.predicate-chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.9rem;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.6;
+}
+.predicate-chip-remove:hover {
+  opacity: 1;
+}
+.predicate-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.predicate-add-row button {
+  padding: 4px 10px;
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  border-radius: 6px;
+  background: var(--cui-body-bg);
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--cui-body-color);
+}
+.predicate-add-row button:hover {
+  background: #dcebfb;
+}
+.predicate-kv-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.88rem;
+  padding: 2px 0;
+}
+.predicate-kv-key {
+  font-weight: 600;
+}
+.predicate-kv-value {
+  font-family: monospace;
+  font-size: 0.85em;
+}
+.predicate-match-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--cui-primary);
+  padding: 6px 0;
+}
+.predicate-match-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cui-primary);
+  flex-shrink: 0;
+}
+
+/* API JSON preview */
+.api-json-preview {
+  margin-top: 12px;
+}
+.api-json-preview-toggle {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--cui-tertiary-color);
+  padding: 4px 0;
+  user-select: none;
+}
+.api-json-preview-toggle:hover {
+  color: var(--cui-body-color);
+}
+.api-json-preview-code {
+  background: #1b2a4e;
+  color: #c8d4f0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  margin: 6px 0 0;
+}
+
+/* Editor form */
+.editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.editor-field-label {
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--cui-tertiary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.editor-input {
+  padding: 8px 12px;
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  border-radius: 8px;
+  font-size: 0.92rem;
+  background: var(--cui-body-bg);
+  color: var(--cui-body-color);
+}
+.editor-input:focus {
+  outline: none;
+  border-color: var(--cui-primary);
+}
+.editor-textarea {
+  padding: 8px 12px;
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-family: monospace;
+  min-height: 80px;
+  resize: vertical;
+  background: var(--cui-body-bg);
+  color: var(--cui-body-color);
+}
+.editor-textarea:focus {
+  outline: none;
+  border-color: var(--cui-primary);
+}
+.synthetic-edge-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.synthetic-edge-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr 0.8fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.synthetic-edge-row .editor-input {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.synthetic-edge-row select {
+  padding: 6px 8px;
+}
+.synthetic-edge-remove {
+  border: none;
+  background: none;
+  color: var(--cui-tertiary-color);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.synthetic-edge-remove:hover {
+  color: var(--cui-danger, #d64545);
+  background: rgba(214, 69, 69, 0.1);
+}
+.synthetic-edge-add {
+  align-self: flex-start;
+  margin-top: 4px;
+  border: 1px dashed var(--cui-border-color, #e2e5f0);
+  background: none;
+  color: var(--cui-primary);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+.synthetic-edge-add:hover {
+  background: #dcebfb;
+}
+.editor-toggle {
+  display: inline-flex;
+  padding: 4px 12px;
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--cui-body-bg);
+  color: var(--cui-tertiary-color);
+  transition: background 0.15s, color 0.15s;
+}
+.editor-toggle:hover {
+  background: #dcebfb;
+}
+.editor-toggle.active {
+  background: var(--cui-primary);
+  color: #fff;
+  border-color: var(--cui-primary);
+}
+.editor-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+}
+.editor-actions button {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  background: var(--cui-body-bg);
+  color: var(--cui-body-color);
+}
+.editor-actions button:first-child {
+  background: var(--cui-primary);
+  color: #fff;
+  border-color: var(--cui-primary);
+}
+.editor-actions button:first-child:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.editor-actions button:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.editor-anchor-chip {
+  display: inline-flex;
+  align-items: center;
+  background: #dcebfb;
+  color: #2f59a8;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-family: monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Manager list */
+.manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.manager-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.manager-list-item:hover {
+  background: rgba(47, 123, 217, 0.08);
+}
+.manager-list-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.manager-list-item-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.manager-list-item-detail {
+  font-size: 0.82rem;
+  color: var(--cui-tertiary-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.manager-list-item-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  visibility: hidden;
+  font-size: 1.1em;
+  color: var(--cui-tertiary-color);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.manager-list-item:hover .manager-list-item-actions {
+  visibility: visible;
+}
+.manager-list-item-actions i:hover {
+  color: var(--cui-primary);
+}
+.manager-list-item-actions .ion-ios-trash-outline {
+  color: var(--cui-danger, #e55353);
+}
+.manager-list-item-actions .ion-ios-trash-outline:hover {
+  color: var(--cui-danger-emphasis, #b02a37);
+}
+.manager-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  color: var(--cui-tertiary-color);
+}
+.manager-search input {
+  border: none;
+  outline: none;
+  flex-grow: 1;
+  font-family: inherit;
+  font-size: 0.92em;
+  background: transparent;
+  color: var(--cui-body-color);
+}
+.manager-search input::placeholder {
+  color: #b0b8d4;
+}
+.manager-list-empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--cui-tertiary-color);
+  font-size: 0.92rem;
+}
+.manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.manager-header button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--cui-primary);
+  background: var(--cui-primary);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.manager-header button:hover {
+  opacity: 0.85;
+}
+.manager-footer {
+  font-size: 0.8em;
+  color: var(--cui-tertiary-color);
+  padding-top: 8px;
+}
+
+/* Color swatch */
+.color-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  vertical-align: middle;
 }
 
 /* Loader */
@@ -357,6 +2161,24 @@ div.vis-tooltip {
   7% { background-color: color-mix(in srgb, var(--cui-success) 50%, white); }
   30% { background-color: color-mix(in srgb, var(--cui-success) 30%, white); }
   100% { background-color: color-mix(in srgb, var(--cui-success) 15%, white); }
+}
+
+/* Subtle underline shown under a toolbar button's icon when it has a
+   non-empty right-click menu available */
+.toolbar-menu-indicator {
+  position: absolute;
+  bottom: .35em;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1.6em;
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--thatdot-gradient-end);
+  opacity: 0;
+  pointer-events: none;
+}
+.toolbar-menu-indicator.visible {
+  opacity: .55;
 }
 
 /* Toolbar button context menu (right-click dropdown) */
@@ -549,4 +2371,1449 @@ div.vis-tooltip {
   border-color: rgba(255, 255, 255, 0.28);
   outline: none;
   box-shadow: none;
+}
+
+/* ==========================================================================
+   Results surface (Explore query results) — raised inset over the canvas
+   ========================================================================== */
+
+/* The surface anchors bottom-right and reaches the right + bottom edges; the
+   canvas peeks ~32px on the left and above the top (height < viewport). */
+.results-surface {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  /* E1 (near-glass): rests on the canvas rather than floating above it. The hairline runs on all
+     visible sides — a border-top alone tapers to nothing along the corner arcs, so the rounded
+     corners read as gaps against the near-white canvas instead of a complete, quiet edge. */
+  border: 1px solid rgba(10, 41, 91, 0.18);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -6px 20px -12px rgba(10, 41, 91, 0.22);
+  transform-origin: 100% 100%;
+  transition: transform 0.34s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.26s,
+    right 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+}
+/* Ease height only for a snap/grow (double-click, picker-open) — never during a drag, where height
+   isn't in the base transition so it tracks the cursor. */
+.results-surface.is-animating {
+  transition: transform 0.34s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.26s,
+    right 0.32s cubic-bezier(0.4, 0, 0.2, 1), height 0.2s ease;
+}
+.results-surface.collapsed {
+  transform: scale(0.2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Top grab rail for drag-resizing the surface height. Shares the header's tint so the panel's
+   rounded top reads as one surface (no white strip over the tinted bar). */
+.results-grab-rail {
+  position: relative;
+  height: 9px;
+  flex: 0 0 auto;
+  background: #f4f7fc;
+  cursor: ns-resize;
+}
+.results-grab-rail::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 34px;
+  height: 4px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: rgba(10, 41, 91, 0.14);
+}
+
+/* Canvas door: the entry point on the canvas layer (NOT inside the surface), shown while the panel
+   is off screen. A quiet translucent button; clicking opens the panel + switcher. */
+.results-canvas-door {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  color: #5b6b86;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(10, 41, 91, 0.1);
+  border-radius: 11px;
+  box-shadow: 0 4px 14px -4px rgba(10, 41, 91, 0.22);
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, right 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+.results-canvas-door:hover {
+  border-color: rgba(10, 41, 91, 0.2);
+  box-shadow: 0 6px 18px -5px rgba(10, 41, 91, 0.28);
+}
+/* First-run: no history to reopen — grow into a labelled pill. */
+.results-canvas-door.is-first-run {
+  width: auto;
+  gap: 8px;
+  padding: 0 15px;
+}
+.results-door-glyph {
+  display: inline-flex;
+  font-size: 15px; /* sizes the coreUI hide-chevron; the docked-panel SVG is fixed-size */
+}
+.results-door-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--thatdot-dark-blue);
+}
+
+/* Header — single fixed-height control row. */
+.results-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  height: 48px;
+  padding: 0 13px;
+  background: #f4f7fc;
+  border-bottom: 1px solid rgba(10, 41, 91, 0.08);
+  white-space: nowrap;
+  container-type: inline-size;
+}
+/* ── Browser nav: adjacent back/forward arrows over the visited-source stack ── */
+.results-nav {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.results-nav-arrow {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #5b6b86;
+  cursor: pointer;
+}
+.results-nav-arrow:hover:not(:disabled) {
+  background: rgba(10, 41, 91, 0.06);
+}
+.results-nav-arrow:disabled {
+  color: #c8cdd9;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ── Identity bar: the URL-bar analog — fills the middle; glyph + name + one action + caret ── */
+.results-chip {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 5px 4px 9px;
+  border-radius: 8px;
+  background: rgba(10, 41, 91, 0.05);
+  cursor: pointer;
+}
+/* Tap identity re-skins the bar teal. */
+.results-chip.kind-tap {
+  background: rgba(14, 125, 131, 0.06);
+}
+/* The bar's flexible middle (the name); grows so the action + caret pin to the right edge. */
+.results-chip-fill {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.results-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: #0a295b;
+}
+/* Middle-truncation for query text: the head ellipsizes, the tail (last chars) always shows. */
+.results-chip-name-head {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: #0a295b;
+}
+.results-chip-name-tail {
+  flex: 0 0 auto;
+  white-space: pre;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: #0a295b;
+}
+/* Muted tap-point tail (` · post`) — always shown; the name ellipsizes before it. */
+.results-chip-suffix {
+  flex: 0 0 auto;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: #7c8aa3;
+}
+/* The one action: faint at rest, a filled tile on hover/focus (query = blue). The kind-glyph never
+   reacts, so the action is the only interactive mark. */
+.results-chip-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #9aa8bd;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+.results-chip-action:hover,
+.results-chip-action:focus-visible {
+  color: #1658b7;
+  background: rgba(22, 88, 183, 0.12);
+  box-shadow: 0 0 0 1px rgba(22, 88, 183, 0.18);
+}
+/* Stop ✕ (tap): red variant. */
+.results-chip-action.kind-error {
+  color: #c69a97;
+}
+.results-chip-action.kind-error:hover,
+.results-chip-action.kind-error:focus-visible {
+  color: #c4453d;
+  background: rgba(196, 69, 61, 0.1);
+  box-shadow: 0 0 0 1px rgba(196, 69, 61, 0.18);
+}
+/* Hairline separating the action from the switcher caret. */
+.results-chip-rule {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 16px;
+  background: rgba(10, 41, 91, 0.14);
+}
+/* Switcher caret (+ live-dot when taps stream) — the bar's dropdown affordance, sized to read
+   as one. */
+.results-chip-caret {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  font-size: 14px;
+  color: #5b6b86;
+}
+.results-chip-live-dot {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #0e7d83;
+  border: 1.5px solid #f4f7fc;
+}
+
+/* ── Right cluster: Live pulse (tap) + collapse chevron ── */
+.results-live-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--tap-accent);
+  background: color-mix(in srgb, var(--tap-accent) 10%, transparent);
+}
+.results-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tap-accent);
+  animation: rpPulse 1.8s infinite;
+}
+@keyframes rpPulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--tap-accent) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--tap-accent) 0%, transparent);
+  }
+}
+/* Switcher-open bar treatment: the bar becomes the switcher's search header. */
+.results-switcher-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 320px;
+  max-width: 46vw;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--thatdot-brite-blue) 45%, transparent);
+  border-radius: 8px;
+  background: #fff;
+}
+.results-picker-cancel {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(10, 41, 91, 0.14);
+  border-radius: 7px;
+  background: none;
+  font-size: 12px;
+  color: #5b6b86;
+  cursor: pointer;
+}
+.results-picker-cancel:hover {
+  background: rgba(10, 41, 91, 0.04);
+}
+.results-status-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--thatdot-gray);
+}
+.results-status-dot.is-ok {
+  background: var(--thatdot-brite-blue);
+}
+.results-status-dot.is-empty {
+  background: rgba(10, 41, 91, 0.35);
+}
+.results-status-dot.is-error {
+  background: var(--error-accent);
+}
+/* The shared meta slot beside the chip (row/result count for a query, capture count for a tap). */
+.results-rowcount {
+  flex: 0 0 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.5);
+}
+.results-query-chip {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 3px 3px 9px;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.72);
+  /* Faint kind-accent fill + border so the chip reads as a colored control (not a text input),
+     and matches the body's left edge for the same source. */
+  background: color-mix(in srgb, var(--kind-accent, var(--thatdot-brite-blue)) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kind-accent, var(--thatdot-brite-blue)) 28%, transparent);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.results-query-chip:hover {
+  background: color-mix(in srgb, var(--kind-accent, var(--thatdot-brite-blue)) 11%, transparent);
+  border-color: color-mix(in srgb, var(--kind-accent, var(--thatdot-brite-blue)) 45%, transparent);
+  box-shadow: 0 1px 2px rgba(10, 41, 91, 0.1);
+}
+/* Source-kind accents: each sets --kind-accent for its chip / card / row / body-edge subtree, so
+   query results (blue), taps (teal), and errors (red) stay visually consistent everywhere. */
+.kind-query {
+  --kind-accent: var(--thatdot-brite-blue);
+}
+.kind-tap {
+  --kind-accent: var(--tap-accent);
+}
+.kind-error {
+  --kind-accent: var(--error-accent);
+}
+/* The leading kind glyph inside a chip. */
+.source-kind-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  font-size: 15px; /* sizes the coreUI glyph (query/alert); the custom tap SVG is fixed-size */
+  color: var(--kind-accent, var(--thatdot-brite-blue));
+}
+/* A live tap's status dot follows the tap accent (teal), not the shared "ok" blue. */
+.kind-tap .results-status-dot.is-ok {
+  background: var(--kind-accent);
+}
+.results-header-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Table/JSON segmented toggle. */
+.results-view-toggle {
+  display: inline-flex;
+  padding: 2px;
+  background: rgba(10, 41, 91, 0.05);
+  border-radius: 7px;
+}
+.results-view-toggle .seg {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(10, 41, 91, 0.55);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.results-view-toggle .seg.active {
+  color: var(--thatdot-dark-blue);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(10, 41, 91, 0.12);
+}
+
+/* Positioning context for the row drawer (so it overlays the scrolling body
+   without scrolling away with it). */
+.results-content-area {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+/* Scrolling body region (table or JSON or placeholder). */
+.results-body {
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+/* Results table. */
+table.results-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--thatdot-font-mono);
+}
+/* Once a column has been resized, widths are explicit and the header governs the
+   column width (not content), so drop the auto-fit cap on cells. */
+.results-grid.is-fixed {
+  table-layout: fixed;
+}
+.results-grid.is-fixed tbody td {
+  max-width: none;
+}
+/* Column resize handle on each header's right edge. */
+.results-col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  user-select: none;
+}
+.results-col-resize:hover {
+  background: rgba(22, 88, 183, 0.35);
+}
+table.results-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 9px 16px;
+  font-family: var(--cui-font-sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(10, 41, 91, 0.55);
+  background: #fbfbfd;
+  border-bottom: 1px solid rgba(10, 41, 91, 0.14);
+  white-space: nowrap;
+}
+table.results-grid tbody td {
+  padding: 9px 16px;
+  font-size: 12.5px;
+  color: var(--thatdot-dark-blue);
+  border-bottom: 1px solid rgba(10, 41, 91, 0.07);
+  vertical-align: top;
+  max-width: 320px;
+}
+table.results-grid tbody tr:hover {
+  background: rgba(22, 88, 183, 0.08);
+  cursor: pointer;
+}
+.cell-truncate {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.cell-number {
+  color: var(--thatdot-brite-blue);
+}
+.cell-null {
+  color: rgba(10, 41, 91, 0.4);
+}
+.cell-chip {
+  display: inline-block;
+  margin: 1px 4px 1px 0;
+  padding: 1px 6px;
+  font-family: var(--cui-font-sans-serif);
+  font-size: 11px;
+  background: rgba(10, 41, 91, 0.05);
+  border: 1px solid rgba(10, 41, 91, 0.1);
+  border-radius: 5px;
+}
+/* Node / relationship cells: labels (or rel type) as chips, a truncating id, and a
+   muted property count. */
+.cell-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  overflow: hidden;
+}
+.cell-label-chip,
+.cell-rel-chip {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  font-family: var(--cui-font-sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.cell-label-chip {
+  color: var(--thatdot-brite-blue);
+  background: rgba(22, 88, 183, 0.1);
+}
+.cell-rel-chip {
+  color: var(--thatdot-dark-blue);
+  background: rgba(10, 41, 91, 0.07);
+}
+.cell-node-props {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(10, 41, 91, 0.7);
+}
+
+/* JSON view. */
+.results-json {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--thatdot-dark-blue);
+  white-space: pre;
+}
+
+/* Row detail drawer — slides in from the surface's right edge. */
+.results-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5; /* above the sticky table header (z-index 1) so its ✕ is clickable */
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-left: 1px solid rgba(10, 41, 91, 0.12);
+  box-shadow: -16px 0 34px -22px rgba(10, 41, 91, 0.5);
+  transform: translateX(100%);
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.results-drawer.open {
+  transform: translateX(0);
+}
+.results-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--thatdot-dark-blue);
+  border-bottom: 1px solid rgba(10, 41, 91, 0.1);
+}
+.results-drawer-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px 14px;
+}
+.drawer-field {
+  margin-bottom: 14px;
+}
+.drawer-field-label {
+  margin-bottom: 4px;
+  font-family: var(--cui-font-sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(10, 41, 91, 0.55);
+}
+.drawer-field-value {
+  font-family: var(--thatdot-font-mono);
+  font-size: 12.5px;
+  color: var(--thatdot-dark-blue);
+  word-break: break-word;
+}
+.drawer-field-value pre {
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(10, 41, 91, 0.03);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+/* Empty + error placeholders (NonIdealState style). */
+.results-empty,
+.results-error {
+  padding: 28px 24px;
+  color: var(--thatdot-dark-blue);
+}
+.results-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+}
+.results-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 4px;
+  color: rgba(10, 41, 91, 0.35);
+  border: 1px dashed rgba(10, 41, 91, 0.3);
+  border-radius: 10px;
+}
+.results-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.results-empty-desc {
+  font-size: 13px;
+  color: rgba(10, 41, 91, 0.55);
+}
+.results-error-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.results-error-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-weight: 700;
+  color: var(--error-accent);
+  background: rgba(196, 69, 61, 0.1);
+  border-radius: 7px;
+}
+.results-error-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.results-error-kind {
+  padding: 2px 7px;
+  font-family: var(--thatdot-font-mono);
+  font-size: 11px;
+  color: rgba(10, 41, 91, 0.6);
+  background: rgba(10, 41, 91, 0.06);
+  border-radius: 5px;
+}
+.results-error-location {
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: rgba(10, 41, 91, 0.55);
+}
+.results-error-query {
+  padding: 12px 14px;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--thatdot-dark-blue);
+  background: rgba(10, 41, 91, 0.03);
+  border-left: 3px solid var(--error-accent);
+  border-radius: 0 6px 6px 0;
+  white-space: pre;
+  overflow-x: auto;
+}
+.results-error-caret {
+  color: var(--error-accent);
+}
+.results-error-action {
+  margin-top: 14px;
+  padding: 0;
+  font-family: var(--cui-font-sans-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--thatdot-brite-blue);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.results-error-action:hover {
+  text-decoration: underline;
+}
+
+/* --- Sort / filter / export --------------------------------------------- */
+
+/* Sortable column headers. */
+table.results-grid thead th.results-grid-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.results-grid-sortable .sort-glyph {
+  margin-left: 6px;
+  font-size: 10px;
+  color: rgba(10, 41, 91, 0.3);
+}
+.results-grid-sortable:hover .sort-glyph {
+  color: rgba(10, 41, 91, 0.55);
+}
+.results-grid-sortable .sort-glyph.active {
+  color: var(--thatdot-brite-blue);
+}
+
+.results-filter-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(22, 88, 183, 0.06);
+  border: 1px solid rgba(22, 88, 183, 0.25);
+  border-radius: 6px;
+}
+.results-filter-icon {
+  display: inline-flex;
+  color: rgba(10, 41, 91, 0.5);
+}
+.results-filter-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--cui-font-sans-serif);
+  font-size: 13px;
+  color: var(--thatdot-dark-blue);
+}
+
+/* Filter affordance at rest (magnifier) and applied (clearable chip). */
+.results-filter-affordance {
+  display: inline-flex;
+  align-items: center;
+}
+.results-filter-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: rgba(10, 41, 91, 0.55);
+  border-radius: 6px;
+}
+.results-filter-button:hover {
+  background: rgba(10, 41, 91, 0.06);
+}
+.results-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-family: var(--cui-font-sans-serif);
+  font-size: 12px;
+  color: var(--thatdot-brite-blue);
+  background: rgba(22, 88, 183, 0.08);
+  border-radius: 6px;
+}
+
+/* Export ▾ menu. */
+.results-export-wrap {
+  position: relative;
+  display: inline-flex;
+}
+/* A 28px bordered icon button (download glyph) — no white fill, so it sits on the tinted bar. */
+.results-export-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: rgba(10, 41, 91, 0.55);
+  background: none;
+  border: 1px solid rgba(10, 41, 91, 0.14);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.results-export-button:hover {
+  border-color: rgba(10, 41, 91, 0.28);
+  background: rgba(10, 41, 91, 0.04);
+}
+.results-export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  min-width: 224px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid rgba(10, 41, 91, 0.12);
+  border-radius: 9px;
+  box-shadow: 0 16px 34px -18px rgba(10, 41, 91, 0.5);
+}
+.results-export-item {
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--thatdot-dark-blue);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.results-export-item:hover {
+  background: rgba(22, 88, 183, 0.08);
+}
+.results-export-flatten {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 7px 10px;
+  border-top: 1px solid rgba(10, 41, 91, 0.08);
+  font-size: 12.5px;
+  color: rgba(10, 41, 91, 0.7);
+  cursor: pointer;
+}
+
+/* --- History: Keep + spine + drawer ------------------------------------- */
+
+/* Source picker: an overlay that drops into the content area beneath the header. The
+   header (and its chip) stays above it, so the chip toggles it open/closed. */
+.results-content-stack {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Kind-colored left edge: ties the body to the chip's accent (transparent when nothing shown).
+     Always 3px so switching sources never shifts the layout. */
+  border-left: 3px solid var(--kind-accent, transparent);
+}
+.sources-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px 14px;
+  background: #fff;
+  overflow: auto;
+  animation: sourcesDrop 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes sourcesDrop {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+/* The currently-displayed source, marked in the switcher so selection ties to what's shown. */
+.history-row.is-viewing {
+  background: color-mix(in srgb, var(--kind-accent, var(--thatdot-brite-blue)) 9%, transparent);
+  box-shadow: inset 3px 0 0 var(--kind-accent, var(--thatdot-brite-blue));
+}
+.sources-col-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.4);
+}
+
+/* --- Switcher list (add-a-tap · taps · query results · GC footer) ------- */
+.sources-switcher {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Add-a-tap entry — teal, the single path into the chooser. */
+.switcher-add-tap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 6px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tap-accent) 9%, transparent);
+  color: var(--tap-accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.switcher-add-tap:hover {
+  background: color-mix(in srgb, var(--tap-accent) 15%, transparent);
+}
+.switcher-add-tap-icon {
+  display: inline-flex;
+  font-size: 14px;
+}
+.switcher-add-tap-label {
+  flex: 1 1 auto;
+}
+.switcher-add-tap-chevron {
+  font-size: 15px;
+  line-height: 1;
+  color: color-mix(in srgb, var(--tap-accent) 70%, transparent);
+}
+.switcher-section {
+  display: flex;
+  flex-direction: column;
+}
+.switcher-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px 3px;
+}
+.switcher-section-label {
+  font-family: var(--thatdot-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8b93a3;
+}
+/* All / Kept — mini segmented control over the retention filter. */
+.switcher-filter-seg {
+  display: inline-flex;
+  padding: 2px;
+  background: rgba(10, 41, 91, 0.05);
+  border-radius: 6px;
+}
+.switcher-filter-seg-btn {
+  padding: 2px 9px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #7a85a0;
+  cursor: pointer;
+}
+.switcher-filter-seg-btn.active {
+  background: #fff;
+  color: #0a295b;
+  box-shadow: 0 1px 2px rgba(10, 41, 91, 0.16);
+}
+/* Tap row — shares the history-row rhythm; teal accents. */
+.switcher-tap-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.switcher-tap-row:hover {
+  background: color-mix(in srgb, var(--tap-accent) 5%, transparent);
+}
+.switcher-tap-row.is-viewing {
+  background: color-mix(in srgb, var(--tap-accent) 6%, transparent);
+  box-shadow: inset 3px 0 0 var(--tap-accent);
+}
+.switcher-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: #0a295b;
+}
+.switcher-row-meta {
+  flex: 0 0 auto;
+  font-family: var(--thatdot-font-mono);
+  font-size: 11px;
+  color: #8a93a8;
+}
+.switcher-row-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.switcher-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  color: #9aa1b1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.switcher-tap-row:hover .switcher-row-action {
+  opacity: 1;
+}
+.switcher-row-action:hover {
+  background: rgba(10, 41, 91, 0.06);
+  color: #5b6b86;
+}
+/* GC footer — explains the bookmark/auto-clear retention model. */
+.switcher-gc-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding: 10px 6px 2px;
+  font-size: 10.5px;
+  color: #9aa1b1;
+}
+.switcher-gc-icon {
+  display: inline-flex;
+  font-size: 12px;
+}
+
+/* --- Tap picker ("Add a tap" chooser) ---------------------------------- */
+.taps-heading-spacer {
+  flex: 1 1 auto;
+}
+.tap-chooser {
+  display: flex;
+  flex-direction: column;
+  animation: sourcesDrop 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Back header — returns to the switcher. */
+.chooser-back-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 8px;
+}
+.chooser-back {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  color: #5b6b86;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.chooser-back:hover {
+  background: rgba(10, 41, 91, 0.06);
+}
+.chooser-title-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.chooser-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--thatdot-dark-blue);
+}
+.chooser-subtitle {
+  font-size: 11px;
+  color: rgba(10, 41, 91, 0.45);
+}
+/* Legend: the two pill states. */
+.chooser-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 0 6px 8px;
+}
+.chooser-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: rgba(10, 41, 91, 0.5);
+}
+.chooser-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  background: var(--tap-accent);
+}
+.chooser-swatch.is-tapped {
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--tap-accent) 55%, transparent);
+}
+.tap-chooser-filter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 6px;
+}
+.tap-chooser-filter {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-family: var(--cui-font-sans-serif);
+  color: var(--thatdot-dark-blue);
+  background: #fff;
+  border: 1px solid rgba(10, 41, 91, 0.16);
+  border-radius: 7px;
+}
+.tap-chooser-filter:focus {
+  outline: none;
+  border-color: rgba(22, 88, 183, 0.5);
+}
+.tap-chooser-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: rgba(10, 41, 91, 0.45);
+}
+/* One standing-query block: header (name · count · Raw) over per-output pipeline rows. */
+.sq-block {
+  border-top: 1px solid #f3f4f8;
+  padding: 12px 16px 14px;
+}
+.sq-block-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sq-block-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--thatdot-dark-blue);
+}
+.sq-block-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #bcc3d2;
+}
+.sq-all-matches {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: rgba(10, 41, 91, 0.4);
+}
+.tap-output-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0 5px 21px;
+}
+.tap-output-name {
+  flex: 0 0 auto;
+  min-width: 58px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: #5a6172;
+}
+.pre-post-group {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.pre-post-connector {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.3);
+}
+/* The dashed enrichment node the Pre/Post pills straddle. */
+.enrich-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  color: rgba(10, 41, 91, 0.5);
+  background: #fafbfc;
+  border: 1px dashed #cdd3df;
+  border-radius: 6px;
+}
+.no-enrichment {
+  font-size: 10.5px;
+  font-style: italic;
+  color: rgba(10, 41, 91, 0.38);
+}
+/* Untapped tap point: a solid teal pill inviting the tap. */
+.tap-button {
+  flex: 0 0 auto;
+  height: 27px;
+  padding: 0 13px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--tap-accent);
+  border: none;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px rgba(14, 125, 131, 0.3);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.tap-button:hover {
+  background: #0a6064;
+}
+/* Already-tapped: an outlined pill (click re-focuses the existing tap). */
+.viewing-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 27px;
+  padding: 0 11px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tap-accent);
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--tap-accent) 55%, transparent);
+  border-radius: 7px;
+  cursor: pointer;
+}
+/* Teal dot on the switcher's "Viewing" pill (the switcher marks the live tap you're watching). */
+.viewing-pill-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--tap-accent);
+}
+.chooser-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 10px;
+}
+.chooser-skeleton-row {
+  height: 12px;
+  border-radius: 4px;
+  background: rgba(10, 41, 91, 0.1);
+  animation: vsPulse 1.3s ease-in-out infinite;
+}
+.chooser-skeleton-row:nth-child(2) {
+  width: 80%;
+}
+.chooser-skeleton-row:nth-child(3) {
+  width: 65%;
+}
+.chooser-skeleton-row:nth-child(4) {
+  width: 72%;
+}
+.chooser-message {
+  padding: 14px 12px;
+  text-align: center;
+}
+.chooser-message-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--thatdot-dark-blue);
+}
+.chooser-message-desc {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: rgba(10, 41, 91, 0.5);
+}
+.chooser-error {
+  margin: 4px;
+  padding: 12px;
+  background: rgba(10, 41, 91, 0.02);
+  border: 1px solid rgba(10, 41, 91, 0.12);
+  border-radius: 8px;
+}
+.chooser-error-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--thatdot-dark-blue);
+}
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.history-row:hover {
+  background: rgba(22, 88, 183, 0.08);
+}
+/* Failed-run mark: a red ✕ (stronger than a red dot), occupying the status-dot slot. */
+.history-row-fail {
+  flex: 0 0 auto;
+  width: 10px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--error-accent);
+}
+/* Middle-truncation: the head ellipsizes, the tail (last chars) always shows. */
+.history-row-query {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: var(--thatdot-dark-blue);
+}
+.history-row-query-head {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-row-query-tail {
+  flex: 0 0 auto;
+  white-space: pre;
+}
+.history-row-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: rgba(10, 41, 91, 0.45);
+}
+.history-row-pin {
+  flex: 0 0 auto;
+  display: inline-flex;
+  padding: 3px;
+  color: rgba(10, 41, 91, 0.3);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.history-row-pin:hover {
+  background: rgba(10, 41, 91, 0.08);
+  color: rgba(10, 41, 91, 0.6);
+}
+.history-row-pin.is-kept {
+  color: var(--thatdot-brite-blue);
+}
+/* While dragging a column-resize handle, keep the resize cursor and stop text selection
+   everywhere (the pointer drifts off the thin handle). */
+body.results-col-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* Progressive disclosure: drop the row count as the bar narrows (View / Filter / Export are all
+   icon-sized and stay visible at any width). */
+@container (max-width: 460px) {
+  .results-rowcount {
+    display: none;
+  }
+}
+
+@keyframes vsPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(22, 88, 183, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 6px rgba(22, 88, 183, 0);
+  }
+}
+/* A live tap's broadcast glyph pulses (opacity) — the single liveness cue, replacing a separate
+   status dot + "Following" word. */
+@keyframes tapGlyphPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.source-kind-icon.is-live {
+  animation: tapGlyphPulse 1.6s ease-in-out infinite;
+}
+/* --- Stream Stop control + live table treatments ------------------------- */
+@keyframes vsFade {
+  from {
+    background: rgba(22, 88, 183, 0.08);
+    box-shadow: inset 3px 0 0 var(--thatdot-brite-blue);
+  }
+  to {
+    background: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+.results-stream-row {
+  animation: vsFade 1.2s ease-out;
+}
+.results-stream-row.is-retraction {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.retracted-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--error-accent);
+  background: rgba(196, 69, 61, 0.1);
+  border: 1px solid rgba(196, 69, 61, 0.28);
+  border-radius: 4px;
 }

@@ -13,10 +13,3 @@ trait GraphVisualization {
   /** Read current node positions. Pin state is tracked separately by [[PinTracker]]. */
   def readNodePositions(): Map[String, (Double, Double)]
 }
-
-/** User interaction events from the visualization layer, in domain vocabulary. */
-sealed abstract class GraphVisualizationEvent
-object GraphVisualizationEvent {
-  final case class NodesMoved(nodeIds: Seq[String]) extends GraphVisualizationEvent
-  final case class UnpinRequested(nodeIds: Seq[String]) extends GraphVisualizationEvent
-}

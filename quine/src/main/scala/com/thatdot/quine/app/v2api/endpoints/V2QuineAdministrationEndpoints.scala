@@ -33,6 +33,192 @@ object V2AdministrationEndpointEntities {
 
   import StringOps.syntax._
 
+  // ── Backpressure API types ──
+
+  @title("Host info")
+  @description("Identifies the Quine host serving this snapshot.")
+  final case class HostInfo(
+    @description("Quine version string.") version: String,
+    @description("Webserver bind address.") address: String,
+    @description("Webserver port.") port: Int,
+    @description("OS process ID.") pid: Long,
+  )
+  object HostInfo {
+    implicit val encoder: Encoder[HostInfo] = deriveEncoder
+    implicit val decoder: Decoder[HostInfo] = deriveDecoder
+  }
+
+  @title("Cluster member")
+  @description("A member of the Quine cluster.")
+  final case class ClusterMember(
+    @description("Cluster-assigned member index.") memberIdx: Int,
+    @description("Member address.") address: String,
+    @description("Member cluster port.") port: Int,
+  )
+  object ClusterMember {
+    implicit val encoder: Encoder[ClusterMember] = deriveEncoder
+    implicit val decoder: Decoder[ClusterMember] = deriveDecoder
+  }
+
+  @title("Cluster hot spare")
+  @description("A hot spare host in the Quine cluster.")
+  final case class ClusterHotSpare(
+    @description("Hot spare address.") address: String,
+    @description("Hot spare cluster port.") port: Int,
+  )
+  object ClusterHotSpare {
+    implicit val encoder: Encoder[ClusterHotSpare] = deriveEncoder
+    implicit val decoder: Decoder[ClusterHotSpare] = deriveDecoder
+  }
+
+  @title("Cluster info")
+  @description("Cluster topology and health. Absent in OSS mode.")
+  final case class ClusterInfo(
+    @description("Cluster name.") name: String,
+    @description("Whether the cluster is fully operational.") fullyUp: Boolean,
+    @description("Configured target number of cluster members.") targetSize: Int,
+    @description("Identity of the member serving this API response.") thisMember: ClusterMember,
+    @description("All active cluster members.") clusterMembers: Seq[ClusterMember],
+    @description("Hot spare hosts available for failover.") hotSpares: Seq[ClusterHotSpare],
+    @description("Timestamp when this cluster measurement was taken.") measurementTime: java.time.Instant,
+  )
+  object ClusterInfo {
+    implicit val encoder: Encoder[ClusterInfo] = deriveEncoder
+    implicit val decoder: Decoder[ClusterInfo] = deriveDecoder
+  }
+
+  @title("Global valve state")
+  @description("State of the global ingest valve.")
+  final case class GlobalValve(
+    @description("Whether the valve is open (true) or closed (false).") isOpen: Boolean,
+    @description("Number of active close requests (reference count). Zero means open.") closedCount: Int,
+    @description("Number of open-to-closed transitions in the last 60 seconds.") oneMinuteClosures: Int,
+  )
+  object GlobalValve {
+    implicit val encoder: Encoder[GlobalValve] = deriveEncoder
+    implicit val decoder: Decoder[GlobalValve] = deriveDecoder
+  }
+
+  @title("Ingest stages")
+  @description(
+    "Per-stage backpressure state for an ingest pipeline. Each value is FLOWING, CONSTRAINED, or BACKPRESSURED.",
+  )
+  final case class IngestStages(
+    @description("Source stage.") source: String,
+    @description("Pre-graph-write stage.") preGraphWrite: String,
+    @description("Post-graph-write (ACK) stage. Only present for checkpointed sources.") postGraphWrite: Option[String],
+  )
+  object IngestStages {
+    implicit val encoder: Encoder[IngestStages] = deriveEncoder
+    implicit val decoder: Decoder[IngestStages] = deriveDecoder
+  }
+
+  @title("Ingest snapshot")
+  @description("Backpressure and throughput state for a single ingest stream.")
+  final case class IngestSnapshot(
+    @description("Ingest stream name.") name: String,
+    @description("Namespace.") namespace: String,
+    @description("Source type (e.g. 'NumberIterator', 'Kafka', 'ServerSentEvent').") sourceType: String,
+    @description("Ingest status: RUNNING, PAUSED, COMPLETED, TERMINATED, FAILED, RESTORED.") status: String,
+    @description("Configured rate limit (events/sec). Null means unlimited.") rateLimit: Option[Int],
+    @description("Current throughput in events/sec (1-minute EWMA).") rate: Double,
+    @description("Total items ingested.") totalCount: Long,
+    @description("Per-stage backpressure state.") stages: IngestStages,
+  )
+  object IngestSnapshot {
+    implicit val encoder: Encoder[IngestSnapshot] = deriveEncoder
+    implicit val decoder: Decoder[IngestSnapshot] = deriveDecoder
+  }
+
+  @title("SQ queue snapshot")
+  @description("Standing query result queue fill level and throughput.")
+  final case class SqQueue(
+    @description("Current number of results buffered.") bufferCount: Int,
+    @description("Queue depth at which the global valve closes.") backpressureThreshold: Int,
+    @description("Maximum queue capacity before results are dropped.") maxSize: Int,
+    @description("Fill ratio relative to threshold (0.0 to 1.0). At 1.0 the valve closes.") thresholdRatio: Double,
+    @description("Fill ratio relative to max capacity (0.0 to 1.0).") capacityRatio: Double,
+    @description("Total results produced into the queue.") totalProduced: Long,
+    @description("Total cancellations produced into the queue.") totalCancellations: Long,
+    @description("Total results dropped due to overflow.") totalDropped: Long,
+    @description("Total results consumed from the queue.") totalConsumed: Long,
+    @description("Production rate (events/sec, 1-minute EWMA).") productionRate: Double,
+    @description("Consumption rate (events/sec, 1-minute EWMA).") consumptionRate: Double,
+  )
+  object SqQueue {
+    implicit val encoder: Encoder[SqQueue] = deriveEncoder
+    implicit val decoder: Decoder[SqQueue] = deriveDecoder
+  }
+
+  @title("Output destination snapshot")
+  @description("Backpressure state of a single output destination.")
+  final case class DestinationSnapshot(
+    @description("Destination type (e.g. 'StandardOut', 'Drop', 'HttpEndpoint', 'Kafka').") `type`: String,
+    @description("Backpressure state: FLOWING, CONSTRAINED, or BACKPRESSURED.") state: String,
+  )
+  object DestinationSnapshot {
+    implicit val encoder: Encoder[DestinationSnapshot] = deriveEncoder
+    implicit val decoder: Decoder[DestinationSnapshot] = deriveDecoder
+  }
+
+  @title("SQ output snapshot")
+  @description("Throughput and backpressure state for a single standing query output.")
+  final case class SqOutputSnapshot(
+    @description("Output name.") name: String,
+    @description("Current throughput in events/sec (1-minute EWMA).") rate: Double,
+    @description("Total items processed.") totalCount: Long,
+    @description("Whether an enrichment query or pre-enrichment transformation is configured.") hasEnrichment: Boolean,
+    @description(
+      "Enrichment stage state: FLOWING, CONSTRAINED, BACKPRESSURED, or null if no enrichment.",
+    ) enrichmentState: Option[String],
+    @description("Per-destination backpressure state.") destinations: Seq[DestinationSnapshot],
+  )
+  object SqOutputSnapshot {
+    implicit val encoder: Encoder[SqOutputSnapshot] = deriveEncoder
+    implicit val decoder: Decoder[SqOutputSnapshot] = deriveDecoder
+  }
+
+  @title("Standing query snapshot")
+  @description("Queue state and output throughput for a single standing query.")
+  final case class StandingQuerySnapshot(
+    @description("Standing query name.") name: String,
+    @description("Namespace.") namespace: String,
+    @description("Result queue state.") queue: SqQueue,
+    @description("Per-output throughput and backpressure.") outputs: Seq[SqOutputSnapshot],
+  )
+  object StandingQuerySnapshot {
+    implicit val encoder: Encoder[StandingQuerySnapshot] = deriveEncoder
+    implicit val decoder: Decoder[StandingQuerySnapshot] = deriveDecoder
+  }
+
+  @title("Persistor snapshot")
+  @description("Persistor type and latency.")
+  final case class PersistorSnapshot(
+    @description("Store type (e.g. 'rocks-db', 'cassandra', 'empty').") `type`: String,
+    @description("Mean write latency in milliseconds.") writeLatencyMs: Double,
+    @description("Mean read latency in milliseconds.") readLatencyMs: Double,
+  )
+  object PersistorSnapshot {
+    implicit val encoder: Encoder[PersistorSnapshot] = deriveEncoder
+    implicit val decoder: Decoder[PersistorSnapshot] = deriveDecoder
+  }
+
+  @title("Backpressure snapshot")
+  @description("Point-in-time backpressure and throughput state across all active pipelines on this host.")
+  final case class BackpressureSnapshot(
+    @description("Timestamp of this snapshot.") timestamp: java.time.Instant,
+    @description("Identity of the Quine host serving this snapshot.") host: HostInfo,
+    @description("Cluster topology and health. Absent in OSS mode.") cluster: Option[ClusterInfo],
+    @description("State of the global ingest valve.") globalValve: GlobalValve,
+    @description("Per-ingest backpressure and throughput.") ingests: Seq[IngestSnapshot],
+    @description("Per-standing-query queue state and output throughput.") standingQueries: Seq[StandingQuerySnapshot],
+    @description("Persistor type and latency.") persistor: PersistorSnapshot,
+  )
+  object BackpressureSnapshot {
+    implicit val encoder: Encoder[BackpressureSnapshot] = deriveEncoder
+    implicit val decoder: Decoder[BackpressureSnapshot] = deriveDecoder
+  }
+
   @title("Graph hash code")
   case class TGraphHashCode(
     @description("Hash value derived from the state of the graph (nodes, properties, and edges).")
@@ -178,6 +364,19 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Gra
     .description("A map of shard IDs to shard in-memory node limits")
     .encodedExample(exampleShardMap.asJson)
 
+  implicit lazy val hostInfoSchema: Schema[HostInfo] = Schema.derived
+  implicit lazy val clusterMemberSchema: Schema[ClusterMember] = Schema.derived
+  implicit lazy val clusterHotSpareSchema: Schema[ClusterHotSpare] = Schema.derived
+  implicit lazy val clusterInfoSchema: Schema[ClusterInfo] = Schema.derived
+  implicit lazy val globalValveSchema: Schema[GlobalValve] = Schema.derived
+  implicit lazy val ingestStagesSchema: Schema[IngestStages] = Schema.derived
+  implicit lazy val ingestSnapshotSchema: Schema[IngestSnapshot] = Schema.derived
+  implicit lazy val sqQueueSchema: Schema[SqQueue] = Schema.derived
+  implicit lazy val destinationSnapshotSchema: Schema[DestinationSnapshot] = Schema.derived
+  implicit lazy val sqOutputSnapshotSchema: Schema[SqOutputSnapshot] = Schema.derived
+  implicit lazy val standingQuerySnapshotSchema: Schema[StandingQuerySnapshot] = Schema.derived
+  implicit lazy val persistorSnapshotSchema: Schema[PersistorSnapshot] = Schema.derived
+  implicit lazy val backpressureSnapshotSchema: Schema[BackpressureSnapshot] = Schema.derived
   implicit lazy val tQuineInfoSchema: Schema[TQuineInfo] = Schema.derived
   implicit lazy val tCounterSchema: Schema[TCounter] = Schema.derived
   implicit lazy val tNumericGaugeSchema: Schema[TNumericGauge] = Schema.derived
@@ -423,29 +622,31 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Gra
 
   protected[endpoints] val getShardSizes: Endpoint[
     Unit,
-    Unit,
+    Option[Int],
     ServerError,
     Map[Int, TShardInMemoryLimit],
     Any,
   ] = adminBase("shardSizeLimits").get
     .name("get-shard-sizes")
     .summary("Get Shard Sizes")
+    .in(memberIdxParameter)
     .description("Get the in-memory node limits for all shards.")
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[Map[Int, TShardInMemoryLimit]])
 
-  protected[endpoints] val getShardSizesLogic: Unit => Future[Either[ServerError, Map[Int, TShardInMemoryLimit]]] =
-    _ =>
+  protected[endpoints] val getShardSizesLogic
+    : Option[Int] => Future[Either[ServerError, Map[Int, TShardInMemoryLimit]]] =
+    maybeMemberIdx =>
       recoverServerError(
         appMethods
-          .shardSizes(Map.empty)
+          .shardSizes(Map.empty, maybeMemberIdx)
           .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
       )((inp: Map[Int, TShardInMemoryLimit]) => inp)
 
   private val getShardSizesServerEndpoint: Full[
     Unit,
     Unit,
-    Unit,
+    Option[Int],
     ServerError,
     Map[Int, TShardInMemoryLimit],
     Any,
@@ -475,7 +676,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Gra
   ] = resizes =>
     recoverServerError(
       appMethods
-        .shardSizes(resizes.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
+        .shardSizes(resizes.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap, None)
         .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
     )((inp: Map[Int, TShardInMemoryLimit]) => inp)
 
@@ -518,6 +719,23 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Gra
     Future,
   ] = requestNodeSleep.serverLogic[Future](requestNodeSleepLogic)
 
+  protected[endpoints] val backpressure: Endpoint[Unit, Unit, ServerError, Seq[BackpressureSnapshot], Any] =
+    adminBase("backpressure").get
+      .name("get-backpressure")
+      .summary("Get Backpressure Snapshots")
+      .description(
+        "Returns a list of point-in-time backpressure snapshots. Currently returns a single snapshot for this host. " +
+        "Future versions may return snapshots from multiple cluster members for cluster-wide aggregation.",
+      )
+      .out(statusCode(StatusCode.Ok))
+      .out(jsonBody[Seq[BackpressureSnapshot]])
+
+  protected[endpoints] val backpressureLogic: Unit => Future[Either[ServerError, Seq[BackpressureSnapshot]]] = _ =>
+    recoverServerError(appMethods.backpressureSnapshot().map(Seq(_))(ExecutionContext.parasitic))(identity)
+
+  private val backpressureServerEndpoint: Full[Unit, Unit, Unit, ServerError, Seq[BackpressureSnapshot], Any, Future] =
+    backpressure.serverLogic[Future](backpressureLogic)
+
   val adminEndpoints: List[ServerEndpoint[Any, Future]] = List(
     systemInfoServerEndpoint,
     configServerEndpoint,
@@ -530,6 +748,7 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Gra
     getShardSizesServerEndpoint,
     updateShardSizesServerEndpoint,
     gracefulShutdownServerEndpoint,
+    backpressureServerEndpoint,
   )
 
 }

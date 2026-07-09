@@ -65,7 +65,7 @@ import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, cypher}
 import com.thatdot.quine.persistor.PrimePersistor
 import com.thatdot.quine.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.util.StringInput.filenameOrUrl
-import com.thatdot.quine.util.{BaseError, SwitchMode, Valve, ValveSwitch}
+import com.thatdot.quine.util.{BaseError, GaugeKey, PressureGauge, SwitchMode, Valve, ValveSwitch}
 import com.thatdot.quine.{routes => V1}
 
 final case class DlqEnvelope[Frame, Decoded](
@@ -96,7 +96,11 @@ abstract class DecodedSource(val meter: IngestMeter) {
   /** Stream of decoded values. This stream must already be metered. */
   def stream: Source[(() => Try[Decoded], Frame), ShutdownSwitch]
 
-  def ack: Flow[Frame, Done, NotUsed] = Flow.fromFunction(_ => Done)
+  /** Acknowledgment flow, if this source requires one.
+    * When `None`, no ack step is performed.
+    * When `Some(flow)`, the flow is applied after graph writes.
+    */
+  def ack: Option[Flow[Frame, Done, NotUsed]] = None
 
   def onTermination(): Unit = ()
 
@@ -160,11 +164,17 @@ abstract class DecodedSource(val meter: IngestMeter) {
     ): Source[IngestSrcExecToken, NotUsed] = {
 
       val token = IngestSrcExecToken(name)
+      val ns = intoNamespace.name
+      val registry = graph.pressureGaugeRegistry
+      def gaugeKey(stage: String): GaugeKey = GaugeKey("ingest", ns, name, stage)
+
       // TODO error handler should be settable from a config, e.g. DeadLetterErrorHandler
       val ingestStream =
         DecodedSource.this.stream
+          .via(PressureGauge(registry, gaugeKey("source"))) // G1: is the source being held back (pause/throttle/valve)?
           .viaMat(Valve(initialSwitchMode))(Keep.both)
           .via(throttle(graph, maxPerSecond))
+          .viaMat(PressureGauge[(() => Try[Decoded], Frame)]())(Keep.both) // G2: is graph write the bottleneck?
 
       implicit val ex: ExecutionContext = ExecutionContext.parasitic
       implicit val toBytesFrame: BytesOutputEncoder[Frame] = BytesOutputEncoder(content)
@@ -209,11 +219,23 @@ abstract class DecodedSource(val meter: IngestMeter) {
             case Right((_, frame)) => frame
             case Left(env) => env.frame
           }
-          .via(ack)
+          .via(
+            DecodedSource.this.ack match {
+              case Some(ackFlow) =>
+                Flow[Frame].via(PressureGauge(registry, gaugeKey("post-graph-write"))).via(ackFlow) // G4: is ack slow?
+              case None =>
+                Flow[Frame].map(_ => Done)
+            },
+          )
           .map(_ => token)
-          .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
-            c.onComplete(_ => onTermination())
-            b.map(v => ControlSwitches(a, v, c))
+          .watchTermination() {
+            case (((a: ShutdownSwitch, b: Future[ValveSwitch]), gaugeState: PressureGauge.State), c: Future[Done]) =>
+              c.onComplete { _ =>
+                onTermination()
+                registry.deregisterByPrefix("ingest", ns, name)
+              }
+              registry.register(gaugeKey("pre-graph-write"), gaugeState)
+              b.map(v => ControlSwitches(a, v, c))
           }
           .mapMaterializedValue(c => setControl(c, initialSwitchMode, registerTerminationHooks))
           .named(name)

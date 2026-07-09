@@ -16,7 +16,8 @@ class OssApiMethods(
 )(implicit val logConfig: LogConfig)
     extends QuineApiMethods
     with LazySafeLogging {
-  val thisMemberIdx: Int = 0
+  // A single node has no cluster positions to target.
+  val defaultTargetMemberIdx: Option[Int] = None
   override val tapBus: TapBus = app.tapBus
 
   override def emptyConfigExample: BaseConfig = QuineConfig()

@@ -4,8 +4,12 @@ import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.webapp.QuineUiOptions
 import com.thatdot.quine.webapp.components.streams.StreamsPage
+import com.thatdot.quine.webapp.queryui.WiretapStore
 
 object StreamsView {
-  def apply(options: QuineUiOptions): HtmlElement =
-    StreamsPage(options)
+  def apply(
+    options: QuineUiOptions,
+    wiretapStore: WiretapStore,
+  ): HtmlElement =
+    StreamsPage(options, wiretapStore)
 }

@@ -9,9 +9,8 @@ import com.thatdot.outputs2.DataFoldableSink
 import com.thatdot.quine.graph.NamespaceId
 
 sealed trait QuineDestinationSteps extends DataFoldableSink {
-  // def transform: Option[Core.PostEnrichmentTransform]
-
   def destination: QuineResultDestination
+  override def slug: String = destination.slug
 }
 
 object QuineDestinationSteps {

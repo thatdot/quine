@@ -86,7 +86,7 @@ class SymbolAnalysisTests extends munit.FunSuite {
                       source = TextSource(13, 22),
                       maybeBinding = None,
                       direction = Direction.Right,
-                      edgeType = Symbol("edge"),
+                      edgeTypes = Set(Symbol("edge")),
                     ),
                     dest = NodePattern(
                       source = TextSource(23, 29),

@@ -29,7 +29,9 @@ trait CypherASTInstances extends ASTInstances {
         case Some(id) => identifierEitherPrettyPrint.doc(id)
         case None => empty
       }
-      val edgeType = concat(text(":"), text(ep.edgeType.name))
+      val edgeType =
+        if (ep.edgeTypes.isEmpty) empty
+        else concat(text(":"), text(ep.edgeTypes.map(_.name).mkString("|")))
       val arrow = ep.direction match {
         case com.thatdot.quine.language.ast.Direction.Left => (text("<-["), text("]-"))
         case com.thatdot.quine.language.ast.Direction.Right => (text("-["), text("]->"))

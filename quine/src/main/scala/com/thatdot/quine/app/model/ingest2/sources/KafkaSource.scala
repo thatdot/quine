@@ -313,7 +313,7 @@ case class KafkaSource(
             meter,
             input => input.record.value(),
             withOffsetFoldable,
-            ackFlow(explicitCommit, system),
+            ackFlow = Some(ackFlow(explicitCommit, system)),
           )
         }
 

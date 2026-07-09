@@ -3,8 +3,8 @@ package com.thatdot.quine.webapp.components.landing
 import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.webapp.components.dashboard.Card
-import com.thatdot.quine.webapp.components.landing.V2ApiTypes.{V2QuineHost, V2ServiceStatus}
 import com.thatdot.quine.webapp.util.Pot
+import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2QuineHost, V2ServiceStatus}
 
 /** Card displaying cluster host health from the V2 admin status endpoint.
   *
@@ -49,8 +49,9 @@ object ClusterHealthCard {
   }
 
   private def renderContent(status: V2ServiceStatus): HtmlElement = {
-    val members = status.cluster.clusterMembers.toSeq.sortBy { case (idx, _) =>
-      scala.util.Try(idx.toInt).getOrElse(Int.MaxValue)
+    // Ordered by member position, reusing the shared derivation on the cluster status model.
+    val members = status.cluster.memberIndices.flatMap { idx =>
+      status.cluster.clusterMembers.get(idx.toString).map(idx.toString -> _)
     }
     val spares = status.cluster.hotSpares
 

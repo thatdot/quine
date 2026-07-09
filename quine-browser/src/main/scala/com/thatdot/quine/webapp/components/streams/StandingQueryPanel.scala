@@ -4,6 +4,7 @@ import com.raquo.laminar.api.L._
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.openapi.OpenApiParser
+import com.thatdot.quine.webapp.queryui.WiretapStore
 
 /** Standing Queries panel — shows a list of standing queries with expandable
   * output rows, delete actions, and a form for creating new standing queries.
@@ -18,7 +19,11 @@ import com.thatdot.quine.openapi.OpenApiParser
   */
 object StandingQueryPanel {
 
-  def apply(client: StreamsApiClient): HtmlElement = {
+  def apply(
+    client: StreamsApiClient,
+    wiretapStore: WiretapStore,
+    editorConfig: EmbeddedEditorConfig,
+  ): HtmlElement = {
     // Panel-scoped state — outlives the table's polling-driven content updates
     // so expanded rows stay open and the inline add-output form keeps focus
     // through the 5-second list refresh.
@@ -43,6 +48,7 @@ object StandingQueryPanel {
           onSubmit = body => client.createStandingQuery(body),
           onComplete = onComplete,
           onCancel = onCancel,
+          editorConfig = editorConfig,
         ),
       renderTable = { (entriesSignal, onAction) =>
         val refresh = onAction
@@ -62,6 +68,9 @@ object StandingQueryPanel {
             f.foreach(_ => refresh())
             f
           },
+          namespace = client.graphName,
+          wiretapStore = wiretapStore,
+          editorConfig = editorConfig,
         )
       },
     )

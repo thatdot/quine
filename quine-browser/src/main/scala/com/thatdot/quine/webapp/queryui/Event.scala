@@ -68,12 +68,20 @@ object QueryUiEvent {
     def invert: Collapse = Collapse(nodeIds, clusterId, name)
   }
 
-  /** Set some layout positions */
+  /** Set some layout positions. Recorded alongside a [[Checkpoint]] marker at
+    * creation (so checkpoint navigation can restore node positions) and
+    * prepended transiently to downloaded history files; never observed on its
+    * own into live history.
+    */
   final case class Layout(positions: Map[String, NodePosition]) extends QueryUiEvent {
     def invert: Layout = this
   }
 
-  /** Checkpoint */
+  /** Position marker for a named checkpoint. Applying it does nothing; plain
+    * undo/redo slides over markers (and the [[Layout]] recorded under them)
+    * without costing a click, while the Previous/Next Checkpoint menu actions
+    * walk the stream to them.
+    */
   final case class Checkpoint(name: String) extends QueryUiEvent {
     def invert: Checkpoint = this
   }

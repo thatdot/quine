@@ -21,16 +21,26 @@ object CreateIngestForm {
   def apply(
     spec: ParsedSpec,
     createSchema: Option[SchemaNode],
-    onSubmit: Json => Future[Either[String, Json]],
+    memberIndices: Signal[Seq[Int]],
+    onSubmit: (Json, Option[Int]) => Future[Either[String, Json]],
     onComplete: () => Unit,
     onCancel: () => Unit,
+    editorConfig: EmbeddedEditorConfig,
   ): HtmlElement = {
     val currentStep = Var(StepSource)
     val formState = Var(Json.obj())
     val nameVar = Var("")
+    // Which cluster member should run the new ingest. None until members are known
+    // (single-node deployments never populate, so no selector is shown).
+    val selectedMember = Var[Option[Int]](None)
     val submit = new SubmitState
 
     div(
+      // Default the selection to the lowest member index once the cluster membership is known,
+      // so a clustered create is deterministic rather than landing on whichever member served the request.
+      memberIndices --> { indices =>
+        if (selectedMember.now().isEmpty) indices.sorted.headOption.foreach(i => selectedMember.set(Some(i)))
+      },
       // Form header with step tabs
       div(
         cls := "mb-3",
@@ -45,7 +55,7 @@ object CreateIngestForm {
         case StepSource =>
           renderSourceStep(formState, createSchema, spec, currentStep)
         case StepConfig =>
-          renderConfigStep(nameVar, formState, createSchema, spec)
+          renderConfigStep(nameVar, formState, createSchema, spec, memberIndices, selectedMember, editorConfig)
         case _ => div()
       },
       ErrorAlert(submit.error.signal),
@@ -85,7 +95,7 @@ object CreateIngestForm {
               canSubmit = nameVar.signal.map(_.trim.nonEmpty),
             ) { () =>
               val body = formState.now().deepMerge(Json.obj("name" -> Json.fromString(nameVar.now())))
-              submit.run(onSubmit(body))(_ => onComplete())
+              submit.run(onSubmit(body, selectedMember.now()))(_ => onComplete())
             }
           case _ => emptyNode
         },
@@ -263,6 +273,7 @@ object CreateIngestForm {
     fields: List[FieldEntry],
     spec: ParsedSpec,
     formState: Var[Json],
+    editorConfig: EmbeddedEditorConfig,
   ): HtmlElement =
     div(
       cls := "row g-2",
@@ -275,9 +286,37 @@ object CreateIngestForm {
             spec,
             entry.basePath :+ entry.name,
             formState,
+            editorConfig,
             isRequired = entry.isRequired,
           ),
         )
+      },
+    )
+
+  /** Cluster-member picker, shown only when the cluster membership is known (more than
+    * zero members reported). Single-node deployments render nothing.
+    */
+  private def renderMemberSelector(
+    memberIndices: Signal[Seq[Int]],
+    selectedMember: Var[Option[Int]],
+  ): HtmlElement =
+    div(
+      child <-- memberIndices.map { indices =>
+        if (indices.isEmpty) emptyNode
+        else
+          div(
+            cls := "mb-3",
+            label(cls := "form-label", "Member position"),
+            select(
+              cls := "form-select",
+              controlled(
+                value <-- selectedMember.signal.map(_.fold("")(_.toString)),
+                onChange.mapToValue.map(_.toIntOption) --> selectedMember,
+              ),
+              indices.sorted.map(i => option(value := i.toString, i.toString)),
+            ),
+            div(cls := "form-text", "Which cluster member position will run this ingest stream."),
+          )
       },
     )
 
@@ -286,6 +325,9 @@ object CreateIngestForm {
     formState: Var[Json],
     requestSchema: Option[SchemaNode],
     spec: ParsedSpec,
+    memberIndices: Signal[Seq[Int]],
+    selectedMember: Var[Option[Int]],
+    editorConfig: EmbeddedEditorConfig,
   ): HtmlElement = {
     val advancedExpanded = Var(false)
 
@@ -348,8 +390,9 @@ object CreateIngestForm {
                           ),
                           div(cls := "form-text", "A unique name for this ingest stream."),
                         ),
+                        renderMemberSelector(memberIndices, selectedMember),
                         // Primary fields — required, no defaults
-                        if (primary.nonEmpty) renderFields(primary, spec, formState) else div(),
+                        if (primary.nonEmpty) renderFields(primary, spec, formState, editorConfig) else div(),
                         // Advanced configuration — collapsible
                         if (advanced.nonEmpty)
                           div(
@@ -367,7 +410,7 @@ object CreateIngestForm {
                             ),
                             div(
                               display <-- advancedExpanded.signal.map(if (_) "block" else "none"),
-                              renderFields(advanced, spec, formState),
+                              renderFields(advanced, spec, formState, editorConfig),
                             ),
                           )
                         else div(),
@@ -380,7 +423,7 @@ object CreateIngestForm {
               }
             case None =>
               val resolved = OpenApiParser.resolveNode(schema, spec.schemas)
-              SchemaFormRenderer.render(resolved, spec, Nil, formState)
+              SchemaFormRenderer.render(resolved, spec, Nil, formState, editorConfig)
           }
         case None =>
           div(cls := "alert alert-warning", "No request schema available.")

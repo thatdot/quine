@@ -160,6 +160,20 @@ final case class HostQuineMetrics(
       metricName(namespaceId, List(StandingQueryMetricComponent, "dropped", sqName))
     }
 
+  /** Meter of cancellation (negative match) results enqueued for a named standing query on this host */
+  def standingQueryCancellationMeter(namespaceId: NamespaceId, sqName: String): Meter =
+    metricRegistry.meter {
+      metricName(namespaceId, List(StandingQueryMetricComponent, "cancellations", sqName))
+    }
+
+  /** Meter of results consumed (leaving the queue) for a named standing query on this host.
+    * This counts each result exactly once at the queue exit, before the BroadcastHub fans copies to outputs.
+    */
+  def standingQueryConsumptionMeter(namespaceId: NamespaceId, sqName: String): Meter =
+    metricRegistry.meter {
+      metricName(namespaceId, List(StandingQueryMetricComponent, "consumption", sqName))
+    }
+
   /** Tracks how long SQ results spend in the result queue on this host before being accepted by each output
     * for processing. Due to the fan-out nature of the SQ results queue, a single publish to the results queue may
     * result in multiple measurements being counted against this timer (one for each sink on the SQ results hub, both

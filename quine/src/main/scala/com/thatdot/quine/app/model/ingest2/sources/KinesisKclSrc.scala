@@ -334,7 +334,7 @@ final case class KinesisKclSrc(
         }
       },
       // Performs Checkpointing logic, defined below
-      ackFlow = ack,
+      ackFlow = if (checkpointSettings.disableCheckpointing) None else Some(ack),
     )
     Valid(framed)
   }

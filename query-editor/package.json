@@ -1,0 +1,45 @@
+{
+  "name": "@thatdot/query-editor",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Multi-line Cypher query editor component built on vanilla monaco-editor (no React, no wrapper stack)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start:quine": "java -Dquine.store.type=\"in-memory\" -Dthatdot.loglevel=INFO -Dquine.help-make-quine-better=false -jar quine.jar",
+    "start:vite": "vite",
+    "playground": "vite",
+    "dev": "concurrently \"npm run start:quine\" \"npm run start:vite\"",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "peerDependencies": {
+    "monaco-editor": "^0.55.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "monaco-editor": "0.55.1",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  }
+}

@@ -21,6 +21,7 @@ class V2OssRoutes(val appMethods: OssApiMethods, override val openApiServerUrl: 
 
   override val apiEndpoints: List[ServerEndpoint[TapirRoutes.Requirements, Future]] =
     standingQueryTapWebSocketEndpoints ++
+    lspWebSocketEndpoints ++
     V2ApiInfo.endpointSequences(this)
 
   def memberIdxParameter: EndpointInput[Option[Int]] =

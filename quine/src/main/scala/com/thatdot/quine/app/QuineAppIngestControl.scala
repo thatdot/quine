@@ -18,8 +18,11 @@ sealed trait QuineAppIngestControl extends IngestControl {
   def terminate(): Future[Done]
 }
 
-final case class ControlSwitches(shutdownSwitch: ShutdownSwitch, valveHandle: ValveSwitch, termSignal: Future[Done])
-    extends QuineAppIngestControl {
+final case class ControlSwitches(
+  shutdownSwitch: ShutdownSwitch,
+  valveHandle: ValveSwitch,
+  termSignal: Future[Done],
+) extends QuineAppIngestControl {
   def pause(): Future[Boolean] = valveHandle.flip(SwitchMode.Close)
   def unpause(): Future[Boolean] = valveHandle.flip(SwitchMode.Open)
   def terminate(): Future[Done] = shutdownSwitch.terminate(termSignal)

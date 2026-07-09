@@ -13,7 +13,11 @@ import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
   */
 object IngestStreamPanel {
 
-  def apply(client: StreamsApiClient): HtmlElement =
+  def apply(
+    client: StreamsApiClient,
+    memberIndices: Signal[Seq[Int]],
+    editorConfig: EmbeddedEditorConfig,
+  ): HtmlElement =
     StreamCollectionPanel(
       title = "Ingest Streams",
       newLabel = "New Ingest",
@@ -24,17 +28,26 @@ object IngestStreamPanel {
         CreateIngestForm(
           spec = client.spec,
           createSchema = client.ingestCreateSchema,
-          onSubmit = body => client.createIngest(body),
+          memberIndices = memberIndices,
+          onSubmit = (body, memberIdx) => client.createIngest(body, memberIdx),
           onComplete = onComplete,
           onCancel = onCancel,
+          editorConfig = editorConfig,
         ),
       renderTable = { (entriesSignal, onAction) =>
         val refresh = onAction
         IngestStreamTable(
           entriesSignal = entriesSignal,
-          onDelete = Observer[String](name => client.deleteIngest(name).foreach(_ => refresh())),
-          onPause = Observer[String](name => client.pauseIngest(name).foreach(_ => refresh())),
-          onResume = Observer[String](name => client.resumeIngest(name).foreach(_ => refresh())),
+          memberIndices = memberIndices,
+          onDelete = Observer[(String, Option[Int])] { case (name, idx) =>
+            client.deleteIngest(name, idx).foreach(_ => refresh())
+          },
+          onPause = Observer[(String, Option[Int])] { case (name, idx) =>
+            client.pauseIngest(name, idx).foreach(_ => refresh())
+          },
+          onResume = Observer[(String, Option[Int])] { case (name, idx) =>
+            client.resumeIngest(name, idx).foreach(_ => refresh())
+          },
         )
       },
     )

@@ -7,12 +7,13 @@ import io.circe.syntax._
 
 sealed abstract class QuineOssPage(val title: String)
 object QuineOssPage {
-  case object ExplorerUi extends QuineOssPage("Exploration UI")
+  case object ExplorerUi extends QuineOssPage("Explorer")
   case object DocsV1 extends QuineOssPage("Interactive Documentation V1")
   case object DocsV2 extends QuineOssPage("Interactive Documentation V2")
   case object Metrics extends QuineOssPage("Metrics")
   case object Streams extends QuineOssPage("Streams")
   case object Landing extends QuineOssPage("Dashboard")
+  case object ExplorerSettings extends QuineOssPage("Explorer Settings")
 
   implicit val ExplorerUiPageDecoder: Decoder[ExplorerUi.type] = deriveDecoder
   implicit val ExplorerUiPageEncoder: Encoder[ExplorerUi.type] = deriveEncoder
@@ -32,6 +33,9 @@ object QuineOssPage {
   implicit val landingPageDecoder: Decoder[Landing.type] = deriveDecoder
   implicit val landingPageEncoder: Encoder[Landing.type] = deriveEncoder
 
+  implicit val configurationPageDecoder: Decoder[ExplorerSettings.type] = deriveDecoder
+  implicit val configurationPageEncoder: Encoder[ExplorerSettings.type] = deriveEncoder
+
   implicit val PageDecoder: Decoder[QuineOssPage] =
     List[Decoder[QuineOssPage]](
       Decoder[ExplorerUi.type].widen,
@@ -40,6 +44,7 @@ object QuineOssPage {
       Decoder[Metrics.type].widen,
       Decoder[Streams.type].widen,
       Decoder[Landing.type].widen,
+      Decoder[ExplorerSettings.type].widen,
     ).reduceLeft(_ or _)
 
   implicit val PageEncoder: Encoder[QuineOssPage] = Encoder.instance {
@@ -49,5 +54,6 @@ object QuineOssPage {
     case Metrics => Metrics.asJson
     case Streams => Streams.asJson
     case Landing => Landing.asJson
+    case ExplorerSettings => ExplorerSettings.asJson
   }
 }

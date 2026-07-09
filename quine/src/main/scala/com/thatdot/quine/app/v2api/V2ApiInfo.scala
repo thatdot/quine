@@ -65,7 +65,8 @@ trait V2OssEndpointProvider
     with V2DebugEndpoints
     with V2IngestEndpoints
     with V2QueryWebSocketEndpoints
-    with V2StandingTapWebSocketEndpoints {
+    with V2StandingTapWebSocketEndpoints
+    with V2LspWebSocketEndpoints {
   def memberIdxParameter: EndpointInput[Option[Int]]
   def namespaceParameter: EndpointInput[Option[NamespaceParameter]]
 }

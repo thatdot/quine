@@ -319,7 +319,7 @@ object Main extends App with LazySafeLogging {
         bindAndResolvableAddresses.map(_._2),
         quineApp.protobufSchemaCache,
       )(graph.idProvider)
-      interpreter.run(quineApp.thisMemberIdx)
+      interpreter.run()
       interpreter
   }
 
