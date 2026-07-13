@@ -148,10 +148,6 @@ object TapQueryRuntime {
       reconcile(ns)
     }
 
-    // Reviewer: please double-check this choice — gating on a single boolean captured at
-    // construction means a permission change mid-session (e.g. a role edit) won't be
-    // picked up until the page reloads, same as the rest of this runtime's auth wiring.
-    // Flagged for review discussion.
     def fetch(ns: String): Unit =
       if (canReadTapQueries)
         QuineApiClient
