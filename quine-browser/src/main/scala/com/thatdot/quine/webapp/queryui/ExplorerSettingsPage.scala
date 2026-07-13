@@ -256,7 +256,7 @@ object ExplorerSettingsPage {
       div(
         cls := "d-flex align-items-center",
         height := "var(--cui-sidebar-header-height, 4rem)",
-        h5(cls := "mb-0", "Explorer Settings"),
+        h2(cls := "h2 mb-0 px-3", "Explorer Settings"),
       ),
       child <-- pageState.signal.map {
         case Pot.Empty | Pot.Pending =>

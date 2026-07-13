@@ -156,7 +156,7 @@ object GraphNamespacesPage {
       div(
         cls := "d-flex align-items-center",
         height := "var(--cui-sidebar-header-height, 4rem)",
-        h5(cls := "mb-0", "Graph Namespaces"),
+        h2(cls := "h2 mb-0 px-3", "Graph Namespaces"),
       ),
       div(
         cls := "card",

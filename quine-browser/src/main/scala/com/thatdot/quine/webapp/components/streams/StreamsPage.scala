@@ -56,7 +56,7 @@ object StreamsPage {
       div(
         cls := "d-flex align-items-center",
         height := "var(--cui-sidebar-header-height, 4rem)",
-        h5(cls := "mb-0", "Streams"),
+        h2(cls := "h2 mb-0 px-3", "Streams"),
       ),
       // Content
       child <-- specState.signal.map {
