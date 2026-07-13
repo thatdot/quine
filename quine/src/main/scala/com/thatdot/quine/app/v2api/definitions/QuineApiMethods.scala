@@ -129,23 +129,18 @@ trait ApplicationApiMethods {
     }
 
     // ── Host info ──
-    val webserverConfig = config.loadedConfigJson.hcursor.downField("quine").downField("webserver")
+    val configSummary = config.systemConfigSummary
     val hostInfo = HostInfo(
       version = BuildInfo.version,
-      address = webserverConfig.downField("address").as[String].getOrElse("unknown"),
-      port = webserverConfig.downField("port").as[Int].getOrElse(0),
+      address = configSummary.webserver.map(_.address).getOrElse("unknown"),
+      port = configSummary.webserver.map(_.port).getOrElse(0),
       pid = ProcessHandle.current.pid(),
     )
 
     // ── Persistor ──
     val metricsReport = GenerateMetrics.metricsReport(graph)
     val persistor = PersistorSnapshot(
-      `type` = config.loadedConfigJson.hcursor
-        .downField("quine")
-        .downField("store")
-        .downField("type")
-        .as[String]
-        .getOrElse("unknown"),
+      `type` = configSummary.persistor.persistorType,
       writeLatencyMs = metricsReport.timers.find(_.name == "persistor.persist-event").map(_.mean).getOrElse(0.0),
       readLatencyMs = metricsReport.timers.find(_.name == "persistor.get-latest-snapshot").map(_.mean).getOrElse(0.0),
     )

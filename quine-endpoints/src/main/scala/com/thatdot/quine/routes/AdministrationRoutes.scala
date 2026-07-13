@@ -5,7 +5,6 @@ import scala.util.Try
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 import endpoints4s.{Valid, Validated}
-import io.circe.Json
 
 import com.thatdot.quine.routes.exts.{EndpointsWithCustomErrorText, NamespaceParameter}
 
@@ -89,6 +88,64 @@ final case class ShardInMemoryLimit(
   @docs("Number of in-memory nodes past which shards will not load in new nodes") hardLimit: Int,
 )
 
+// V1-suffixed: this is the legacy (v1) wire shape. The v2 API's equivalent type is
+// `com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.SystemConfigView`, a distinct type
+// because v1 (endpoints4s) and v2 (tapir) each need their own schema/docs annotations on the case class.
+@title("Persistor Summary")
+@unnamed
+final case class PersistorSummaryV1(
+  @docs("Persistor type, e.g. \"rocksdb\", \"cassandra\", \"clickhouse\"") persistorType: String,
+  @docs("Whether this persistor stores data locally on this instance") isLocal: Boolean,
+)
+
+@title("Webserver Summary")
+@unnamed
+final case class WebserverSummaryV1(
+  @docs("Bind address of the REST API webserver") address: String,
+  @docs("Bind port of the REST API webserver") port: Int,
+  @docs("Whether the REST API webserver is enabled") enabled: Boolean,
+  @docs("Whether the REST API webserver is serving over TLS") useTls: Boolean,
+)
+
+@title("Cluster Summary")
+@unnamed
+@docs("Cluster formation settings. Only present on Quine Enterprise.")
+final case class ClusterSummaryV1(
+  @docs("Configured name of the cluster") name: String,
+  @docs("Configured target size of the cluster") targetSize: Int,
+  @docs("Configured number of shards per cluster member") shardsPerMember: Int,
+)
+
+@title("Bolt Summary")
+@unnamed
+@docs("Bolt protocol endpoint settings. Only present on Quine Enterprise.")
+final case class BoltSummaryV1(
+  @docs("Whether the Bolt endpoint is enabled") enabled: Boolean,
+  @docs("Bind address of the Bolt endpoint") address: String,
+  @docs("Bind port of the Bolt endpoint") port: Int,
+  @docs("Configured Bolt encryption level") encryption: String,
+)
+
+@title("Running System Configuration")
+@docs(
+  """A filtered, non-sensitive view of the running configuration: only fields relevant to monitoring and
+    |operations are included. Credentials and other secrets are never included, regardless of what backs them
+    |in the underlying configuration.""".stripMargin.replace('\n', ' '),
+)
+final case class SystemConfigViewV1(
+  @docs("Summary of the configured persistor") persistor: PersistorSummaryV1,
+  @docs("Summary of the REST API webserver bind config, if this instance has one") webserver: Option[
+    WebserverSummaryV1,
+  ],
+  @docs("Configured shard count, for products that expose it") shardCount: Option[Int],
+  @docs("Number of in-memory nodes past which shards will try to shut down nodes") inMemorySoftNodeLimit: Option[Int],
+  @docs("Number of in-memory nodes past which shards will not load in new nodes") inMemoryHardNodeLimit: Option[Int],
+  @docs("Types of the configured metrics reporters, e.g. \"jmx\", \"influxdb\"") metricsReporterTypes: List[String],
+  @docs("Default API version used by this instance") defaultApiVersion: String,
+  @docs("Cluster formation summary. Only present on Quine Enterprise.") cluster: Option[ClusterSummaryV1],
+  @docs("Bolt endpoint summary. Only present on Quine Enterprise.") bolt: Option[BoltSummaryV1],
+)
+
 @title("Graph hash code")
 @unnamed
 final case class GraphHashCode(
@@ -128,6 +185,17 @@ trait AdministrationRoutes
   implicit final lazy val graphHashCodeSchema: Record[GraphHashCode] =
     genericRecord[GraphHashCode]
 
+  implicit final lazy val persistorSummarySchema: Record[PersistorSummaryV1] =
+    genericRecord[PersistorSummaryV1]
+  implicit final lazy val webserverSummarySchema: Record[WebserverSummaryV1] =
+    genericRecord[WebserverSummaryV1]
+  implicit final lazy val clusterSummarySchema: Record[ClusterSummaryV1] =
+    genericRecord[ClusterSummaryV1]
+  implicit final lazy val boltSummarySchema: Record[BoltSummaryV1] =
+    genericRecord[BoltSummaryV1]
+  implicit final lazy val systemConfigViewSchema: Record[SystemConfigViewV1] =
+    genericRecord[SystemConfigViewV1]
+
   private val api = path / "api" / "v1"
   protected val admin: Path[Unit] = api / "admin"
 
@@ -144,22 +212,20 @@ trait AdministrationRoutes
         .withTags(List(adminTag)),
     )
 
-  final def config(configExample: Json): Endpoint[Unit, Json] =
+  final val configEndpoint: Endpoint[Unit, SystemConfigViewV1] =
     endpoint(
       request = get(admin / "config"),
-      response = ok(jsonResponseWithExample[Json](configExample)(anySchema(None))),
+      response = ok(jsonResponse[SystemConfigViewV1]),
       docs = EndpointDocs()
         .withSummary(Some("Running Configuration"))
         .withDescription(
           Some(
-            """Fetch the full configuration of the running system. "Full" means that this
-              |every option value is specified including all specified config files, command line
-              |options, and default values.
+            """Fetch a filtered view of the running system's configuration, containing only fields relevant to
+              |monitoring and operations (e.g. persistor type, webserver bind info, shard/memory limits).
               |
-              |This does _not_ include external options, for example, the
-              |Pekko HTTP option `org.apache.pekko.http.server.request-timeout` can be used to adjust the web
-              |server request timeout of this REST API, but it won't show up in the response of this
-              |endpoint.
+              |Credentials and other secrets are never included, regardless of what backs them in the underlying
+              |configuration. This does _not_ return the full configuration -- for that, use the config file(s) and
+              |command line options this instance was started with directly.
               |""".stripMargin,
           ),
         )

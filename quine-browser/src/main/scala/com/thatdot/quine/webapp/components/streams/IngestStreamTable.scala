@@ -20,6 +20,8 @@ object IngestStreamTable {
   def apply(
     entriesSignal: Signal[List[(String, Json)]],
     memberIndices: Signal[Seq[Int]],
+    canControl: Boolean,
+    canDelete: Boolean,
     onDelete: Observer[(String, Option[Int])],
     onPause: Observer[(String, Option[Int])],
     onResume: Observer[(String, Option[Int])],
@@ -49,7 +51,18 @@ object IngestStreamTable {
           val jsonSignal = strictSignal.map(_._2)
           val isExpanded = expandedVar.signal.map(_.contains(key)).distinct
           tbody(
-            renderRow(key, jsonSignal, showMember, isExpanded, expandedVar, onDelete, onPause, onResume),
+            renderRow(
+              key,
+              jsonSignal,
+              showMember,
+              isExpanded,
+              expandedVar,
+              canControl,
+              canDelete,
+              onDelete,
+              onPause,
+              onResume,
+            ),
             renderExpandedRow(jsonSignal, showMember, isExpanded),
           )
         }
@@ -65,6 +78,8 @@ object IngestStreamTable {
     showMember: Signal[Boolean],
     isExpanded: Signal[Boolean],
     expandedVar: Var[Set[String]],
+    canControl: Boolean,
+    canDelete: Boolean,
     onDelete: Observer[(String, Option[Int])],
     onPause: Observer[(String, Option[Int])],
     onResume: Observer[(String, Option[Int])],
@@ -153,17 +168,16 @@ object IngestStreamTable {
           val isRunning = status == "Running"
           val isResumable = Set("Paused", "Restored").contains(status)
           val isFailed = status == "Failed"
-          if (isFailed)
-            span(
-              button(
-                cls := "btn btn-sm btn-ghost-danger",
-                title := "Delete",
-                i(cls := "cil-trash"),
-                onClick --> { _ => onDelete.onNext(target) },
-              ),
-            )
-          else
-            span(
+          val deleteButton = Option.when(canDelete)(
+            button(
+              cls := "btn btn-sm btn-ghost-danger",
+              title := "Delete",
+              i(cls := "cil-trash"),
+              onClick --> { _ => onDelete.onNext(target) },
+            ),
+          )
+          val controlButtons = Option.when(!isFailed && canControl)(
+            List(
               button(
                 cls := "btn btn-sm btn-ghost-success me-1",
                 title := "Resume",
@@ -178,13 +192,9 @@ object IngestStreamTable {
                 i(cls := "cil-media-pause"),
                 onClick --> { _ => onPause.onNext(target) },
               ),
-              button(
-                cls := "btn btn-sm btn-ghost-danger",
-                title := "Delete",
-                i(cls := "cil-trash"),
-                onClick --> { _ => onDelete.onNext(target) },
-              ),
-            )
+            ),
+          )
+          span(controlButtons.toList.flatten ++ deleteButton.toList)
         },
       ),
     )

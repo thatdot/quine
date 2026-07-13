@@ -23,6 +23,8 @@ object StandingQueryTable {
 
   def apply(
     entriesSignal: Signal[List[(String, Json)]],
+    canWriteOutputs: Boolean,
+    canDelete: Boolean,
     onDeleteSq: Observer[String],
     onRemoveOutput: Observer[(String, String)],
     expandedVar: Var[Set[String]],
@@ -54,12 +56,14 @@ object StandingQueryTable {
           val jsonSignal = strictSignal.map(_._2)
           val isExpanded = expandedVar.signal.map(_.contains(name)).distinct
           tbody(
-            renderMainRow(name, jsonSignal, isExpanded, expandedVar, onDeleteSq),
+            renderMainRow(name, jsonSignal, isExpanded, expandedVar, canDelete, onDeleteSq),
             renderExpandedRow(
               name,
               jsonSignal,
               isExpanded,
               spec,
+              canWriteOutputs,
+              canDelete,
               onRemoveOutput,
               addingOutputFor,
               outputFormState,
@@ -79,6 +83,7 @@ object StandingQueryTable {
     jsonSignal: Signal[Json],
     isExpanded: Signal[Boolean],
     expandedVar: Var[Set[String]],
+    canDelete: Boolean,
     onDeleteSq: Observer[String],
   ): HtmlElement = {
     val patternSignal: Signal[String] = jsonSignal.map { json =>
@@ -129,11 +134,13 @@ object StandingQueryTable {
       td(span(cls := "badge bg-secondary", child.text <-- outputsCountSignal.map(_.toString))),
       td(child.text <-- rateSignal),
       td(
-        button(
-          cls := "btn btn-sm btn-ghost-danger",
-          title := "Delete",
-          i(cls := "cil-trash"),
-          onClick --> { _ => onDeleteSq.onNext(name) },
+        Option.when(canDelete)(
+          button(
+            cls := "btn btn-sm btn-ghost-danger",
+            title := "Delete",
+            i(cls := "cil-trash"),
+            onClick --> { _ => onDeleteSq.onNext(name) },
+          ),
         ),
       ),
     )
@@ -144,6 +151,8 @@ object StandingQueryTable {
     jsonSignal: Signal[Json],
     isExpanded: Signal[Boolean],
     spec: ParsedSpec,
+    canWriteOutputs: Boolean,
+    canDelete: Boolean,
     onRemoveOutput: Observer[(String, String)],
     addingOutputFor: Var[Option[String]],
     outputFormState: OutputForm.State,
@@ -208,7 +217,7 @@ object StandingQueryTable {
             cls := "d-flex justify-content-between align-items-center mb-2",
             strong("Outputs"),
             child <-- isAddingHere.map { adding =>
-              if (adding) span(display := "none")
+              if (adding || !canWriteOutputs) span(display := "none")
               else
                 button(
                   cls := "btn btn-sm btn-outline-primary",
@@ -235,11 +244,13 @@ object StandingQueryTable {
                       td(outputName),
                       td(code(outputType)),
                       td(
-                        button(
-                          cls := "btn btn-sm btn-ghost-danger",
-                          title := "Remove output",
-                          i(cls := "cil-trash"),
-                          onClick --> { _ => onRemoveOutput.onNext((name, outputName)) },
+                        Option.when(canDelete)(
+                          button(
+                            cls := "btn btn-sm btn-ghost-danger",
+                            title := "Remove output",
+                            i(cls := "cil-trash"),
+                            onClick --> { _ => onRemoveOutput.onNext((name, outputName)) },
+                          ),
                         ),
                       ),
                     )

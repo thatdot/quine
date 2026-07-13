@@ -28,6 +28,8 @@ object StreamCollectionPanel {
 
   /** Render the panel.
     *
+    * @param canCreate    whether the user may create this resource; when false the
+    *                     "New" button and empty-state CTA are not rendered
     * @param listFn       function that fetches the resource list (called on each poll tick
     *                     and on manual refresh)
     * @param renderCreateForm takes (onComplete, onCancel). `onComplete` flips the
@@ -41,6 +43,7 @@ object StreamCollectionPanel {
     newLabel: String,
     emptyMessage: String,
     emptyCta: String,
+    canCreate: Boolean,
     listFn: () => Future[Either[String, Json]],
     renderCreateForm: (() => Unit, () => Unit) => HtmlElement,
     renderTable: (Signal[List[(String, Json)]], () => Unit) => HtmlElement,
@@ -81,13 +84,15 @@ object StreamCollectionPanel {
         cls := "card-header d-flex justify-content-between align-items-center",
         h5(cls := "mb-0", title),
         child <-- viewVar.signal.map {
-          case PanelView.Table =>
+          case PanelView.Table if canCreate =>
             button(
               cls := "btn btn-primary btn-sm",
               i(cls := "cil-plus me-1"),
               newLabel,
               onClick --> { _ => viewVar.set(PanelView.CreateForm) },
             )
+          case PanelView.Table =>
+            emptyNode
           case PanelView.CreateForm =>
             button(
               cls := "btn btn-secondary btn-sm",
@@ -126,12 +131,14 @@ object StreamCollectionPanel {
                   div(
                     cls := "text-center text-body-secondary py-4",
                     p(emptyMessage),
-                    button(
-                      cls := "btn btn-primary",
-                      i(cls := "cil-plus me-1"),
-                      emptyCta,
-                      onClick --> { _ => viewVar.set(PanelView.CreateForm) },
-                    ),
+                    if (canCreate)
+                      button(
+                        cls := "btn btn-primary",
+                        i(cls := "cil-plus me-1"),
+                        emptyCta,
+                        onClick --> { _ => viewVar.set(PanelView.CreateForm) },
+                      )
+                    else emptyNode,
                   )
                 case _ =>
                   renderTable(entriesSignal, () => refresh())

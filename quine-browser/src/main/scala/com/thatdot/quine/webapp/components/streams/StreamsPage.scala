@@ -25,6 +25,7 @@ object StreamsPage {
   def apply(
     options: QuineUiOptions,
     wiretapStore: WiretapStore,
+    capabilities: StreamsCapabilities,
     clusterStatusEnabled: Boolean = false,
   ): HtmlElement = {
     val specState = Var[Pot[ParsedSpec]](Pot.Empty)
@@ -72,9 +73,9 @@ object StreamsPage {
         case Pot.Ready(spec) =>
           val client = StreamsApiClient(spec, serverUrl)
           div(
-            IngestStreamPanel(client, memberIndices.signal, editorConfig),
+            IngestStreamPanel(client, memberIndices.signal, editorConfig, capabilities),
             div(cls := "mt-4"),
-            StandingQueryPanel(client, wiretapStore, editorConfig),
+            StandingQueryPanel(client, wiretapStore, editorConfig, capabilities),
           )
 
         case _ => emptyNode

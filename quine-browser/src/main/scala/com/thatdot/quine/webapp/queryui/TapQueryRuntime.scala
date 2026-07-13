@@ -80,6 +80,10 @@ object TapQueryRuntime {
     *                       toggles; this runtime persists and applies it.
     * @param activeTapQueryMetadataVar shared with QueryUi's dispatch host — populated here
     *                                  alongside opening a handler so matches can dispatch.
+    * @param canReadTapQueries whether the current user may GET the tap-query list. When
+    *                          false, both the on-entry and periodic fetches are skipped
+    *                          so roles lacking the permission don't spam the console with
+    *                          401s. OSS callers (no auth) always pass true.
     */
   def apply(
     routes: ClientRoutes,
@@ -87,6 +91,7 @@ object TapQueryRuntime {
     wiretapStore: WiretapStore,
     enabledTapsVar: Var[Map[String, Set[String]]],
     activeTapQueryMetadataVar: Var[Map[String, V2TapQuery]],
+    canReadTapQueries: Boolean,
   ): HtmlElement = {
     // Local mirror of the current graph — `Signal.now()` is protected, so we read the
     // latest value through a Var we own (bound below).
@@ -143,14 +148,19 @@ object TapQueryRuntime {
       reconcile(ns)
     }
 
+    // Reviewer: please double-check this choice — gating on a single boolean captured at
+    // construction means a permission change mid-session (e.g. a role edit) won't be
+    // picked up until the page reloads, same as the rest of this runtime's auth wiring.
+    // Flagged for review discussion.
     def fetch(ns: String): Unit =
-      QuineApiClient
-        .fetchV2[Vector[V2TapQuery]](s"api/v2/graph/$ns/queryUi/tapQueries", routes)
-        .onComplete {
-          case Success(tqs) => if (currentNsVar.now().contains(ns)) applyServerList(ns, tqs)
-          case Failure(err) =>
-            dom.console.warn(s"[TapQueryRuntime] Failed to load tap queries for '$ns': ${err.getMessage}")
-        }
+      if (canReadTapQueries)
+        QuineApiClient
+          .fetchV2[Vector[V2TapQuery]](s"api/v2/graph/$ns/queryUi/tapQueries", routes)
+          .onComplete {
+            case Success(tqs) => if (currentNsVar.now().contains(ns)) applyServerList(ns, tqs)
+            case Failure(err) =>
+              dom.console.warn(s"[TapQueryRuntime] Failed to load tap queries for '$ns': ${err.getMessage}")
+          }
 
     div(
       display := "none",

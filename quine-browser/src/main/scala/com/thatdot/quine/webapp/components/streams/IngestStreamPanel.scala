@@ -17,12 +17,14 @@ object IngestStreamPanel {
     client: StreamsApiClient,
     memberIndices: Signal[Seq[Int]],
     editorConfig: EmbeddedEditorConfig,
+    capabilities: StreamsCapabilities,
   ): HtmlElement =
     StreamCollectionPanel(
       title = "Ingest Streams",
       newLabel = "New Ingest",
       emptyMessage = "No ingest streams configured.",
       emptyCta = "Create your first ingest stream",
+      canCreate = capabilities.canCreateIngest,
       listFn = () => client.listIngests(),
       renderCreateForm = (onComplete, onCancel) =>
         CreateIngestForm(
@@ -39,6 +41,8 @@ object IngestStreamPanel {
         IngestStreamTable(
           entriesSignal = entriesSignal,
           memberIndices = memberIndices,
+          canControl = capabilities.canControlIngest,
+          canDelete = capabilities.canDeleteIngest,
           onDelete = Observer[(String, Option[Int])] { case (name, idx) =>
             client.deleteIngest(name, idx).foreach(_ => refresh())
           },

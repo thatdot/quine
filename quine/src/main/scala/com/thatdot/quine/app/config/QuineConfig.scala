@@ -43,6 +43,18 @@ final case class QuineConfig(
 ) extends BaseConfig {
 
   def configVal: Config = ConfigWriter[QuineConfig].to(this).asInstanceOf[ConfigObject].toConfig
+
+  def systemConfigSummary: SystemConfigSummary = SystemConfigSummary(
+    persistor = PersistorSummary.of(store),
+    webserver = Some(WebserverSummary.of(webserver)),
+    shardCount = Some(shardCount),
+    inMemorySoftNodeLimit = inMemorySoftNodeLimit,
+    inMemoryHardNodeLimit = inMemoryHardNodeLimit,
+    metricsReporterTypes = metricsReporters.map(MetricsReporter.typeName),
+    defaultApiVersion = defaultApiVersion,
+    cluster = None,
+    bolt = None,
+  )
 }
 
 object QuineConfig extends PureconfigInstances {

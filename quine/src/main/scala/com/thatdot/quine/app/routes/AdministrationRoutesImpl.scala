@@ -9,10 +9,9 @@ import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.util.{ByteString, Timeout}
 
 import cats.implicits._
-import io.circe.Json
 
 import com.thatdot.common.logging.Log.LazySafeLogging
-import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
+import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit}
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.persistor.PersistenceAgent
@@ -96,14 +95,11 @@ trait AdministrationRoutesImpl
   /** Current product version */
   val version: String
 
-  /** Current config */
-  def currentConfig: Json
+  /** Current application config, used to build the safe/filtered `config` route response. */
+  def config: BaseConfig
 
   /** State in the application */
   val quineApp: AdministrationRoutesState
-
-  /** A sample configuration that will be used for documenting the admin/config route. */
-  def sampleConfig: BaseConfig = QuineConfig()
 
   private val buildInfoRoute = buildInfo.implementedBy { _ =>
     val gitCommit: Option[String] = QuineBuildInfo.gitHeadCommit
@@ -117,7 +113,23 @@ trait AdministrationRoutesImpl
     )
   }
 
-  private val configRoute = config(sampleConfig.loadedConfigJson).implementedBy(_ => currentConfig)
+  private val configRoute = configEndpoint.implementedBy(_ => currentSystemConfigView)
+
+  /** V1 wire shape of `SystemConfigSummary`, which decides what config data is safe to expose. */
+  private def currentSystemConfigView: SystemConfigViewV1 = {
+    val summary = config.systemConfigSummary
+    SystemConfigViewV1(
+      persistor = PersistorSummaryV1(summary.persistor.persistorType, summary.persistor.isLocal),
+      webserver = summary.webserver.map(w => WebserverSummaryV1(w.address, w.port, w.enabled, w.useTls)),
+      shardCount = summary.shardCount,
+      inMemorySoftNodeLimit = summary.inMemorySoftNodeLimit,
+      inMemoryHardNodeLimit = summary.inMemoryHardNodeLimit,
+      metricsReporterTypes = summary.metricsReporterTypes,
+      defaultApiVersion = summary.defaultApiVersion,
+      cluster = summary.cluster.map(c => ClusterSummaryV1(c.name, c.targetSize, c.shardsPerMember)),
+      bolt = summary.bolt.map(b => BoltSummaryV1(b.enabled, b.address, b.port, b.encryption)),
+    )
+  }
 
   private val livenessProbeRoute = livenessProbe.implementedBy(_ => ())
 

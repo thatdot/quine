@@ -61,6 +61,8 @@ class QuineOssViews(
       wiretapStore = wiretapStore,
       enabledTapsVar = enabledTapsVar,
       activeTapQueryMetadataVar = activeTapQueryMetadataVar,
+      // OSS has no auth, so the tap-query list is always readable.
+      canReadTapQueries = true,
     ),
     div(
       cls := "h-100",

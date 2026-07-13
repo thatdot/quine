@@ -63,7 +63,6 @@ class QuineAppRoutes(
   //override val app: BaseApp with StandingQueryStore with IngestStreamState = ???
   implicit val system: ActorSystem = graph.system
 
-  val currentConfig = config.loadedConfigJson
   protected val webSocketQuinePatternServer = new WebSocketQuinePatternServer(system)
 
   val version = BuildInfo.version

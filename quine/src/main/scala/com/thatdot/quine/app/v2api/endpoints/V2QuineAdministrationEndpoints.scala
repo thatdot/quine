@@ -4,7 +4,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.syntax.EncoderOps
-import io.circe.{Decoder, Encoder, Json}
+import io.circe.{Decoder, Encoder}
 import shapeless.{:+:, CNil, Coproduct}
 import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
@@ -17,6 +17,7 @@ import com.thatdot.api.v2.ErrorResponseHelpers.serverError
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.instantSchema
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities._
@@ -249,6 +250,97 @@ object V2AdministrationEndpointEntities {
     implicit val decoder: Decoder[TQuineInfo] = deriveDecoder
   }
 
+  @title("Persistor Summary")
+  final case class PersistorSummary(
+    @description("Persistor type, e.g. \"rocksdb\", \"cassandra\", \"clickhouse\".") persistorType: String,
+    @description("Whether this persistor stores data locally on this instance.") isLocal: Boolean,
+  )
+  object PersistorSummary {
+    implicit val encoder: Encoder[PersistorSummary] = deriveEncoder
+    implicit val decoder: Decoder[PersistorSummary] = deriveDecoder
+  }
+
+  @title("Webserver Summary")
+  final case class WebserverSummary(
+    @description("Bind address of the REST API webserver.") address: String,
+    @description("Bind port of the REST API webserver.") port: Int,
+    @description("Whether the REST API webserver is enabled.") enabled: Boolean,
+    @description("Whether the REST API webserver is serving over TLS.") useTls: Boolean,
+  )
+  object WebserverSummary {
+    implicit val encoder: Encoder[WebserverSummary] = deriveEncoder
+    implicit val decoder: Decoder[WebserverSummary] = deriveDecoder
+  }
+
+  @title("Cluster Summary")
+  @description("Cluster formation settings. Only present on Quine Enterprise.")
+  final case class ClusterSummary(
+    @description("Configured name of the cluster.") name: String,
+    @description("Configured target size of the cluster.") targetSize: Int,
+    @description("Configured number of shards per cluster member.") shardsPerMember: Int,
+  )
+  object ClusterSummary {
+    implicit val encoder: Encoder[ClusterSummary] = deriveEncoder
+    implicit val decoder: Decoder[ClusterSummary] = deriveDecoder
+  }
+
+  @title("Bolt Summary")
+  @description("Bolt protocol endpoint settings. Only present on Quine Enterprise.")
+  final case class BoltSummary(
+    @description("Whether the Bolt endpoint is enabled.") enabled: Boolean,
+    @description("Bind address of the Bolt endpoint.") address: String,
+    @description("Bind port of the Bolt endpoint.") port: Int,
+    @description("Configured Bolt encryption level.") encryption: String,
+  )
+  object BoltSummary {
+    implicit val encoder: Encoder[BoltSummary] = deriveEncoder
+    implicit val decoder: Decoder[BoltSummary] = deriveDecoder
+  }
+
+  @title("Running System Configuration")
+  @description(
+    """A filtered, non-sensitive view of the running configuration: only fields relevant to monitoring and
+      |operations are included. Credentials and other secrets are never included, regardless of what backs
+      |them in the underlying configuration.""".asOneLine,
+  )
+  final case class SystemConfigView(
+    @description("Summary of the configured persistor.") persistor: PersistorSummary,
+    @description("Summary of the REST API webserver bind config, if this instance has one.")
+    webserver: Option[WebserverSummary],
+    @description("Configured shard count, for products that expose it.") shardCount: Option[Int],
+    @description("Number of in-memory nodes past which shards will try to shut down nodes.")
+    inMemorySoftNodeLimit: Option[Int],
+    @description("Number of in-memory nodes past which shards will not load in new nodes.")
+    inMemoryHardNodeLimit: Option[Int],
+    @description("Types of the configured metrics reporters, e.g. \"jmx\", \"influxdb\".")
+    metricsReporterTypes: List[String],
+    @description("Default API version used by this instance.") defaultApiVersion: String,
+    @description("Cluster formation summary. Only present on Quine Enterprise.") cluster: Option[ClusterSummary],
+    @description("Bolt endpoint summary. Only present on Quine Enterprise.") bolt: Option[BoltSummary],
+  )
+  object SystemConfigView {
+    implicit val encoder: Encoder[SystemConfigView] = deriveEncoder
+    implicit val decoder: Decoder[SystemConfigView] = deriveDecoder
+
+    /** V2 wire shape of [[com.thatdot.quine.app.config.SystemConfigSummary]], which decides what config
+      * data is safe to expose.
+      */
+    def fromConfig(config: BaseConfig): SystemConfigView = {
+      val summary = config.systemConfigSummary
+      SystemConfigView(
+        persistor = PersistorSummary(summary.persistor.persistorType, summary.persistor.isLocal),
+        webserver = summary.webserver.map(w => WebserverSummary(w.address, w.port, w.enabled, w.useTls)),
+        shardCount = summary.shardCount,
+        inMemorySoftNodeLimit = summary.inMemorySoftNodeLimit,
+        inMemoryHardNodeLimit = summary.inMemoryHardNodeLimit,
+        metricsReporterTypes = summary.metricsReporterTypes,
+        defaultApiVersion = summary.defaultApiVersion,
+        cluster = summary.cluster.map(c => ClusterSummary(c.name, c.targetSize, c.shardsPerMember)),
+        bolt = summary.bolt.map(b => BoltSummary(b.enabled, b.address, b.port, b.encryption)),
+      )
+    }
+  }
+
   @title("Metrics Counter")
   @description("Counters record a single shared count, and give that count a name.")
   final case class TCounter(
@@ -383,6 +475,11 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Gra
   implicit lazy val tTimerSummarySchema: Schema[TTimerSummary] = Schema.derived
   implicit lazy val tMetricsReportSchema: Schema[TMetricsReport] = Schema.derived
   implicit lazy val tShardInMemoryLimitSchema: Schema[TShardInMemoryLimit] = Schema.derived
+  implicit lazy val persistorSummarySchema: Schema[PersistorSummary] = Schema.derived
+  implicit lazy val webserverSummarySchema: Schema[WebserverSummary] = Schema.derived
+  implicit lazy val clusterSummarySchema: Schema[ClusterSummary] = Schema.derived
+  implicit lazy val boltSummarySchema: Schema[BoltSummary] = Schema.derived
+  implicit lazy val systemConfigViewSchema: Schema[SystemConfigView] = Schema.derived
 
   def adminBase(path: String): EndpointBase = rawEndpoint("system")
     .in(path)
@@ -413,25 +510,25 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Gra
     Future,
   ] = systemInfo.serverLogic[Future](systemInfoLogic)
 
-  protected[endpoints] val configE: Endpoint[Unit, Unit, ServerError, Json, Any] =
+  protected[endpoints] val configE: Endpoint[Unit, Unit, ServerError, SystemConfigView, Any] =
     adminBase("config")
       .name("get-config")
       .summary("Running Configuration")
       .description(
-        """Fetch the full configuration of the running system.
-          |"Full" means that this every option value is specified including all specified config files,
-          |command line options, and default values.""".asOneLine + "\n\n" +
-        """This does <em>not</em> include external options, for example, the Pekko HTTP option
-          |`org.apache.pekko.http.server.request-timeout` can be used to adjust the web server request timeout of this
-          |REST API, but it won't show up in the response of this endpoint.""".asOneLine,
+        """Fetch a filtered view of the running system's configuration, containing only fields relevant to
+          |monitoring and operations (e.g. persistor type, webserver bind info, shard/memory limits).""".asOneLine +
+        "\n\n" +
+        """Credentials and other secrets are never included, regardless of what backs them in the underlying
+          |configuration. This does <em>not</em> return the full configuration -- for that, use the config file(s)
+          |and command line options this instance was started with directly.""".asOneLine,
       )
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[Json])
+      .out(jsonBody[SystemConfigView])
 
-  protected[endpoints] val configLogic: Unit => Future[Either[ServerError, Json]] = _ =>
-    recoverServerError(Future.successful(appMethods.config.loadedConfigJson))((inp: Json) => inp)
+  protected[endpoints] val configLogic: Unit => Future[Either[ServerError, SystemConfigView]] = _ =>
+    recoverServerError(Future.successful(SystemConfigView.fromConfig(appMethods.config)))(identity)
 
-  private val configServerEndpoint: Full[Unit, Unit, Unit, ServerError, Json, Any, Future] =
+  private val configServerEndpoint: Full[Unit, Unit, Unit, ServerError, SystemConfigView, Any, Future] =
     configE.serverLogic[Future](configLogic)
 
   protected[endpoints] val graphHashCode

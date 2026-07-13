@@ -23,6 +23,7 @@ object StandingQueryPanel {
     client: StreamsApiClient,
     wiretapStore: WiretapStore,
     editorConfig: EmbeddedEditorConfig,
+    capabilities: StreamsCapabilities,
   ): HtmlElement = {
     // Panel-scoped state — outlives the table's polling-driven content updates
     // so expanded rows stay open and the inline add-output form keeps focus
@@ -40,6 +41,7 @@ object StandingQueryPanel {
       newLabel = "New Standing Query",
       emptyMessage = "No standing queries configured.",
       emptyCta = "Create your first standing query",
+      canCreate = capabilities.canCreateStandingQuery,
       listFn = () => client.listStandingQueries(),
       renderCreateForm = (onComplete, onCancel) =>
         CreateStandingQueryForm(
@@ -54,6 +56,8 @@ object StandingQueryPanel {
         val refresh = onAction
         StandingQueryTable(
           entriesSignal = entriesSignal,
+          canWriteOutputs = capabilities.canWriteStandingQueryOutputs,
+          canDelete = capabilities.canDeleteStandingQuery,
           onDeleteSq = Observer[String](name => client.deleteStandingQuery(name).foreach(_ => refresh())),
           onRemoveOutput = Observer[(String, String)] { case (sqName, outputName) =>
             client.removeOutput(sqName, outputName).foreach(_ => refresh())

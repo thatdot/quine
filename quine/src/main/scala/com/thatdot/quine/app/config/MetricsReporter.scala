@@ -95,6 +95,14 @@ object MetricsReporter extends PureconfigInstances {
 
   implicit val configConvert: ConfigConvert[MetricsReporter] =
     deriveConvert[MetricsReporter]
+
+  /** Safe, non-secret type discriminator for a reporter -- matches the lowercase `type` value used in HOCON. */
+  def typeName(reporter: MetricsReporter): String = reporter match {
+    case Jmx => "jmx"
+    case _: Csv => "csv"
+    case _: Slf4j => "slf4j"
+    case _: Influxdb => "influxdb"
+  }
 }
 
 class TagInfluxMetrics(tags: Map[String, String]) extends MetricMeasurementTransformer {
