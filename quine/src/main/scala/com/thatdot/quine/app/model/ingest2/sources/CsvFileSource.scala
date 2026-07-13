@@ -6,7 +6,7 @@ import scala.util.{Success, Try}
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
-import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
+import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.util.ByteString
 
 import com.thatdot.data.DataFoldableFrom
@@ -66,15 +66,20 @@ case class CsvFileSource(
 
       def stream: Source[(() => Try[T], Frame), ShutdownSwitch] = {
 
-        val csvStream: Source[() => Success[T], NotUsed] = src
+        val csvStream: Source[(() => Try[T], ByteString), NotUsed] = src
           .via(decompressingFlow(decoders))
           .via(csvLineParser)
           .via(boundingFlow(ingestBounds))
           .wireTap(bs => meter.mark(bs.map(_.length).sum))
           .via(parsingFlow)
-          .map(value => () => scala.util.Success(value)) //TODO meaningfully extract errors
+          // Always-Success with an empty Frame: pekko-streams CSV parsing throws on malformed
+          // input and aborts the whole stream rather than producing a per-row Failure, and the
+          // original row bytes are not recoverable after parsing. Possible improvement: pre-split
+          // on newlines (losing quoted-newline support) so each row can be tried independently,
+          // and carry the joined row bytes through as Frame for DLQ purposes.
+          .map(value => (() => Success(value), ByteString.empty))
 
-        withKillSwitches(csvStream.zipWith(src)(Keep.both))
+        withKillSwitches(csvStream)
       }
 
       val foldable: DataFoldableFrom[T] = foldableFrom

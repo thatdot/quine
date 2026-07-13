@@ -66,9 +66,11 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     bounds: IngestBounds = IngestBounds(),
     maximumLineSize: Int = DEFAULT_MAXIMUM_LINE_SIZE,
     contentDecoders: Seq[ContentDecoder] = Seq(),
+    chunkSize: Option[Int] = None,
   ): TestResult = {
 
-    val src: Source[ByteString, NotUsed] = srcFromString(sample).via(ContentDecoder.encoderFlow(contentDecoders))
+    val src: Source[ByteString, NotUsed] =
+      srcFromString(sample, chunkSize).via(ContentDecoder.encoderFlow(contentDecoders))
 
     val decodedSource = buildDecodedSource(
       src,
@@ -87,8 +89,9 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     bounds: IngestBounds = IngestBounds(),
     maximumLineSize: Int = DEFAULT_MAXIMUM_LINE_SIZE,
     contentDecoders: Seq[ContentDecoder] = Seq(),
+    chunkSize: Option[Int] = None,
   ): TestResult = {
-    val src = srcFromString(sample).via(ContentDecoder.encoderFlow(contentDecoders))
+    val src = srcFromString(sample, chunkSize).via(ContentDecoder.encoderFlow(contentDecoders))
     val meter = IngestMetered.ingestMeter(
       defaultNamespaceId,
       randomString(),
@@ -188,6 +191,21 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       meter.counts.getCount shouldBe 50
     }
 
+    // JSONLines records are 8 chars (`{"A":N}\n`) so a 7-byte chunk splits mid-record at a
+    // different offset each time, exercising re-framing across chunks.
+    it("reads all JSONLines values when chunked at 7-byte boundaries") {
+      val (_, values) = generateValues(jsonSample, JsonLinesFormat, chunkSize = Some(7))
+      values.length shouldEqual 50
+      values.head shouldEqual Expr.Map(TreeMap("A" -> Expr.Integer(1)))
+    }
+
+    it("reads all undelimited-JSON values when chunked at 7-byte boundaries") {
+      val undelimitedSample = generateJsonSample(50, "")
+      val (_, values) = generateValues(undelimitedSample, JsonFormat, chunkSize = Some(7))
+      values.length shouldEqual 50
+      values.head shouldEqual Expr.Map(TreeMap("A" -> Expr.Integer(1)))
+    }
+
     // TODO json does not respect maxLine bounds ("bounds at maxLine") {
   }
 
@@ -248,6 +266,14 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
       meter.bytes.getCount shouldBe calculatedByteLength(lineSample)
       meter.counts.getCount shouldBe 50
+    }
+
+    // Line records are 10 chars (`ABCDEFG_N\n`) so a 7-byte chunk is coprime with the row
+    // length and lands at a different intra-row offset each time.
+    it("reads all values when chunked at 7-byte boundaries") {
+      val (_, values) = generateValues(lineSample, LineFormat, chunkSize = Some(7))
+      values.length shouldEqual 50
+      values.head shouldEqual Expr.Str("ABCDEFG_1")
     }
 
   }
@@ -349,6 +375,28 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       // byte meter ignores field delimiter
       meter.bytes.getCount shouldBe calculatedByteLength(csvSample.replace(",", ""))
 
+    }
+
+    it("reads all rows when the byte source emits the whole file as one ByteString") {
+      val format =
+        CsvFormat(Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
+
+      val src: Source[ByteString, NotUsed] = Source.single(ByteString(csvSample))
+      val decoded = buildDecodedSource(src, format)
+      val values = streamedCypherValues(decoded).toList
+
+      values.length shouldEqual 3
+      decoded.meter.counts.getCount shouldBe 3
+    }
+
+    // CSV rows are 9 chars (`Ax,Bx,Cx\n`) so a 7-byte chunk straddles row boundaries at a
+    // different offset each time, exercising `CsvParsing.lineScanner`'s re-framing.
+    it("reads all rows when chunked at 7-byte boundaries") {
+      val format =
+        CsvFormat(Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
+      val (_, values) = generateCsvValues(csvSample, format, chunkSize = Some(7))
+      values.length shouldEqual 3
+      values.head shouldEqual Expr.List(Vector(Expr.Str("A1"), Expr.Str("B1"), Expr.Str("C1")))
     }
 
   }

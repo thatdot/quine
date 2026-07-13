@@ -28,7 +28,20 @@ object IngestSourceTestSupport {
   implicit private val noOpAvroSchemaCache: AvroSchemaCache = (_: java.net.URL) =>
     Future.failed(new UnsupportedOperationException("AvroSchemaCache not available in tests"))
 
-  def srcFromString(raw: String): Source[ByteString, NotUsed] = Source(raw.map(ByteString(_)))
+  /** Build a `Source[ByteString]` from a string payload.
+    *
+    * Default (`chunkSize = None`) emits the whole payload as a single ByteString — matches how
+    * `FileIO.fromPath` delivers files smaller than its 8 KiB read buffer. Pass `Some(n)` to split
+    * into `n`-byte chunks; useful for exercising stream re-framing across chunk boundaries
+    * (e.g. delimiter parsers, streaming decoders).
+    */
+  def srcFromString(raw: String, chunkSize: Option[Int] = None): Source[ByteString, NotUsed] = {
+    val bytes = ByteString(raw)
+    chunkSize match {
+      case None => Source.single(bytes)
+      case Some(n) => Source.fromIterator(() => bytes.grouped(n))
+    }
+  }
 
   /** Collect generated cypher values from a decoded source. Assumes all values are a success. */
   def streamedCypherValues(src: DecodedSource)(implicit mat: Materializer): immutable.Iterable[Value] = {
