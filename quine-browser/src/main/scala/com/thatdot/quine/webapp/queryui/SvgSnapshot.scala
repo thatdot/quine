@@ -2,7 +2,7 @@ package com.thatdot.quine.webapp.queryui
 
 import scala.concurrent.{Future, Promise}
 import scala.scalajs.js
-import scala.util.{Failure, Success, Try}
+import scala.scalajs.js.typedarray.{ArrayBuffer, Uint8Array}
 
 import org.scalajs.dom
 
@@ -27,79 +27,101 @@ object SvgSnapshot {
 
   private def textNode(text: String): dom.Text = dom.document.createTextNode(text)
 
-  /** Given a `vis` graph, produce an SVG element that is a snapshot of its current state
+  /** Given a `vis` graph, produce an SVG element that is a snapshot of its current state.
+    *
+    * The icon font is fetched, base64-encoded, and embedded as a `@font-face` declaration
+    * so that icons render correctly without requiring the viewer to have the font installed.
     *
     * @param graphData data from the `vis` graph
     * @param positions location of nodes in the graph
     * @param edgeColor the color for edges
-    * @param svgFont name of the SVG font to use
+    * @param fontFace  CSS font-family name used by vis-network for node icons
+    * @param fontUrl   URL to fetch the icon font file for embedding
     */
   def apply(
     graphData: VisData,
     positions: js.Dictionary[vis.Position],
     edgeColor: String = "#2b7ce9",
-    svgFont: String = "ionicons.svg",
+    fontFace: String = "Ionicons",
+    fontUrl: String = "fonts/ionicons.woff",
   ): Future[dom.Element] = {
     val promise = Promise[dom.Element]()
 
+    val fontFormat = fontFormatHint(fontUrl)
     val request = new dom.XMLHttpRequest()
-    request.open("GET", svgFont, async = true)
+    request.open("GET", fontUrl, async = true)
+    request.responseType = "arraybuffer"
     request.onload = _ =>
       promise.success {
-        val icons: Map[String, Glyph] = Try(extractGlyphs(request.responseXML)) match {
-          case Success(glyphs) => glyphs
-          case Failure(err) =>
-            println(s"Failed to load SVG font, icons won't be preserved $err")
-            Map.empty
+        val fontBase64 = if (request.status == 200) {
+          val buffer = request.response.asInstanceOf[ArrayBuffer]
+          Some(arrayBufferToBase64(buffer))
+        } else {
+          println(s"Failed to load font from $fontUrl (status ${request.status}), icons won't be preserved")
+          None
         }
-
-        makeSnapshot(graphData, positions, edgeColor, icons)
+        makeSnapshot(graphData, positions, edgeColor, fontFace, fontBase64, fontFormat)
+      }
+    request.onerror = _ =>
+      promise.success {
+        println(s"Failed to load font from $fontUrl, icons won't be preserved")
+        makeSnapshot(graphData, positions, edgeColor, fontFace, None, fontFormat)
       }
     request.send()
 
     promise.future
   }
 
-  /** Hacked up representation of the parts of `<glyph>` we care about */
-  private case class Glyph(
-    name: String,
-    d: String,
-    width: Double,
-    height: Double,
-  )
-
-  /** Pull out a mapping of unicode character to SVG glyph */
-  private def extractGlyphs(svgFont: dom.Document): Map[String, Glyph] = {
-    val charAdvanceX = svgFont.getElementsByTagName("font").apply(0).getAttribute("horiz-adv-x")
-    val charAscent = svgFont.getElementsByTagName("font-face").apply(0).getAttribute("ascent")
-
-    svgFont
-      .getElementsByTagName("glyph")
-      .iterator
-      .map { glyph =>
-        val parsed = Glyph(
-          glyph.getAttribute("glyph-name"),
-          glyph.getAttribute("d"),
-          Option(glyph.getAttribute("horiz-adv-x")).getOrElse(charAdvanceX).toDouble,
-          charAscent.toDouble,
-        )
-        glyph.getAttribute("unicode") -> parsed
-      }
-      .toMap
+  private def arrayBufferToBase64(buffer: ArrayBuffer): String = {
+    val bytes = new Uint8Array(buffer)
+    val binary = new StringBuilder(bytes.length)
+    for (i <- 0 until bytes.length)
+      binary.append(bytes(i).toChar)
+    dom.window.btoa(binary.toString())
   }
 
-  /** Given the graph data, positions, and SVG icon paths, construct an SVG element */
+  // Ionicons (and most icon fonts) use the Unicode Private Use Area for their glyphs.
+  // Non-PUA characters are emoji or standard Unicode (e.g. π) that aren't in the icon
+  // font; we render them with an explicit `serif` fallback (see makeNodeIcon).
+  private def isPrivateUseArea(code: String): Boolean =
+    code.nonEmpty && {
+      val cp = code.codePointAt(0)
+      (cp >= 0xE000 && cp <= 0xF8FF) || (cp >= 0xF0000 && cp <= 0x10FFFF)
+    }
+
+  private def fontFormatHint(url: String): String = {
+    val lower = url.toLowerCase
+    if (lower.endsWith(".woff2")) "woff2"
+    else if (lower.endsWith(".ttf")) "truetype"
+    else if (lower.endsWith(".otf")) "opentype"
+    else "woff"
+  }
+
+  /** Given the graph data, positions, and optionally an embedded font, construct an SVG element */
   private def makeSnapshot(
     graphData: VisData,
     positions: js.Dictionary[vis.Position],
     edgeColor: String,
-    iconGlyphs: Map[String, Glyph],
+    fontFace: String,
+    fontBase64: Option[String],
+    fontFormat: String,
   ): dom.Element = {
     val elements = Seq.newBuilder[dom.Element]
 
-    // Map from `(icon, color, size)` to name of the `def`
-    val iconsUsed = collection.mutable.Map.empty[(Option[Glyph], String, Double), String]
+    // Circle defs keyed by (color, size) for nodes without icons or when font is unavailable
+    val circlesUsed = collection.mutable.Map.empty[(String, Double), String]
     val definitions = Seq.newBuilder[dom.Element]
+
+    // Embed the icon font via @font-face so icons render without external dependencies
+    fontBase64.foreach { base64 =>
+      val style = svgEl("style")
+      style.appendChild(
+        textNode(
+          s"@font-face { font-family: '$fontFace'; src: url(data:font/$fontFormat;base64,$base64) format('$fontFormat'); }",
+        ),
+      )
+      definitions += style
+    }
 
     // Define what arrow heads look like
     val arrowMarker = svgEl(
@@ -139,52 +161,66 @@ object SvgSnapshot {
       t
     }
 
-    /** Construct an icon for a node, by creating or re-using a definition */
+    def iconTextEl(code: String, fontFamily: String, size: Double, color: String): dom.Element = {
+      val el = svgEl(
+        "text",
+        "font-family" -> fontFamily,
+        "font-size" -> size,
+        "fill" -> color,
+        "text-anchor" -> "middle",
+        "dominant-baseline" -> "central",
+      )
+      el.appendChild(textNode(code))
+      el
+    }
+
+    /** Construct a node icon: a font glyph `<text>` if the font is embedded and an icon code
+      * is available, otherwise a fallback circle.
+      */
     def makeNodeIcon(
       cx: Double,
       cy: Double,
       nodeSize: Option[Double],
-      nodeGlyph: Option[Glyph],
+      iconCode: Option[String],
       nodeColor: Option[String],
       tooltip: String,
     ): dom.Element = {
       val color = nodeColor.getOrElse("#97c2fc")
       val size = nodeSize.getOrElse(30.0)
 
-      val refSvgId: String = iconsUsed.getOrElseUpdate(
-        (nodeGlyph, color, size),
-        nodeGlyph match {
-          case Some(Glyph(name, dPath, width, height)) =>
-            val defId = s"icon-${(size, color).hashCode.abs}-$name"
-            val scale = size / height
-            val gDef = svgEl("g", "id" -> defId)
-            gDef.appendChild(
-              svgEl(
-                "path",
-                "d" -> dPath,
-                "fill" -> color,
-                "transform" -> s"scale($scale -$scale) translate(-${width / 2} -${height / 2})",
-              ),
-            )
-            definitions += gDef
-            "#" + defId
-
-          case None =>
-            val defId = s"circle-${(size, color).hashCode.abs}"
-            definitions += svgEl(
-              "circle",
-              "id" -> defId,
-              "fill" -> "rgba(0,0,0,0)",
-              "stroke-width" -> (size / 10),
-              "stroke" -> color,
-              "r" -> (size / 2.6),
-            )
-            "#" + defId
-        },
-      )
-
       val g = svgEl("g", "transform" -> s"translate($cx $cy)")
-      g.appendChild(svgEl("use", "href" -> refSvgId))
+
+      iconCode match {
+        case Some(code) if isPrivateUseArea(code) && fontBase64.isDefined =>
+          g.appendChild(iconTextEl(code, s"'$fontFace'", size, color))
+
+        // Emoji and standard Unicode (e.g. π) aren't in the icon font, so on the vis-network
+        // canvas the browser silently falls back to a system font to draw them. We can't name
+        // that per-glyph fallback, and letting the SVG viewer pick its own would make the export
+        // diverge from the canvas (and from itself, across viewers). Hardcoding `serif` gives a
+        // stable, predictable glyph everywhere the SVG is opened — the case where the character's
+        // font actually matters visually.
+        case Some(code) if !isPrivateUseArea(code) =>
+          g.appendChild(iconTextEl(code, "serif", size, color))
+
+        case _ =>
+          val refSvgId = circlesUsed.getOrElseUpdate(
+            (color, size), {
+              val defId = s"circle-${(size, color).hashCode.abs}"
+              definitions += svgEl(
+                "circle",
+                "id" -> defId,
+                "fill" -> "rgba(0,0,0,0)",
+                "stroke-width" -> (size / 10),
+                "stroke" -> color,
+                "r" -> (size / 2.6),
+              )
+              defId
+            },
+          )
+          g.appendChild(svgEl("use", "href" -> s"#$refSvgId"))
+      }
+
       val titleEl = svgEl("title")
       titleEl.appendChild(textNode(tooltip))
       g.appendChild(titleEl)
@@ -224,7 +260,7 @@ object SvgSnapshot {
         pos.x,
         pos.y,
         node.icon.toOption.flatMap(_.size.toOption),
-        node.icon.toOption.flatMap(_.code.toOption).flatMap(iconGlyphs.get(_)),
+        node.icon.toOption.flatMap(_.code.toOption),
         node.icon.toOption.flatMap(_.color.toOption),
         properties,
       )

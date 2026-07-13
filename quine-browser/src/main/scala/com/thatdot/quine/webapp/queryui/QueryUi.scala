@@ -190,6 +190,8 @@ object QueryUi {
       onUseQuery = Observer[String](q => stateVar.update(_.copy(queryBarColor = None, query = q))),
     )
 
+    val iconFontFace = "Ionicons"
+
     val currentQueryBookmarked: Signal[Boolean] =
       stateVar.signal.map(_.query.trim).combineWith(stateVar.signal.map(_.sampleQueries)).map { case (query, sqs) =>
         query.nonEmpty && sqs.exists(_.query.trim == query)
@@ -715,7 +717,7 @@ object QueryUi {
         .getOrElse((None, None, None, None))
 
       val visIcon = new vis.NodeOptions.Icon {
-        override val face = "Ionicons"
+        override val face = iconFontFace
         override val color =
           colorOpt.getOrElse[String](props.hostColors(Math.floorMod(node.hostIndex, props.hostColors.length)))
         override val code = iconOpt.getOrElse[String]("\uf3a6")
@@ -963,7 +965,7 @@ object QueryUi {
 
     def downloadSvgSnapshot(fileName: String = "graph.svg"): Unit = {
       val positions = network.get.getPositions(props.graphData.nodeSet.getIds())
-      SvgSnapshot(props.graphData, positions).map { svgElement =>
+      SvgSnapshot(props.graphData, positions, fontFace = iconFontFace).map { svgElement =>
         val tempContainer = document.createElement("div")
         tempContainer.setAttribute("style", "position: absolute; visibility: hidden; pointer-events: none;")
         document.body.appendChild(tempContainer)
@@ -1673,7 +1675,7 @@ object QueryUi {
       override val nodes = new vis.NodeOptions {
         override val shape = "icon"
         override val icon = new vis.NodeOptions.Icon {
-          override val face = "Ionicons"
+          override val face = iconFontFace
         }
       }
       override val edges = new vis.EdgeOptions {
