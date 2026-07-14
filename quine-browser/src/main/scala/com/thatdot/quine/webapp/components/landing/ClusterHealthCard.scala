@@ -38,7 +38,7 @@ object ClusterHealthCard {
     case Pot.Failed(err) =>
       Card(title = "Cluster Status", body = div(cls := "alert alert-danger mb-0", s"Error: $err"))
 
-    // PendingStale isn't currently produced by LandingStore; render like Ready if it ever is.
+    // PendingStale isn't produced by the service's potSignal fold; render like Ready if it ever is.
     case Pot.PendingStale(status) =>
       renderContent(status)
 

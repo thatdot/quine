@@ -7,14 +7,21 @@ import io.circe.Json
 import org.scalajs.dom.window
 
 import com.thatdot.quine.openapi._
-import com.thatdot.quine.webapp.queryui.{WiretapHandler, WiretapOwner, WiretapStatus, WiretapStore}
+import com.thatdot.quine.webapp.dataservice.{
+  WiretapHandler,
+  WiretapOwner,
+  WiretapService,
+  WiretapStatus,
+  WiretapTapPoint,
+}
+import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2StandingQueryInfo, V2StandingQueryOutput}
 
 /** Renders the standing queries table with expandable output rows.
   *
   * Pure renderer: receives Signals to read, Observers to write. No API
   * knowledge — the parent wires observers to API calls.
   *
-  * Takes a `Signal[List[(name, json)]]` and uses [[splitSeq]] keyed by name so that
+  * Takes a `Signal[List[(name, info)]]` and uses [[splitSeq]] keyed by name so that
   * the DOM for each SQ row (including any open inline output form inside its expanded
   * row) is kept stable across the 5-second polling update. Cells inside a row re-read
   * from the row's signal to stay in sync with the latest stats.
@@ -22,7 +29,7 @@ import com.thatdot.quine.webapp.queryui.{WiretapHandler, WiretapOwner, WiretapSt
 object StandingQueryTable {
 
   def apply(
-    entriesSignal: Signal[List[(String, Json)]],
+    entriesSignal: Signal[List[(String, V2StandingQueryInfo)]],
     canWriteOutputs: Boolean,
     canDelete: Boolean,
     onDeleteSq: Observer[String],
@@ -33,8 +40,7 @@ object StandingQueryTable {
     outputSchema: Option[SchemaNode],
     spec: ParsedSpec,
     onAddOutput: (String, Json) => Future[Either[String, Json]],
-    namespace: String,
-    wiretapStore: WiretapStore,
+    wiretap: WiretapService,
     editorConfig: EmbeddedEditorConfig,
   ): HtmlElement =
     table(
@@ -50,63 +56,44 @@ object StandingQueryTable {
           th("Actions"),
         ),
       ),
-      children <-- entriesSignal
-        .splitSeq(_._1) { strictSignal =>
-          val name = strictSignal.key
-          val jsonSignal = strictSignal.map(_._2)
-          val isExpanded = expandedVar.signal.map(_.contains(name)).distinct
-          tbody(
-            renderMainRow(name, jsonSignal, isExpanded, expandedVar, canDelete, onDeleteSq),
-            renderExpandedRow(
-              name,
-              jsonSignal,
-              isExpanded,
-              spec,
-              canWriteOutputs,
-              canDelete,
-              onRemoveOutput,
-              addingOutputFor,
-              outputFormState,
-              outputSchema,
-              onAddOutput,
-              namespace,
-              wiretapStore,
-              editorConfig,
-            ),
-          )
-        }
-        .distinct,
+      children <-- entriesSignal.splitSeq(_._1) { strictSignal =>
+        val name = strictSignal.key
+        val infoSignal = strictSignal.map(_._2)
+        val isExpanded = expandedVar.signal.map(_.contains(name)).distinct
+        tbody(
+          renderMainRow(name, infoSignal, isExpanded, expandedVar, canDelete, onDeleteSq),
+          renderExpandedRow(
+            name,
+            infoSignal,
+            isExpanded,
+            spec,
+            canWriteOutputs,
+            canDelete,
+            onRemoveOutput,
+            addingOutputFor,
+            outputFormState,
+            outputSchema,
+            onAddOutput,
+            wiretap,
+            editorConfig,
+          ),
+        )
+      },
     )
 
   private def renderMainRow(
     name: String,
-    jsonSignal: Signal[Json],
+    infoSignal: Signal[V2StandingQueryInfo],
     isExpanded: Signal[Boolean],
     expandedVar: Var[Set[String]],
     canDelete: Boolean,
     onDeleteSq: Observer[String],
   ): HtmlElement = {
-    val patternSignal: Signal[String] = jsonSignal.map { json =>
-      val cursor = json.hcursor
-      cursor
-        .downField("pattern")
-        .downField("query")
-        .as[String]
-        .toOption
-        .getOrElse(cursor.downField("pattern").focus.map(_.noSpaces).getOrElse("-"))
-    }.distinct
-    val modeSignal: Signal[String] = jsonSignal
-      .map(_.hcursor.downField("pattern").downField("mode").as[String].toOption.getOrElse("-"))
-      .distinct
-    val outputsCountSignal: Signal[Int] = jsonSignal.map { json =>
-      json.hcursor
-        .downField("outputs")
-        .focus
-        .flatMap(j => j.asObject.map(_.size).orElse(j.asArray.map(_.size)))
-        .getOrElse(0)
-    }.distinct
-    val rateSignal: Signal[String] = jsonSignal
-      .map(json => clusterRatePerSecond(json).fold("-")(r => f"$r%.1f/s"))
+    val patternSignal: Signal[String] = infoSignal.map(_.pattern.flatMap(_.query).getOrElse("-")).distinct
+    val modeSignal: Signal[String] = infoSignal.map(_.pattern.flatMap(_.mode).getOrElse("-")).distinct
+    val outputsCountSignal: Signal[Int] = infoSignal.map(_.outputs.size).distinct
+    val rateSignal: Signal[String] = infoSignal
+      .map(info => clusterRatePerSecond(info).fold("-")(r => f"$r%.1f/s"))
       .distinct
 
     tr(
@@ -148,7 +135,7 @@ object StandingQueryTable {
 
   private def renderExpandedRow(
     name: String,
-    jsonSignal: Signal[Json],
+    infoSignal: Signal[V2StandingQueryInfo],
     isExpanded: Signal[Boolean],
     spec: ParsedSpec,
     canWriteOutputs: Boolean,
@@ -158,22 +145,11 @@ object StandingQueryTable {
     outputFormState: OutputForm.State,
     outputSchema: Option[SchemaNode],
     onAddOutput: (String, Json) => Future[Either[String, Json]],
-    namespace: String,
-    wiretapStore: WiretapStore,
+    wiretap: WiretapService,
     editorConfig: EmbeddedEditorConfig,
   ): HtmlElement = {
-    val outputEntriesSignal: Signal[List[(String, Json)]] = jsonSignal.map { json =>
-      json.hcursor
-        .downField("outputs")
-        .focus
-        .flatMap(_.asArray)
-        .getOrElse(Vector.empty)
-        .toList
-        .map { item =>
-          val n = item.hcursor.get[String]("name").getOrElse("unknown")
-          n -> item
-        }
-    }.distinct
+    val outputEntriesSignal: Signal[List[(String, V2StandingQueryOutput)]] =
+      infoSignal.map(_.outputs.map(o => o.name -> o))
 
     val isAddingHere: Signal[Boolean] = addingOutputFor.signal.map(_.contains(name)).distinct
     val configExpanded = Var(false)
@@ -200,7 +176,7 @@ object StandingQueryTable {
               display <-- configExpanded.signal.map(if (_) "block" else "none"),
               cls := "mb-0 mt-1 p-2 bg-body rounded border",
               styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
-              child.text <-- jsonSignal.map(configOnly(_).spaces2).distinct,
+              child.text <-- infoSignal.map(info => configOnly(info.raw).spaces2).distinct,
             ),
             div(
               display <-- configExpanded.signal.map(if (_) "block" else "none"),
@@ -209,7 +185,7 @@ object StandingQueryTable {
               pre(
                 cls := "mb-0 mt-1 p-2 bg-body rounded border",
                 styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
-                child.text <-- jsonSignal.map(liveOnly(_).spaces2),
+                child.text <-- infoSignal.map(info => liveOnly(info.raw).spaces2),
               ),
             ),
           ),
@@ -238,8 +214,8 @@ object StandingQueryTable {
                 cls := "table table-sm mb-0",
                 thead(tr(th("Name"), th("Type"), th("Actions"))),
                 tbody(
-                  outputEntries.map { case (outputName, outputJson) =>
-                    val outputType = describeOutputType(outputJson)
+                  outputEntries.map { case (outputName, output) =>
+                    val outputType = describeOutputType(output)
                     tr(
                       td(outputName),
                       td(code(outputType)),
@@ -278,7 +254,7 @@ object StandingQueryTable {
                 },
               )
           },
-          renderWiretapsSection(name, outputEntriesSignal.map(_.map(_._1)), jsonSignal, namespace, wiretapStore),
+          renderWiretapsSection(name, outputEntriesSignal.map(_.map(_._1)), infoSignal, wiretap),
         ),
       ),
     )
@@ -288,13 +264,8 @@ object StandingQueryTable {
   // registered on every cluster member and each one reports its own stats keyed by
   // host; taking any one host's value would show arbitrary, load-balancer-routed
   // throughput rather than the SQ's true workload.
-  private def clusterRatePerSecond(json: Json): Option[Double] = {
-    val perHostRates = json.hcursor
-      .downField("stats")
-      .focus
-      .map(statsJson => statsJson.asObject.map(_.values.toVector).getOrElse(Vector(statsJson)))
-      .getOrElse(Vector.empty)
-      .flatMap(_.hcursor.downField("rates").get[Double]("oneMinute").toOption)
+  private def clusterRatePerSecond(info: V2StandingQueryInfo): Option[Double] = {
+    val perHostRates = info.stats.values.map(_.rates.oneMinute)
     if (perHostRates.isEmpty) None else Some(perHostRates.sum)
   }
 
@@ -311,16 +282,15 @@ object StandingQueryTable {
   private val StreamsWiretapOwner = WiretapOwner("streams")
 
   private def streamsHandlerKey(sqName: String, outputName: Option[String]): String =
-    WiretapHandler.sourceKey(sqName, outputName)
+    WiretapHandler.sourceKey(sqName, WiretapTapPoint.fromOutputName(outputName))
 
   private val RawTapSentinel = "__raw_tap__"
 
   private def renderWiretapsSection(
     sqName: String,
     outputNamesSignal: Signal[List[String]],
-    sqJsonSignal: Signal[Json],
-    namespace: String,
-    wiretapStore: WiretapStore,
+    sqInfoSignal: Signal[V2StandingQueryInfo],
+    wiretap: WiretapService,
   ): HtmlElement = {
     // Per-row picker state, persisted across polling rebuilds (the per-row signal stays
     // stable thanks to `splitSeq(_._1)` in the table body).
@@ -331,13 +301,13 @@ object StandingQueryTable {
 
     // Live list of handlers this section owns, filtered by owner + SQ name.
     val sectionHandlersSignal: Signal[List[WiretapHandler]] =
-      wiretapStore.active.map { active =>
-        active.getOrElse((namespace, StreamsWiretapOwner), List.empty).filter(_.sqName == sqName)
+      wiretap.wiretapsSignal.map { byOwner =>
+        byOwner.getOrElse(StreamsWiretapOwner, List.empty).filter(_.sqName == sqName)
       }
 
     div(
       cls := "mt-3",
-      sqJsonSignal.map(clusterRatePerSecond(_).getOrElse(0.0)) --> latestRateVar.writer,
+      sqInfoSignal.map(clusterRatePerSecond(_).getOrElse(0.0)) --> latestRateVar.writer,
       div(
         cls := "d-flex justify-content-between align-items-center mb-2",
         strong("Wiretaps"),
@@ -375,12 +345,13 @@ object StandingQueryTable {
                 )
               else true
             if (proceed)
-              wiretapStore.open(
-                namespace,
-                StreamsWiretapOwner,
-                streamsHandlerKey(sqName, outputName),
-                sqName,
-                outputName,
+              wiretap.wiretapDispatch.onNext(
+                WiretapService.OpenTap(
+                  StreamsWiretapOwner,
+                  streamsHandlerKey(sqName, outputName),
+                  sqName,
+                  WiretapTapPoint.fromOutputName(outputName),
+                ),
               )
           },
         ),
@@ -391,7 +362,7 @@ object StandingQueryTable {
         children <-- sectionHandlersSignal.splitSeq(_.key) { strictSignal =>
           renderActiveWiretap(
             strictSignal.now(),
-            key => wiretapStore.close(namespace, StreamsWiretapOwner, key),
+            key => wiretap.wiretapDispatch.onNext(WiretapService.CloseTap(StreamsWiretapOwner, key)),
           )
         },
       ),
@@ -406,7 +377,11 @@ object StandingQueryTable {
   }
 
   private def renderActiveWiretap(handler: WiretapHandler, onClose: String => Unit): HtmlElement = {
-    val displayName = handler.outputName.fold(s"${handler.sqName} (raw)")(out => s"${handler.sqName} / $out")
+    val displayName = handler.tapPoint match {
+      case WiretapTapPoint.Raw => s"${handler.sqName} (raw)"
+      case WiretapTapPoint.PreEnrichment(out) => s"${handler.sqName} / $out (pre)"
+      case WiretapTapPoint.PostEnrichment(out) => s"${handler.sqName} / $out"
+    }
     div(
       cls := "border rounded p-2 bg-body",
       div(
@@ -453,19 +428,10 @@ object StandingQueryTable {
   private def liveOnly(json: Json): Json =
     json.asObject.fold(json)(obj => Json.fromJsonObject(obj.filterKeys(VolatileFields.contains)))
 
-  private def describeOutputType(outputJson: Json): String = {
-    val destTypes = outputJson.hcursor
-      .downField("destinations")
-      .focus
-      .flatMap(_.asArray)
-      .getOrElse(Vector.empty)
-      .toList
-      .flatMap(_.hcursor.get[String]("type").toOption)
-      .distinct
-    destTypes match {
+  private def describeOutputType(output: V2StandingQueryOutput): String =
+    output.destinations.map(_.destinationType).distinct match {
       case Nil => "(empty)"
       case single :: Nil => single
       case many => many.mkString(", ")
     }
-  }
 }

@@ -19,7 +19,8 @@ object GraphSelector {
   private val FilterThreshold = 8
 
   def apply(
-    selectedNamespaceVar: Var[Option[String]],
+    selected: Signal[String],
+    onSelect: Observer[String],
     knownNamespaces: Signal[Seq[String]],
     onOpen: Option[() => Unit] = None,
     defaultNamespace: Option[String] = None,
@@ -78,13 +79,13 @@ object GraphSelector {
       button(
         tpe := "button",
         cls := Styles.graphSelectorButton,
-        title <-- selectedNamespaceVar.signal.map(_.fold("Select a graph")(ns => s"Graph: $ns (click to switch)")),
+        title <-- selected.map(ns => s"Graph: $ns (click to switch)"),
         aria.hasPopup := true,
         aria.expanded <-- menuOpenVar.signal,
         onMountCallback(ctx => buttonEl = Some(ctx.thisNode.ref)),
         onClick --> { _ => toggleMenu() },
         i(cls := s"ion-android-share-alt ${Styles.graphSelectorIcon}"),
-        span(cls := Styles.graphSelectorName, child.text <-- selectedNamespaceVar.signal.map(_.getOrElse(""))),
+        span(cls := Styles.graphSelectorName, child.text <-- selected),
         i(cls := s"cil-chevron-bottom ${Styles.graphSelectorChevron}"),
       ),
       div(
@@ -92,16 +93,16 @@ object GraphSelector {
         top <-- menuTopVar.signal.map(t => s"${t}px"),
         left <-- menuLeftVar.signal.map(l => s"${l}px"),
         onMountCallback(ctx => menuEl = Some(ctx.thisNode.ref)),
-        children <-- menuOpenVar.signal.combineWith(knownNamespaces, selectedNamespaceVar.signal).map {
+        children <-- menuOpenVar.signal.combineWith(knownNamespaces, selected).map {
           case (false, _, _) => Seq.empty[HtmlElement]
-          case (true, known, selected) =>
+          case (true, known, current) =>
             def selectItem(ns: String): HtmlElement =
               div(
-                cls := s"${Styles.graphSelectorMenuItem}${if (selected.contains(ns)) " active" else ""}",
+                cls := s"${Styles.graphSelectorMenuItem}${if (ns == current) " active" else ""}",
                 title := s"Switch to $ns",
                 onClick --> { _ =>
                   menuOpenVar.set(false)
-                  selectedNamespaceVar.set(Some(ns))
+                  onSelect.onNext(ns)
                 },
                 span(cls := Styles.graphSelectorMenuName, ns),
               )

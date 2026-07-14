@@ -6,7 +6,8 @@ import com.raquo.laminar.api.L._
   *
   * This is the target architecture's subscription capability specialized to taps: the panel
   * (and, later, the dashboard and streams page) open and close taps through it and read the
-  * resulting [[LiveSource]]s, without depending on the concrete [[WiretapStore]]. A
+  * resulting [[LiveSource]]s, without depending on the concrete tap machinery (the
+  * DataService-owned wiretap store). A
   * `LiveSource` is the per-consumer subscription handle (status + records + stop). Writes
   * flow down (the `open`/`close` methods); state flows up (the `sources` signal).
   */

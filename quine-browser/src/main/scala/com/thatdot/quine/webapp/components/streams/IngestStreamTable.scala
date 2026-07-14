@@ -18,7 +18,7 @@ object IngestStreamTable {
     * @param memberIndices known cluster member positions; empty on single-node deployments
     */
   def apply(
-    entriesSignal: Signal[List[(String, Json)]],
+    entriesSignal: Signal[List[(String, V2IngestInfo)]],
     memberIndices: Signal[Seq[Int]],
     canControl: Boolean,
     canDelete: Boolean,
@@ -45,36 +45,32 @@ object IngestStreamTable {
           th("Actions"),
         ),
       ),
-      children <-- entriesSignal
-        .splitSeq(_._1) { strictSignal =>
-          val key = strictSignal.key
-          val jsonSignal = strictSignal.map(_._2)
-          val isExpanded = expandedVar.signal.map(_.contains(key)).distinct
-          tbody(
-            renderRow(
-              key,
-              jsonSignal,
-              showMember,
-              isExpanded,
-              expandedVar,
-              canControl,
-              canDelete,
-              onDelete,
-              onPause,
-              onResume,
-            ),
-            renderExpandedRow(jsonSignal, showMember, isExpanded),
-          )
-        }
-        .distinct,
+      children <-- entriesSignal.splitSeq(_._1) { strictSignal =>
+        val key = strictSignal.key
+        val infoSignal = strictSignal.map(_._2)
+        val isExpanded = expandedVar.signal.map(_.contains(key)).distinct
+        tbody(
+          renderRow(
+            key,
+            infoSignal,
+            showMember,
+            isExpanded,
+            expandedVar,
+            canControl,
+            canDelete,
+            onDelete,
+            onPause,
+            onResume,
+          ),
+          renderExpandedRow(infoSignal, showMember, isExpanded),
+        )
+      },
     )
   }
 
-  private def memberIdxOf(json: Json): Option[Int] = json.hcursor.get[Int]("memberIdx").toOption
-
   private def renderRow(
     key: String,
-    jsonSignal: Signal[Json],
+    infoSignal: Signal[V2IngestInfo],
     showMember: Signal[Boolean],
     isExpanded: Signal[Boolean],
     expandedVar: Var[Set[String]],
@@ -84,23 +80,12 @@ object IngestStreamTable {
     onPause: Observer[(String, Option[Int])],
     onResume: Observer[(String, Option[Int])],
   ): HtmlElement = {
-    val nameSignal = jsonSignal.map(_.hcursor.get[String]("name").getOrElse("unknown"))
-    val memberSignal = jsonSignal.map(memberIdxOf)
-    val statusSignal = jsonSignal.map { json =>
-      json.hcursor.get[String]("status").toOption.map(V2IngestInfo.humanizeStatus).getOrElse("Unknown")
-    }.distinct
-    val messageSignal = jsonSignal.map { json =>
-      json.hcursor.get[String]("message").toOption.filter(_.nonEmpty)
-    }.distinct
-    val sourceTypeSignal = jsonSignal.map { json =>
-      json.hcursor
-        .downField("settings")
-        .downField("source")
-        .get[String]("type")
-        .toOption
-        .getOrElse("?")
-    }.distinct
-    val statsSignal = jsonSignal.map(_.hcursor.downField("stats").focus.getOrElse(Json.obj())).distinct
+    val nameSignal = infoSignal.map(_.name)
+    val memberSignal = infoSignal.map(_.memberIdx)
+    val statusSignal = infoSignal.map(_.status)
+    val messageSignal = infoSignal.map(_.message.filter(_.nonEmpty))
+    val sourceTypeSignal = infoSignal.map(_.sourceType)
+    val statsSignal = infoSignal.map(_.stats)
 
     tr(
       cls <-- statusSignal.map(s => if (s == "Failed") "table-danger" else ""),
@@ -141,23 +126,9 @@ object IngestStreamTable {
             ),
           )
         case (_, _, stats) =>
-          val ingestedCount = stats.hcursor
-            .get[Long]("ingestedCount")
-            .toOption
-            .map(formatCount)
-            .getOrElse("-")
-          val rate = stats.hcursor
-            .downField("rates")
-            .get[Double]("oneMinute")
-            .toOption
-            .map(r => f"$r%.1f/s")
-            .getOrElse("-")
-          val uptime = stats.hcursor
-            .get[String]("totalRuntime")
-            .toOption
-            .filter(_.nonEmpty)
-            .map(formatUptime)
-            .getOrElse("-")
+          val ingestedCount = formatCount(stats.ingestedCount)
+          val rate = f"${stats.rates.oneMinute}%.1f/s"
+          val uptime = stats.totalRuntime.filter(_.nonEmpty).map(formatUptime).getOrElse("-")
           List(td(ingestedCount), td(rate), td(uptime))
       },
       // Actions cell
@@ -209,7 +180,7 @@ object IngestStreamTable {
     json.asObject.fold(json)(obj => Json.fromJsonObject(obj.filterKeys(VolatileFields.contains)))
 
   private def renderExpandedRow(
-    jsonSignal: Signal[Json],
+    infoSignal: Signal[V2IngestInfo],
     showMember: Signal[Boolean],
     isExpanded: Signal[Boolean],
   ): HtmlElement =
@@ -224,7 +195,7 @@ object IngestStreamTable {
           pre(
             cls := "mb-0 mt-1 p-2 bg-body rounded border",
             styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
-            child.text <-- jsonSignal.map(configOnly(_).spaces2).distinct,
+            child.text <-- infoSignal.map(info => configOnly(info.raw).spaces2).distinct,
           ),
           div(
             cls := "mt-2",
@@ -232,7 +203,7 @@ object IngestStreamTable {
             pre(
               cls := "mb-0 mt-1 p-2 bg-body rounded border",
               styleAttr := "max-height: 24em; overflow: auto; font-size: 0.85em;",
-              child.text <-- jsonSignal.map(liveOnly(_).spaces2),
+              child.text <-- infoSignal.map(info => liveOnly(info.raw).spaces2),
             ),
           ),
         ),

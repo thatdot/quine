@@ -2,7 +2,6 @@ package com.thatdot.quine.webapp.components.landing
 
 import com.raquo.laminar.api.L._
 
-import com.thatdot.quine.routes.{MetricsReport, ShardInMemoryLimit}
 import com.thatdot.quine.webapp.Styles
 import com.thatdot.quine.webapp.util.Pot
 import com.thatdot.quine.webapp.v2api.V2ApiTypes._
@@ -16,23 +15,20 @@ import com.thatdot.quine.webapp.v2api.V2ApiTypes._
   * `userPermissions = None` disables gating entirely (OSS, where no auth is configured).
   *
   * `clusterStatusSignal` is optional: OSS deployments should pass `None` so the
-  * Cluster Health card is hidden entirely. Enterprise passes the store's signal.
+  * Cluster Health card is hidden entirely. Enterprise passes the service's signal.
   */
 object LandingPage {
 
-  type MetricsData = (MetricsReport, Map[Int, ShardInMemoryLimit])
-
   /** True when no auth is configured (`None` — OSS) or when `perms` covers `needed`. */
-  def hasPermissions(perms: Option[Set[String]], needed: Set[String]): Boolean =
+  private def hasPermissions(perms: Option[Set[String]], needed: Set[String]): Boolean =
     perms match {
       case None => true
       case Some(granted) => needed subsetOf granted
     }
 
   def apply(
-    metricsSignal: Signal[Pot[MetricsData]],
+    metricsSignal: Signal[Pot[HostMetricsCard.MetricsData]],
     backpressureSignal: Signal[Pot[V2BackpressureSnapshot]],
-    subscriptions: Modifier[HtmlElement],
     clusterStatusSignal: Option[Signal[Pot[V2ServiceStatus]]] = None,
     extraCards: Seq[(Set[String], HtmlElement)] = Seq.empty,
     userPermissions: Option[Set[String]] = None,
@@ -62,7 +58,6 @@ object LandingPage {
     }
 
     div(
-      subscriptions,
       onUnmountCallback(_ => LandingTooltip.hide()),
       // Blue toolbar
       div(

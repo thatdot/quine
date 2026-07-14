@@ -2,6 +2,13 @@ package com.thatdot.quine.webapp.queryui
 
 import com.raquo.laminar.api.L._
 
+import com.thatdot.quine.webapp.dataservice.{
+  WiretapHandler,
+  WiretapOwner,
+  WiretapService,
+  WiretapStatus,
+  WiretapTapPoint,
+}
 import com.thatdot.quine.webapp.resultspanel.{
   LiveSource,
   Provenance,
@@ -12,53 +19,47 @@ import com.thatdot.quine.webapp.resultspanel.{
   TapTarget,
 }
 
-/** Backs the results panel's [[TapSubscriptions]] with the shared cross-namespace
-  * [[WiretapStore]], scoped to a single `(namespace, owner)` slice.
+/** Backs the results panel's [[TapSubscriptions]] with the shared [[WiretapService]],
+  * scoped to a single [[WiretapOwner]].
   *
-  * The `(namespace, owner)` pair is the visibility/control boundary: `sources` lists
-  * only handlers opened under it, and `open`/`close` act under it. So a panel mounted
-  * for one graph won't see another graph's taps, and different UI surfaces on the same
-  * graph can use different owners to stay independent (Streams-page taps and Explorer
-  * Settings tap queries, for example, don't collide).
-  *
-  * @param namespace strict namespace signal: drives which slice `sources` observes,
-  *                  and its `.now()` gives `open`/`close` the current value synchronously.
+  * The owner is the visibility/control boundary: `sources` lists only the handlers opened
+  * under `owner`, and `open`/`close` act under it. So a panel mounted with its own owner
+  * sees only the taps started from it - not Streams-page taps or Explorer Settings tap
+  * queries, which live under other owners (and still share sockets by source). To make
+  * several surfaces share one tap set, mount them with the same owner.
   */
-final class PanelTapSubscriptions(
-  store: WiretapStore,
-  namespace: StrictSignal[String],
-  owner: WiretapOwner,
-) extends TapSubscriptions {
+final class PanelTapSubscriptions(wiretap: WiretapService, owner: WiretapOwner) extends TapSubscriptions {
 
   def open(key: String, target: TapTarget): Unit =
-    PanelTapSubscriptions.outputNameOf(target.tapPoint).foreach { outputName =>
-      store.open(namespace.now(), owner, key, target.sqName, outputName)
-    }
+    wiretap.wiretapDispatch.onNext(
+      WiretapService.OpenTap(owner, key, target.sqName, PanelTapSubscriptions.toWiretapTapPoint(target.tapPoint)),
+    )
 
-  def close(key: String): Unit =
-    store.close(namespace.now(), owner, key)
+  def close(key: String): Unit = wiretap.wiretapDispatch.onNext(WiretapService.CloseTap(owner, key))
+
+  // The dataservice's WiretapStore models all three tap points (raw, pre-enrichment,
+  // post-enrichment), so the picker can safely offer Pre.
+  override val supportsPreEnrichment: Boolean = true
 
   val sources: Signal[Vector[LiveSource]] =
-    store.active.combineWith(namespace).map { case (active, ns) =>
-      active.getOrElse((ns, owner), Nil).toVector.map(PanelTapSubscriptions.adapt)
-    }
+    wiretap.wiretapsSignal.map(_.getOrElse(owner, Nil).toVector.map(PanelTapSubscriptions.adapt))
 }
 
 object PanelTapSubscriptions {
 
-  /** Map a [[TapPoint]] to the store's `outputName` (raw = None, post = Some(output)).
-    * Pre-enrichment isn't representable in the store yet — and is gated out of the picker —
-    * so opening it is a no-op (`None` here means "don't open") until the store models it.
-    */
-  private def outputNameOf(tapPoint: TapPoint): Option[Option[String]] = tapPoint match {
-    case TapPoint.Raw => Some(None)
-    case TapPoint.PostEnrichment(out) => Some(Some(out))
-    case TapPoint.PreEnrichment(_) => None
+  /** Map the panel's [[TapPoint]] to the dataservice's [[WiretapTapPoint]] vocabulary. */
+  private def toWiretapTapPoint(tapPoint: TapPoint): WiretapTapPoint = tapPoint match {
+    case TapPoint.Raw => WiretapTapPoint.Raw
+    case TapPoint.PreEnrichment(out) => WiretapTapPoint.PreEnrichment(out)
+    case TapPoint.PostEnrichment(out) => WiretapTapPoint.PostEnrichment(out)
   }
 
-  /** Recover the panel's [[TapPoint]] from the store's `outputName`. */
-  private def tapPointOf(outputName: Option[String]): TapPoint =
-    outputName.fold[TapPoint](TapPoint.Raw)(TapPoint.PostEnrichment(_))
+  /** Recover the panel's [[TapPoint]] from the dataservice's [[WiretapTapPoint]]. */
+  private def toTapPoint(tapPoint: WiretapTapPoint): TapPoint = tapPoint match {
+    case WiretapTapPoint.Raw => TapPoint.Raw
+    case WiretapTapPoint.PreEnrichment(out) => TapPoint.PreEnrichment(out)
+    case WiretapTapPoint.PostEnrichment(out) => TapPoint.PostEnrichment(out)
+  }
 
   private def adapt(h: WiretapHandler): LiveSource =
     LiveSource(
@@ -66,11 +67,14 @@ object PanelTapSubscriptions {
       provenance = Provenance(SourceKind.Tap, label(h)),
       status = h.status.signal.map(toSourceStatus),
       records = h.matches,
-      tapTarget = Some(TapTarget(h.sqName, tapPointOf(h.outputName))),
+      tapTarget = Some(TapTarget(h.sqName, toTapPoint(h.tapPoint))),
     )
 
-  private def label(h: WiretapHandler): String =
-    h.outputName.fold(s"${h.sqName} · raw")(out => s"${h.sqName}/$out · post")
+  private def label(h: WiretapHandler): String = h.tapPoint match {
+    case WiretapTapPoint.Raw => s"${h.sqName} · raw"
+    case WiretapTapPoint.PreEnrichment(out) => s"${h.sqName}/$out · pre"
+    case WiretapTapPoint.PostEnrichment(out) => s"${h.sqName}/$out · post"
+  }
 
   private def toSourceStatus(s: WiretapStatus): SourceStatus = s match {
     case WiretapStatus.Connecting => SourceStatus.Connecting

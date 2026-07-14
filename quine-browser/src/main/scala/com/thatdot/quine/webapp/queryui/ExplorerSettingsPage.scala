@@ -1,62 +1,57 @@
 package com.thatdot.quine.webapp.queryui
 
-import scala.util.{Failure, Success}
-
 import com.raquo.laminar.api.L._
-import org.scalajs.dom
 import org.scalajs.dom.window
-import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
-import com.thatdot.quine.v2api.routes.{V2QuerySort, V2QuickQuery, V2UiNodePredicate, V2UiNodeQuickQuery}
+import com.thatdot.quine.v2api.routes.V2UiNodeQuickQuery
 import com.thatdot.quine.webapp.Styles
 import com.thatdot.quine.webapp.components.{Toast, ToastMessage, ToastVariant}
-import com.thatdot.quine.webapp.util.{Pot, QuineApiClient}
-import com.thatdot.quine.webapp.v2api.V2ApiTypes
+import com.thatdot.quine.webapp.dataservice.{
+  DataService,
+  NamespaceService,
+  QueryUiConfigService,
+  SaveFailed,
+  SaveResult,
+  SaveSucceeded,
+  TapQueryService,
+  WiretapOwner,
+  WiretapService,
+}
 import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2StandingQueryInfo, V2TapQuery}
 
 object ExplorerSettingsPage {
+
+  /** Owner of the taps the service opens from "Enable locally" intent; the per-handler
+    * `key` within it is the tap query's `name`. Re-exported for the explorer's dispatch
+    * host, which joins the service's wiretaps with the enabled-tap metadata by this owner.
+    */
+  val TapQueryOwner: WiretapOwner = WiretapService.TapQueryOwner
 
   private val ConfigPageCss =
     """.config-manager-wrap .manager-header { display: none; }
       |.config-manager-wrap .manager-list { max-height: 560px; overflow-y: auto; }""".stripMargin
 
-  /** @param selectedNamespaceVar when provided, the tap-queries card binds its Graph
-    *                             dropdown to this Var — so changing the graph here switches
-    *                             the Explorer's graph too, and vice versa. When None, the
-    *                             page operates on the default graph only.
-    * @param knownNamespacesSignal options for the Graph dropdown. When None (e.g. OSS),
-    *                              the dropdown is hidden and the page is locked to the
-    *                              default graph.
-    * @param enabledTapsVar shared "Enable locally" intent, keyed by namespace. Each tap
-    *                       query row's toggle reads and flips this graph's entry; the
-    *                       always-mounted [[TapQueryRuntime]] persists it and applies it
-    *                       to the wiretap store, so this page just renders and mutates it.
+  /** @param showGraphPicker when true (Enterprise multi-graph mode), the tap-queries card
+    *                        shows a Graph dropdown driven by the service's namespace list;
+    *                        selecting there dispatches [[NamespaceService.SetNamespace]], so the
+    *                        Explorer's graph switches too, and vice versa. When false the
+    *                        page follows the service's (fixed) current graph.
+    *
+    * Each tap query row gets an "Enable locally" toggle that registers the tap query with
+    * the service and opens/closes its wiretap; matches keep firing while the user is on
+    * other pages because the explorer's dispatch host reads the same service signals.
     */
   def apply(
-    routes: ClientRoutes,
-    useV2Api: Boolean,
-    selectedNamespaceVar: Option[Var[Option[String]]] = None,
-    knownNamespacesSignal: Option[Signal[Seq[String]]] = None,
-    enabledTapsVar: Var[Map[String, Set[String]]],
+    dataService: DataService,
+    showGraphPicker: Boolean = false,
   ): HtmlElement = {
-    val defaultNs = NamespaceParameter.defaultNamespaceParameter.namespaceId
-    // Internal mirror of the active graph. When `selectedNamespaceVar` is provided it
-    // tracks that Var (so the dropdown and Explorer stay in sync); otherwise it defaults
-    // to `Some(default)`. `None` means "not yet known" (Enterprise pre-fetch) — every
-    // URL-constructing site short-circuits on that rather than string-interpolating an
-    // empty namespace into `/api/v2/graph/…` and 404-ing.
-    val currentNamespaceVar: Var[Option[String]] = selectedNamespaceVar.getOrElse(Var(Some(defaultNs)))
-
     val sampleQueriesVar: Var[Vector[SampleQuery]] = Var(Vector.empty)
     val quickQueriesVar: Var[Vector[V2UiNodeQuickQuery]] = Var(Vector.empty)
     val appearancesVar: Var[Vector[UiNodeAppearance]] = Var(Vector.empty)
     val tapQueriesVar: Var[Vector[V2TapQuery]] = Var(Vector.empty)
-    val standingQueriesVar: Var[Vector[V2StandingQueryInfo]] = Var(Vector.empty)
     val toastVar: Var[Option[ToastMessage]] = Var(None)
-    val pageState: Var[Pot[Unit]] = Var(Pot.Pending)
-    var initialLoadDone: Boolean = false
 
     val sqEditVar: Var[Option[SampleQueryEditorMode]] = Var(None)
     val qqEditVar: Var[Option[QuickQueryEditorMode]] = Var(None)
@@ -68,227 +63,129 @@ object ExplorerSettingsPage {
     val qqExpandedVar = Var(true)
     val naExpandedVar = Var(true)
 
-    val autoRefreshStream: EventStream[Unit] = EventStream
-      .periodic(intervalMs = 5000)
-      .mapTo(())
-
-    def loadStandingQueries(namespace: String): Unit =
-      QuineApiClient
-        .fetchV2[V2ApiTypes.V2Page[V2StandingQueryInfo]](
-          s"api/v2/graph/$namespace/standingQueries",
-          routes,
-        )
-        .onComplete {
-          case Success(page) => standingQueriesVar.set(page.items.toVector)
-          case Failure(_) => standingQueriesVar.set(Vector.empty)
-        }
-
-    // Fetches this graph's tap-query list for display only. Enabling/restoring the taps
-    // themselves is owned by the always-mounted TapQueryRuntime.
-    def loadTapQueries(namespace: String): Unit =
-      QuineApiClient
-        .fetchV2[Vector[V2TapQuery]](s"api/v2/graph/$namespace/queryUi/tapQueries", routes)
-        .onComplete {
-          case Success(tqs) => tapQueriesVar.set(tqs)
-          case Failure(err) =>
-            dom.console.warn(s"[Explorer] Failed to load tap queries for namespace '$namespace': ${err.getMessage}")
-        }
-
-    def loadData(): Unit = {
-      val sqFut =
-        if (useV2Api) routes.queryUiSampleQueriesV2(()).future
-        else routes.queryUiSampleQueries(()).future
-      val qqFut =
-        if (useV2Api) routes.queryUiQuickQueriesV2(()).future
-        else routes.queryUiQuickQueries(()).future.map(_.map(v1ToV2QuickQuery))
-      val naFut =
-        if (useV2Api) routes.queryUiAppearanceV2(()).future
-        else routes.queryUiAppearance(()).future
-
-      sqFut.zip(qqFut).zip(naFut).onComplete {
-        case Success(((sqs, qqs), nas)) =>
-          sampleQueriesVar.set(sqs)
-          quickQueriesVar.set(qqs)
-          appearancesVar.set(nas)
-          if (!initialLoadDone) {
-            pageState.set(Pot.Ready(()))
-            initialLoadDone = true
-          }
-        case Failure(err) =>
-          if (!initialLoadDone) pageState.set(Pot.Failed(err.getMessage))
-      }
-    }
-
-    // Stale-response guard: each refresh tick increments the generation before
-    // firing requests. When a response arrives it checks whether its generation
-    // is still current; if a newer tick has fired in the meantime the response
-    // is discarded, preventing a slow tick-N response from overwriting a faster
-    // tick-N+1 result. Edit-var checks are also deferred to response time so
-    // that an editor opened while a request is in flight is not clobbered.
-    var refreshGeneration: Long = 0L
-
-    def refreshData(): Unit = if (initialLoadDone) {
-      refreshGeneration += 1
-      val myGeneration = refreshGeneration
-
-      val sqFut =
-        if (useV2Api) routes.queryUiSampleQueriesV2(()).future
-        else routes.queryUiSampleQueries(()).future
-      sqFut.foreach { sqs =>
-        if (myGeneration == refreshGeneration && sqEditVar.now().isEmpty) sampleQueriesVar.set(sqs)
-      }
-
-      val qqFut =
-        if (useV2Api) routes.queryUiQuickQueriesV2(()).future
-        else routes.queryUiQuickQueries(()).future.map(_.map(v1ToV2QuickQuery))
-      qqFut.foreach { qqs =>
-        if (myGeneration == refreshGeneration && qqEditVar.now().isEmpty) quickQueriesVar.set(qqs)
-      }
-
-      val naFut =
-        if (useV2Api) routes.queryUiAppearanceV2(()).future
-        else routes.queryUiAppearance(()).future
-      naFut.foreach { nas =>
-        if (myGeneration == refreshGeneration && naEditVar.now().isEmpty) appearancesVar.set(nas)
-      }
-
-      // Tap queries and the SQ catalog are both per-namespace; refresh them against the
-      // currently-selected graph so new entries surface without a namespace switch.
-      // Skip when the namespace hasn't been resolved yet — `loadStandingQueries` etc.
-      // will fire once it lands.
-      currentNamespaceVar.now().foreach { ns =>
-        QuineApiClient
-          .fetchV2[Vector[V2TapQuery]](s"api/v2/graph/$ns/queryUi/tapQueries", routes)
-          .foreach { tqs =>
-            if (myGeneration == refreshGeneration && tapQueryEditVar.now().isEmpty)
-              tapQueriesVar.set(tqs)
-          }
-        QuineApiClient
-          .fetchV2[V2ApiTypes.V2Page[V2StandingQueryInfo]](
-            s"api/v2/graph/$ns/standingQueries",
-            routes,
-          )
-          .foreach { page =>
-            if (myGeneration == refreshGeneration) standingQueriesVar.set(page.items.toVector)
-          }
-      }
-    }
-
     def saveSampleQueries(sqs: Vector[SampleQuery]): Unit = {
       val previous = sampleQueriesVar.now()
       sampleQueriesVar.set(sqs)
-      val fut =
-        if (useV2Api) routes.updateQueryUiSampleQueriesV2(sqs).future
-        else routes.updateQueryUiSampleQueries(sqs).future
-      fut.onComplete {
-        case Success(_) =>
-          toastVar.set(Some(ToastMessage("Sample queries saved", ToastVariant.Success)))
-        case Failure(err) =>
-          sampleQueriesVar.set(previous)
-          toastVar.set(Some(ToastMessage(s"Save failed: ${err.getMessage}", ToastVariant.Error)))
-      }
+      dataService.queryUiConfigDispatch.onNext(
+        QueryUiConfigService.SaveSampleQueries(
+          sqs,
+          replyTo = Observer[SaveResult] {
+            case SaveSucceeded =>
+              toastVar.set(Some(ToastMessage("Sample queries saved", ToastVariant.Success)))
+            case SaveFailed(message) =>
+              sampleQueriesVar.set(previous)
+              toastVar.set(Some(ToastMessage(s"Save failed: $message", ToastVariant.Error)))
+          },
+        ),
+      )
     }
 
     def saveQuickQueries(qqs: Vector[V2UiNodeQuickQuery]): Unit = {
       val previous = quickQueriesVar.now()
       quickQueriesVar.set(qqs)
-      val fut =
-        if (useV2Api) routes.updateQueryUiQuickQueriesV2(qqs).future
-        else routes.updateQueryUiQuickQueries(qqs.map(v2ToV1QuickQuery)).future
-      fut.onComplete {
-        case Success(_) =>
-          toastVar.set(Some(ToastMessage("Quick queries saved", ToastVariant.Success)))
-        case Failure(err) =>
-          quickQueriesVar.set(previous)
-          toastVar.set(Some(ToastMessage(s"Save failed: ${err.getMessage}", ToastVariant.Error)))
-      }
+      dataService.queryUiConfigDispatch.onNext(
+        QueryUiConfigService.SaveQuickQueries(
+          qqs,
+          replyTo = Observer[SaveResult] {
+            case SaveSucceeded =>
+              toastVar.set(Some(ToastMessage("Quick queries saved", ToastVariant.Success)))
+            case SaveFailed(message) =>
+              quickQueriesVar.set(previous)
+              toastVar.set(Some(ToastMessage(s"Save failed: $message", ToastVariant.Error)))
+          },
+        ),
+      )
     }
 
     def saveNodeAppearances(apps: Vector[UiNodeAppearance]): Unit = {
       val previous = appearancesVar.now()
       appearancesVar.set(apps)
-      val fut =
-        if (useV2Api) routes.updateQueryUiAppearanceV2(apps).future
-        else routes.updateQueryUiAppearance(apps).future
-      fut.onComplete {
-        case Success(_) =>
-          toastVar.set(Some(ToastMessage("Node appearances saved", ToastVariant.Success)))
-          val refreshFut =
-            if (useV2Api) routes.queryUiAppearanceV2(()).future
-            else routes.queryUiAppearance(()).future
-          refreshFut.foreach(rendered => appearancesVar.set(rendered))
-        case Failure(err) =>
-          appearancesVar.set(previous)
-          toastVar.set(Some(ToastMessage(s"Save failed: ${err.getMessage}", ToastVariant.Error)))
-      }
+      // The service refetches on success, so the shared feed delivers the
+      // server-canonicalized list without a bespoke re-GET here.
+      dataService.queryUiConfigDispatch.onNext(
+        QueryUiConfigService.SaveNodeAppearances(
+          apps,
+          replyTo = Observer[SaveResult] {
+            case SaveSucceeded =>
+              toastVar.set(Some(ToastMessage("Node appearances saved", ToastVariant.Success)))
+            case SaveFailed(message) =>
+              appearancesVar.set(previous)
+              toastVar.set(Some(ToastMessage(s"Save failed: $message", ToastVariant.Error)))
+          },
+        ),
+      )
     }
 
-    // Tap queries are scoped per-graph by the URL, so the PUT here replaces only this
-    // graph's list — no need to preserve other graphs' entries client-side.
-    def saveTapQueriesForNamespace(ns: String, tqs: Vector[V2TapQuery]): Unit = {
+    // Tap queries are scoped per-graph, replacing only the current graph's list — no need
+    // to preserve other graphs' entries client-side. The service targets the graph the
+    // user is viewing and refetches the shared feed on success.
+    def saveTapQueries(tqs: Vector[V2TapQuery]): Unit = {
       val previous = tapQueriesVar.now()
       tapQueriesVar.set(tqs)
-      QuineApiClient
-        .putV2(s"api/v2/graph/$ns/queryUi/tapQueries", tqs, routes)
-        .onComplete {
-          case Success(_) =>
-            toastVar.set(Some(ToastMessage("Tap queries saved — shared with everyone", ToastVariant.Success)))
-            loadTapQueries(ns)
-          case Failure(err) =>
-            tapQueriesVar.set(previous)
-            toastVar.set(Some(ToastMessage(s"Save failed: ${err.getMessage}", ToastVariant.Error)))
-        }
+      dataService.tapQueryDispatch.onNext(
+        TapQueryService.SaveTapQueries(
+          tqs,
+          replyTo = Observer[SaveResult] {
+            case SaveSucceeded =>
+              toastVar.set(Some(ToastMessage("Tap queries saved — shared with everyone", ToastVariant.Success)))
+            case SaveFailed(message) =>
+              tapQueriesVar.set(previous)
+              toastVar.set(Some(ToastMessage(s"Save failed: $message", ToastVariant.Error)))
+          },
+        ),
+      )
     }
 
     div(
       cls := "container-fluid px-3",
       htmlTag("style")(ConfigPageCss),
-      onMountCallback(_ => loadData()),
-      autoRefreshStream --> Observer[Unit](_ => refreshData()),
-      // Reload SQ and tap-query lists whenever the active namespace changes — also fires
-      // on first mount so the lists are populated before the user opens the editor.
-      currentNamespaceVar.signal --> {
-        case Some(ns) =>
-          loadStandingQueries(ns)
-          loadTapQueries(ns)
-        case None => ()
+      // The shared DataService feeds populate the page's working Vars while this page is
+      // mounted. Namespace switching needs no handling here: the graph-scoped feeds
+      // (tapQueries, standingQueries) key off the service's current namespace, which tracks
+      // the graph picker. Each editable catalog is guarded by its editor — refreshes landing
+      // mid-edit are dropped so in-progress edits aren't clobbered (a change swallowed this
+      // way surfaces on the feed's next data change).
+      dataService.sampleQueriesSignal --> { sqs =>
+        if (sqEditVar.now().isEmpty) sampleQueriesVar.set(sqs)
+      },
+      dataService.quickQueriesSignal --> { qqs =>
+        if (qqEditVar.now().isEmpty) quickQueriesVar.set(qqs)
+      },
+      dataService.nodeAppearancesSignal --> { nas =>
+        if (naEditVar.now().isEmpty) appearancesVar.set(nas)
+      },
+      dataService.tapQueriesSignal --> { tqs =>
+        if (tapQueryEditVar.now().isEmpty) tapQueriesVar.set(tqs)
       },
       div(
         cls := "d-flex align-items-center",
         height := "var(--cui-sidebar-header-height, 4rem)",
         h2(cls := "h2 mb-0 px-3", "Explorer Settings"),
       ),
-      child <-- pageState.signal.map {
-        case Pot.Empty | Pot.Pending =>
-          div(
-            cls := "text-center py-5",
-            div(cls := "spinner-border text-primary", role := "status"),
-            p(cls := "mt-3 text-body-secondary", "Loading settings..."),
-          )
-        case Pot.Failed(msg) =>
-          div(cls := "alert alert-danger", msg)
-        case Pot.Ready(_) =>
-          div(
-            tapQueriesCard(
-              tapQueriesVar,
-              standingQueriesVar,
-              currentNamespaceVar,
-              externallyBoundNamespace = selectedNamespaceVar.isDefined,
-              knownNamespacesSignal,
-              tapQueryEditVar,
-              saveTapQueriesForNamespace,
-              tapQueriesExpandedVar,
-              enabledTapsVar,
-            ),
-            div(cls := "mt-4"),
-            sampleQueriesCard(sampleQueriesVar, sqEditVar, saveSampleQueries, sqExpandedVar),
-            div(cls := "mt-4"),
-            quickQueriesCard(quickQueriesVar, qqEditVar, saveQuickQueries, qqExpandedVar),
-            div(cls := "mt-4"),
-            nodeAppearancesCard(appearancesVar, naEditVar, saveNodeAppearances, naExpandedVar),
-          )
-        case _ => emptyNode
-      },
+      div(
+        tapQueriesCard(
+          tapQueriesVar,
+          dataService.standingQueriesSignal.map(_.toOption.map(_.toVector).getOrElse(Vector.empty)),
+          currentNamespace = dataService.currentNamespaceSignal.map(_.namespaceId),
+          showGraphPicker = showGraphPicker,
+          knownNamespaces = dataService.namespacesSignal.map(_.map(_.namespaceId)),
+          onSelectNamespace = Observer[String] { name =>
+            NamespaceParameter(name).foreach(ns =>
+              dataService.namespaceDispatch.onNext(NamespaceService.SetNamespace(ns)),
+            )
+          },
+          tapQueryEditVar,
+          saveTapQueries,
+          tapQueriesExpandedVar,
+          dataService,
+        ),
+        div(cls := "mt-4"),
+        sampleQueriesCard(sampleQueriesVar, sqEditVar, saveSampleQueries, sqExpandedVar),
+        div(cls := "mt-4"),
+        quickQueriesCard(quickQueriesVar, qqEditVar, saveQuickQueries, qqExpandedVar),
+        div(cls := "mt-4"),
+        nodeAppearancesCard(appearancesVar, naEditVar, saveNodeAppearances, naExpandedVar),
+      ),
       Toast(toastVar),
     )
   }
@@ -328,14 +225,15 @@ object ExplorerSettingsPage {
 
   private def tapQueriesCard(
     dataVar: Var[Vector[V2TapQuery]],
-    standingQueriesVar: Var[Vector[V2StandingQueryInfo]],
-    selectedNamespaceVar: Var[Option[String]],
-    externallyBoundNamespace: Boolean,
-    knownNamespacesSignal: Option[Signal[Seq[String]]],
+    standingQueries: Signal[Vector[V2StandingQueryInfo]],
+    currentNamespace: Signal[String],
+    showGraphPicker: Boolean,
+    knownNamespaces: Signal[Seq[String]],
+    onSelectNamespace: Observer[String],
     editVar: Var[Option[TapQueryEditorMode]],
-    save: (String, Vector[V2TapQuery]) => Unit,
+    save: Vector[V2TapQuery] => Unit,
     expandedVar: Var[Boolean],
-    enabledTapsVar: Var[Map[String, Set[String]]],
+    wiretap: WiretapService,
   ): HtmlElement = {
     val headerButton: Signal[HtmlElement] = editVar.signal.map {
       case None =>
@@ -356,38 +254,33 @@ object ExplorerSettingsPage {
     def confirmAndDelete(idx: Int): Unit = {
       val visible = dataVar.now()
       val name = visible.lift(idx).map(_.name).getOrElse("this tap query")
-      selectedNamespaceVar.now().foreach { ns =>
-        if (
-          window.confirm(
-            s"""Delete tap query "$name"? Tap queries are shared, so this will remove it for everyone.""",
-          )
-        ) save(ns, visible.patch(idx, Nil, 1))
-      }
+      if (
+        window.confirm(
+          s"""Delete tap query "$name"? Tap queries are shared, so this will remove it for everyone.""",
+        )
+      ) save(visible.patch(idx, Nil, 1))
     }
 
-    // Graph (namespace) dropdown — bound to the same Var as the Explorer's GraphSelector,
-    // so switching here changes the Explorer's graph too. Only shown when the host
-    // actually has a graph picker to bind to (Enterprise multi-graph mode).
-    def graphPicker(): HtmlElement = (externallyBoundNamespace, knownNamespacesSignal) match {
-      case (true, Some(knownSignal)) =>
+    // Graph (namespace) dropdown — selections dispatch to the DataService, so switching
+    // here changes the Explorer's graph too. Only shown in Enterprise multi-graph mode.
+    def graphPicker(): HtmlElement =
+      if (!showGraphPicker) div(display := "none")
+      else
         div(
           cls := "d-flex align-items-center mb-3 gap-2",
           label(cls := "form-label mb-0 small text-body-secondary", "Graph"),
           select(
             cls := "form-select form-select-sm",
             width := "auto",
-            onChange.mapToValue --> selectedNamespaceVar.writer.contramap[String](Some(_)),
-            children <-- knownSignal.combineWith(selectedNamespaceVar.signal).map { case (known, current) =>
-              val currentStr = current.getOrElse("")
+            onChange.mapToValue --> onSelectNamespace,
+            children <-- knownNamespaces.combineWith(currentNamespace).map { case (known, current) =>
               val options =
-                if (current.forall(known.contains) || known.isEmpty) known
-                else currentStr +: known
-              options.toList.map(ns => option(value := ns, selected := current.contains(ns), ns))
+                if (known.contains(current) || known.isEmpty) known
+                else current +: known
+              options.toList.map(ns => option(value := ns, selected := ns == current, ns))
             },
           ),
         )
-      case _ => div(display := "none")
-    }
 
     val body: Signal[HtmlElement] = editVar.signal.map {
       case None =>
@@ -395,11 +288,10 @@ object ExplorerSettingsPage {
           graphPicker(),
           tapQueriesList(
             dataVar.signal.distinct,
-            selectedNamespaceVar = selectedNamespaceVar,
             onEdit = idx => editVar.set(Some(TapQueryEditorMode.Editing(idx))),
             onNew = () => editVar.set(Some(TapQueryEditorMode.Creating)),
             onDelete = confirmAndDelete,
-            enabledTapsVar = enabledTapsVar,
+            wiretap = wiretap,
           ),
         )
       case Some(mode) =>
@@ -411,32 +303,28 @@ object ExplorerSettingsPage {
               case TapQueryEditorMode.Editing(idx) => dataVar.now().lift(idx)
               case _ => None
             },
-            standingQueries = standingQueriesVar.signal,
+            standingQueries = standingQueries,
             onSave = { newTapQuery =>
-              selectedNamespaceVar.now().foreach { ns =>
-                val visible = dataVar.now()
-                val updated = mode match {
-                  case TapQueryEditorMode.Editing(idx) if idx < visible.size => visible.updated(idx, newTapQuery)
-                  case _ => visible :+ newTapQuery
-                }
-                save(ns, updated)
-                editVar.set(None)
+              val visible = dataVar.now()
+              val updated = mode match {
+                case TapQueryEditorMode.Editing(idx) if idx < visible.size => visible.updated(idx, newTapQuery)
+                case _ => visible :+ newTapQuery
               }
+              save(updated)
+              editVar.set(None)
             },
             onDelete = mode match {
               case TapQueryEditorMode.Editing(idx) =>
                 Some { () =>
-                  selectedNamespaceVar.now().foreach { ns =>
-                    val visible = dataVar.now()
-                    val name = visible.lift(idx).map(_.name).getOrElse("this tap query")
-                    if (
-                      window.confirm(
-                        s"""Delete tap query "$name"? Tap queries are shared, so this will remove it for everyone.""",
-                      )
-                    ) {
-                      save(ns, visible.patch(idx, Nil, 1))
-                      editVar.set(None)
-                    }
+                  val visible = dataVar.now()
+                  val name = visible.lift(idx).map(_.name).getOrElse("this tap query")
+                  if (
+                    window.confirm(
+                      s"""Delete tap query "$name"? Tap queries are shared, so this will remove it for everyone.""",
+                    )
+                  ) {
+                    save(visible.patch(idx, Nil, 1))
+                    editVar.set(None)
                   }
                 }
               case _ => None
@@ -451,11 +339,10 @@ object ExplorerSettingsPage {
 
   private def tapQueriesList(
     tapQueries: Signal[Vector[V2TapQuery]],
-    selectedNamespaceVar: Var[Option[String]],
     onEdit: Int => Unit,
     onNew: () => Unit,
     onDelete: Int => Unit,
-    enabledTapsVar: Var[Map[String, Set[String]]],
+    wiretap: WiretapService,
   ): HtmlElement = {
     val searchVar = Var("")
 
@@ -494,14 +381,7 @@ object ExplorerSettingsPage {
           div(
             cls := Styles.managerList,
             items.map { case (t, idx) =>
-              tapQueryListItem(
-                t,
-                idx,
-                selectedNamespaceVar,
-                onEdit,
-                onDelete,
-                enabledTapsVar,
-              )
+              tapQueryListItem(t, idx, onEdit, onDelete, wiretap)
             },
           )
       },
@@ -515,20 +395,16 @@ object ExplorerSettingsPage {
   private def tapQueryListItem(
     t: V2TapQuery,
     idx: Int,
-    selectedNamespaceVar: Var[Option[String]],
     onEdit: Int => Unit,
     onDelete: Int => Unit,
-    enabledTapsVar: Var[Map[String, Set[String]]],
+    wiretap: WiretapService,
   ): HtmlElement = {
     val idStr = s"settings-tap-query-enable-${t.name}"
-    // The toggle reflects intent (`enabledTapsVar`), not live store handlers, so it
-    // stays on across graph switches even though the store's handlers are torn down
-    // and reopened underneath it by TapQueryRuntime.
+    // When this row's tap query is locally enabled, a handler with key=t.name is present
+    // under TapQueryOwner in the service's wiretaps. Toggling here observes the same
+    // service as anywhere else, so independent UIs stay in sync.
     val enabledSignal: Signal[Boolean] =
-      enabledTapsVar.signal.combineWith(selectedNamespaceVar.signal).map {
-        case (enabled, Some(ns)) => enabled.getOrElse(ns, Set.empty).contains(t.name)
-        case (_, None) => false
-      }
+      wiretap.wiretapsSignal.map(_.get(TapQueryOwner).exists(_.exists(_.key == t.name)))
 
     div(
       cls := Styles.managerListItem,
@@ -567,7 +443,9 @@ object ExplorerSettingsPage {
           ),
         ),
       ),
-      // Enable Locally row
+      // Enable Locally row — record the enable/disable intent with the service. It opens
+      // or closes the wiretap, persists the intent per graph for this tab, and restores
+      // it on reload, so the toggle itself never manages handlers.
       div(
         cls := "form-check form-switch small mt-2 mb-0",
         onClick.stopPropagation --> (_ => ()),
@@ -578,14 +456,8 @@ object ExplorerSettingsPage {
           idAttr := idStr,
           checked <-- enabledSignal,
           onChange.mapToChecked --> { isChecked =>
-            selectedNamespaceVar.now().foreach { ns =>
-              // Record intent only. TapQueryRuntime observes this, opens/closes the
-              // wiretap handler, and persists to sessionStorage.
-              enabledTapsVar.update { m =>
-                val cur = m.getOrElse(ns, Set.empty)
-                m.updated(ns, if (isChecked) cur + t.name else cur - t.name)
-              }
-            }
+            if (isChecked) wiretap.wiretapDispatch.onNext(WiretapService.EnableTapQuery(t))
+            else wiretap.wiretapDispatch.onNext(WiretapService.DisableTapQuery(t.name))
           },
         ),
         label(
@@ -796,36 +668,4 @@ object ExplorerSettingsPage {
     collapsibleCard("Node Appearances", expandedVar, headerButton, body)
   }
 
-  // ---------------------------------------------------------------------------
-  // V1 / V2 quick query conversion
-  // ---------------------------------------------------------------------------
-
-  def v1ToV2QuickQuery(v1: UiNodeQuickQuery): V2UiNodeQuickQuery =
-    V2UiNodeQuickQuery(
-      predicate = V2UiNodePredicate(v1.predicate.propertyKeys, v1.predicate.knownValues, v1.predicate.dbLabel),
-      quickQuery = V2QuickQuery(
-        name = v1.quickQuery.name,
-        querySuffix = v1.quickQuery.querySuffix,
-        sort = v1.quickQuery.sort match {
-          case QuerySort.Node => V2QuerySort.Node
-          case QuerySort.Text => V2QuerySort.Text
-        },
-        edgeLabel = v1.quickQuery.edgeLabel,
-      ),
-    )
-
-  def v2ToV1QuickQuery(v2: V2UiNodeQuickQuery): UiNodeQuickQuery =
-    UiNodeQuickQuery(
-      predicate = UiNodePredicate(v2.predicate.propertyKeys, v2.predicate.knownValues, v2.predicate.dbLabel),
-      quickQuery = QuickQuery(
-        name = v2.quickQuery.name,
-        querySuffix = v2.quickQuery.querySuffix,
-        queryLanguage = QueryLanguage.Cypher,
-        sort = v2.quickQuery.sort match {
-          case V2QuerySort.Node => QuerySort.Node
-          case V2QuerySort.Text => QuerySort.Text
-        },
-        edgeLabel = v2.quickQuery.edgeLabel,
-      ),
-    )
 }

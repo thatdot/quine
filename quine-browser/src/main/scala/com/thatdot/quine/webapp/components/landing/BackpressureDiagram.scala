@@ -239,7 +239,7 @@ object BackpressureDiagram {
   // Component entry point
   // ══════════════════════════════════════════════════════════════════════
 
-  private val PollIntervalMs = 5000 // matches LandingService.PollIntervalMs
+  private val PollIntervalMs = 5000 // matches QuineApiClient.PollIntervalMs
   private val StorageKey = "bpc_lastRefresh"
   private val ViewModeKey = "bpc_viewMode"
   private val NamespacesKey = "bpc_namespaces"

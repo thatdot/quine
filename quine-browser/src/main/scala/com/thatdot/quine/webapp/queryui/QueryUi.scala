@@ -35,6 +35,15 @@ import com.thatdot.quine.webapp.components.{
   VisIndirectMouseEvent,
   VisNetwork,
 }
+import com.thatdot.quine.webapp.dataservice.{
+  DataService,
+  QueryUiConfigService,
+  SaveFailed,
+  SaveResult,
+  SaveSucceeded,
+  WiretapHandler,
+  WiretapOwner,
+}
 import com.thatdot.quine.webapp.queryui.{
   DownloadUtils,
   HistoryJsonSchema,
@@ -62,8 +71,7 @@ import com.thatdot.quine.webapp.resultspanel.{
   TapOutput,
 }
 import com.thatdot.quine.webapp.util.Pot
-import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2Page, V2StandingQueryInfo}
-import com.thatdot.quine.webapp.v2api.{V2ApiTypes, V2Fetch, V2Paths}
+import com.thatdot.quine.webapp.v2api.V2ApiTypes
 import com.thatdot.quine.webapp.{History, QueryUiOptions, Styles}
 import com.thatdot.{visnetwork => vis}
 
@@ -71,6 +79,7 @@ object QueryUi {
 
   case class Props(
     routes: ClientRoutes,
+    dataService: DataService,
     graphData: VisData,
     initialQuery: String = "",
     nodeResultSizeLimit: Long = 100,
@@ -90,8 +99,6 @@ object QueryUi {
     refreshSignal: Option[EventStream[Unit]] = None,
     queryBarTrailing: Option[HtmlElement] = None,
     invalidatedNamespaces: Option[EventStream[NamespaceParameter]] = None,
-    wiretapStore: WiretapStore,
-    externalActiveTapQueryMetadataVar: Option[Var[Map[String, V2ApiTypes.V2TapQuery]]] = None,
   )
 
   case class State(
@@ -156,35 +163,32 @@ object QueryUi {
       */
     val restoringVar: Var[Boolean] = Var(false)
 
-    // The shared cross-namespace WiretapStore, hoisted to app-entry. `active` is keyed by
-    // (namespace, owner) so consumers filter to whichever graph they care about.
-    val wiretapStore: WiretapStore = props.wiretapStore
-    // Per-tap-query metadata for currently-enabled tap queries, keyed by the wiretap
-    // key the settings page used to open the handler. The dispatch subscription mounted
-    // below joins this with `wiretapStore.active` so it can reach `tapQuery.query` /
-    // `tapQuery.syntheticEdges` for each live match — keeping tap-query-specific
-    // context out of the store, which only knows about handlers.
-    //
-    // Cleared on namespace change alongside `wiretapStore.closeAll(oldNs)`. The set of
-    // currently-open handlers themselves lives in `WiretapStore.active`, not here.
-    val activeTapQueryMetadataVar: Var[Map[String, V2ApiTypes.V2TapQuery]] =
-      props.externalActiveTapQueryMetadataVar.getOrElse(Var(Map.empty))
     val resultsCollapsedVar = Var(false)
     val resultsHistory = HistoryState.empty
-    // The Source picker's standing-query catalog (refreshed per namespace in the wiretap lifecycle).
-    val tapCatalogVar: Var[Pot[Vector[TapCatalogEntry]]] = Var(Pot.Empty)
+    // The Source picker's standing-query catalog: the shared per-namespace feed mapped to
+    // picker entries. Permission-gated at construction — without StandingQueryRead the
+    // signal is never subscribed, so no poll ever starts.
+    val canReadStandingQueries: Boolean = props.permissions.forall(_.contains("StandingQueryRead"))
+    // Whether this user may read the explorer's UI configuration (appearances, sample
+    // queries, quick queries). Gates the shared-feed bindings — an unbound signal never polls.
+    val canViewUiData: Boolean =
+      props.permissions.forall(perms => Set("StoredQueryRead", "NodeAppearanceRead").subsetOf(perms))
+    val tapCatalogSignal: Signal[Pot[Vector[TapCatalogEntry]]] =
+      if (canReadStandingQueries)
+        props.dataService.standingQueriesSignal.map(
+          _.map(sqs =>
+            sqs.map(sq => TapCatalogEntry(sq.name, sq.outputs.map(o => TapOutput(o.name, o.hasEnrichment)))).toVector,
+          ),
+        )
+      else Val(Pot.Empty)
     // Taps open under the explorer's own owner; the facade scopes the panel's source list to it.
-    val tapSubscriptions = new PanelTapSubscriptions(
-      wiretapStore,
-      stateVar.signal.map(_.namespace.namespaceId),
-      WiretapOwner("explorer"),
-    )
+    val tapSubscriptions = new PanelTapSubscriptions(props.dataService, WiretapOwner("explorer"))
     // The results-surface store. History + collapse are owned by the host (persisted/restored to
     // session storage above); the rest of the panel's state lives inside the store.
     val resultsStore = new ResultsStore(
       liveContent = resultsVar.signal,
       subscriptions = tapSubscriptions,
-      catalog = tapCatalogVar.signal,
+      catalog = tapCatalogSignal,
       history = resultsHistory,
       collapsedVar = resultsCollapsedVar,
       onUseQuery = Observer[String](q => stateVar.update(_.copy(queryBarColor = None, query = q))),
@@ -227,7 +231,6 @@ object QueryUi {
     // so switching namespaces never disrupts in-flight queries on the previous namespace.
     val wsClients = mutable.Map.empty[String, Future[WebSocketQueryClient]]
     val wsClientsV2 = mutable.Map.empty[String, Future[V2WebSocketQueryClient]]
-    var uiDataLoaded: Boolean = false
     // Bumped on every setNamespace call; a snapshot-restore callback only applies its result
     // if this still matches the version it captured, so an older in-flight switch can't
     // clobber state after a newer switch has already started.
@@ -653,52 +656,23 @@ object QueryUi {
       wsClientsV2.getOrElse(nsKey, existing)
     }
 
-    /** Load UI configuration (appearances, sample queries, quick queries).
-      * Called once, either from onMountCallback or the first setNamespace call.
-      */
-    def loadUiData(): Unit = {
-      val canView = props.permissions match {
-        case Some(perms) => Set("StoredQueryRead", "NodeAppearanceRead").subsetOf(perms)
-        case None => true
-      }
-      if (canView) {
-        props.queryMethod match {
-          case QueryMethod.WebSocket | QueryMethod.Restful =>
-            props.routes.queryUiAppearance(()).future.foreach(nas => stateVar.update(_.copy(uiNodeAppearances = nas)))
-            props.routes.queryUiSampleQueries(()).future.foreach(sqs => stateVar.update(_.copy(sampleQueries = sqs)))
-            props.routes
-              .queryUiQuickQueries(())
-              .future
-              .foreach(qqs =>
-                stateVar.update(_.copy(uiNodeQuickQueries = qqs.map(ExplorerSettingsPage.v1ToV2QuickQuery))),
-              )
-          case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 =>
-            props.routes.queryUiAppearanceV2(()).future.foreach(nas => stateVar.update(_.copy(uiNodeAppearances = nas)))
-            props.routes.queryUiSampleQueriesV2(()).future.foreach(sqs => stateVar.update(_.copy(sampleQueries = sqs)))
-            props.routes
-              .queryUiQuickQueriesV2(())
-              .future
-              .foreach(qqs => stateVar.update(_.copy(uiNodeQuickQueries = qqs)))
-        }
-      }
-    }
-
     // --- Save helpers ---
 
     def saveSampleQueries(sqs: Vector[SampleQuery]): Unit = {
+      val previous = stateVar.now().sampleQueries
       stateVar.update(_.copy(sampleQueries = sqs))
-      val fut = props.queryMethod match {
-        case QueryMethod.WebSocket | QueryMethod.Restful =>
-          props.routes.updateQueryUiSampleQueries(sqs).future
-        case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 =>
-          props.routes.updateQueryUiSampleQueriesV2(sqs).future
-      }
-      fut.onComplete {
-        case Success(_) =>
-          toastVar.set(Some(ToastMessage("Sample queries saved", ToastVariant.Success)))
-        case Failure(err) =>
-          toastVar.set(Some(ToastMessage(s"Save failed: ${err.getMessage}", ToastVariant.Error)))
-      }
+      props.dataService.queryUiConfigDispatch.onNext(
+        QueryUiConfigService.SaveSampleQueries(
+          sqs,
+          replyTo = Observer[SaveResult] {
+            case SaveSucceeded =>
+              toastVar.set(Some(ToastMessage("Sample queries saved", ToastVariant.Success)))
+            case SaveFailed(message) =>
+              stateVar.update(_.copy(sampleQueries = previous))
+              toastVar.set(Some(ToastMessage(s"Save failed: $message", ToastVariant.Error)))
+          },
+        ),
+      )
     }
 
     // --- Node appearance and quick queries ---
@@ -1311,7 +1285,6 @@ object QueryUi {
       namespaceOverride: Option[NamespaceParameter] = None,
       parameters: Map[String, Json] = Map.empty,
     ): Future[Unit] = {
-      loadUiData()
       val state = stateVar.now()
       val namespace = namespaceOverride.getOrElse(state.namespace)
 
@@ -2353,10 +2326,6 @@ object QueryUi {
       * second switch can't be clobbered by a slower first one resolving late.
       */
     def setNamespace(namespace: NamespaceParameter): Unit = {
-      if (!uiDataLoaded) {
-        uiDataLoaded = true
-        loadUiData()
-      }
       val previous = stateVar.now()
       if (namespace != previous.namespace) {
         // Close websockets for the old namespace — the new namespace gets
@@ -2490,70 +2459,24 @@ object QueryUi {
     def stepForwardAll(): Unit =
       for (_ <- 0 until stateVar.now().history.future.length) updateHistory(_.stepForward())
 
-    /** Hidden lifecycle host that (a) keeps the Source picker's standing-query catalog
-      * fresh, (b) tears down the shared [[WiretapStore]]'s handlers for a namespace when
-      * we leave it, and (c) runs the tap-query match dispatch subscription. Mounted
-      * unconditionally so the dispatch stays alive for the full lifetime of QueryUi;
-      * the namespace-keyed inner child handles per-namespace onMount / onUnmount work.
+    /** Hidden host for the tap-query match dispatch subscription. Mounted unconditionally
+      * so dispatch stays alive for the full lifetime of QueryUi. The wiretap sockets
+      * themselves live in the DataService, which renews them per graph namespace.
       */
     val wiretapLifecycle: HtmlElement =
       div(
         display := "none",
-        child <-- stateVar.signal.map(_.namespace.namespaceId).distinct.map { graphName =>
-          val canReadStandingQueries = props.permissions match {
-            case Some(perms) => perms.contains("StandingQueryRead")
-            case None => true
-          }
-          // Fetch the Source picker's standing-query catalog for this namespace. When
-          // `showPending` is false the in-place catalog is preserved during the request
-          // so the picker UI does not flicker between Ready and Pending each refresh.
-          def loadCatalog(showPending: Boolean): Unit = if (canReadStandingQueries) {
-            if (showPending) tapCatalogVar.set(Pot.Pending)
-            V2Fetch[V2Page[V2StandingQueryInfo]](V2Paths.standingQueries(graphName), props.routes.baseUrlOpt)
-              .onComplete {
-                case scala.util.Success(page) =>
-                  tapCatalogVar.set(
-                    Pot.Ready(
-                      page.items
-                        .map(sq => TapCatalogEntry(sq.name, sq.outputs.map(o => TapOutput(o.name, o.hasEnrichment))))
-                        .toVector,
-                    ),
-                  )
-                case scala.util.Failure(err) =>
-                  tapCatalogVar.set(Pot.Failed(Option(err.getMessage).getOrElse("Failed to load standing queries")))
-              }
-          }
-          div(
-            display := "none",
-            // Poll the catalog so newly created/deleted standing queries surface in the
-            // Source picker without forcing a namespace switch.
-            EventStream.periodic(intervalMs = 5000).mapTo(()) --> { _ => loadCatalog(showPending = false) },
-            onMountCallback { _ =>
-              activeTapQueryMetadataVar.set(Map.empty)
-              loadCatalog(showPending = true)
-            },
-            onUnmountCallback { _ =>
-              // Close every wiretap opened against this namespace (across owners) so a
-              // future revisit starts fresh rather than picking up stale sockets.
-              wiretapStore.closeAll(graphName)
-            },
-          )
-        },
-        // Tap query dispatch host — joins `activeTapQueryMetadataVar` (the V2TapQuery
-        // context registered by whichever UI enabled the tap query locally, keyed by
-        // tap-query name) with `wiretapStore.active`'s handlers under (currentNs,
-        // TapQueryOwner); only names present in both get a dispatch span. `splitSeq`
-        // keys those by tap-query name so each span is created once when a tap query
-        // becomes (enabled AND live) and torn down when either condition drops — without
-        // disturbing the others when the entry set changes.
-        children <-- activeTapQueryMetadataVar.signal
-          .combineWith(wiretapStore.active, stateVar.signal.map(_.namespace.namespaceId))
-          .map { case (meta, active, ns) =>
+        // Tap query dispatch host — joins the service's enabled tap queries (the V2TapQuery
+        // context registered by whichever UI enabled one locally, keyed by tap-query name)
+        // with its live handlers under TapQueryOwner; only names present in both get a
+        // dispatch span. `splitSeq` keys those by tap-query name so each span is created
+        // once when a tap query becomes (enabled AND live) and torn down when either
+        // condition drops — without disturbing the others when the entry set changes.
+        children <-- props.dataService.wiretapsSignal
+          .combineWith(props.dataService.enabledTapQueriesSignal)
+          .map { case (active, meta) =>
             val tapHandlersByName: Map[String, WiretapHandler] =
-              active
-                .getOrElse((ns, TapQueryRuntime.TapQueryOwner), List.empty)
-                .map(h => h.key -> h)
-                .toMap
+              active.getOrElse(ExplorerSettingsPage.TapQueryOwner, List.empty).map(h => h.key -> h).toMap
             meta.iterator.flatMap { case (name, tapQuery) =>
               tapHandlersByName.get(name).map(h => (name, tapQuery, h))
             }.toList
@@ -2618,10 +2541,25 @@ object QueryUi {
           }
         })
         .getOrElse(emptyMod),
+      // The shared DataService feeds keep the explorer's UI configuration current for as
+      // long as it is mounted; saves still write stateVar optimistically and re-converge
+      // on the feed's next data change.
+      if (canViewUiData)
+        List[Modifier[HtmlElement]](
+          props.dataService.nodeAppearancesSignal --> { nas =>
+            stateVar.update(_.copy(uiNodeAppearances = nas))
+          },
+          props.dataService.sampleQueriesSignal --> { sqs =>
+            stateVar.update(_.copy(sampleQueries = sqs))
+          },
+          props.dataService.quickQueriesSignal --> { qqs =>
+            stateVar.update(_.copy(uiNodeQuickQueries = qqs))
+          },
+        )
+      else List.empty[Modifier[HtmlElement]],
       // Subscribe to external refresh trigger (if provided) — re-runs initial query
       props.refreshSignal
         .map(_ --> { _ =>
-          loadUiData()
           if (props.initialQuery.nonEmpty) {
             val _ = submitQuery(UiQueryType.Node, queryOverride = Some(props.initialQuery))
           }
@@ -2667,8 +2605,6 @@ object QueryUi {
             case QueryMethod.WebSocketV2 => getWebSocketClientV2(namespace)
             case _ => ()
           }
-          uiDataLoaded = true
-          loadUiData()
           if (props.initialQuery.nonEmpty) {
             val _ = submitQuery(UiQueryType.Node)
           }
@@ -2888,14 +2824,13 @@ object QueryUi {
   def fromOptions(
     options: QueryUiOptions,
     routes: ClientRoutes,
+    dataService: DataService,
     permissions: Option[Set[String]] = None,
     namespaceSignal: Option[Signal[NamespaceParameter]] = None,
     initialNamespace: NamespaceParameter = NamespaceParameter.defaultNamespaceParameter,
     refreshSignal: Option[EventStream[Unit]] = None,
     queryBarTrailing: Option[HtmlElement] = None,
     invalidatedNamespaces: Option[EventStream[NamespaceParameter]] = None,
-    wiretapStore: WiretapStore,
-    externalActiveTapQueryMetadataVar: Option[Var[Map[String, V2ApiTypes.V2TapQuery]]] = None,
   ): HtmlElement = {
     val nodeSet = options.visNodeSet.getOrElse(new vis.DataSet(js.Array[vis.Node]()))
     val edgeSet = options.visEdgeSet.getOrElse(new vis.DataSet(js.Array[vis.Edge]()))
@@ -2909,6 +2844,7 @@ object QueryUi {
     apply(
       Props(
         routes = routes,
+        dataService = dataService,
         graphData = VisData(visData, nodeSet, edgeSet),
         initialQuery = options.initialQuery.getOrElse(""),
         nodeResultSizeLimit = options.nodeResultSizeLimit.getOrElse(100).toLong,
@@ -2929,8 +2865,6 @@ object QueryUi {
         refreshSignal = refreshSignal,
         queryBarTrailing = queryBarTrailing,
         invalidatedNamespaces = invalidatedNamespaces,
-        wiretapStore = wiretapStore,
-        externalActiveTapQueryMetadataVar = externalActiveTapQueryMetadataVar,
       ),
     )
   }

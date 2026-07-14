@@ -61,7 +61,6 @@ package object webapp {
   @JSExportTopLevel("quineAppMount")
   def quineAppMount(target: dom.Element, options: QuineUiOptions): RootNode = {
     val clientRoutes = new ClientRoutes(options.serverUrl)
-    val wiretapStore = new com.thatdot.quine.webapp.queryui.WiretapStore(clientRoutes)
     val queryMethod = QueryMethod.parseQueryMethod(options)
     val apiV1 = queryMethod match {
       case QueryMethod.Restful | QueryMethod.WebSocket => true
@@ -84,7 +83,6 @@ package object webapp {
         views = QuineOssViews(
           router,
           clientRoutes,
-          wiretapStore,
           queryMethod,
           options = options,
         ),

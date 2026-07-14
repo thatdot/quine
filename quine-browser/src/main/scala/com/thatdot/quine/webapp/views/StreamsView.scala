@@ -4,12 +4,13 @@ import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.webapp.QuineUiOptions
 import com.thatdot.quine.webapp.components.streams.{StreamsCapabilities, StreamsPage}
-import com.thatdot.quine.webapp.queryui.WiretapStore
+import com.thatdot.quine.webapp.dataservice.DataService
 
 object StreamsView {
   def apply(
     options: QuineUiOptions,
-    wiretapStore: WiretapStore,
+    dataService: DataService,
   ): HtmlElement =
-    StreamsPage(options, wiretapStore, StreamsCapabilities.all)
+    // OSS has no auth, so every Streams control is available.
+    StreamsPage(options, dataService, StreamsCapabilities.all)
 }

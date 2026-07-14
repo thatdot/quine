@@ -121,12 +121,4 @@ object HttpClient {
       baseUrl = baseUrl,
     )
 
-  /** Unwrap the AIP-158 pagination envelope on V2 list responses:
-    * `{"items": [...], "nextPageToken": "..."}` → the items array.
-    *
-    * Non-paginated responses (single resources, NoContent) have no `items` field, so this
-    * falls back to returning the raw JSON unchanged.
-    */
-  def unwrapPageItems(json: Json): Json =
-    json.hcursor.downField("items").focus.getOrElse(json)
 }

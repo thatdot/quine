@@ -18,25 +18,18 @@ trait StreamsApiClient {
   /** The parsed spec — needed by SchemaFormRenderer for $ref resolution. */
   def spec: ParsedSpec
 
-  /** The graph namespace this client is scoped to. Used to route wiretap opens on
-    * the shared [[com.thatdot.quine.webapp.queryui.WiretapStore]] to the right graph.
-    */
-  def graphName: String
-
   // Schemas for create forms
   def ingestCreateSchema: Option[SchemaNode]
   def sqCreateSchema: Option[SchemaNode]
   def outputCreateSchema: Option[SchemaNode]
 
-  // Ingest operations
-  def listIngests()(implicit ec: ExecutionContext): Future[Either[String, Json]]
+  // Ingest operations (reads live on the DataService; only mutations go through here)
   def createIngest(body: Json, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def deleteIngest(name: String, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def pauseIngest(name: String, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def resumeIngest(name: String, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]]
 
-  // Standing query operations
-  def listStandingQueries()(implicit ec: ExecutionContext): Future[Either[String, Json]]
+  // Standing query operations (reads live on the DataService; only mutations go through here)
   def createStandingQuery(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def deleteStandingQuery(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def addOutput(sqName: String, body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]]
@@ -55,7 +48,7 @@ object StreamsApiClient {
   def apply(parsedSpec: ParsedSpec, baseUrl: String, graphName: String = "quine"): StreamsApiClient =
     new Impl(parsedSpec, baseUrl, graphName)
 
-  private class Impl(val spec: ParsedSpec, baseUrl: String, val graphName: String) extends StreamsApiClient {
+  private class Impl(val spec: ParsedSpec, baseUrl: String, graphName: String) extends StreamsApiClient {
     import com.thatdot.quine.webapp.openapi.{ApiOperationRegistry, HttpClient, StreamOp}
 
     private val registry = new ApiOperationRegistry(spec, baseUrl)
@@ -70,9 +63,6 @@ object StreamsApiClient {
         .findEndpoint(StreamOp.AddSQOutput)
         .flatMap(_.requestBodySchema)
         .map(OpenApiParser.resolveNode(_, spec.schemas))
-
-    def listIngests()(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      callListAndUnwrapItems(StreamOp.ListIngests)
 
     def createIngest(body: Json, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       callWithBody(StreamOp.CreateIngest, body, memberHeader(memberIdx))
@@ -98,9 +88,6 @@ object StreamsApiClient {
     ): Future[Either[String, Json]] =
       registry.executeAction(StreamOp.ResumeIngest, name, defaultPathParams, memberHeader(memberIdx))
 
-    def listStandingQueries()(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      callListAndUnwrapItems(StreamOp.ListStandingQueries)
-
     def createStandingQuery(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       callWithBody(StreamOp.CreateStandingQuery, body)
 
@@ -119,15 +106,6 @@ object StreamsApiClient {
 
     def removeOutput(sqName: String, outputName: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.executeAction(StreamOp.RemoveSQOutput, Seq(sqName, outputName), defaultPathParams)
-
-    private def callListAndUnwrapItems(
-      op: StreamOp,
-    )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      registry.findEndpoint(op) match {
-        case Some(ep) =>
-          HttpClient.call(ep, pathParams = defaultPathParams, baseUrl = baseUrl).map(_.map(HttpClient.unwrapPageItems))
-        case None => Future.successful(Left(s"Endpoint for $op not found in API spec."))
-      }
 
     private def callWithBody(
       op: StreamOp,

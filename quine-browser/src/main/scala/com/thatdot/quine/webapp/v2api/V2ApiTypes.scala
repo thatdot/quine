@@ -52,13 +52,16 @@ object V2ApiTypes {
   final case class V2IngestStats(
     ingestedCount: Long,
     rates: V2RatesSummary,
+    /** Human-readable total runtime as reported by the server (e.g. "2h 3m 10s"). */
+    totalRuntime: Option[String],
   )
   object V2IngestStats {
     implicit val decoder: Decoder[V2IngestStats] = (c: HCursor) =>
       for {
         count <- c.downField("ingestedCount").as[Long]
         rates <- c.downField("rates").as[V2RatesSummary]
-      } yield V2IngestStats(count, rates)
+        totalRuntime <- c.get[Option[String]]("totalRuntime")
+      } yield V2IngestStats(count, rates, totalRuntime)
   }
 
   /** Mirrors `com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestStreamInfoWithName` (fields subset).
@@ -74,11 +77,15 @@ object V2ApiTypes {
   final case class V2IngestInfo(
     name: String,
     status: String,
+    /** Server-reported failure detail; present when `status` is Failed. */
+    message: Option[String],
     sourceType: String,
     sourceId: String,
     stats: V2IngestStats,
     /** Cluster position running this ingest; absent on single-node servers. */
     memberIdx: Option[Int],
+    /** The complete wire payload, for full-fidelity display (the configuration viewer). */
+    raw: Json,
   )
   object V2IngestInfo {
     // Fields in `settings` we'll look at (first non-empty wins) for a source identifier.
@@ -117,6 +124,7 @@ object V2ApiTypes {
           .as[String]
           .orElse(c.downField("status").as[String])
           .map(humanizeStatus)
+        message <- c.get[Option[String]]("message")
         source = c.downField("settings").downField("source")
         sourceType <- source.downField("type").as[String]
         sourceId = sourceIdFields
@@ -125,7 +133,7 @@ object V2ApiTypes {
           .getOrElse(sourceType)
         stats <- c.downField("stats").as[V2IngestStats]
         memberIdx <- c.get[Option[Int]]("memberIdx")
-      } yield V2IngestInfo(name, status, sourceType, sourceId, stats, memberIdx)
+      } yield V2IngestInfo(name, status, message, sourceType, sourceId, stats, memberIdx, c.value)
   }
 
   /** Mirrors `com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryStats` (fields subset).
@@ -170,6 +178,23 @@ object V2ApiTypes {
       } yield V2StandingQueryOutput(name, destinations, enrichment.exists(!_.isNull))
   }
 
+  /** Mirrors `com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern` (fields subset):
+    * the Cypher text and mode shown in the Streams standing-query table. Both fields are
+    * optional so a non-Cypher pattern variant decodes rather than failing the whole list.
+    * @see [[public/quine/src/main/scala/com/thatdot/quine/app/v2api/definitions/query/standing/StandingQueryPattern.scala]]
+    */
+  final case class V2StandingQueryPattern(
+    query: Option[String],
+    mode: Option[String],
+  )
+  object V2StandingQueryPattern {
+    implicit val decoder: Decoder[V2StandingQueryPattern] = (c: HCursor) =>
+      for {
+        query <- c.get[Option[String]]("query")
+        mode <- c.get[Option[String]]("mode")
+      } yield V2StandingQueryPattern(query, mode)
+  }
+
   /** Mirrors `com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.RegisteredStandingQuery` (fields subset).
     * @see [[public/quine/src/main/scala/com/thatdot/quine/app/v2api/definitions/query/standing/StandingQuery.scala]]
     */
@@ -177,6 +202,9 @@ object V2ApiTypes {
     name: String,
     outputs: List[V2StandingQueryOutput],
     stats: Map[String, V2StandingQueryStats],
+    pattern: Option[V2StandingQueryPattern],
+    /** The complete wire payload, for full-fidelity display (the configuration viewer). */
+    raw: Json,
   )
   object V2StandingQueryInfo {
     implicit val decoder: Decoder[V2StandingQueryInfo] = (c: HCursor) =>
@@ -184,7 +212,8 @@ object V2ApiTypes {
         name <- c.downField("name").as[String]
         outputs <- c.downField("outputs").as[Option[List[V2StandingQueryOutput]]].map(_.getOrElse(Nil))
         stats <- c.downField("stats").as[Option[Map[String, V2StandingQueryStats]]].map(_.getOrElse(Map.empty))
-      } yield V2StandingQueryInfo(name, outputs, stats)
+        pattern <- c.downField("pattern").as[Option[V2StandingQueryPattern]]
+      } yield V2StandingQueryInfo(name, outputs, stats, pattern, c.value)
   }
 
   /** Mirrors the tap-query synthetic-edge wire shape.

@@ -12,14 +12,12 @@ import com.thatdot.quine.openapi.{ApiEndpoint, OpenApiParser, ParsedSpec, Schema
 sealed trait StreamOp
 
 object StreamOp {
-  case object ListIngests extends StreamOp
   case object CreateIngest extends StreamOp
   case object DeleteIngest extends StreamOp
   case object PauseIngest extends StreamOp
   case object ResumeIngest extends StreamOp
   case object GetIngest extends StreamOp
 
-  case object ListStandingQueries extends StreamOp
   case object CreateStandingQuery extends StreamOp
   case object DeleteStandingQuery extends StreamOp
   case object GetStandingQuery extends StreamOp
@@ -93,8 +91,6 @@ class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
     val m = e.method.toUpperCase
     val p = e.path
     op match {
-      case StreamOp.ListIngests =>
-        m == "GET" && matches(p, v2IngestBase)
       case StreamOp.CreateIngest =>
         m == "POST" && matches(p, v2IngestBase)
       case StreamOp.DeleteIngest =>
@@ -106,8 +102,6 @@ class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
       case StreamOp.ResumeIngest =>
         m == "POST" && matches(p, v2IngestResume)
 
-      case StreamOp.ListStandingQueries =>
-        m == "GET" && matches(p, v2SqBase)
       case StreamOp.CreateStandingQuery =>
         m == "POST" && matches(p, v2SqBase)
       case StreamOp.DeleteStandingQuery =>
