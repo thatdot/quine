@@ -46,6 +46,14 @@ class ApiErrorsCodecSpec extends AnyFunSuite with Matchers with ScalaCheckDriven
     }
   }
 
+  test("Forbidden encodes AIP-193 envelope with code 403 and status PERMISSION_DENIED") {
+    forAll { (e: ErrorResponse.Forbidden) =>
+      val json = e.asJson
+      errorObj(json).get[Int]("code") shouldBe Right(403)
+      errorObj(json).get[String]("status") shouldBe Right("PERMISSION_DENIED")
+    }
+  }
+
   test("ServiceUnavailable encodes AIP-193 envelope with code 503 and status UNAVAILABLE") {
     forAll { (e: ErrorResponse.ServiceUnavailable) =>
       val json = e.asJson

@@ -37,6 +37,7 @@ object ErrorResponseGenerators {
     val badRequest: Gen[ErrorResponse.BadRequest] = make(ErrorResponse.BadRequest(_, _))
     val notFound: Gen[ErrorResponse.NotFound] = make(ErrorResponse.NotFound(_, _))
     val unauthorized: Gen[ErrorResponse.Unauthorized] = make(ErrorResponse.Unauthorized(_, _))
+    val forbidden: Gen[ErrorResponse.Forbidden] = make(ErrorResponse.Forbidden(_, _))
     val serviceUnavailable: Gen[ErrorResponse.ServiceUnavailable] = make(ErrorResponse.ServiceUnavailable(_, _))
   }
 
@@ -46,6 +47,7 @@ object ErrorResponseGenerators {
     implicit val badRequest: Arbitrary[ErrorResponse.BadRequest] = Arbitrary(Gens.badRequest)
     implicit val notFound: Arbitrary[ErrorResponse.NotFound] = Arbitrary(Gens.notFound)
     implicit val unauthorized: Arbitrary[ErrorResponse.Unauthorized] = Arbitrary(Gens.unauthorized)
+    implicit val forbidden: Arbitrary[ErrorResponse.Forbidden] = Arbitrary(Gens.forbidden)
     implicit val serviceUnavailable: Arbitrary[ErrorResponse.ServiceUnavailable] = Arbitrary(Gens.serviceUnavailable)
   }
 }

@@ -6,7 +6,7 @@ import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfigur
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
-import sttp.tapir.{EndpointOutput, Schema, statusCode}
+import sttp.tapir.{EndpointOutput, Schema, oneOf, oneOfVariantValueMatcher, statusCode}
 
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances._
 import com.thatdot.api.v2.schema.TapirJsonConfig.jsonBody
@@ -177,8 +177,13 @@ object ErrorResponse {
     implicit val schema: Schema[NotFound] = ApiError.schema.as[NotFound]
   }
 
-  /** 401 UNAUTHENTICATED */
-  final case class Unauthorized(message: String, details: List[ErrorDetail] = Nil) extends HasError
+  /** Common supertype for the two ways a request can be denied access: no valid credentials
+    * (401 [[Unauthorized]]) or valid credentials lacking the required permission (403 [[Forbidden]]).
+    */
+  sealed trait AuthorizationFailure extends HasError
+
+  /** 401 UNAUTHENTICATED — credentials are missing, invalid, or expired. */
+  final case class Unauthorized(message: String, details: List[ErrorDetail] = Nil) extends AuthorizationFailure
   object Unauthorized {
     val httpCode: Int = 401
     val canonicalStatus: String = "UNAUTHENTICATED"
@@ -188,6 +193,21 @@ object ErrorResponse {
     implicit val decoder: Decoder[Unauthorized] = envelopeDecoder(httpCode, Unauthorized(_, _))
     implicit val schema: Schema[Unauthorized] = ApiError.schema.as[Unauthorized]
     implicit val loggable: AlwaysSafeLoggable[Unauthorized] = u => s"Unauthorized: ${u.message}"
+  }
+
+  /** 403 PERMISSION_DENIED — credentials are valid, but the authenticated principal lacks a
+    * required permission.
+    */
+  final case class Forbidden(message: String, details: List[ErrorDetail] = Nil) extends AuthorizationFailure
+  object Forbidden {
+    val httpCode: Int = 403
+    val canonicalStatus: String = "PERMISSION_DENIED"
+
+    private def toBody(e: Forbidden): ErrorBody = ErrorBody(httpCode, canonicalStatus, e.message, e.details)
+    implicit val encoder: Encoder[Forbidden] = envelopeEncoder(toBody)
+    implicit val decoder: Decoder[Forbidden] = envelopeDecoder(httpCode, Forbidden(_, _))
+    implicit val schema: Schema[Forbidden] = ApiError.schema.as[Forbidden]
+    implicit val loggable: AlwaysSafeLoggable[Forbidden] = f => s"Forbidden: ${f.message}"
   }
 
   /** 503 UNAVAILABLE */
@@ -269,6 +289,38 @@ object ErrorResponseHelpers extends LazySafeLogging {
       jsonBody[ErrorResponse.Unauthorized]
         .description(ErrorText.unauthorizedErrorDescription(possibleReasons: _*))
     }
+
+  def forbiddenError(possibleReasons: String*)(implicit
+    enc: Encoder[ErrorResponse.Forbidden],
+    dec: Decoder[ErrorResponse.Forbidden],
+    sch: Schema[ErrorResponse.Forbidden],
+  ): EndpointOutput[ErrorResponse.Forbidden] =
+    statusCode(StatusCode.Forbidden).and {
+      jsonBody[ErrorResponse.Forbidden]
+        .description(ErrorText.forbiddenErrorDescription(possibleReasons: _*))
+    }
+
+  /** Combined 401/403 output for endpoints where "no valid credentials" and "valid credentials,
+    * missing permission" are both possible outcomes of the same authorization check. Dispatches
+    * on the runtime type of [[ErrorResponse.AuthorizationFailure]] to pick the right status code.
+    */
+  def authorizationFailureError(
+    unauthorizedReasons: Seq[String] = Nil,
+    forbiddenReasons: Seq[String] = Nil,
+  )(implicit
+    unauthorizedE: Encoder[ErrorResponse.Unauthorized],
+    unauthorizedD: Decoder[ErrorResponse.Unauthorized],
+    unauthorizedS: Schema[ErrorResponse.Unauthorized],
+    forbiddenE: Encoder[ErrorResponse.Forbidden],
+    forbiddenD: Decoder[ErrorResponse.Forbidden],
+    forbiddenS: Schema[ErrorResponse.Forbidden],
+  ): EndpointOutput[ErrorResponse.AuthorizationFailure] =
+    oneOf[ErrorResponse.AuthorizationFailure](
+      oneOfVariantValueMatcher(unauthorizedError(unauthorizedReasons: _*)) { case _: ErrorResponse.Unauthorized =>
+        true
+      },
+      oneOfVariantValueMatcher(forbiddenError(forbiddenReasons: _*)) { case _: ErrorResponse.Forbidden => true },
+    )
 }
 
 object ErrorText {
@@ -308,7 +360,16 @@ object ErrorText {
   private val unauthorizedDoc =
     s"""Unauthorized
        |
-       |Permission to access a protected resource not found
+       |No valid credentials were provided (missing, invalid, or expired session/token).
+       |
+       |%s
+       |
+       |""".stripMargin
+
+  private val forbiddenDoc =
+    s"""Forbidden
+       |
+       |Credentials were valid, but the authenticated user lacks a required permission.
        |
        |%s
        |
@@ -334,4 +395,7 @@ object ErrorText {
 
   def unauthorizedErrorDescription(messages: String*): String =
     buildErrorMessage(unauthorizedDoc, messages)
+
+  def forbiddenErrorDescription(messages: String*): String =
+    buildErrorMessage(forbiddenDoc, messages)
 }
