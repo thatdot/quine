@@ -42,6 +42,10 @@ object Packaging extends AutoPlugin {
     case PathList("META-INF", "versions", "9", "OSGI-INF", "MANIFEST.MF") => MergeStrategy.first // from bouncycastle
     case PathList("META-INF", "FastDoubleParser-NOTICE") =>
       MergeStrategy.first // from fasterxml jackson core (and its awssdk shadow)
+    case PathList("META-INF", "FastDoubleParser-LICENSE") =>
+      // awssdk's shaded jackson vendors FastDoubleParser under MIT; jackson-core and
+      // parquet-jackson ship the Apache-2.0 text. Keep both attributions.
+      MergeStrategy.concat
     case PathList("META-INF", "native-image", "org.mongodb", "bson", "native-image.properties") => MergeStrategy.discard
     case PathList("codegen-resources", _) => MergeStrategy.discard
     case PathList(ps @ _*) if ps.last == "module-info.class" => MergeStrategy.discard

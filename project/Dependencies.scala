@@ -1,11 +1,11 @@
 import sbt._
 
 object Dependencies {
-  val amazonKinesisClientV = "3.4.3"
+  val amazonKinesisClientV = "3.5.0"
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.1"
   // On update, check whether nettyOverrideV override is removable
-  val awsSdkV = "2.42.41"
+  val awsSdkV = "2.47.5"
   // On update, check whether netty-nio-client override in quine-serialization is removable
   val amazonGlueV = "1.1.27"
   val betterMonadicForV = "0.3.1"
@@ -57,7 +57,7 @@ object Dependencies {
   // 3.4.3 fixes the native HDFS client CVE-2025-27821 and ships patched commons-lang3 3.18.0
   // (so no commons-lang3 suppression is needed). We pull Hadoop only so parquet4s can read local
   // Parquet files; HDFS and the native client are never exercised.
-  val hadoopV = "3.4.3"
+  val hadoopV = "3.5.0"
   // parquet4s-core pulls aircompressor 2.0.2, which is vulnerable to CVE-2025-67721. Fixed in 2.0.3.
   // Remove this override once parquet4s upgrades the transitive.
   val aircompressorV = "2.0.3"
@@ -143,14 +143,19 @@ object Dependencies {
   // === JVM Override Versions ===
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
-  // Parent: AWS SDK (awsSdkV) via transitive Netty dependency
-  val nettyOverrideV = "4.1.133.Final" // CVE-2026-41417
+  // Parent: AWS SDK (awsSdkV)
+  val jacksonOverride = "2.22.1"
+
+  // Parent: AWS SDK (awsSdkV). The AWS SDK is often slow to update its dependencies, and CVE reports for netty have
+  // been frequent. So although this netty override is currently unnecessary, we'll keep it commented-out in the code.
+//  val nettyOverrideV = "4.1.135.Final"
 
   val jvmDependencyOverrides: Seq[ModuleID] = Seq(
-    "io.netty" % "netty-handler" % nettyOverrideV,
-    "io.netty" % "netty-codec-http" % nettyOverrideV,
-    "io.netty" % "netty-codec-http2" % nettyOverrideV,
-    "io.netty" % "netty-transport-classes-epoll" % nettyOverrideV,
+    "com.fasterxml.jackson.core" % "jackson-databind" % jacksonOverride,
+//    "io.netty" % "netty-handler" % nettyOverrideV,
+//    "io.netty" % "netty-codec-http" % nettyOverrideV,
+//    "io.netty" % "netty-codec-http2" % nettyOverrideV,
+//    "io.netty" % "netty-transport-classes-epoll" % nettyOverrideV,
   )
 
   // === NPM Override Versions ===

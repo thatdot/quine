@@ -160,6 +160,9 @@ lazy val `quine-cassandra-persistor`: Project = project
       // at the sbt-assembly step (because they both have the same package names internally).
       "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % sigv4AuthCassandraPluginV exclude ("com.datastax.oss", "java-driver-core"),
       "software.amazon.awssdk" % "sts" % awsSdkV,
+      // The STS client names Apache5HttpClient explicitly (see KeyspacesPersistor), so depend on it
+      // directly rather than relying on the copy the `sts` artifact happens to pull in.
+      "software.amazon.awssdk" % "apache5-client" % awsSdkV,
       "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test,
     ),
   )
@@ -472,10 +475,10 @@ lazy val `quine`: Project = project
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
       "org.apache.commons" % "commons-csv" % apacheCommonsCsvV,
       "com.github.mjakubowski84" %% "parquet4s-core" % parquet4sCoreV,
-      //  We need both hadoop-client-api and hadoop-client-runtime because parquet4s hardcodes liberal-but-unnecessary
-      //  usage of Hadoop. The alternative is to replace parquet4s with direct ParquetFileReader + PlainParquetConfiguration.
-      //  This would eliminate the Hadoop dependency entirely, but it means reimplementing the record-to-RowParquetRecord
-      //  conversion that parquet4s currently handles.
+      // We need both hadoop-client-api and hadoop-client-runtime because parquet4s declares the Hadoop client as a
+      // _provided_ (not _transitive_) dependency. If we don't want to depend on hadoop, then the alternative is to
+      // replace parquet4s with direct ParquetFileReader + PlainParquetConfiguration. This would mean reimplementing
+      // the record-to-RowParquetRecord conversion that parquet4s currently handles.
       "org.apache.hadoop" % "hadoop-client-api" % hadoopV,
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopV
       exclude ("org.apache.logging.log4j", "log4j-slf4j2-impl")

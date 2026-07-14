@@ -26,6 +26,7 @@ import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{literal, selectFro
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
 import shapeless.syntax.std.tuple._
 import software.amazon.awssdk.auth.credentials.{AwsCredentialsProvider, DefaultCredentialsProvider}
+import software.amazon.awssdk.http.apache5.Apache5HttpClient
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.regions.Region._
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain
@@ -128,7 +129,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
         DefaultCredentialsProvider.builder().build()
       case Some(roleArn) =>
         val sessionName = "quine-keyspaces"
-        val stsClient = StsClient.builder.region(region).build
+        val stsClient = StsClient.builder.region(region).httpClientBuilder(Apache5HttpClient.builder).build
         val assumeRoleRequest = AssumeRoleRequest.builder.roleArn(roleArn).roleSessionName(sessionName).build
         StsAssumeRoleCredentialsProvider.builder
           .stsClient(stsClient)
