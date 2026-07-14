@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.config.errors
 
 import cats.data.NonEmptyList
-import pureconfig.error.{ConfigReaderFailure, ConfigReaderFailures, ConvertFailure, FailureReason}
+import pureconfig.error.{ConfigReaderFailure, ConfigReaderFailures, ConvertFailure, FailureReason, UnknownKey}
 
 /** Configuration for error message formatting */
 final case class ErrorFormatterConfig(
@@ -121,11 +121,13 @@ object ConfigError {
   final case class UnknownConfigKey(path: String, key: String) extends ConfigError {
     override def format(config: ErrorFormatterConfig, context: StartupContext): String = {
       val fullPath = if (path.isEmpty) key else s"$path.$key"
+      val location = if (path.isEmpty) "at the configuration root" else s"inside the '$path' block"
 
       s"""Configuration error: Unknown configuration key '$fullPath'.
          |
-         |This key is not recognized by ${config.productName}.
-         |Check for typos or consult the documentation.
+         |'$key' is not recognized by ${config.productName} $location.
+         |This may be a typo, or a key intended for a different product or edition.
+         |Check the documentation for valid configuration keys.
          |${contextGuidance(context, config)}""".stripMargin
     }
   }
@@ -192,6 +194,16 @@ class ConfigErrorFormatter(
 
   private def classifyFailure(failure: ConfigReaderFailure): ConfigError =
     failure match {
+      case ConvertFailure(UnknownKey(key), _, path) =>
+        // pureconfig's path is the full dotted path to the unknown key
+        // (e.g. "quine.dumpConfig"); the leaf already matches `key`, so
+        // strip it off to produce the parent block path.
+        val parentPath = path.lastIndexOf('.') match {
+          case -1 => ""
+          case i => path.substring(0, i)
+        }
+        ConfigError.UnknownConfigKey(parentPath, key)
+
       case ConvertFailure(reason, _, path) if path.isEmpty && isKeyNotFound(reason, config.expectedRootKey) =>
         ConfigError.MissingRootBlock
 
@@ -230,10 +242,6 @@ object ConfigErrorFormatter {
       } yield ConfigError.Invalid(path, found, Set(expected))
 
       result.getOrElse(ConfigError.UnclassifiedError(desc, None))
-    } else if (desc.contains("Unknown key")) {
-      extractBetween(desc, "Unknown key '", "'")
-        .map(key => ConfigError.UnknownConfigKey(path, key))
-        .getOrElse(ConfigError.UnclassifiedError(desc, None))
     } else {
       ConfigError.UnclassifiedError(desc, None)
     }

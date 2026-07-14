@@ -4,9 +4,11 @@ import org.scalacheck.Gen
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
+import pureconfig.ConfigSource
 import pureconfig.error._
 
 import com.thatdot.quine.ScalaPrimitiveGenerators
+import com.thatdot.quine.app.config.QuineConfig
 
 class ConfigErrorFormatterSpec
     extends AnyWordSpec
@@ -127,6 +129,7 @@ class ConfigErrorFormatterSpec
           val message = formatter.messageFor(failures)
 
           val fullPath = if (path.isEmpty) unknownKey else s"$path.$unknownKey"
+          val location = if (path.isEmpty) "at the configuration root" else s"inside the '$path' block"
           val contextGuidance = context.configFile match {
             case Some(file) => s"\nConfiguration file: $file\nSee: ${config.docsUrl}"
             case None => s"\nSee: ${config.docsUrl}"
@@ -135,10 +138,39 @@ class ConfigErrorFormatterSpec
           message shouldBe
           s"""Configuration error: Unknown configuration key '$fullPath'.
              |
-             |This key is not recognized by ${config.productName}.
-             |Check for typos or consult the documentation.
+             |'$unknownKey' is not recognized by ${config.productName} $location.
+             |This may be a typo, or a key intended for a different product or edition.
+             |Check the documentation for valid configuration keys.
              |$contextGuidance""".stripMargin
       }
+    }
+
+    "name the unknown key when formatting a real pureconfig failure" in {
+      // Regression: pureconfig's UnknownKey.description is just "Unknown key.",
+      // not "Unknown key '<name>'". The formatter previously tried to extract
+      // the key by parsing that description and fell through to
+      // UnclassifiedError("Unknown key.", None), printing a bare "Unknown key."
+      // with no key, no path, no useful information.
+      val failures = ConfigSource
+        .string("quine { dumpConfig = yes }")
+        .load[QuineConfig]
+        .swap
+        .getOrElse(fail("Expected pureconfig to reject the unknown key"))
+
+      val config = ErrorFormatterConfig(
+        expectedRootKey = "quine",
+        productName = "Quine",
+        requiredFields = Set.empty,
+        docsUrl = "https://quine.io/docs/",
+      )
+      val formatter = new ConfigErrorFormatter(config, StartupContext(None, None))
+      val message = formatter.messageFor(failures)
+
+      message should include("Unknown configuration key 'quine.dumpConfig'")
+      message should include("'dumpConfig' is not recognized")
+      message should include("inside the 'quine' block")
+      // Guard the regression: the bare description must never be the whole message body.
+      message should not startWith "Unknown key."
     }
 
     "handle unclassified errors by preserving description" in {
@@ -382,8 +414,15 @@ protected trait ConfigErrorFormatterHelpers {
   ): ConvertFailure =
     createConvertFailure(s"Expected type $expected. found $found at path", path)
 
-  def createUnknownKeyFailure(key: String, path: String): ConvertFailure =
-    createConvertFailure(s"Unknown key '$key'", path)
+  /** Builds a real pureconfig [[UnknownKey]] failure. `path` is the parent
+    * block (e.g. "quine"); the full failure path becomes "$path.$key", matching
+    * what pureconfig produces when a `ProductHint(allowUnknownKeys = false)`
+    * case class encounters an unknown key.
+    */
+  def createUnknownKeyFailure(key: String, path: String): ConvertFailure = {
+    val fullPath = if (path.isEmpty) key else s"$path.$key"
+    ConvertFailure(UnknownKey(key), None, fullPath)
+  }
 
   def createGenericFailure(description: String): ConfigReaderFailure =
     createConvertFailure(description, path = "")
