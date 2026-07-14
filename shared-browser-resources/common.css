@@ -362,6 +362,12 @@ pre.wrap {
   align-items: center;
   position: relative;
 }
+/* The selector's default color suits the Explorer's dark query bar. On the
+   Streams page it sits on a light header, so re-color it to the normal body
+   text color there (the hover/focus states already use body color). */
+.streams-namespace-selector .graph-selector-button {
+  color: var(--cui-body-color);
+}
 .graph-selector-button {
   display: flex;
   align-items: center;

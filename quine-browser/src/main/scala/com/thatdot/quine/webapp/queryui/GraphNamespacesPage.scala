@@ -111,8 +111,11 @@ object GraphNamespacesPage {
       ),
     )
 
+    // The default graph cannot be deleted, so never offer the action for it.
+    val defaultNamespace = NamespaceParameter.defaultNamespaceParameter.namespaceId
+
     def rowActions(ns: String, selected: Option[String], pendingDelete: Option[String]): Node =
-      if (!canDelete || selected.contains(ns)) emptyNode
+      if (!canDelete || selected.contains(ns) || ns.equalsIgnoreCase(defaultNamespace)) emptyNode
       else
         pendingDelete match {
           case Some(pending) if pending == ns =>
@@ -208,11 +211,10 @@ object GraphNamespacesPage {
             .combineWith(searchVar.signal, selectedNamespace, pendingDeleteVar.signal)
             .map { case (namespaces, search, selected, pendingDelete) =>
               val needle = search.trim.toLowerCase
-              val defaultNs = NamespaceParameter.defaultNamespaceParameter.namespaceId
               val filtered =
                 (if (needle.isEmpty) namespaces
                  else namespaces.filter(_.toLowerCase.contains(needle)))
-                  .sortBy(n => (!n.equalsIgnoreCase(defaultNs), n.toLowerCase))
+                  .sortBy(n => (!n.equalsIgnoreCase(defaultNamespace), n.toLowerCase))
               if (filtered.isEmpty)
                 div(cls := Styles.managerListEmpty, "No graphs match your search.")
               else
