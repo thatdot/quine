@@ -41,7 +41,7 @@ object Dependencies {
   // On update, keep lz4JavaV in sync
   val kafkaClientsV = "3.9.2"
   val kindProjectorV = "0.13.4"
-  val logbackV = "1.5.32"
+  val logbackV = "1.5.38"
   val laminarV = "17.2.1"
   val waypointV = "10.0.0-M7"
   // Keep in sync with the version kafka-clients (kafkaClientsV) depends on
