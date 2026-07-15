@@ -406,7 +406,6 @@ lazy val `quine-browser`: Project = project
         "lodash" -> str(lodashV),
         "react-router" -> str(reactRouterV),
         "react-router-dom" -> str(reactRouterV),
-        "@remix-run/router" -> str(remixRunRouterV),
         "minimatch" -> str(minimatchV),
         "yaml" -> str(yamlV),
         "js-cookie" -> str(jsCookieV),

@@ -165,11 +165,10 @@ object Dependencies {
   val lodashV = "4.18.1" // CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg), CVE-2026-4800
 
   // Parent: @stoplight/elements (stoplightElementsV) via react-router-dom
-  val reactRouterV = "6.30.3" // CVE-2025-68470 & CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
-  val remixRunRouterV = "1.23.2" // CVE-2026-22029 (GHSA-2w69-qvjg-hvjx)
+  val reactRouterV = "6.30.4" // CVE-2026-40181
 
   // Parents: @stoplight/elements (stoplightElementsV), glob.
-  val minimatchV = "5.1.8" // CVE-2026-27903 & CVE-2026-27904
+  val minimatchV = "5.1.9" // CVE-2026-27903 & CVE-2026-27904
 
   // Parent: @stoplight/elements (stoplightElementsV) via @stoplight/yaml and openapi3-ts
   val yamlV = "1.10.3" // CVE-2026-33532 (GHSA-48c2-rrv3-qjmp)
