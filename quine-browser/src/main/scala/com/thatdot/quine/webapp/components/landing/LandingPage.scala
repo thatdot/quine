@@ -105,7 +105,10 @@ object LandingPage {
               div(
                 cls := "card h-100",
                 styleAttr := "background:#f4f5fa;border:1px solid rgba(10,41,91,0.1);border-radius:14px;padding:6px 8px;box-shadow:0 6px 22px rgba(10,41,91,0.06);",
-                BackpressureDiagram(backpressureSignal, clusterStatusSignal),
+                // Only pass cluster status to the diagram when the user may read it. The signal can
+                // be populated with a trimmed, member-positions-only status for ingest-capable roles
+                // (to drive the Streams host selector); those roles must not see cluster health here.
+                BackpressureDiagram(backpressureSignal, if (canSeeClusterHealth) clusterStatusSignal else None),
               ),
             ),
           )

@@ -84,12 +84,20 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     */
   protected def canReadTapQueries: Boolean = true
 
-  /** Whether the signed-in user may GET the cluster status. When false the status feed stays
-    * empty so roles lacking the permission never 403 against the status endpoint — this also
-    * empties the derived [[memberIndicesSignal]], which the Streams page binds. OSS has no auth,
-    * so it is always readable; [[EnterpriseDataService]] overrides this from the user's permissions.
+  /** Whether the signed-in user may GET the full cluster status (`ClusterStatusRead`). Gates the
+    * landing page's cluster-health visuals. OSS has no auth, so it is always readable;
+    * [[EnterpriseDataService]] overrides this from the user's permissions.
     */
   protected def canReadClusterStatus: Boolean = true
+
+  /** Whether the signed-in user may read cluster member positions — `ClusterStatusRead` (full
+    * status) or `IngestRead` (a trimmed, positions-only status). When false the status feed stays
+    * empty so roles lacking both never 403 against the status endpoint — this also empties the
+    * derived [[memberIndicesSignal]], which the Streams page binds for its host selector and
+    * per-ingest host column. OSS has no auth, so it is always readable; [[EnterpriseDataService]]
+    * overrides this from the user's permissions.
+    */
+  protected def canReadClusterMembers: Boolean = true
 
   lazy val standingQueryDispatch: Observer[StandingQueryService.Command] = Observer {
     case StandingQueryService.RefreshStandingQueries => standingQueriesRefresh.emit(())
@@ -152,7 +160,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       }.distinct
 
   lazy val clusterStatusSignal: Signal[Pot[V2ServiceStatus]] =
-    if (!canReadClusterStatus) Val(Pot.Empty)
+    if (!canReadClusterStatus && !canReadClusterMembers) Val(Pot.Empty)
     else QuineApiClient.clusterStatus(clientRoutes).potSignal
 
   private val metricsFeeds = mutable.Map.empty[Option[Int], Signal[Pot[MetricsReport]]]
