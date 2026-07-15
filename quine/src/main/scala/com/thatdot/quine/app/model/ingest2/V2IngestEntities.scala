@@ -2,15 +2,18 @@ package com.thatdot.quine.app.model.ingest2
 
 import java.time.Instant
 
+import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
-import sttp.tapir.Schema
-import sttp.tapir.Schema.annotations.{description, title}
+import sttp.tapir.Schema.annotations.{description, title, validate}
+import sttp.tapir.{Schema, ValidationResult, Validator}
 
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
+import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, finiteDurationEncoder}
+import com.thatdot.api.v2.schema.ThirdPartySchemas.scala.finiteDurationSchema
 import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.OnRecordErrorHandler
@@ -285,8 +288,27 @@ object V2IngestEntities {
   }
 
   @title("Retry Stream Error Handler")
-  @description("Retry the stream on failure.")
-  case class RetryStreamError(retryCount: Int) extends OnStreamErrorHandler
+  @description(
+    "Retry the stream on failures classified as transient. Failures that are not classified " +
+    "as transient still fail the ingest permanently, regardless of retryCount.",
+  )
+  case class RetryStreamError(
+    @validate(Validator.min(0))
+    retryCount: Int,
+    @validate(RetryStreamError.positiveDuration)
+    within: FiniteDuration = 31.seconds,
+    @validate(RetryStreamError.positiveDuration)
+    minBackoff: FiniteDuration = 10.seconds,
+    @validate(RetryStreamError.positiveDuration)
+    maxBackoff: FiniteDuration = 10.seconds,
+  ) extends OnStreamErrorHandler
+
+  object RetryStreamError {
+    val positiveDuration: Validator[FiniteDuration] =
+      Validator.custom(d =>
+        if (d > Duration.Zero) ValidationResult.Valid else ValidationResult.Invalid("must be positive"),
+      )
+  }
 
   @title("Log Stream Error Handler")
   @description("If the stream fails log a message but do not retry.")

@@ -575,6 +575,20 @@ class V2IngestEntitiesCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
     }
   }
 
+  describe("OnStreamErrorHandler codec") {
+    it("should decode persisted RetryStreamError missing the restart-policy fields, using their defaults") {
+      import scala.concurrent.duration.DurationInt
+
+      import io.circe.parser.parse
+
+      // The persisted shape written by releases where RetryStreamError only had retryCount.
+      val legacyJson = parse("""{"type": "RetryStreamError", "retryCount": 3}""").toOption.get
+      legacyJson.as[OnStreamErrorHandler] shouldBe Right(
+        RetryStreamError(retryCount = 3, within = 31.seconds, minBackoff = 10.seconds, maxBackoff = 10.seconds),
+      )
+    }
+  }
+
   describe("QuineIngestStreamWithStatus codec") {
     it("should encode and decode successfully preserving status") {
       forAll { (ingest: QuineIngestStreamWithStatus) =>

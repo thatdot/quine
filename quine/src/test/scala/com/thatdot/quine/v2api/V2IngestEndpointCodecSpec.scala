@@ -81,6 +81,44 @@ class V2IngestEndpointCodecSpec extends AnyFunSpec with Matchers with ScalaCheck
         json.hcursor.downField("type").as[String] shouldBe Right(expectedType)
       }
     }
+
+    it("should decode RetryStreamError missing the restart-policy fields, using their defaults") {
+      import scala.concurrent.duration.DurationInt
+
+      import io.circe.parser.parse
+
+      // The pre-existing wire/persisted shape, before within/minBackoff/maxBackoff were added.
+      val legacyJson = parse("""{"type": "RetryStreamError", "retryCount": 3}""").toOption.get
+      legacyJson.as[OnStreamErrorHandler] shouldBe Right(
+        RetryStreamError(retryCount = 3, within = 31.seconds, minBackoff = 10.seconds, maxBackoff = 10.seconds),
+      )
+    }
+
+    it("should reject a negative retryCount") {
+      OnStreamErrorHandler.schema.applyValidation(RetryStreamError(retryCount = -1)) should not be empty
+    }
+
+    it("should allow a zero retryCount (means no retries)") {
+      OnStreamErrorHandler.schema.applyValidation(RetryStreamError(retryCount = 0)) shouldBe empty
+    }
+
+    it("should reject non-positive within/minBackoff/maxBackoff") {
+      import scala.concurrent.duration.Duration
+
+      OnStreamErrorHandler.schema.applyValidation(
+        RetryStreamError(retryCount = 3, within = Duration.Zero),
+      ) should not be empty
+      OnStreamErrorHandler.schema.applyValidation(
+        RetryStreamError(retryCount = 3, minBackoff = Duration.Zero),
+      ) should not be empty
+      OnStreamErrorHandler.schema.applyValidation(
+        RetryStreamError(retryCount = 3, maxBackoff = Duration.Zero),
+      ) should not be empty
+    }
+
+    it("should allow the existing defaults") {
+      OnStreamErrorHandler.schema.applyValidation(RetryStreamError(retryCount = 3)) shouldBe empty
+    }
   }
 
   describe("IngestSource codec") {

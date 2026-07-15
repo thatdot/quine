@@ -230,22 +230,19 @@ abstract class DecodedSource(val meter: IngestMeter) {
           .map(_ => token)
           .watchTermination() {
             case (((a: ShutdownSwitch, b: Future[ValveSwitch]), gaugeState: PressureGauge.State), c: Future[Done]) =>
-              c.onComplete { _ =>
-                onTermination()
-                registry.deregisterByPrefix("ingest", ns, name)
-              }
+              // Registration is a `put`, so a rematerialization after restart replaces the
+              // previous instance's gauge state; deregistration happens on terminal
+              // termination below, outside the RestartSource wrapper.
               registry.register(gaugeKey("pre-graph-write"), gaugeState)
               b.map(v => ControlSwitches(a, v, c))
           }
-          .mapMaterializedValue(c => setControl(c, initialSwitchMode, registerTerminationHooks))
+          .mapMaterializedValue(c => setControl(c, initialSwitchMode))
           .named(name)
 
-      onStreamErrorHandler match {
-        case RetryStreamError(retryCount) =>
+      val restartableSrc = onStreamErrorHandler match {
+        case RetryStreamError(retryCount, within, minBackoff, maxBackoff) =>
           RestartSource.onFailuresWithBackoff(
-            // TODO: Actually lift these
-            // described in IngestSrcDef or expose these settings at the api level.
-            restartSettings.withMaxRestarts(retryCount, restartSettings.maxRestartsWithin),
+            QuineIngestSource.restartSettings(retryCount, within, minBackoff, maxBackoff),
           ) { () =>
             src.mapMaterializedValue(_ => NotUsed)
           }
@@ -253,6 +250,18 @@ abstract class DecodedSource(val meter: IngestMeter) {
           src.mapMaterializedValue(_ => NotUsed)
       }
 
+      // Terminal-only hooks: attached outside the RestartSource wrapper so a restartable
+      // failure doesn't freeze metrics, close shared source clients (onTermination closes
+      // e.g. the Kinesis/SQS client, which restarts still need), or tear down gauges the
+      // restarted instance re-registered.
+      restartableSrc.watchTermination() { (mat, done) =>
+        registerTerminationHooks(done)
+        done.onComplete { _ =>
+          onTermination()
+          registry.deregisterByPrefix("ingest", ns, name)
+        }
+        mat
+      }
     }
 
   }

@@ -1,8 +1,9 @@
 package com.thatdot.quine.app.model.ingest
 
 import java.nio.charset.{Charset, StandardCharsets}
+import java.util.concurrent.TimeoutException
 
-import scala.concurrent.duration.{Duration, DurationInt}
+import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
@@ -11,7 +12,15 @@ import org.apache.pekko.stream.connectors.s3.scaladsl.S3
 import org.apache.pekko.stream.connectors.s3.{ObjectMetadata, S3Attributes, S3Ext, S3Settings}
 import org.apache.pekko.stream.connectors.text.scaladsl.TextFlow
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, Source, StreamConverters}
-import org.apache.pekko.stream.{KillSwitches, RestartSettings}
+import org.apache.pekko.stream.{
+  InvalidPartnerActorException,
+  InvalidSequenceNumberException,
+  KillSwitches,
+  RemoteStreamRefActorTerminatedException,
+  RestartSettings,
+  StreamRefSubscriptionTimeoutException,
+  TargetRefNotInitializedYetException,
+}
 import org.apache.pekko.util.ByteString
 import org.apache.pekko.{Done, NotUsed}
 
@@ -27,6 +36,7 @@ import com.thatdot.quine.app.model.ingest.serialization._
 import com.thatdot.quine.app.model.ingest.util.AwsOps
 import com.thatdot.quine.app.model.ingest2.sources.FileSource
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
+import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
 import com.thatdot.quine.app.{ControlSwitches, PekkoKillSwitch, QuineAppIngestControl, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.{Value => CypherValue}
@@ -36,7 +46,7 @@ import com.thatdot.quine.routes._
 import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
-import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
+import com.thatdot.quine.util.{AnyError, ExternalError, SwitchMode, Valve, ValveSwitch}
 
 /** This represents the minimum functionality that is used to insert values into a CypherOps graph. */
 trait QuineIngestSource extends LazySafeLogging {
@@ -70,33 +80,34 @@ trait QuineIngestSource extends LazySafeLogging {
     }
 
   val restartSettings: RestartSettings =
-    RestartSettings(minBackoff = 10.seconds, maxBackoff = 10.seconds, 2.0)
-      .withMaxRestarts(3, 31.seconds)
-      .withRestartOn {
-        case _: KafkaException => true
-        case _: SdkException => true
-        case _ => false
-      }
+    QuineIngestSource.restartSettings(
+      maxRestarts = 3,
+      within = 31.seconds,
+      minBackoff = 10.seconds,
+      maxBackoff = 10.seconds,
+    )
 
-  /** Update the ingest's control handle and register termination hooks. This may be called multiple times if the
-    * initial stream construction fails (up to the `restartSettings` defined above), and will be called from different
-    * threads.
+  /** Update the ingest's control handle. This may be called multiple times if the stream is
+    * rematerialized (initial construction failure or a restart under the `restartSettings`
+    * defined above), and will be called from different threads. Termination hooks are NOT
+    * registered here: a restartable failure completes each materialization's termination
+    * signal, so hooks attached per-materialization would fire on every restart. They are
+    * instead attached outside the RestartSource wrapper in each `stream` implementation,
+    * where termination is terminal.
     */
   protected def setControl(
     control: Future[QuineAppIngestControl],
     desiredSwitchMode: SwitchMode,
-    registerTerminationHooks: Future[Done] => Unit,
   ): Unit = {
 
     val streamMaterializerEc = graph.materializer.executionContext
 
-    // Ensure valve is opened if required and termination hooks are registered
+    // Ensure valve is opened if required
     control.foreach(c =>
       c.valveHandle
         .flip(desiredSwitchMode)
         .recover { case _: org.apache.pekko.stream.StreamDetachedException => false }(streamMaterializerEc),
     )(graph.nodeDispatcherEC)
-    control.map(c => registerTerminationHooks(c.termSignal))(graph.nodeDispatcherEC)
 
     // Set the appropriate ref and deferred ingest control
     control.onComplete { result =>
@@ -114,6 +125,98 @@ trait QuineIngestSource extends LazySafeLogging {
 
   def getControl: Future[QuineAppIngestControl] =
     ingestControl.getOrElse(controlPromise.future)
+}
+
+object QuineIngestSource {
+
+  /** Restart policy for an ingest stream: up to `maxRestarts` restarts within any `within`
+    * window (the count resets once the stream has run for `within` without failing), with
+    * exponential backoff growing from `minBackoff` to `maxBackoff`, restarting only on
+    * failures classified transient by [[isRestartableIngestFailure]].
+    *
+    * `maxRestarts`/`within`/`minBackoff`/`maxBackoff` are validated at the tapir API boundary,
+    * but recipes reach this via plain circe decoding (no tapir validation), so out-of-range
+    * values are clamped here too: pekko's restart-budget check is exact equality
+    * (`restartCount == maxRestarts`), so a negative `maxRestarts` never trips it, and a
+    * non-positive `within` makes the reset deadline always overdue — both cause infinite
+    * restarts rather than the intended bounded retry.
+    */
+  def restartSettings(
+    maxRestarts: Int,
+    within: FiniteDuration,
+    minBackoff: FiniteDuration,
+    maxBackoff: FiniteDuration,
+  ): RestartSettings = {
+    val safeMaxRestarts = maxRestarts.max(0)
+    val safeMinBackoff = if (minBackoff > Duration.Zero) minBackoff else 1.second
+    val safeMaxBackoff = if (maxBackoff > Duration.Zero) maxBackoff else safeMinBackoff
+    val safeWithin = if (within > Duration.Zero) within else safeMinBackoff
+    RestartSettings(safeMinBackoff, safeMaxBackoff, randomFactor = 2.0)
+      .withMaxRestarts(safeMaxRestarts, safeWithin)
+      .withRestartOn(isRestartableIngestFailure)
+  }
+
+  /** Exception classes considered transient for ingest purposes: the underlying condition
+    * (broker outage, AWS throttling, ask timeout, remote member death mid-stream) can clear on
+    * its own, so the stream is worth rematerializing under `restartSettings`.
+    */
+  private val restartableClasses: Seq[Class[_ <: Throwable]] = Seq(
+    classOf[KafkaException],
+    classOf[SdkException],
+    // Covers pekko-kafka's CommitTimeoutException and pekko's AskTimeoutException (both are
+    // j.u.c.TimeoutExceptions, not KafkaExceptions): transient broker/peer slowness.
+    classOf[TimeoutException],
+    // Stream-ref plumbing failures when a remote member dies mid-stream; the cluster recovers
+    // on its own but without a restart the ingest stays failed forever. These have no common
+    // ancestor, so they are enumerated.
+    classOf[RemoteStreamRefActorTerminatedException],
+    classOf[StreamRefSubscriptionTimeoutException],
+    classOf[InvalidPartnerActorException],
+    classOf[InvalidSequenceNumberException],
+    classOf[TargetRefNotInitializedYetException],
+  )
+
+  /** Pekko's stream-ref stages also fail with bare [[IllegalStateException]]s (e.g.
+    * "Got unexpected OnSubscribeHandshake(...) in state UpstreamTerminated(...)" from
+    * `SourceRefStageImpl.receiveRemoteMessage`) when a remote member dies mid-stream.
+    * `IllegalStateException` is far too broad to whitelist by class, so recognize these by the
+    * throwing frame instead. This also works for failures relayed from another member as
+    * [[AnyError.GenericError]], which preserves the original stack trace.
+    */
+  private def isStreamRefPlumbingFailure(e: Throwable): Boolean =
+    e.getStackTrace.headOption.exists(_.getClassName.startsWith("org.apache.pekko.stream.impl.streamref."))
+
+  /** For failures that crossed a cluster member boundary, only the original class *name*
+    * survives (see [[AnyError.GenericError]]). Re-resolve it and apply the same class
+    * whitelist, honoring subtyping.
+    */
+  private def isRestartableClassName(className: String): Boolean =
+    Try(Class.forName(className, false, getClass.getClassLoader)).toOption
+      .exists(cls => restartableClasses.exists(_.isAssignableFrom(cls)))
+
+  /** Should an ingest stream failing with `e` be restarted (bounded by `restartSettings`)
+    * rather than left permanently failed?
+    *
+    * Failures originating on another cluster member arrive wrapped: as an [[ExternalError]]
+    * (typed, carrying the original) or as an [[AnyError.GenericError]] (original class reduced
+    * to a name). Both are unwrapped before classification so that a remote failure restarts
+    * whenever the same failure occurring locally would.
+    */
+  def isRestartableIngestFailure(e: Throwable): Boolean = e match {
+    // Transient graph/cluster conditions (graph not ready, shard unavailable, relayAsk
+    // timeout, persistor hiccup, typed stream-ref failures) — the same set the ingest query
+    // itself retries on.
+    case RetriableQueryFailure(_) => true
+    case wrapped: ExternalError => isRestartableIngestFailure(wrapped.ofError)
+    case relayed: AnyError.GenericError =>
+      isRestartableClassName(relayed.exceptionType) ||
+        isStreamRefPlumbingFailure(relayed) ||
+        relayed.cause.exists(isRestartableIngestFailure)
+    case _ =>
+      restartableClasses.exists(_.isInstance(e)) ||
+        isStreamRefPlumbingFailure(e) ||
+        Option(e.getCause).exists(isRestartableIngestFailure)
+  }
 }
 
 /** Definition of an ingest that performs the actions
@@ -213,19 +316,26 @@ abstract class IngestSrcDef(
     intoNamespace: NamespaceId,
     registerTerminationHooks: Future[Done] => Unit,
   ): Source[IngestSrcExecToken, NotUsed] =
-    RestartSource.onFailuresWithBackoff(restartSettings) { () =>
-      sourceWithShutdown()
-        .viaMat(Valve(initialSwitchMode))(Keep.both)
-        .via(throttle(graph, maxPerSecond))
-        .via(writeToGraph(intoNamespace))
-        .via(ack)
-        .map(_ => ingestToken)
-        .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
-          b.map(v => ControlSwitches(a, v, c))(ExecutionContext.parasitic)
-        }
-        .mapMaterializedValue(c => setControl(c, initialSwitchMode, registerTerminationHooks))
-        .named(name)
-    }
+    RestartSource
+      .onFailuresWithBackoff(restartSettings) { () =>
+        sourceWithShutdown()
+          .viaMat(Valve(initialSwitchMode))(Keep.both)
+          .via(throttle(graph, maxPerSecond))
+          .via(writeToGraph(intoNamespace))
+          .via(ack)
+          .map(_ => ingestToken)
+          .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
+            b.map(v => ControlSwitches(a, v, c))(ExecutionContext.parasitic)
+          }
+          .mapMaterializedValue(c => setControl(c, initialSwitchMode))
+          .named(name)
+      }
+      // Outside the RestartSource wrapper so hooks fire only on terminal completion/failure,
+      // not on each restartable failure (which would freeze the ingest's metrics).
+      .watchTermination() { (mat, done) =>
+        registerTerminationHooks(done)
+        mat
+      }
 
 }
 

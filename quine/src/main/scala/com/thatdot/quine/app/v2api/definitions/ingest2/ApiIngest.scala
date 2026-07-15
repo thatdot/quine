@@ -12,8 +12,8 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationEncoder,
 }
 import io.circe.{Decoder, Encoder}
-import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
-import sttp.tapir.{Schema, Validator}
+import sttp.tapir.Schema.annotations.{default, description, encodedExample, title, validate}
+import sttp.tapir.{Schema, ValidationResult, Validator}
 
 import com.thatdot.api.codec.SecretCodecs
 import com.thatdot.api.codec.SecretCodecs._
@@ -1462,8 +1462,40 @@ object ApiIngest {
   sealed trait OnStreamErrorHandler
 
   @title("Retry Stream Error Handler")
-  @description("Retry the stream on failure")
-  case class RetryStreamError(retryCount: Int) extends OnStreamErrorHandler
+  @description(
+    "Retry the stream on failures classified as transient. Failures that are not classified " +
+    "as transient still fail the ingest permanently, regardless of retryCount",
+  )
+  case class RetryStreamError(
+    @description(
+      """Maximum number of restarts allowed within the `within` window before the ingest fails
+        |permanently. The count resets once the stream has run for `within` without failing.""".asOneLine,
+    )
+    @validate(Validator.min(0))
+    retryCount: Int,
+    @description("Window in which `retryCount` restarts are allowed.")
+    @encodedExample("31s")
+    @validate(RetryStreamError.positiveDuration)
+    within: FiniteDuration = 31.seconds,
+    @description("Minimum backoff before restarting the stream.")
+    @encodedExample("10s")
+    @validate(RetryStreamError.positiveDuration)
+    minBackoff: FiniteDuration = 10.seconds,
+    @description(
+      "Maximum backoff before restarting the stream; the delay grows exponentially from `minBackoff`. " +
+      "The actual delay includes random jitter, so it can exceed maxBackoff by up to a factor of ~3x.",
+    )
+    @encodedExample("10s")
+    @validate(RetryStreamError.positiveDuration)
+    maxBackoff: FiniteDuration = 10.seconds,
+  ) extends OnStreamErrorHandler
+
+  object RetryStreamError {
+    val positiveDuration: Validator[FiniteDuration] =
+      Validator.custom(d =>
+        if (d > Duration.Zero) ValidationResult.Valid else ValidationResult.Invalid("must be positive"),
+      )
+  }
 
   @title("Log Stream Error Handler")
   @description("If the stream fails log a message but do not retry.")

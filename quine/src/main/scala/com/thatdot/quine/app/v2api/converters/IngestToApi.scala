@@ -477,7 +477,8 @@ object IngestToApi {
   }
 
   def apply(handler: Ingest.OnStreamErrorHandler): Api.OnStreamErrorHandler = handler match {
-    case Ingest.RetryStreamError(retryCount) => Api.RetryStreamError(retryCount)
+    case Ingest.RetryStreamError(retryCount, within, minBackoff, maxBackoff) =>
+      Api.RetryStreamError(retryCount, within, minBackoff, maxBackoff)
     case Ingest.LogStreamError => Api.LogStreamError
   }
 

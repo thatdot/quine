@@ -1,5 +1,7 @@
 package com.thatdot.quine.v2api
 
+import scala.concurrent.duration.DurationInt
+
 import org.scalacheck.{Arbitrary, Gen}
 
 import com.thatdot.api.v2.ResourceNameGenerators
@@ -46,7 +48,12 @@ object V2IngestEndpointGenerators {
 
     val onStreamErrorHandler: Gen[OnStreamErrorHandler] = Gen.oneOf(
       Gen.const(LogStreamError),
-      Gen.chooseNum(1, 5).map(RetryStreamError),
+      for {
+        retryCount <- Gen.chooseNum(1, 5)
+        within <- Gen.chooseNum(1, 600).map(_.seconds)
+        minBackoff <- Gen.chooseNum(1, 60).map(_.seconds)
+        maxBackoff <- Gen.chooseNum(60, 600).map(_.seconds)
+      } yield RetryStreamError(retryCount, within, minBackoff, maxBackoff),
     )
 
     val quineIngestConfiguration: Gen[Oss.QuineIngestConfiguration] = for {
