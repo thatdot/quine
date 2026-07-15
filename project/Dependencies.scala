@@ -17,7 +17,7 @@ object Dependencies {
   val fontsourceInterV = "5.2.8"
   val fontsourceJetBrainsMonoV = "5.2.8"
   val caffeineV = "3.2.4"
-  val cassandraClientV = "4.19.2"
+  val cassandraClientV = "4.19.3"
   val catsV = "2.13.0"
   val catsEffectV = "3.7.0"
   val circeYamlV = "0.16.1"
