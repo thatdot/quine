@@ -2,6 +2,7 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.{ExecutionContext, Future}
 
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
@@ -14,6 +15,7 @@ import sttp.tapir.{Endpoint, Schema, emptyOutputAs, statusCode}
 
 import com.thatdot.api.v2.ErrorResponse.{ServerError, ServiceUnavailable}
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
+import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.instantSchema
 import com.thatdot.common.quineid.QuineId
@@ -420,8 +422,10 @@ object V2AdministrationEndpointEntities {
     @description("Number of in-memory nodes past which shards will not load in new nodes.") hardLimit: Int,
   )
   object TShardInMemoryLimit {
-    implicit val encoder: Encoder[TShardInMemoryLimit] = deriveEncoder
-    implicit val decoder: Decoder[TShardInMemoryLimit] = deriveDecoder
+    // This type is the body of the `PATCH shardSizeLimits` request, so its decoder must use the
+    // shared strict config to reject unknown/misspelled fields rather than silently ignoring them.
+    implicit val encoder: Encoder[TShardInMemoryLimit] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[TShardInMemoryLimit] = deriveConfiguredDecoder
   }
 
   private val genCounter = Generic[Counter]

@@ -108,5 +108,14 @@ class V2QuineAdministrationEndpointCodecSpec extends AnyFunSpec with Matchers wi
         json.hcursor.downField("hardLimit").as[Int] shouldBe Right(limit.hardLimit)
       }
     }
+
+    // TShardInMemoryLimit is the body of the `PATCH shardSizeLimits` request, so it must decode
+    // strictly and reject unknown/misspelled fields rather than silently ignoring them.
+    it("should reject unknown fields when decoding") {
+      forAll { (limit: TShardInMemoryLimit) =>
+        val withUnknown = limit.asJson.mapObject(_.add("hartLimit", 5.asJson))
+        withUnknown.as[TShardInMemoryLimit] shouldBe a[Left[_, _]]
+      }
+    }
   }
 }

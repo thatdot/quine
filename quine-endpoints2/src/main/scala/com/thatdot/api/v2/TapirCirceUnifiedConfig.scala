@@ -32,7 +32,8 @@ case class TapirCirceUnifiedConfig(discriminator: Option[String], renameConstruc
       .copy(
         transformConstructorNames = s => renameConstructors.getOrElse(s, s),
       )
-      .withDefaults
+      .withDefaults // Case class params with default values are optional in the JSON
+      .withStrictDecoding // Reject unknown/misspelled fields instead of silently ignoring them
 
   def withDiscriminator(d: String): TapirCirceUnifiedConfig =
     copy(discriminator = Some(d))

@@ -135,4 +135,28 @@ class ApiUiStylingCodecSpec extends AnyFunSuite with Matchers with ScalaCheckDri
       obj("quickQuery") shouldBe defined
     }
   }
+
+  test("decoding a product type rejects unknown/misspelled fields") {
+    // `nam` is not a field of SampleQuery; strict decoding must reject it rather than silently ignore it.
+    val json = io.circe.parser
+      .parse("""{"name": "example", "query": "MATCH (n) RETURN n", "nam": "typo"}""")
+      .getOrElse(fail("test JSON did not parse"))
+    val decoded = json.as[SampleQuery]
+    decoded.isLeft shouldBe true
+    decoded.left.toOption.get.getMessage should include("Unexpected field: [nam]")
+  }
+
+  test("decoding a sum type still accepts the type discriminator under strict decoding") {
+    val json = io.circe.parser
+      .parse("""{"type": "Constant", "value": "v"}""")
+      .getOrElse(fail("test JSON did not parse"))
+    json.as[UiNodeLabel] shouldBe Right(UiNodeLabel.Constant("v"))
+  }
+
+  test("decoding a sum type rejects unknown fields on the selected subtype") {
+    val json = io.circe.parser
+      .parse("""{"type": "Constant", "value": "v", "bogus": true}""")
+      .getOrElse(fail("test JSON did not parse"))
+    json.as[UiNodeLabel].isLeft shouldBe true
+  }
 }

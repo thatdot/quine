@@ -9,8 +9,8 @@ import org.apache.pekko.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteT
 import org.apache.pekko.testkit.TestDuration
 import org.apache.pekko.util.Timeout
 
-import io.circe.Encoder
 import io.circe.syntax.EncoderOps
+import io.circe.{Encoder, Json}
 import org.scalacheck.Gen
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -131,6 +131,33 @@ class EndpointValidationSpec
         status.intValue() shouldEqual 400
         //TODO this should also inspect the output and check that validation strings are correctly generated
       }
+    }
+  }
+
+  "An ingest config with an unknown top-level field" should "fail with 400 and name the offending field" in {
+    val url = s"$graphBaseUrl/ingests"
+    val kinesisIngest = Api.IngestSource.Kinesis(
+      format = Api.IngestFormat.StreamingFormat.Json,
+      streamName = "test-stream",
+      shardIds = None,
+      credentials = None,
+      region = None,
+      iteratorType = IteratorType.Latest,
+      numRetries = 3,
+      recordDecoders = Seq.empty,
+    )
+    val config = Oss.QuineIngestConfiguration(
+      name = ResourceName.unsafeFromString("test-unknown-field"),
+      source = kinesisIngest,
+      query = "CREATE ($that)",
+    )
+    // A valid payload with one extra, unrecognized top-level field the deserializer must reject.
+    val bodyWithUnknownField =
+      config.asJson.deepMerge(Json.obj("notARealField" -> Json.fromString("oops"))).noSpaces
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    postRawString(url, bodyWithUnknownField) ~> routes ~> check {
+      status.intValue() shouldEqual 400
+      responseAs[String] should include("notARealField")
     }
   }
 

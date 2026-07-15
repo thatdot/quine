@@ -12,8 +12,9 @@ import sttp.tapir.generic.{Configuration => TapirConfig}
   * {"type": "SubtypeName", "field1": "value", ...}
   * }}}
   *
-  * '''Product types (case classes):''' The discriminator has no effect. Only `.withDefaults`
-  * matters, enabling Scala default parameter values to be used when fields are absent from JSON.
+  * '''Product types (case classes):''' The discriminator has no effect. `.withDefaults` enables Scala
+  * default parameter values to be used when fields are absent from JSON, and `.withStrictDecoding`
+  * causes unknown or misspelled JSON fields to be rejected rather than silently ignored.
   *
   * ==Usage==
   * {{{
