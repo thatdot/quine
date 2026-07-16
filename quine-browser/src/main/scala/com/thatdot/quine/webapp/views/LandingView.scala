@@ -14,6 +14,6 @@ object LandingView {
   def apply(dataService: DataService): HtmlElement =
     LandingPage(
       metricsSignal = dataService.hostMetricsSignal(None),
-      backpressureSignal = dataService.backpressureSignal,
+      backpressureService = dataService,
     )
 }

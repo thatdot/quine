@@ -47,8 +47,8 @@ object LandingTooltip {
   def kvRow(label: String, value: String, valueColor: Option[String] = None): String = {
     val colorStyle = valueColor.fold("")(c => s"color: $c;")
     s"""<tr>
-       |  <td style="padding: 2px 12px 2px 0; color: #acacc9;">${escape(label)}</td>
-       |  <td style="padding: 2px 0; text-align: right; $colorStyle">${escape(value)}</td>
+       |  <td style="padding: 2px 12px 2px 0; color: #acacc9; white-space: nowrap;">${escape(label)}</td>
+       |  <td style="padding: 2px 0; text-align: right; white-space: nowrap; $colorStyle">${escape(value)}</td>
        |</tr>""".stripMargin
   }
 

@@ -113,7 +113,7 @@ object PersistenceBuilder {
   val defaultBuildEmpty: EmptyBuilder = { (persistenceConfig, system, logConfig) =>
     implicit val s: ActorSystem = system
     implicit val lc: LogConfig = logConfig
-    new StatelessPrimePersistor(persistenceConfig, None, new EmptyPersistor(_, _))
+    new StatelessPrimePersistor(persistenceConfig, None, new EmptyPersistor(_, _), slug = "empty")
   }
 
   /** Default builder for in-memory persistence (lost on shutdown). */
@@ -124,6 +124,7 @@ object PersistenceBuilder {
       persistenceConfig,
       None,
       (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns),
+      slug = "in-memory",
     )
   }
 

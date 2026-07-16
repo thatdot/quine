@@ -45,6 +45,10 @@ object V2AdministrationEndpointEntities {
     @description("Webserver bind address.") address: String,
     @description("Webserver port.") port: Int,
     @description("OS process ID.") pid: Long,
+    @description(
+      "Cluster position of the host this snapshot describes. Absent in OSS mode, and on a " +
+      "host that is not currently positioned in the cluster (e.g. a hot spare).",
+    ) memberIdx: Option[Int],
   )
   object HostInfo {
     implicit val encoder: Encoder[HostInfo] = deriveEncoder
@@ -156,6 +160,11 @@ object V2AdministrationEndpointEntities {
   @title("Output destination snapshot")
   @description("Backpressure state of a single output destination.")
   final case class DestinationSnapshot(
+    @description(
+      "Position of this destination within its output's destination list. Stable across hosts and " +
+      "polls, and the only thing distinguishing two destinations of the same type — so it is the key " +
+      "to join a destination against its counterpart on another cluster member.",
+    ) index: Int,
     @description("Destination type (e.g. 'StandardOut', 'Drop', 'HttpEndpoint', 'Kafka').") `type`: String,
     @description("Backpressure state: FLOWING, CONSTRAINED, or BACKPRESSURED.") state: String,
   )
@@ -212,6 +221,10 @@ object V2AdministrationEndpointEntities {
     @description("Timestamp of this snapshot.") timestamp: java.time.Instant,
     @description("Identity of the Quine host serving this snapshot.") host: HostInfo,
     @description("Cluster topology and health. Absent in OSS mode.") cluster: Option[ClusterInfo],
+    @description(
+      "Every graph (namespace) on this host, including those with no active ingests or " +
+      "standing queries — so idle graphs still appear in the diagram.",
+    ) namespaces: Seq[String],
     @description("State of the global ingest valve.") globalValve: GlobalValve,
     @description("Per-ingest backpressure and throughput.") ingests: Seq[IngestSnapshot],
     @description("Per-standing-query queue state and output throughput.") standingQueries: Seq[StandingQuerySnapshot],
@@ -825,14 +838,14 @@ trait V2QuineAdministrationEndpoints extends V2QuineEndpointDefinitions with Gra
       .name("get-backpressure")
       .summary("Get Backpressure Snapshots")
       .description(
-        "Returns a list of point-in-time backpressure snapshots. Currently returns a single snapshot for this host. " +
-        "Future versions may return snapshots from multiple cluster members for cluster-wide aggregation.",
+        "Returns a list of point-in-time backpressure snapshots, one per reachable cluster member " +
+        "(a single-entry list on an unclustered/OSS instance).",
       )
       .out(statusCode(StatusCode.Ok))
       .out(jsonBody[Seq[BackpressureSnapshot]])
 
   protected[endpoints] val backpressureLogic: Unit => Future[Either[ServerError, Seq[BackpressureSnapshot]]] = _ =>
-    recoverServerError(appMethods.backpressureSnapshot().map(Seq(_))(ExecutionContext.parasitic))(identity)
+    recoverServerError(appMethods.backpressureSnapshot())(identity)
 
   private val backpressureServerEndpoint: Full[Unit, Unit, Unit, ServerError, Seq[BackpressureSnapshot], Any, Future] =
     backpressure.serverLogic[Future](backpressureLogic)

@@ -276,6 +276,7 @@ object InMemoryPersistor {
     PersistenceConfig(),
     None,
     (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)(LogConfig.strict),
+    slug = "in-memory",
   )(null, LogConfig.strict) // Materializer is never used if bloomFilterSize is set to none
   def persistorMaker: ActorSystem => PrimePersistor =
     _ => namespacePersistor

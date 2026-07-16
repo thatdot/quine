@@ -3,6 +3,7 @@ package com.thatdot.quine.webapp.components.landing
 import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.webapp.Styles
+import com.thatdot.quine.webapp.dataservice.BackpressureService
 import com.thatdot.quine.webapp.util.Pot
 import com.thatdot.quine.webapp.v2api.V2ApiTypes._
 
@@ -28,7 +29,7 @@ object LandingPage {
 
   def apply(
     metricsSignal: Signal[Pot[HostMetricsCard.MetricsData]],
-    backpressureSignal: Signal[Pot[V2BackpressureSnapshot]],
+    backpressureService: BackpressureService,
     clusterStatusSignal: Option[Signal[Pot[V2ServiceStatus]]] = None,
     extraCards: Seq[(Set[String], HtmlElement)] = Seq.empty,
     userPermissions: Option[Set[String]] = None,
@@ -67,14 +68,17 @@ object LandingPage {
           styleAttr := "font-size: 1.4em; font-weight: 600; padding-left: 0;",
           "Dashboard",
         ),
+        // Thin divider between the page title and the summary chips
+        span(styleAttr := "width:1px;height:20px;background:rgba(255,255,255,0.25);margin:0 18px;flex:0 0 auto;"),
         div(
-          cls := "d-flex align-items-center ms-auto me-3",
-          // Derive ingest and SQ counts from the backpressure snapshot
+          cls := "d-flex align-items-center",
+          // Derive ingest and SQ counts from the view. Both lists are already resolved across the
+          // cluster — ingests unioned (each lives on one host), standing queries merged by name
+          // (they run on every host) — so these are plain sizes rather than a dedup at the call site.
           if (canSeeBackpressure)
-            child <-- backpressureSignal.map { pot =>
-              val snapOpt = pot.toOption
-              val ingestCount = snapOpt.map(_.ingests.size).getOrElse(0)
-              val sqCount = snapOpt.map(_.standingQueries.size).getOrElse(0)
+            child <-- backpressureService.backpressureSnapshotSignal.map { pot =>
+              val ingestCount = pot.toOption.map(_.ingests.size).getOrElse(0)
+              val sqCount = pot.toOption.map(_.standingQueries.size).getOrElse(0)
               span(
                 cls := "d-inline-flex align-items-center",
                 summaryBadge(ingestCount, if (ingestCount == 1) "ingest" else "ingests"),
@@ -108,7 +112,7 @@ object LandingPage {
                 // Only pass cluster status to the diagram when the user may read it. The signal can
                 // be populated with a trimmed, member-positions-only status for ingest-capable roles
                 // (to drive the Streams host selector); those roles must not see cluster health here.
-                BackpressureDiagram(backpressureSignal, if (canSeeClusterHealth) clusterStatusSignal else None),
+                BackpressureDiagram(backpressureService, if (canSeeClusterHealth) clusterStatusSignal else None),
               ),
             ),
           )

@@ -111,6 +111,16 @@ pre.wrap {
 .nav-bar > * {
   height: var(--topbar-height);
 }
+
+/* Horizontal scroller that hides its scrollbar (the backpressure member row uses a scroll-shadow
+   affordance instead). Content stays scrollable via wheel, touch, keyboard, and drag-to-pan. */
+.bp-hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge/IE */
+}
+.bp-hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Safari/Chrome */
+}
 .query-input {
   flex-grow: 4;
   display: flex;

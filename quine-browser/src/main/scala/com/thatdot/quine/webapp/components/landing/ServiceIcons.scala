@@ -75,6 +75,10 @@ object ServiceIcons {
   @js.native
   private object FileSvg extends js.Object
 
+  @JSImport("shared-resources/icons/drop.svg", JSImport.Default)
+  @js.native
+  private object DropSvg extends js.Object
+
   @JSImport("shared-resources/icons/number-iterator.png", JSImport.Default)
   @js.native
   private object NumberIteratorPng extends js.Object
@@ -90,7 +94,8 @@ object ServiceIcons {
     case "kinesis" | "kinesiskcl" => Some(KinesisSvg.toString)
     case "sqs" => Some(SqsSvg.toString)
     case "slack" => Some(SlackSvg.toString)
-    case "http" | "httpendpoint" => Some(HttpSvg.toString)
+    case "http" | "httpendpoint" | "webhook" => Some(HttpSvg.toString)
+    case "drop" => Some(DropSvg.toString)
     case "standardout" | "stdout" | "console" => Some(StdoutSvg.toString)
     case "cassandra" | "keyspaces" => Some(CassandraSvg.toString)
     case "rocksdb" => Some(RocksdbSvg.toString)

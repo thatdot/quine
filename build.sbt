@@ -15,6 +15,11 @@ Global / concurrentRestrictions := Seq(
   Tags.limit(Tags.Test, 1),
 )
 
+// scalajs-bundler installs jsdom into a directory under `target/`. That directory sits inside the
+// repo's yarn workspaces, so yarn refuses to install there ("would add the dependency to the
+// workspace root"). Giving it its own private package.json breaks the workspace chain.
+lazy val prepareJsdomInstall = taskKey[Unit]("Prepare isolated directory for jsdom installation")
+
 // Core streaming graph interpreter
 lazy val `quine-core`: Project = project
   .settings(commonSettings)
@@ -367,6 +372,7 @@ lazy val `quine-browser`: Project = project
       "io.circe" %%% "circe-parser" % circeV,
       "com.raquo" %%% "laminar" % laminarV,
       "com.raquo" %%% "waypoint" % waypointV,
+      "org.scalatest" %%% "scalatest" % scalaTestV % Test,
     ),
     Compile / npmDevDependencies ++= Seq(
       // When updating, check whether the minimatch yarn resolution below is still needed
@@ -420,10 +426,36 @@ lazy val `quine-browser`: Project = project
     fastOptJS / webpackConfigFile := Some(baseDirectory.value / "dev.webpack.config.js"),
     fastOptJS / webpackDevServerExtraArgs := Seq("--inline", "--hot"),
     fullOptJS / webpackConfigFile := Some(baseDirectory.value / "prod.webpack.config.js"),
-    Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js"),
-    test := {},
+    // The test bundle gets its own webpack config: the app's config compiles the Monaco query
+    // editor from TypeScript, which the tests never touch and which will not parse in a headless
+    // test run. See test.webpack.config.js.
+    Test / webpackConfigFile := Some(baseDirectory.value / "test.webpack.config.js"),
+    // Forces the test run to execute the *bundled* artifact. Without it the default Node jsEnv runs
+    // the raw Scala.js output, which `require()`s the app's `@JSImport`ed CSS directly and dies on
+    // the first stylesheet. The tests themselves touch no DOM; this is about bundling, not the DOM.
+    Test / requireJsDomEnv := true,
+    Test / npmDevDependencies ++= Seq(
+      "style-loader" -> "3.3.4",
+      "css-loader" -> "6.11.0",
+      "buffer" -> "6.0.3",
+      "stream-browserify" -> "3.0.0",
+      "path-browserify" -> "1.0.1",
+      "process" -> "0.11.10",
+    ),
     useYarn := true,
     yarnExtraArgs := Seq("--frozen-lockfile"),
+    // The Test scope has no committed yarn.lock, so let yarn write one rather than failing on
+    // --frozen-lockfile.
+    Test / yarnExtraArgs := Seq.empty,
+    prepareJsdomInstall := {
+      val jsdomDir = target.value / "scalajs-bundler-jsdom"
+      val packageJson = jsdomDir / "package.json"
+      if (!packageJson.exists()) {
+        IO.createDirectory(jsdomDir)
+        IO.write(packageJson, """{"private": true, "name": "scalajs-bundler-jsdom-isolated", "version": "1.0.0"}""")
+      }
+    },
+    Test / installJsdom := ((Test / installJsdom) dependsOn prepareJsdomInstall).value,
   )
 
 // Streaming graph application built on top of the Quine library

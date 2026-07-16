@@ -420,13 +420,18 @@ object V2ApiTypes {
       )
   }
 
-  final case class V2Destination(`type`: String, state: String)
+  /** @param index position within the output's destination list. The join key for lining a
+    *              destination up against its counterpart on another cluster member — `type` alone
+    *              cannot, since one output may have two destinations of the same type.
+    */
+  final case class V2Destination(index: Int, `type`: String, state: String)
   object V2Destination {
     implicit val decoder: Decoder[V2Destination] = (c: HCursor) =>
       for {
+        index <- c.downField("index").as[Int]
         t <- c.downField("type").as[String]
         state <- c.downField("state").as[String]
-      } yield V2Destination(t, state)
+      } yield V2Destination(index, t, state)
   }
 
   final case class V2SqOutput(
@@ -475,8 +480,41 @@ object V2ApiTypes {
       } yield V2Persistor(t, w, r)
   }
 
+  /** @param memberIdx this host's cluster position, absent in OSS and on unpositioned hosts. The
+    *                  user-facing identity: what a "view one position" selector picks, and what a
+    *                  tooltip names when attributing backpressure to the members responsible.
+    */
+  final case class V2HostInfo(version: String, address: String, port: Int, pid: Long, memberIdx: Option[Int]) {
+
+    /** Identity of the *process*, deliberately not the position.
+      *
+      * Cumulative counters are diffed against the previous poll from this same key, so the key must
+      * change whenever the counters restart. A position survives failover and gets re-filled by a
+      * fresh process whose counters begin again at zero; keying on `memberIdx` would silently diff
+      * the new process's counters against the dead one's and read the reset as a rate. Including
+      * `pid` makes that boundary visible — the new process is simply a key with no history yet, and
+      * falls back to the server's EWMA for one poll.
+      */
+    def hostKey: String = s"$address:$port:$pid"
+  }
+  object V2HostInfo {
+    implicit val decoder: Decoder[V2HostInfo] = (c: HCursor) =>
+      for {
+        version <- c.downField("version").as[String]
+        address <- c.downField("address").as[String]
+        port <- c.downField("port").as[Int]
+        pid <- c.downField("pid").as[Long]
+        memberIdx <- c.downField("memberIdx").as[Option[Int]]
+      } yield V2HostInfo(version, address, port, pid, memberIdx)
+  }
+
   final case class V2BackpressureSnapshot(
     timestamp: Double,
+    host: V2HostInfo,
+    /** Every graph on this host, including idle ones with no ingests or standing queries. Empty when
+      * decoding an older server that predates the field.
+      */
+    namespaces: Seq[String],
     globalValve: V2GlobalValve,
     ingests: Seq[V2IngestSnapshot],
     standingQueries: Seq[V2StandingQuery],
@@ -486,11 +524,13 @@ object V2ApiTypes {
     implicit val decoder: Decoder[V2BackpressureSnapshot] = (c: HCursor) =>
       for {
         timestamp <- c.downField("timestamp").as[String].map(t => new js.Date(t).getTime())
+        host <- c.downField("host").as[V2HostInfo]
+        namespaces <- c.downField("namespaces").as[Option[Seq[String]]].map(_.getOrElse(Nil))
         valve <- c.downField("globalValve").as[V2GlobalValve]
         ingests <- c.downField("ingests").as[Seq[V2IngestSnapshot]]
         sqs <- c.downField("standingQueries").as[Seq[V2StandingQuery]]
         persistor <- c.downField("persistor").as[V2Persistor]
-      } yield V2BackpressureSnapshot(timestamp, valve, ingests, sqs, persistor)
+      } yield V2BackpressureSnapshot(timestamp, host, namespaces, valve, ingests, sqs, persistor)
   }
 
   /** Mirrors `ServiceStatus` (fields subset) from the enterprise V2 admin status endpoint.

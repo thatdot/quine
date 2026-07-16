@@ -137,6 +137,124 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       )
   }
 
+  // ── Backpressure ──
+
+  /** The client-side history. The server reports only current state, so the window rates are
+    * differenced over exists nowhere else; see [[BackpressureStore]].
+    */
+  private val backpressureStore: BackpressureStore = new BackpressureStore
+
+  private val requestedScopeVar: Var[BackpressureService.Scope] = Var(BackpressureService.Scope.default)
+  private val backpressurePausedVar: Var[Boolean] = Var(false)
+
+  /** The one poll, recorded once.
+    *
+    * `QuineApiClient.backpressure` builds a *new* polling feed per call, so the several signals
+    * below must derive from a single node rather than each calling it — two calls would be two
+    * polls. Recording here rather than in each consumer also means the store is written once per
+    * response, before anything downstream reads it.
+    *
+    * Safe to run on every emission, including the re-emissions Airstream produces when a signal is
+    * restarted: `record` ignores a snapshot no newer than the one already held for that host. The
+    * old RateComputer had no such guard, and a replayed value corrupted the deltas it kept.
+    */
+  private lazy val recordedBackpressurePoll: Signal[Pot[Seq[V2BackpressureSnapshot]]] =
+    QuineApiClient
+      .backpressure(clientRoutes)
+      .potSignal
+      .map { pot =>
+        pot.toOption.foreach(backpressureStore.record)
+        pot
+      }
+
+  /** The view held while paused. Polling and recording continue underneath, so the window keeps
+    * filling and resuming is instant — pausing the poll instead would leave a hole in the history.
+    */
+  private var heldView: Option[BackpressureView] = None
+
+  lazy val backpressureDispatch: Observer[BackpressureService.Command] = Observer {
+    case BackpressureService.SetScope(scope, replyTo) =>
+      requestedScopeVar.set(scope)
+      // Echo the scope that actually took effect: a member that has left the cluster falls back to
+      // the whole cluster (the same rule backpressureScopeSignal applies), so the issuer learns what
+      // it is really showing. The recompute is instant — every scope resolves history already held —
+      // so there is nothing to await before replying.
+      replyTo.onNext(effectiveScope(scope, backpressureStore.currentMembers))
+    case BackpressureService.PauseUpdates(replyTo) =>
+      backpressurePausedVar.set(true)
+      replyTo.onNext(())
+    case BackpressureService.ResumeUpdates(replyTo) =>
+      backpressurePausedVar.set(false)
+      replyTo.onNext(())
+  }
+
+  /** The scope a request actually resolves to. A member that is not among the currently known cluster
+    * members falls back to the whole cluster; an empty member list means OSS, where the selection
+    * stands. The single source of the fallback rule, shared by the [[backpressureDispatch]] echo and
+    * [[backpressureScopeSignal]].
+    */
+  private def effectiveScope(requested: BackpressureService.Scope, known: Seq[Int]): BackpressureService.Scope =
+    requested match {
+      case BackpressureService.Scope.Member(idx) if known.nonEmpty && !known.contains(idx) =>
+        BackpressureService.Scope.Cluster
+      case other => other
+    }
+
+  lazy val listClusterMembers: Signal[Seq[Int]] = backpressureStore.members
+
+  /** The authoritative freeze flag, exposed so a diagram can reflect it on mount. It lives on the
+    * service — which outlives the diagram — so pausing, leaving the page, and returning shows the
+    * diagram still paused rather than silently live over a frozen view.
+    */
+  lazy val backpressurePausedSignal: Signal[Boolean] = backpressurePausedVar.signal
+
+  /** Recomputed from the store on each poll, and deliberately *not* held while paused: the picker is
+    * a navigation control, not part of the frozen picture. Pausing to read the diagram should not
+    * also stop the page from telling you that another member has just fallen over.
+    */
+  lazy val memberStatusSignal: Signal[Map[Int, MemberStatus]] =
+    recordedBackpressurePoll.map(_ => backpressureStore.statusByMember).distinct
+
+  /** The requested scope, validated against the members that actually exist. A member that leaves the
+    * cluster falls back to the whole cluster rather than rendering an empty diagram — the same
+    * containment check [[NamespaceService.currentNamespaceSignal]] applies to a namespace that has
+    * been deleted out from under the selection.
+    *
+    * An empty member list means OSS (no members at all), not "the chosen one is gone", so the
+    * selection is left alone in that case.
+    */
+  lazy val backpressureScopeSignal: Signal[BackpressureService.Scope] =
+    requestedScopeVar.signal
+      .combineWith(listClusterMembers)
+      .map { case (requested, known) => effectiveScope(requested, known) }
+      .distinct
+
+  lazy val backpressureSnapshotSignal: Signal[Pot[BackpressureView]] =
+    recordedBackpressurePoll
+      .combineWith(backpressureScopeSignal, backpressurePausedVar.signal)
+      .map { case (pot, scope, paused) =>
+        val resolved: Option[BackpressureView] =
+          if (paused) heldView
+          else {
+            val next = backpressureStore.view(scope)
+            next.foreach(v => heldView = Some(v))
+            next
+          }
+
+        // History outlives a failed poll, so a fetch error degrades to the last good view rather
+        // than blanking the diagram.
+        (resolved, pot) match {
+          case (Some(view), Pot.Ready(_) | Pot.Empty) => Pot.Ready(view)
+          case (Some(view), Pot.PendingStale(_) | Pot.Pending) => Pot.PendingStale(view)
+          case (Some(view), Pot.Failed(err)) => Pot.FailedStale(view, err)
+          case (Some(view), Pot.FailedStale(_, err)) => Pot.FailedStale(view, err)
+          case (None, Pot.Failed(err)) => Pot.Failed(err)
+          case (None, Pot.FailedStale(_, err)) => Pot.Failed(err)
+          case (None, Pot.Empty) => Pot.Empty
+          case (None, _) => Pot.Pending
+        }
+      }
+
   lazy val namespacesSignal: Signal[Seq[NamespaceParameter]] = Val(
     Seq(NamespaceParameter.defaultNamespaceParameter),
   )
@@ -203,9 +321,6 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       .flatMapSwitch(_ => QuineApiClient.nodeAppearances(clientRoutes, useV2Api).values)
       .startWith(Vector.empty)
       .distinct
-
-  lazy val backpressureSignal: Signal[Pot[V2BackpressureSnapshot]] =
-    QuineApiClient.backpressure(clientRoutes).potSignal
 
   /** Per-tab persistence of which tap queries are enabled locally, one sessionStorage
     * entry per graph namespace — a tab restores its own enabled taps on reload while two

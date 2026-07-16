@@ -22,9 +22,9 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorString
-import com.thatdot.quine.app.model.ingest2.KafkaIngest
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.app.model.ingest2.source.QuineValueIngestQuery
+import com.thatdot.quine.app.model.ingest2.{KafkaIngest, V2IngestEntities}
 import com.thatdot.quine.app.model.outputs2.query.{AllNodeScanException, CypherQuery => CypherQueryModel}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.v2api.converters._
@@ -63,60 +63,31 @@ object ProductVersion {
   case object Enterprise extends ProductVersion
 }
 
-trait ApplicationApiMethods {
-  val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph with StandingQueryOpsGraph
-  val app: BaseApp with SchemaCache with QueryUiConfigurationState
-  def productVersion: ProductVersion
-  implicit def timeout: Timeout
-  implicit val logConfig: LogConfig
-  implicit def materializer: Materializer = graph.materializer
-  val config: BaseConfig
+object ApplicationApiMethods {
 
-  def emptyConfigExample: BaseConfig
+  /** How a caller enumerates ONE namespace's ingest streams for the snapshot. Same shape as
+    * [[IngestStreamState.getV2IngestStreams]] applied to one namespace with no member filter.
+    *
+    * IMPORTANT: implementations must enumerate the LOCAL host's ingests only. QuineEnterpriseApp's
+    * `getV2IngestStreams` override routes through the cluster interface, so passing it here from the
+    * per-member backpressure callback would nest a cluster-wide broadcast inside the broadcast and
+    * attribute every member's ingests to every host's snapshot.
+    */
+  type LocalIngestEnumeration =
+    NamespaceId => Future[Seq[(Option[MemberIdx], String, V2IngestEntities.IngestStreamInfo)]]
 
-  def isReady: Boolean = graph.isReady
-
-  def isLive = true
-
-  // --------------------- Admin Endpoints ------------------------
-  def performShutdown(): Future[Unit] = {
-    graph.system.terminate()
-    Future.successful(())
-  }
-
-  def graphHashCode(atTime: Option[Milliseconds], namespace: NamespaceId): Future[TGraphHashCode] =
-    graph.requiredGraphIsReadyFuture {
-      val at = atTime.getOrElse(Milliseconds.currentTime())
-      graph
-        .getGraphHashCode(namespace, Some(at))
-        .map(elt => TGraphHashCode(elt.toString, java.time.Instant.ofEpochMilli(at.millis)))(ExecutionContext.parasitic)
-    }
-
-  def buildInfo: TQuineInfo = {
-    val gitCommit: Option[String] = QuineBuildInfo.gitHeadCommit
-      .map(_ + (if (QuineBuildInfo.gitUncommittedChanges) "-DIRTY" else ""))
-    TQuineInfo(
-      BuildInfo.version,
-      gitCommit,
-      QuineBuildInfo.gitHeadCommitDate,
-      QuineBuildInfo.javaVmName + " " + QuineBuildInfo.javaVersion + " (" + QuineBuildInfo.javaVendor + ")",
-      javaRuntimeVersion = Runtime.version().toString,
-      javaAvailableProcessors = sys.runtime.availableProcessors(),
-      javaMaxMemory = sys.runtime.maxMemory(),
-      PersistenceAgent.CurrentVersion.shortString,
-      quineType = productVersion.toString,
-    )
-  }
-
-  def metaData(implicit ec: ExecutionContext): Future[Map[String, String]] =
-    graph.namespacePersistor.getAllMetaData().flatMap { m =>
-      Future.successful(m.view.mapValues(new String(_)).toMap)
-    }
-
-  def metrics(memberIdx: Option[MemberIdx]): Future[V1.MetricsReport] =
-    Future.successful(GenerateMetrics.metricsReport(graph))
-
-  def backpressureSnapshot(): Future[V2AdministrationEndpointEntities.BackpressureSnapshot] = {
+  /** Build a [[V2AdministrationEndpointEntities.BackpressureSnapshot]] for the local host from `graph`
+    * alone, given a caller-supplied `hostInfo`/`persistorType` (these differ between a config-backed
+    * caller like [[QuineApiMethods]] and a config-free caller like `QuineEnterpriseApp`, which builds
+    * `hostInfo` from `graph.clusterFormationConfig` instead) and a caller-supplied local ingest
+    * enumeration (see [[LocalIngestEnumeration]]).
+    */
+  def buildBackpressureSnapshot(
+    graph: BaseGraph with StandingQueryOpsGraph,
+    listLocalIngests: Option[LocalIngestEnumeration],
+    hostInfo: V2AdministrationEndpointEntities.HostInfo,
+    persistorType: String,
+  ): Future[V2AdministrationEndpointEntities.BackpressureSnapshot] = {
     import V2AdministrationEndpointEntities._
     import com.thatdot.quine.util.BackpressureLevel
     val gaugeSnapshot = graph.pressureGaugeRegistry.snapshot()
@@ -128,19 +99,10 @@ trait ApplicationApiMethods {
       case BackpressureLevel.Backpressured => "BACKPRESSURED"
     }
 
-    // ── Host info ──
-    val configSummary = config.systemConfigSummary
-    val hostInfo = HostInfo(
-      version = BuildInfo.version,
-      address = configSummary.webserver.map(_.address).getOrElse("unknown"),
-      port = configSummary.webserver.map(_.port).getOrElse(0),
-      pid = ProcessHandle.current.pid(),
-    )
-
     // ── Persistor ──
     val metricsReport = GenerateMetrics.metricsReport(graph)
     val persistor = PersistorSnapshot(
-      `type` = configSummary.persistor.persistorType,
+      `type` = persistorType,
       writeLatencyMs = metricsReport.timers.find(_.name == "persistor.persist-event").map(_.mean).getOrElse(0.0),
       readLatencyMs = metricsReport.timers.find(_.name == "persistor.get-latest-snapshot").map(_.mean).getOrElse(0.0),
     )
@@ -153,11 +115,6 @@ trait ApplicationApiMethods {
     )
 
     // ── Ingests ──
-    val ingestStreamState: Option[IngestStreamState] = app match {
-      case iss: IngestStreamState => Some(iss)
-      case _ => None
-    }
-
     val gaugesByPipeline = gaugeSnapshot.groupBy { case (k, _) => (k.pipelineType, k.namespace, k.streamName) }
 
     // Per-stage gauge states for an ingest — present only while it is actively running.
@@ -176,13 +133,13 @@ trait ApplicationApiMethods {
     // Enumerate ingests from the authoritative ingest manager, not the gauge registry, so that failed /
     // restored / terminal ingests stay visible with their real (live) status. A terminated ingest has
     // already deregistered its gauges, so a gauge-driven list would silently drop it.
-    val ingestsF: Future[Seq[IngestSnapshot]] = ingestStreamState match {
+    val ingestsF: Future[Seq[IngestSnapshot]] = listLocalIngests match {
       case None => Future.successful(Seq.empty)
-      case Some(iss) =>
+      case Some(listIngests) =>
         implicit val ec: ExecutionContext = graph.nodeDispatcherEC
         Future
           .traverse(graph.getNamespaces.toSeq) { nsId =>
-            iss.getV2IngestStreams(nsId, None).map { streams =>
+            listIngests(nsId).map { streams =>
               val ns = nsId.name
               streams.map { case (_, name, info) =>
                 IngestSnapshot(
@@ -212,16 +169,25 @@ trait ApplicationApiMethods {
         val sqName = parts.head
         val outputName = if (parts.length > 1) parts.tail.mkString("/") else streamName
 
-        // Destinations from gauge keys
-        val destinations = stages.collect {
-          case (k, v) if k.stagePosition.startsWith("destination-") =>
-            // stagePosition is "destination-<index>-<type-slug>"; drop the numeric index that
-            // disambiguates multiple destinations of the same type, leaving the type slug.
-            val slug = k.stagePosition.stripPrefix("destination-").dropWhile(_ != '-').stripPrefix("-")
-            // Capitalize slug to match API class naming: "standard-out" → "StandardOut", "drop" → "Drop"
-            val destType = slug.split('-').map(_.capitalize).mkString
-            DestinationSnapshot(`type` = destType, state = bpState(v))
-        }.toSeq
+        // Destinations from gauge keys. `stages` is a Map, so its iteration order is arbitrary —
+        // sort by the destination's own index to give every host the same order. Without that, two
+        // members' destination lists cannot be zipped together to attribute backpressure to a
+        // cluster position, and even a single host's icons could reshuffle between polls.
+        val destinations = stages.toSeq
+          .collect {
+            case (k, v) if k.stagePosition.startsWith("destination-") =>
+              // stagePosition is "destination-<index>-<type-slug>" (see StandingQueryResultWorkflow).
+              // The index disambiguates multiple destinations of the same type and is carried through
+              // to the API; the slug that follows it names the type. The slug itself contains hyphens
+              // ("standard-out"), so split on the FIRST hyphen only.
+              val rest = k.stagePosition.stripPrefix("destination-")
+              val index = rest.takeWhile(_.isDigit).toIntOption.getOrElse(0)
+              val slug = rest.dropWhile(_ != '-').stripPrefix("-")
+              // Capitalize slug to match API class naming: "standard-out" → "StandardOut", "drop" → "Drop"
+              val destType = slug.split('-').map(_.capitalize).mkString
+              DestinationSnapshot(index = index, `type` = destType, state = bpState(v))
+          }
+          .sortBy(_.index)
 
         // Enrichment detection
         val hasPreWorkflow = stages.keys.exists(_.stagePosition == "pre-workflow")
@@ -288,17 +254,109 @@ trait ApplicationApiMethods {
       )
     }
 
+    // Authoritative graph list — the same source and naming the standing-query enumeration above uses,
+    // so idle graphs (no ingests, no standing queries) still reach the diagram rather than being
+    // implied only by the pipelines that happen to be running in them.
+    val namespaces: Seq[String] = graph.getNamespaces.toSeq.map(_.name).sorted
+
     ingestsF.map { ingests =>
       BackpressureSnapshot(
         timestamp = java.time.Instant.now(),
         host = hostInfo,
         cluster = None, // Overridden by enterprise
+        namespaces = namespaces,
         globalValve = globalValve,
         ingests = ingests,
         standingQueries = standingQueries,
         persistor = persistor,
       )
     }(ExecutionContext.parasitic)
+  }
+}
+
+trait ApplicationApiMethods {
+  val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph with StandingQueryOpsGraph
+  val app: BaseApp with SchemaCache with QueryUiConfigurationState
+  def productVersion: ProductVersion
+  implicit def timeout: Timeout
+  implicit val logConfig: LogConfig
+  implicit def materializer: Materializer = graph.materializer
+  val config: BaseConfig
+
+  def emptyConfigExample: BaseConfig
+
+  def isReady: Boolean = graph.isReady
+
+  def isLive = true
+
+  // --------------------- Admin Endpoints ------------------------
+  def performShutdown(): Future[Unit] = {
+    graph.system.terminate()
+    Future.successful(())
+  }
+
+  def graphHashCode(atTime: Option[Milliseconds], namespace: NamespaceId): Future[TGraphHashCode] =
+    graph.requiredGraphIsReadyFuture {
+      val at = atTime.getOrElse(Milliseconds.currentTime())
+      graph
+        .getGraphHashCode(namespace, Some(at))
+        .map(elt => TGraphHashCode(elt.toString, java.time.Instant.ofEpochMilli(at.millis)))(ExecutionContext.parasitic)
+    }
+
+  def buildInfo: TQuineInfo = {
+    val gitCommit: Option[String] = QuineBuildInfo.gitHeadCommit
+      .map(_ + (if (QuineBuildInfo.gitUncommittedChanges) "-DIRTY" else ""))
+    TQuineInfo(
+      BuildInfo.version,
+      gitCommit,
+      QuineBuildInfo.gitHeadCommitDate,
+      QuineBuildInfo.javaVmName + " " + QuineBuildInfo.javaVersion + " (" + QuineBuildInfo.javaVendor + ")",
+      javaRuntimeVersion = Runtime.version().toString,
+      javaAvailableProcessors = sys.runtime.availableProcessors(),
+      javaMaxMemory = sys.runtime.maxMemory(),
+      PersistenceAgent.CurrentVersion.shortString,
+      quineType = productVersion.toString,
+    )
+  }
+
+  def metaData(implicit ec: ExecutionContext): Future[Map[String, String]] =
+    graph.namespacePersistor.getAllMetaData().flatMap { m =>
+      Future.successful(m.view.mapValues(new String(_)).toMap)
+    }
+
+  def metrics(memberIdx: Option[MemberIdx]): Future[V1.MetricsReport] =
+    Future.successful(GenerateMetrics.metricsReport(graph))
+
+  def backpressureSnapshot(): Future[Seq[V2AdministrationEndpointEntities.BackpressureSnapshot]] = {
+    import V2AdministrationEndpointEntities._
+
+    // ── Host info ──
+    val webserverConfig = config.systemConfigSummary.webserver
+    val hostInfo = HostInfo(
+      version = BuildInfo.version,
+      address = webserverConfig.map(_.address).getOrElse("unknown"),
+      port = webserverConfig.map(_.port).getOrElse(0),
+      pid = ProcessHandle.current.pid(),
+      // Single-host products have no cluster position. Enterprise overrides this whole method and
+      // supplies each member's own index (see QuineEnterpriseApp.buildLocalBackpressureSnapshot).
+      memberIdx = None,
+    )
+    // The loaded persistor's slug, not config's store.type: the slug reflects what actually
+    // loaded, and the enterprise per-member path (which has no config reference) reports the
+    // same slug, keeping the persistor type string identical across products.
+    val persistorType = graph.namespacePersistor.slug
+
+    // Local enumeration is correct here: this base implementation serves single-host products
+    // (OSS/Novelty), whose IngestStreamState reads local state. Enterprise overrides this whole
+    // method with a cluster broadcast and supplies its own local enumeration per member.
+    val listLocalIngests: Option[ApplicationApiMethods.LocalIngestEnumeration] = app match {
+      case iss: IngestStreamState => Some(iss.getV2IngestStreams(_, None))
+      case _ => None
+    }
+
+    ApplicationApiMethods
+      .buildBackpressureSnapshot(graph, listLocalIngests, hostInfo, persistorType)
+      .map(Seq(_))(ExecutionContext.parasitic)
   }
 
   /** @param memberIdx cluster position whose shards to report; ignored here (the local graph

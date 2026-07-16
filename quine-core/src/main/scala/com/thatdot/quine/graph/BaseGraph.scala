@@ -164,6 +164,15 @@ trait BaseGraph extends StrictSafeLogging {
   /** @return whether the graph is in an operational state and ready to receive input like ingest, API calls, queries */
   def isReady: Boolean
 
+  /** Whether THIS member's app has finished loading its own local state (ingests, standing queries,
+    * gauges, ...). Unlike [[isReady]] it does not require the wider cluster to be operational, so it
+    * is the right readiness for gathering a member's own local diagnostics: a member can report what
+    * it sees locally even while the cluster is degraded. On a non-clustered graph there is no such
+    * distinction, so this is [[isReady]]; the clustered graph overrides it with just the app-loaded
+    * half of its readiness.
+    */
+  def isAppLoaded: Boolean = isReady
+
   /** Require the graph is ready and throw an exception if it isn't */
   @throws[GraphNotReadyException]("if the graph is not ready")
   def requiredGraphIsReady(): Unit =
@@ -174,6 +183,14 @@ trait BaseGraph extends StrictSafeLogging {
   /** Run code in the provided Future if the graph is ready, or short-circuit and return a failed Future immediately. */
   def requiredGraphIsReadyFuture[A](f: => Future[A]): Future[A] =
     if (isReady) f
+    else Future.failed(new GraphNotReadyException())
+
+  /** Like [[requiredGraphIsReadyFuture]] but gated only on [[isAppLoaded]] — this member's own state,
+    * not the cluster's. For local, best-effort diagnostics that must still report during a degraded
+    * cluster. Do NOT use for anything that coordinates across members.
+    */
+  def requiredAppLoadedFuture[A](f: => Future[A]): Future[A] =
+    if (isAppLoaded) f
     else Future.failed(new GraphNotReadyException())
 
   /** Controlled shutdown of the graph

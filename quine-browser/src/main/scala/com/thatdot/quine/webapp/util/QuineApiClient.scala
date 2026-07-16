@@ -182,11 +182,11 @@ object QuineApiClient {
       MetricsPollIntervalMs,
     )
 
-  /** Polled feed of the latest backpressure snapshot (highest timestamp among the returned
-    * per-member snapshots). An empty response fails the tick onto the errors stream.
+  /** Polled feed of the backpressure snapshot for all active pipelines, one entry per
+    * reachable cluster member (a single-entry array on an unclustered/OSS instance).
     */
-  def backpressure(routes: ClientRoutes): Feed[V2BackpressureSnapshot] =
-    poll(fetchV2[Seq[V2BackpressureSnapshot]]("api/v2/system/backpressure", routes).map(_.maxBy(_.timestamp)))
+  def backpressure(routes: ClientRoutes): Feed[Seq[V2BackpressureSnapshot]] =
+    poll(fetchV2[Seq[V2BackpressureSnapshot]]("api/v2/system/backpressure", routes))
 
   /** Polled feed of saved sample queries; `useV2Api = false` reads the V1 twin route. */
   def sampleQueries(routes: ClientRoutes, useV2Api: Boolean): Feed[Vector[SampleQuery]] =
