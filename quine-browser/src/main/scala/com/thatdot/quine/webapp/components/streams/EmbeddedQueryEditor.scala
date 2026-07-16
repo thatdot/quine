@@ -42,11 +42,23 @@ import com.thatdot.quine.webapp.queryui.{
   */
 object EmbeddedQueryEditor {
 
+  /** Buffer language for an embedded editor. [[PlainText]] turns off highlighting, Cypher
+    * bracket rules, the language-server connection, and the diagnostics bar — for fields holding
+    * a language the editor has no grammar for (e.g. Gremlin), where Cypher tokenization and
+    * validation would be wrong.
+    */
+  sealed abstract class BufferLanguage(val monacoId: String)
+  object BufferLanguage {
+    case object Cypher extends BufferLanguage("cypher")
+    case object PlainText extends BufferLanguage("plaintext")
+  }
+
   def apply(
     currentValue: Signal[String],
     onUpdate: String => Unit,
     placeholderText: String,
     editorConfig: EmbeddedEditorConfig,
+    bufferLanguage: BufferLanguage = BufferLanguage.Cypher,
   ): HtmlElement = {
     // Mutable mirror of the buffer's current value, needed inside the editor's JS callbacks and
     // kept in sync by the binder + onChange below. Seeded from the form state so the initial
@@ -77,11 +89,15 @@ object EmbeddedQueryEditor {
     val host: Div = div(
       cls := QueryEditorStyles.embeddedQueryEditor,
       container,
-      QueryDiagnosticsView(
-        diagnostics.signal,
-        showDiagnostics,
-        position => editorHandle.foreach(_.revealRange(position.line, position.column)),
-      ),
+      // Plain-text buffers are never validated (no LSP, no tokenizer), so a "No problems" status
+      // bar would be misleading — omit the diagnostics view entirely.
+      if (bufferLanguage == BufferLanguage.Cypher)
+        QueryDiagnosticsView(
+          diagnostics.signal,
+          showDiagnostics,
+          position => editorHandle.foreach(_.revealRange(position.line, position.column)),
+        )
+      else emptyNode,
     )
 
     host.amend(
@@ -89,14 +105,16 @@ object EmbeddedQueryEditor {
       onMountCallback { _ =>
         // QuinePattern language-server mode. StreamsPage is V2-only, so the route is always the V2
         // LSP path; lspWebSocketUrl honors `serverUrl`. When off, the field stays on Monarch-only
-        // highlighting with no connection.
+        // highlighting with no connection. Plain-text buffers never connect — the Quine language
+        // server only speaks Cypher.
         val qpMode =
-          if (editorConfig.qpEnabled)
+          if (editorConfig.qpEnabled && bufferLanguage == BufferLanguage.Cypher)
             QpMode.Enabled(QueryEditor.lspWebSocketUrl(editorConfig.serverUrl, "/api/v2/lsp"))
           else QpMode.Disabled
         val handle = QueryEditor.create(
           container.ref,
           new QueryEditorOptions {
+            language = bufferLanguage.monacoId
             embedded = true
             placeholder = placeholderText
             initialValue = latestQuery

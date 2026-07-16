@@ -4,9 +4,9 @@ import com.raquo.laminar.api.L._
 import io.circe.Json
 import io.circe.syntax._
 
-import com.thatdot.quine.routes.UiNode
-import com.thatdot.quine.v2api.routes.{V2QuerySort, V2QuickQuery, V2UiNodePredicate, V2UiNodeQuickQuery}
+import com.thatdot.quine.routes.{QueryLanguage, QuerySort, QuickQuery, UiNode, UiNodePredicate, UiNodeQuickQuery}
 import com.thatdot.quine.webapp.Styles
+import com.thatdot.quine.webapp.components.streams.{EmbeddedEditorConfig, EmbeddedQueryEditor}
 import com.thatdot.quine.webapp.components.{ApiJsonPreview, PredicateBuilder}
 
 sealed trait QuickQueryEditorMode
@@ -17,17 +17,29 @@ object QuickQueryEditorMode {
 
 object QuickQueryEditor {
 
+  /** Edits a quick query in the v1 shape, which carries the entry's `queryLanguage`. This
+    * editor can only author Cypher (new entries are saved as Cypher), but a pre-existing
+    * Gremlin quick query is still editable: its buffer opens as plain text (Cypher
+    * highlighting/validation would be wrong for Gremlin) with a note saying so, and it
+    * stays Gremlin when saved.
+    */
   def apply(
     mode: QuickQueryEditorMode,
-    initialValue: Option[V2UiNodeQuickQuery],
+    initialValue: Option[UiNodeQuickQuery],
     currentNodes: Signal[Seq[UiNode[String]]],
-    onSave: V2UiNodeQuickQuery => Unit,
+    editorConfig: EmbeddedEditorConfig,
+    onSave: UiNodeQuickQuery => Unit,
     onDelete: Option[() => Unit],
     onCancel: () => Unit,
   ): HtmlElement = {
 
+    // Edits preserve the language the entry already has; entries created here are Cypher,
+    // the only language this editor can author.
+    val queryLanguage: QueryLanguage =
+      initialValue.map(_.quickQuery.queryLanguage).getOrElse(QueryLanguage.Cypher)
+
     val (initialName, initialSuffix, initialSort, initialEdgeLabel, initialPredicate) = initialValue match {
-      case Some(V2UiNodeQuickQuery(pred, qq)) =>
+      case Some(UiNodeQuickQuery(pred, qq)) =>
         (qq.name, qq.querySuffix, qq.sort, qq.edgeLabel, pred)
       case None =>
         mode match {
@@ -35,16 +47,16 @@ object QuickQueryEditor {
             (
               "",
               "",
-              V2QuerySort.Node: V2QuerySort,
+              QuerySort.Node: QuerySort,
               Option.empty[String],
-              V2UiNodePredicate(
+              UiNodePredicate(
                 propertyKeys = Vector.empty,
                 knownValues = Map.empty,
                 dbLabel = if (node.label.nonEmpty) Some(node.label) else None,
               ),
             )
           case _ =>
-            ("", "", V2QuerySort.Node: V2QuerySort, Option.empty[String], V2UiNodePredicate.every)
+            ("", "", QuerySort.Node: QuerySort, Option.empty[String], UiNodePredicate.every)
         }
     }
 
@@ -53,7 +65,7 @@ object QuickQueryEditor {
     val sortVar = Var(initialSort)
     val edgeLabelVar = Var(initialEdgeLabel.getOrElse(""))
     val predicateVar = Var(initialPredicate)
-    val showMatchingNodes = Var(initialPredicate != V2UiNodePredicate.every)
+    val showMatchingNodes = Var(initialPredicate != UiNodePredicate.every)
 
     val canSave: Signal[Boolean] = nameVar.signal
       .combineWith(querySuffixVar.signal)
@@ -72,10 +84,10 @@ object QuickQueryEditor {
             "name" -> Json.fromString(name),
             "querySuffix" -> Json.fromString(suffix),
             "sort" -> Json.fromString(sort match {
-              case V2QuerySort.Node => "NODE"
-              case V2QuerySort.Text => "TEXT"
+              case QuerySort.Node => "NODE"
+              case QuerySort.Text => "TEXT"
             }),
-            "edgeLabel" -> (if (sort == V2QuerySort.Node && edgeLabel.trim.nonEmpty)
+            "edgeLabel" -> (if (sort == QuerySort.Node && edgeLabel.trim.nonEmpty)
                               Json.fromString(edgeLabel.trim)
                             else Json.Null),
           ),
@@ -88,7 +100,7 @@ object QuickQueryEditor {
         fontSize := "0.88em",
         color := "#56618f",
         marginBottom := "4px",
-        "Appears in the right-click menu of matching nodes. Saved to the server — ",
+        "Appears in the right-click menu of matching nodes. Saved to the server and ",
         b("shared with everyone"),
         ".",
       ),
@@ -108,22 +120,35 @@ object QuickQueryEditor {
       div(
         cls := Styles.editorField,
         span(cls := Styles.editorFieldLabel, "Query"),
-        span(fontSize := "0.78em", color := "#8a93b5", " — runs from the clicked node, bound as n"),
+        span(fontSize := "0.78em", color := "#8a93b5", " runs from the clicked node, bound as n"),
+        if (queryLanguage == QueryLanguage.Gremlin)
+          div(
+            fontSize := "0.85em",
+            color := "#8a6d3b",
+            backgroundColor := "#fdf6e3",
+            border := "1px solid #f0e0b6",
+            borderRadius := "6px",
+            padding := "6px 10px",
+            marginBottom := "6px",
+            b("Gremlin quick query"),
+            " is edited as plain text since syntax highlighting and validation are Cypher-only. It stays Gremlin when saved.",
+          )
+        else emptyNode,
         div(
           display := "flex",
           alignItems := "center",
           gap := "6px",
           span(cls := Styles.editorAnchorChip, "(n) ▸"),
-          input(
-            cls := Styles.editorInput,
-            typ := "text",
+          div(
             flexGrow := 1,
-            placeholder := "MATCH (n)--(m) RETURN DISTINCT m",
-            fontFamily := "\"SF Mono\", ui-monospace, Menlo, Consolas, monospace",
-            fontSize := "0.88em",
-            controlled(
-              value <-- querySuffixVar.signal,
-              onInput.mapToValue --> querySuffixVar.writer,
+            EmbeddedQueryEditor(
+              currentValue = querySuffixVar.signal,
+              onUpdate = v => querySuffixVar.set(v),
+              placeholderText = "MATCH (n)--(m) RETURN DISTINCT m",
+              editorConfig = editorConfig,
+              bufferLanguage =
+                if (queryLanguage == QueryLanguage.Gremlin) EmbeddedQueryEditor.BufferLanguage.PlainText
+                else EmbeddedQueryEditor.BufferLanguage.Cypher,
             ),
           ),
         ),
@@ -136,24 +161,24 @@ object QuickQueryEditor {
           gap := "0",
           button(
             cls <-- sortVar.signal.map(s =>
-              if (s == V2QuerySort.Node) Styles.editorToggleActive else Styles.editorToggle,
+              if (s == QuerySort.Node) Styles.editorToggleActive else Styles.editorToggle,
             ),
             borderRadius := "8px 0 0 8px",
             "⚭ Nodes on canvas",
-            onClick --> (_ => sortVar.set(V2QuerySort.Node)),
+            onClick --> (_ => sortVar.set(QuerySort.Node)),
           ),
           button(
             cls <-- sortVar.signal.map(s =>
-              if (s == V2QuerySort.Text) Styles.editorToggleActive else Styles.editorToggle,
+              if (s == QuerySort.Text) Styles.editorToggleActive else Styles.editorToggle,
             ),
             borderRadius := "0 8px 8px 0",
             "≡ Text panel",
-            onClick --> (_ => sortVar.set(V2QuerySort.Text)),
+            onClick --> (_ => sortVar.set(QuerySort.Text)),
           ),
         ),
       ),
       child <-- sortVar.signal.map {
-        case V2QuerySort.Node =>
+        case QuerySort.Node =>
           div(
             fontSize := "0.85em",
             color := "#56618f",
@@ -173,7 +198,7 @@ object QuickQueryEditor {
               ),
             ),
           )
-        case V2QuerySort.Text => emptyNode
+        case QuerySort.Text => emptyNode
       },
       div(
         cls := Styles.editorField,
@@ -188,7 +213,7 @@ object QuickQueryEditor {
             "All nodes",
             onClick --> { _ =>
               showMatchingNodes.set(false)
-              predicateVar.set(V2UiNodePredicate.every)
+              predicateVar.set(UiNodePredicate.every)
             },
           ),
           button(
@@ -199,7 +224,7 @@ object QuickQueryEditor {
           ),
         ),
         child <-- showMatchingNodes.signal.map {
-          case true => PredicateBuilder.v2(predicateVar, currentNodes)
+          case true => PredicateBuilder(predicateVar, currentNodes)
           case false => emptyNode
         },
       ),
@@ -226,16 +251,17 @@ object QuickQueryEditor {
           disabled <-- canSave.map(!_),
           onClick --> { _ =>
             val edgeLabel =
-              if (sortVar.now() == V2QuerySort.Node && edgeLabelVar.now().trim.nonEmpty)
+              if (sortVar.now() == QuerySort.Node && edgeLabelVar.now().trim.nonEmpty)
                 Some(edgeLabelVar.now().trim)
               else None
-            val qq = V2QuickQuery(
+            val qq = QuickQuery(
               name = nameVar.now().trim,
               querySuffix = querySuffixVar.now().trim,
+              queryLanguage = queryLanguage,
               sort = sortVar.now(),
               edgeLabel = edgeLabel,
             )
-            onSave(V2UiNodeQuickQuery(predicateVar.now(), qq))
+            onSave(UiNodeQuickQuery(predicateVar.now(), qq))
           },
         ),
       ),

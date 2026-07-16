@@ -23,13 +23,18 @@ object QuickQueryConversions {
       ),
     )
 
-  def v2ToV1(v2: V2UiNodeQuickQuery): UiNodeQuickQuery =
+  /** The V2 type has no `queryLanguage` field (the V2 API is Cypher-only), so the caller
+    * supplies the language for the v1 side: `Cypher` for payloads born on the V2 API, or the
+    * language the entry was originally loaded with when round-tripping a v1 read, so that an
+    * untouched Gremlin quick query is not silently rewritten as Cypher.
+    */
+  def v2ToV1(v2: V2UiNodeQuickQuery, queryLanguage: QueryLanguage): UiNodeQuickQuery =
     UiNodeQuickQuery(
       predicate = UiNodePredicate(v2.predicate.propertyKeys, v2.predicate.knownValues, v2.predicate.dbLabel),
       quickQuery = QuickQuery(
         name = v2.quickQuery.name,
         querySuffix = v2.quickQuery.querySuffix,
-        queryLanguage = QueryLanguage.Cypher,
+        queryLanguage = queryLanguage,
         sort = v2.quickQuery.sort match {
           case V2QuerySort.Node => QuerySort.Node
           case V2QuerySort.Text => QuerySort.Text

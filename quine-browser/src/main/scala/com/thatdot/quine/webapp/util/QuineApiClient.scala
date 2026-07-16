@@ -9,8 +9,15 @@ import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.routes.exts.NamespaceParameter
-import com.thatdot.quine.routes.{ClientRoutes, MetricsReport, SampleQuery, ShardInMemoryLimit, UiNodeAppearance}
-import com.thatdot.quine.v2api.routes.V2UiNodeQuickQuery
+import com.thatdot.quine.routes.{
+  ClientRoutes,
+  MetricsReport,
+  QueryLanguage,
+  SampleQuery,
+  ShardInMemoryLimit,
+  UiNodeAppearance,
+  UiNodeQuickQuery,
+}
 import com.thatdot.quine.webapp.AuthEvents
 import com.thatdot.quine.webapp.v2api.QuickQueryConversions
 import com.thatdot.quine.webapp.v2api.V2ApiTypes._
@@ -195,13 +202,16 @@ object QuineApiClient {
       else routes.queryUiSampleQueries(()).future,
     )
 
-  /** Polled feed of quick queries with their node predicates; a V1 read (`useV2Api = false`)
-    * is converted to the V2 shape at the wire boundary.
+  /** Polled feed of quick queries with their node predicates, in the v1 shape. The v1 type is
+    * the app-side model because it is a strict superset of V2's (it carries `queryLanguage`;
+    * the V2 API is Cypher-only), so a v1 Gremlin entry keeps its language across the app. A V2
+    * read is converted at the wire boundary, tagged Cypher.
     */
-  def quickQueries(routes: ClientRoutes, useV2Api: Boolean): Feed[Vector[V2UiNodeQuickQuery]] =
+  def quickQueries(routes: ClientRoutes, useV2Api: Boolean): Feed[Vector[UiNodeQuickQuery]] =
     poll(
-      if (useV2Api) routes.queryUiQuickQueriesV2(()).future
-      else routes.queryUiQuickQueries(()).future.map(_.map(QuickQueryConversions.v1ToV2)),
+      if (useV2Api)
+        routes.queryUiQuickQueriesV2(()).future.map(_.map(QuickQueryConversions.v2ToV1(_, QueryLanguage.Cypher)))
+      else routes.queryUiQuickQueries(()).future,
     )
 
   /** Polled feed of node appearance rules; `useV2Api = false` reads the V1 twin route. */
@@ -218,16 +228,16 @@ object QuineApiClient {
     (if (useV2Api) routes.updateQueryUiSampleQueriesV2(sampleQueries).future
      else routes.updateQueryUiSampleQueries(sampleQueries).future).map(_ => ())
 
-  /** Persist the full quick-query list; a V1 write (`useV2Api = false`) is converted from
-    * the V2 shape at the wire boundary.
+  /** Persist the full quick-query list; a V2 write is converted from the v1 shape at the wire
+    * boundary (dropping `queryLanguage`, which the V2 API doesn't model).
     */
   def saveQuickQueries(
-    quickQueries: Vector[V2UiNodeQuickQuery],
+    quickQueries: Vector[UiNodeQuickQuery],
     routes: ClientRoutes,
     useV2Api: Boolean,
   ): Future[Unit] =
-    (if (useV2Api) routes.updateQueryUiQuickQueriesV2(quickQueries).future
-     else routes.updateQueryUiQuickQueries(quickQueries.map(QuickQueryConversions.v2ToV1)).future).map(_ => ())
+    (if (useV2Api) routes.updateQueryUiQuickQueriesV2(quickQueries.map(QuickQueryConversions.v1ToV2)).future
+     else routes.updateQueryUiQuickQueries(quickQueries).future).map(_ => ())
 
   /** Persist the full node-appearance list; `useV2Api = false` writes the V1 twin route. */
   def saveNodeAppearances(

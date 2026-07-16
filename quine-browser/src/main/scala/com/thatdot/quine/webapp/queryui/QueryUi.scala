@@ -71,7 +71,7 @@ import com.thatdot.quine.webapp.resultspanel.{
   TapOutput,
 }
 import com.thatdot.quine.webapp.util.Pot
-import com.thatdot.quine.webapp.v2api.V2ApiTypes
+import com.thatdot.quine.webapp.v2api.{QuickQueryConversions, V2ApiTypes}
 import com.thatdot.quine.webapp.{History, QueryUiOptions, Styles}
 import com.thatdot.{visnetwork => vis}
 
@@ -2553,7 +2553,7 @@ object QueryUi {
             stateVar.update(_.copy(sampleQueries = sqs))
           },
           props.dataService.quickQueriesSignal --> { qqs =>
-            stateVar.update(_.copy(uiNodeQuickQueries = qqs))
+            stateVar.update(_.copy(uiNodeQuickQueries = qqs.map(QuickQueryConversions.v1ToV2)))
           },
         )
       else List.empty[Modifier[HtmlElement]],

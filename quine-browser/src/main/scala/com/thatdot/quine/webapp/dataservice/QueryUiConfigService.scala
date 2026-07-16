@@ -2,8 +2,7 @@ package com.thatdot.quine.webapp.dataservice
 
 import com.raquo.airstream.core.{Observer, Signal}
 
-import com.thatdot.quine.routes.{SampleQuery, UiNodeAppearance}
-import com.thatdot.quine.v2api.routes.V2UiNodeQuickQuery
+import com.thatdot.quine.routes.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 
 /** Query-UI configuration capability: the user-editable settings that shape the explorer
   * (saved sample queries, node quick queries, node appearance rules). All three are
@@ -19,8 +18,12 @@ trait QueryUiConfigService {
   /** Saved sample queries shown in the query bar dropdown and bookmark dialog. */
   def sampleQueriesSignal: Signal[Vector[SampleQuery]]
 
-  /** Quick queries offered in the node context menu, paired with their node predicates. */
-  def quickQueriesSignal: Signal[Vector[V2UiNodeQuickQuery]]
+  /** Quick queries offered in the node context menu, paired with their node predicates.
+    * Modeled in the v1 shape, a strict superset of V2's that carries each entry's
+    * `queryLanguage` (the V2 API is Cypher-only), so a Gremlin entry read over V1 keeps its
+    * language until the wire boundary projects it away for V2 calls.
+    */
+  def quickQueriesSignal: Signal[Vector[UiNodeQuickQuery]]
 
   /** Node appearance rules (icon, color, size, label) applied when rendering graph nodes. */
   def nodeAppearancesSignal: Signal[Vector[UiNodeAppearance]]
@@ -46,7 +49,7 @@ object QueryUiConfigService {
     * [[QueryUiConfigService.quickQueriesSignal]] refetches.
     */
   final case class SaveQuickQueries(
-    quickQueries: Vector[V2UiNodeQuickQuery],
+    quickQueries: Vector[UiNodeQuickQuery],
     replyTo: Observer[SaveResult] = Observer.empty,
   ) extends Command
 

@@ -6,6 +6,7 @@ import io.circe.syntax._
 
 import com.thatdot.quine.webapp.Styles
 import com.thatdot.quine.webapp.components.ApiJsonPreview
+import com.thatdot.quine.webapp.components.streams.{EmbeddedEditorConfig, EmbeddedQueryEditor}
 import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2StandingQueryInfo, V2SyntheticEdge, V2TapQuery}
 
 sealed trait TapQueryEditorMode
@@ -65,6 +66,7 @@ object TapQueryEditor {
     mode: TapQueryEditorMode,
     initialValue: Option[V2TapQuery],
     standingQueries: Signal[Seq[V2StandingQueryInfo]],
+    editorConfig: EmbeddedEditorConfig,
     onSave: V2TapQuery => Unit,
     onDelete: Option[() => Unit],
     onCancel: () => Unit,
@@ -269,16 +271,11 @@ object TapQueryEditor {
           color := "#8a93b5",
           " — match fields available as $field_name (or WIRETAP_MESSAGE for the whole object)",
         ),
-        textArea(
-          cls := Styles.editorInput,
-          rows := 5,
-          placeholder := "MATCH (n) WHERE n.id = $userId RETURN n",
-          fontFamily := "\"SF Mono\", ui-monospace, Menlo, Consolas, monospace",
-          fontSize := "0.88em",
-          controlled(
-            value <-- queryVar.signal,
-            onInput.mapToValue --> queryVar.writer,
-          ),
+        EmbeddedQueryEditor(
+          currentValue = queryVar.signal,
+          onUpdate = v => queryVar.set(v),
+          placeholderText = "MATCH (n) WHERE n.id = $userId RETURN n",
+          editorConfig = editorConfig,
         ),
       ),
       // Synthetic edges — one editable row per edge.

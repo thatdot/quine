@@ -5,8 +5,8 @@ import org.scalajs.dom.window
 
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
-import com.thatdot.quine.v2api.routes.V2UiNodeQuickQuery
 import com.thatdot.quine.webapp.Styles
+import com.thatdot.quine.webapp.components.streams.EmbeddedEditorConfig
 import com.thatdot.quine.webapp.components.{Toast, ToastMessage, ToastVariant}
 import com.thatdot.quine.webapp.dataservice.{
   DataService,
@@ -45,10 +45,15 @@ object ExplorerSettingsPage {
     */
   def apply(
     dataService: DataService,
+    editorConfig: EmbeddedEditorConfig,
     showGraphPicker: Boolean = false,
   ): HtmlElement = {
     val sampleQueriesVar: Var[Vector[SampleQuery]] = Var(Vector.empty)
-    val quickQueriesVar: Var[Vector[V2UiNodeQuickQuery]] = Var(Vector.empty)
+    // Quick queries are modeled in the v1 shape end to end: v1's UiNodeQuickQuery is a strict
+    // superset of V2's (it adds `queryLanguage`; the V2 API is Cypher-only), so a v1 Gremlin
+    // entry never loses its language on the display/edit round trip. The lossy projection to
+    // V2 happens only at the wire boundary, in QuineApiClient.
+    val quickQueriesVar: Var[Vector[UiNodeQuickQuery]] = Var(Vector.empty)
     val appearancesVar: Var[Vector[UiNodeAppearance]] = Var(Vector.empty)
     val tapQueriesVar: Var[Vector[V2TapQuery]] = Var(Vector.empty)
     val toastVar: Var[Option[ToastMessage]] = Var(None)
@@ -80,7 +85,7 @@ object ExplorerSettingsPage {
       )
     }
 
-    def saveQuickQueries(qqs: Vector[V2UiNodeQuickQuery]): Unit = {
+    def saveQuickQueries(qqs: Vector[UiNodeQuickQuery]): Unit = {
       val previous = quickQueriesVar.now()
       quickQueriesVar.set(qqs)
       dataService.queryUiConfigDispatch.onNext(
@@ -116,7 +121,7 @@ object ExplorerSettingsPage {
       )
     }
 
-    // Tap queries are scoped per-graph, replacing only the current graph's list — no need
+    // Tap queries are scoped per-graph, replacing only the current graph's list; no need
     // to preserve other graphs' entries client-side. The service targets the graph the
     // user is viewing and refetches the shared feed on success.
     def saveTapQueries(tqs: Vector[V2TapQuery]): Unit = {
@@ -127,7 +132,7 @@ object ExplorerSettingsPage {
           tqs,
           replyTo = Observer[SaveResult] {
             case SaveSucceeded =>
-              toastVar.set(Some(ToastMessage("Tap queries saved — shared with everyone", ToastVariant.Success)))
+              toastVar.set(Some(ToastMessage("Tap queries saved (shared with everyone)", ToastVariant.Success)))
             case SaveFailed(message) =>
               tapQueriesVar.set(previous)
               toastVar.set(Some(ToastMessage(s"Save failed: $message", ToastVariant.Error)))
@@ -142,7 +147,7 @@ object ExplorerSettingsPage {
       // The shared DataService feeds populate the page's working Vars while this page is
       // mounted. Namespace switching needs no handling here: the graph-scoped feeds
       // (tapQueries, standingQueries) key off the service's current namespace, which tracks
-      // the graph picker. Each editable catalog is guarded by its editor — refreshes landing
+      // the graph picker. Each editable catalog is guarded by its editor; refreshes landing
       // mid-edit are dropped so in-progress edits aren't clobbered (a change swallowed this
       // way surfaces on the feed's next data change).
       dataService.sampleQueriesSignal --> { sqs =>
@@ -175,14 +180,15 @@ object ExplorerSettingsPage {
             )
           },
           tapQueryEditVar,
+          editorConfig,
           saveTapQueries,
           tapQueriesExpandedVar,
           dataService,
         ),
         div(cls := "mt-4"),
-        sampleQueriesCard(sampleQueriesVar, sqEditVar, saveSampleQueries, sqExpandedVar),
+        sampleQueriesCard(sampleQueriesVar, sqEditVar, editorConfig, saveSampleQueries, sqExpandedVar),
         div(cls := "mt-4"),
-        quickQueriesCard(quickQueriesVar, qqEditVar, saveQuickQueries, qqExpandedVar),
+        quickQueriesCard(quickQueriesVar, qqEditVar, editorConfig, saveQuickQueries, qqExpandedVar),
         div(cls := "mt-4"),
         nodeAppearancesCard(appearancesVar, naEditVar, saveNodeAppearances, naExpandedVar),
       ),
@@ -191,7 +197,7 @@ object ExplorerSettingsPage {
   }
 
   // ---------------------------------------------------------------------------
-  // Collapsible card shell — header toggles collapse, button area stops propagation
+  // Collapsible card shell: header toggles collapse, button area stops propagation
   // ---------------------------------------------------------------------------
 
   private def collapsibleCard(
@@ -231,6 +237,7 @@ object ExplorerSettingsPage {
     knownNamespaces: Signal[Seq[String]],
     onSelectNamespace: Observer[String],
     editVar: Var[Option[TapQueryEditorMode]],
+    editorConfig: EmbeddedEditorConfig,
     save: Vector[V2TapQuery] => Unit,
     expandedVar: Var[Boolean],
     wiretap: WiretapService,
@@ -261,7 +268,7 @@ object ExplorerSettingsPage {
       ) save(visible.patch(idx, Nil, 1))
     }
 
-    // Graph (namespace) dropdown — selections dispatch to the DataService, so switching
+    // Graph (namespace) dropdown; selections dispatch to the DataService, so switching
     // here changes the Explorer's graph too. Only shown in Enterprise multi-graph mode.
     def graphPicker(): HtmlElement =
       if (!showGraphPicker) div(display := "none")
@@ -304,6 +311,7 @@ object ExplorerSettingsPage {
               case _ => None
             },
             standingQueries = standingQueries,
+            editorConfig = editorConfig,
             onSave = { newTapQuery =>
               val visible = dataVar.now()
               val updated = mode match {
@@ -410,7 +418,7 @@ object ExplorerSettingsPage {
       cls := Styles.managerListItem,
       flexDirection := "column",
       alignItems := "stretch",
-      // Top row — name/detail + edit/delete actions
+      // Top row: name/detail + edit/delete actions
       div(
         cls := "d-flex align-items-center w-100",
         onClick --> (_ => onEdit(idx)),
@@ -443,7 +451,7 @@ object ExplorerSettingsPage {
           ),
         ),
       ),
-      // Enable Locally row — record the enable/disable intent with the service. It opens
+      // Enable Locally row: record the enable/disable intent with the service. It opens
       // or closes the wiretap, persists the intent per graph for this tab, and restores
       // it on reload, so the toggle itself never manages handlers.
       div(
@@ -476,6 +484,7 @@ object ExplorerSettingsPage {
   private def sampleQueriesCard(
     dataVar: Var[Vector[SampleQuery]],
     editVar: Var[Option[SampleQueryEditorMode]],
+    editorConfig: EmbeddedEditorConfig,
     save: Vector[SampleQuery] => Unit,
     expandedVar: Var[Boolean],
   ): HtmlElement = {
@@ -511,6 +520,7 @@ object ExplorerSettingsPage {
             case SampleQueryEditorMode.Editing(idx) => dataVar.now().lift(idx)
             case _ => None
           },
+          editorConfig = editorConfig,
           onSave = { newSq =>
             val current = dataVar.now()
             val updated = mode match {
@@ -540,9 +550,10 @@ object ExplorerSettingsPage {
   // ---------------------------------------------------------------------------
 
   private def quickQueriesCard(
-    dataVar: Var[Vector[V2UiNodeQuickQuery]],
+    dataVar: Var[Vector[UiNodeQuickQuery]],
     editVar: Var[Option[QuickQueryEditorMode]],
-    save: Vector[V2UiNodeQuickQuery] => Unit,
+    editorConfig: EmbeddedEditorConfig,
+    save: Vector[UiNodeQuickQuery] => Unit,
     expandedVar: Var[Boolean],
   ): HtmlElement = {
     val headerButton: Signal[HtmlElement] = editVar.signal.map {
@@ -577,6 +588,7 @@ object ExplorerSettingsPage {
             case _ => None
           },
           currentNodes = Val(Seq.empty),
+          editorConfig = editorConfig,
           onSave = { newQq =>
             val current = dataVar.now()
             val updated = mode match {

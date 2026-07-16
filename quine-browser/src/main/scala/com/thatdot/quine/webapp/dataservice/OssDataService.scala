@@ -13,8 +13,14 @@ import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.routes.exts.NamespaceParameter
-import com.thatdot.quine.routes.{ClientRoutes, MetricsReport, SampleQuery, ShardInMemoryLimit, UiNodeAppearance}
-import com.thatdot.quine.v2api.routes.V2UiNodeQuickQuery
+import com.thatdot.quine.routes.{
+  ClientRoutes,
+  MetricsReport,
+  SampleQuery,
+  ShardInMemoryLimit,
+  UiNodeAppearance,
+  UiNodeQuickQuery,
+}
 import com.thatdot.quine.webapp.util.{Pot, QuineApiClient}
 import com.thatdot.quine.webapp.v2api.V2ApiTypes.{
   V2BackpressureSnapshot,
@@ -24,9 +30,10 @@ import com.thatdot.quine.webapp.v2api.V2ApiTypes.{
   V2TapQuery,
 }
 
-/** @param useV2Api when false, resources with a V1 twin (the queryUi trio) are read via the
-  *                  V1 routes, converted to the V2 shape at the wire boundary. V2-only
-  *                  resources are unaffected — they have no V1 equivalent.
+/** @param useV2Api when false, resources with a V1 twin (the queryUi trio) are read and
+  *                  written via the V1 routes; any shape mismatch is converted at the wire
+  *                  boundary (see [[QuineApiClient.quickQueries]]). V2-only resources are
+  *                  unaffected — they have no V1 equivalent.
   */
 class OssDataService(protected val clientRoutes: ClientRoutes, protected val useV2Api: Boolean = true)
     extends DataService {
@@ -308,7 +315,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       .startWith(Vector.empty)
       .distinct
 
-  lazy val quickQueriesSignal: Signal[Vector[V2UiNodeQuickQuery]] =
+  lazy val quickQueriesSignal: Signal[Vector[UiNodeQuickQuery]] =
     EventStream
       .merge(EventStream.fromValue(()), quickQueriesRefresh.events)
       .flatMapSwitch(_ => QuineApiClient.quickQueries(clientRoutes, useV2Api).values)

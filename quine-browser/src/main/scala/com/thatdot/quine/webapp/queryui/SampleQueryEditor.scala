@@ -6,6 +6,7 @@ import io.circe.Json
 import com.thatdot.quine.routes.SampleQuery
 import com.thatdot.quine.webapp.Styles
 import com.thatdot.quine.webapp.components.ApiJsonPreview
+import com.thatdot.quine.webapp.components.streams.{EmbeddedEditorConfig, EmbeddedQueryEditor}
 
 sealed trait SampleQueryEditorMode
 object SampleQueryEditorMode {
@@ -18,6 +19,7 @@ object SampleQueryEditor {
   def apply(
     mode: SampleQueryEditorMode,
     initialValue: Option[SampleQuery],
+    editorConfig: EmbeddedEditorConfig,
     onSave: SampleQuery => Unit,
     onDelete: Option[() => Unit],
     onCancel: () => Unit,
@@ -62,13 +64,11 @@ object SampleQueryEditor {
       div(
         cls := Styles.editorField,
         span(cls := Styles.editorFieldLabel, "Query"),
-        textArea(
-          cls := Styles.editorTextarea,
-          placeholder := "CALL recentNodes(10)",
-          controlled(
-            value <-- queryVar.signal,
-            onInput.mapToValue --> queryVar.writer,
-          ),
+        EmbeddedQueryEditor(
+          currentValue = queryVar.signal,
+          onUpdate = v => queryVar.set(v),
+          placeholderText = "CALL recentNodes(10)",
+          editorConfig = editorConfig,
         ),
       ),
       ApiJsonPreview(jsonPreview),

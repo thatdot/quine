@@ -34,7 +34,7 @@ class QuineOssViews(
     .collectStatic(Streams)(StreamsView(options, dataService))
     .collectStatic(Landing)(LandingView(dataService))
     .collectStatic(ExplorerSettings)(
-      ExplorerSettingsView(dataService),
+      ExplorerSettingsView(dataService, options),
     )
     .signal
 

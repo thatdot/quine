@@ -27,6 +27,15 @@ export type { EditorDiagnostic } from "./editorDiagnostics.js";
  * discriminant and (when enabled) the language-server URL.
  */
 interface QueryEditorBaseOptions {
+  /**
+   * Buffer language. `"cypher"` (default) installs this package's Cypher
+   * language configuration and, without a language server, its Monarch
+   * tokenizer. `"plaintext"` uses Monaco's built-in plain-text mode — no
+   * highlighting, no bracket rules, and no language-server connection even
+   * when `qpEnabled` is set — for buffers in languages this package has no
+   * grammar for (e.g. Gremlin), where Cypher tokenization would be wrong.
+   */
+  language?: "cypher" | "plaintext";
   /** Hint text shown while the editor is empty. */
   placeholder?: string;
   /** Initial buffer content. Defaults to empty. */
@@ -216,11 +225,14 @@ export function createQueryEditor(
   container: HTMLElement,
   opts: QueryEditorOptions,
 ): QueryEditorHandle {
-  registerCypherLanguage();
-  // With qp.enabled the language server's semantic tokens are the sole highlighter; otherwise the
-  // client-side Monarch tokenizer is.
-  const useMonarchHighlighter = opts.qpEnabled !== true;
-  if (useMonarchHighlighter) installCypherMonarchTokenizer();
+  const plainText = opts.language === "plaintext";
+  if (!plainText) {
+    registerCypherLanguage();
+    // With qp.enabled the language server's semantic tokens are the sole highlighter; otherwise
+    // the client-side Monarch tokenizer is.
+    const useMonarchHighlighter = opts.qpEnabled !== true;
+    if (useMonarchHighlighter) installCypherMonarchTokenizer();
+  }
   defineQueryEditorTheme();
 
   const maxHeightPx = opts.maxHeightPx ?? DEFAULT_MAX_HEIGHT_PX;
@@ -234,7 +246,7 @@ export function createQueryEditor(
 
   const editor = monaco.editor.create(container, {
     value: opts.initialValue ?? "",
-    language: CYPHER_LANGUAGE_ID,
+    language: plainText ? "plaintext" : CYPHER_LANGUAGE_ID,
     theme: QUERY_EDITOR_THEME,
     placeholder: opts.placeholder,
 
@@ -574,7 +586,9 @@ export function createQueryEditor(
   // handshake, registers the semantic-token provider, auto-issues pull
   // diagnostics, and renders completions; it reconnects on close with bounded
   // backoff and degrades to Monarch-only (here: no highlighter) on a 404/close.
-  if (opts.qpEnabled) lsp.connect(opts.languageServerUrl);
+  // Plain-text buffers never connect: the Quine language server only speaks Cypher, so its
+  // diagnostics/tokens would be nonsense for e.g. a Gremlin buffer.
+  if (opts.qpEnabled && !plainText) lsp.connect(opts.languageServerUrl);
 
   return {
     getValue: () => model.getValue(),

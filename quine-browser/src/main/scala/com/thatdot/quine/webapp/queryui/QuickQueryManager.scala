@@ -2,20 +2,20 @@ package com.thatdot.quine.webapp.queryui
 
 import com.raquo.laminar.api.L._
 
-import com.thatdot.quine.v2api.routes.{V2QuerySort, V2UiNodePredicate, V2UiNodeQuickQuery}
+import com.thatdot.quine.routes.{QuerySort, UiNodePredicate, UiNodeQuickQuery}
 import com.thatdot.quine.webapp.Styles
 
 object QuickQueryManager {
 
   def apply(
-    quickQueries: Signal[Vector[V2UiNodeQuickQuery]],
+    quickQueries: Signal[Vector[UiNodeQuickQuery]],
     onEdit: Int => Unit,
     onNew: () => Unit,
     onDelete: Int => Unit,
   ): HtmlElement = {
     val searchVar = Var("")
 
-    val filtered: Signal[Vector[(V2UiNodeQuickQuery, Int)]] =
+    val filtered: Signal[Vector[(UiNodeQuickQuery, Int)]] =
       quickQueries.combineWith(searchVar.signal).map { case (qqs, search) =>
         val needle = search.trim.toLowerCase
         val indexed = qqs.zipWithIndex
@@ -51,8 +51,8 @@ object QuickQueryManager {
             cls := Styles.managerList,
             items.map { case (qq, idx) =>
               val sortIcon = qq.quickQuery.sort match {
-                case V2QuerySort.Node => "⚭"
-                case V2QuerySort.Text => "≡"
+                case QuerySort.Node => "⚭"
+                case QuerySort.Text => "≡"
               }
               val predSummary = predicateSummary(qq.predicate)
               div(
@@ -93,8 +93,8 @@ object QuickQueryManager {
     )
   }
 
-  def predicateSummary(pred: V2UiNodePredicate): String =
-    if (pred == V2UiNodePredicate.every) "All nodes"
+  def predicateSummary(pred: UiNodePredicate): String =
+    if (pred == UiNodePredicate.every) "All nodes"
     else {
       val parts = Seq(
         pred.dbLabel.map(l => s"label=$l"),

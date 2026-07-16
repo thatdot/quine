@@ -24,6 +24,12 @@ trait EditorDiagnostic extends js.Object {
   */
 trait QueryEditorOptions extends js.Object {
 
+  /** Buffer language: `"cypher"` (default) or `"plaintext"`. Plain text turns off all
+    * highlighting, bracket rules, and the language-server connection — for buffers in languages
+    * the package has no grammar for (e.g. Gremlin), where Cypher tokenization would be wrong.
+    */
+  var language: js.UndefOr[String] = js.undefined
+
   /** Hint text shown while the editor is empty. */
   var placeholder: js.UndefOr[String] = js.undefined
 
