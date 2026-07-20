@@ -1107,6 +1107,11 @@ final class QuineApp(
       blocking(ingestStreamsLock.synchronized {
         ingestStreams.get(namespace).flatMap(_.get(name)).map { stream =>
           ingestStreams += namespace -> (ingestStreams(namespace) - name)
+          // Retire the meter with the ingest. Meters are get-or-create by (namespace, name), so a
+          // registered survivor would hand its counts to the next same-named ingest, which would
+          // then report its predecessor's totals in the status API. The deleted stream's final
+          // stats are unaffected; it holds direct references to the meter objects.
+          IngestMetered.removeIngestMeter(namespace, name, graph.metrics)
           Await.result(
             syncIngestStreamsMetaData(thisMemberIdx),
             QuineApp.ConfigApiTimeout,
@@ -1133,6 +1138,9 @@ final class QuineApp(
             val terminationFut = terminateIngestStream(stream)
 
             ingestStreams += namespace -> (ingestStreams(namespace) - name)
+            // Retire the meter with the ingest so a same-named recreate does not inherit its
+            // counts; see the matching call in removeIngestStream for the full rationale.
+            IngestMetered.removeIngestMeter(namespace, name, graph.metrics)
             syncIngestStreamsMetaData(thisMemberIdx)
               .flatMap(_ =>
                 finalStatusFut
