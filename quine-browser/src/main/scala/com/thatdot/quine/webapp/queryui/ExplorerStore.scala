@@ -25,6 +25,7 @@ import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.routes.UiEdge
 import com.thatdot.quine.webapp.History
+import com.thatdot.quine.webapp.resultspanel.cards.CardSnapshot
 
 // Per-tab, per-namespace persistence for the graph explorer, backed by IndexedDB. Keys are
 // "$tabId:$nsKey", where tabId lives in sessionStorage (stable across reloads) paired with an
@@ -82,6 +83,12 @@ final case class FullSnapshot(
   resultsEntries: Seq[SerializableHistoryEntry],
   resultsCurrentIdx: Int,
   resultsCollapsed: Boolean,
+  /** The card system's card list (design doc §6 / checklist A11), already reduced to
+    * plain data by [[com.thatdot.quine.webapp.resultspanel.cards.CardSnapshot]].
+    */
+  cards: Seq[CardSnapshot],
+  /** Which card, if any, was expanded when this snapshot was taken. */
+  expandedCardId: Option[String],
   /** Wall-clock time (`js.Date.now()`) this snapshot was written to IndexedDB. Used only by
     * `ExplorerStore.purgeStale` to find and delete entries older than `MaxAgeMs`.
     */
@@ -120,7 +127,14 @@ object ExplorerStore {
   implicit private val histEntryEncoder: Encoder[SerializableHistoryEntry] = deriveEncoder
   implicit private val histEntryDecoder: Decoder[SerializableHistoryEntry] = deriveDecoder
   implicit private val snapshotEncoder: Encoder[FullSnapshot] = deriveEncoder
-  implicit private val snapshotDecoder: Decoder[FullSnapshot] = deriveDecoder
+
+  // Snapshots written before the card system lack the `cards` field (`expandedCardId`,
+  // being an Option, already decodes from a missing key); inject an empty list so they
+  // keep decoding instead of being discarded by `load`.
+  implicit private val snapshotDecoder: Decoder[FullSnapshot] =
+    deriveDecoder[FullSnapshot].prepare(
+      _.withFocus(_.mapObject(o => if (o.contains("cards")) o else o.add("cards", Json.arr()))),
+    )
 
   private val DbName = "thatdot.explorer"
   private val DbVersion = 1d

@@ -166,6 +166,9 @@ object V2ApiTypes {
     name: String,
     destinations: List[V2StandingQueryDestination],
     hasEnrichment: Boolean, // whether the output defines a `resultEnrichment` Cypher query
+    hasTransformation: Boolean, // whether the output defines a `preEnrichmentTransformation`
+    enrichmentQuery: Option[String], // the `resultEnrichment` Cypher text itself, when present
+    transformationType: Option[String], // the `preEnrichmentTransformation`'s `type` discriminator, when present
   )
   object V2StandingQueryOutput {
     implicit val decoder: Decoder[V2StandingQueryOutput] = (c: HCursor) =>
@@ -173,9 +176,18 @@ object V2ApiTypes {
         name <- c.downField("name").as[String]
         destinations <- c.downField("destinations").as[List[V2StandingQueryDestination]]
         // `resultEnrichment` is an optional Cypher query; its presence is what makes the Pre and
-        // Post tap points differ (Pre = before it runs, Post = after).
+        // Post tap points differ (Pre = before it runs, Post = after). Likewise
+        // `preEnrichmentTransformation` is what gives the Pre point a stream distinct from Raw.
         enrichment <- c.downField("resultEnrichment").as[Option[Json]]
-      } yield V2StandingQueryOutput(name, destinations, enrichment.exists(!_.isNull))
+        transformation <- c.downField("preEnrichmentTransformation").as[Option[Json]]
+      } yield V2StandingQueryOutput(
+        name,
+        destinations,
+        enrichment.exists(!_.isNull),
+        transformation.exists(!_.isNull),
+        enrichment.flatMap(_.hcursor.downField("query").as[String].toOption),
+        transformation.flatMap(_.hcursor.downField("type").as[String].toOption),
+      )
   }
 
   /** Mirrors `com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern` (fields subset):
@@ -255,6 +267,9 @@ object V2ApiTypes {
     description: Option[String],
     standingQueryName: String,
     outputName: Option[String],
+    // When `outputName` is set, tap the output's pre-enrichment (post-transformation)
+    // stream instead of its post-enrichment stream. Ignored when `outputName` is unset.
+    preEnrichment: Boolean,
     query: String,
     syntheticEdges: Vector[V2SyntheticEdge],
   )
@@ -265,12 +280,13 @@ object V2ApiTypes {
         description <- c.downField("description").as[Option[String]]
         sqName <- c.downField("standingQueryName").as[String]
         outputName <- c.downField("outputName").as[Option[String]]
+        preEnrichment <- c.downField("preEnrichment").as[Option[Boolean]].map(_.getOrElse(false))
         query <- c.downField("query").as[String]
         syntheticEdges <- c
           .downField("syntheticEdges")
           .as[Option[Vector[V2SyntheticEdge]]]
           .map(_.getOrElse(Vector.empty))
-      } yield V2TapQuery(name, description, sqName, outputName, query, syntheticEdges)
+      } yield V2TapQuery(name, description, sqName, outputName, preEnrichment, query, syntheticEdges)
 
     implicit val encoder: Encoder[V2TapQuery] = (t: V2TapQuery) =>
       Json.obj(
@@ -278,6 +294,7 @@ object V2ApiTypes {
         "description" -> t.description.fold(Json.Null)(Json.fromString),
         "standingQueryName" -> Json.fromString(t.standingQueryName),
         "outputName" -> t.outputName.fold(Json.Null)(Json.fromString),
+        "preEnrichment" -> Json.fromBoolean(t.preEnrichment),
         "query" -> Json.fromString(t.query),
         "syntheticEdges" -> Json.arr(t.syntheticEdges.map(V2SyntheticEdge.encoder.apply): _*),
       )

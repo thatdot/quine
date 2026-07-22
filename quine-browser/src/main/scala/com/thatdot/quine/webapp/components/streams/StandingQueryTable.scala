@@ -254,7 +254,22 @@ object StandingQueryTable {
                 },
               )
           },
-          renderWiretapsSection(name, outputEntriesSignal.map(_.map(_._1)), infoSignal, wiretap),
+          // An output is offered as a tap point only where its stream differs from the raw
+          // match stream: a Transformed point when it has a transformation, an Enriched point
+          // when it has an enrichment. An output with neither is identical to the raw match
+          // stream, which the "All matches" option already covers.
+          renderWiretapsSection(
+            name,
+            outputEntriesSignal.map(_.flatMap { case (outputName, o) =>
+              val pre =
+                if (o.hasTransformation) List[WiretapTapPoint](WiretapTapPoint.PreEnrichment(outputName)) else Nil
+              val post =
+                if (o.hasEnrichment) List[WiretapTapPoint](WiretapTapPoint.PostEnrichment(outputName)) else Nil
+              pre ::: post
+            }),
+            infoSignal,
+            wiretap,
+          ),
         ),
       ),
     )
@@ -281,20 +296,33 @@ object StandingQueryTable {
   // per-handler `key` within this owner is the source key (one tap per source).
   private val StreamsWiretapOwner = WiretapOwner("streams")
 
-  private def streamsHandlerKey(sqName: String, outputName: Option[String]): String =
-    WiretapHandler.sourceKey(sqName, WiretapTapPoint.fromOutputName(outputName))
-
   private val RawTapSentinel = "__raw_tap__"
+
+  /** The `<select>` option value for a tap point. `pre:`/`post:` prefixes are
+    * collision-proof: output names are resource names, which forbid colons (same guarantee
+    * [[WiretapHandler.sourceKey]] relies on).
+    */
+  private def tapPointValue(tapPoint: WiretapTapPoint): String = tapPoint match {
+    case WiretapTapPoint.Raw => RawTapSentinel
+    case WiretapTapPoint.PreEnrichment(out) => s"pre:$out"
+    case WiretapTapPoint.PostEnrichment(out) => s"post:$out"
+  }
+
+  /** Inverse of [[tapPointValue]]. */
+  private def parseTapPointValue(value: String): WiretapTapPoint =
+    if (value == RawTapSentinel) WiretapTapPoint.Raw
+    else if (value.startsWith("pre:")) WiretapTapPoint.PreEnrichment(value.stripPrefix("pre:"))
+    else WiretapTapPoint.PostEnrichment(value.stripPrefix("post:"))
 
   private def renderWiretapsSection(
     sqName: String,
-    outputNamesSignal: Signal[List[String]],
+    tapPointsSignal: Signal[List[WiretapTapPoint]],
     sqInfoSignal: Signal[V2StandingQueryInfo],
     wiretap: WiretapService,
   ): HtmlElement = {
     // Per-row picker state, persisted across polling rebuilds (the per-row signal stays
     // stable thanks to `splitSeq(_._1)` in the table body).
-    val selectedOutputVar: Var[Option[String]] = Var(None)
+    val selectedTapPointVar: Var[WiretapTapPoint] = Var(WiretapTapPoint.Raw)
     // Mirror the latest cluster-wide match rate into a Var the click handler can sample.
     // `Signal.now` is protected, so we materialize a writable copy bound to the source.
     val latestRateVar: Var[Double] = Var(0.0)
@@ -310,7 +338,7 @@ object StandingQueryTable {
       sqInfoSignal.map(clusterRatePerSecond(_).getOrElse(0.0)) --> latestRateVar.writer,
       div(
         cls := "d-flex justify-content-between align-items-center mb-2",
-        strong("Wiretaps"),
+        strong("SQ Inspections"),
       ),
       // Picker row: tap-point dropdown + Start button.
       div(
@@ -318,39 +346,46 @@ object StandingQueryTable {
         select(
           cls := "form-select form-select-sm",
           styleAttr := "max-width: 24em",
-          value <-- selectedOutputVar.signal.map(_.getOrElse(RawTapSentinel)),
+          value <-- selectedTapPointVar.signal.map(tapPointValue),
           onChange.mapToValue --> { v =>
-            selectedOutputVar.set(if (v == RawTapSentinel) None else Some(v))
+            selectedTapPointVar.set(parseTapPointValue(v))
           },
-          children <-- outputNamesSignal.distinct.map { outs =>
-            option(value := RawTapSentinel, "Raw (before any output workflow)") ::
-            outs.map(n => option(value := n, s"Post-enrichment: $n"))
+          children <-- tapPointsSignal.distinct.map { points =>
+            option(value := RawTapSentinel, "All matches (before any output workflow)") ::
+            points.map { p =>
+              val label = p match {
+                case WiretapTapPoint.Raw => "All matches"
+                case WiretapTapPoint.PreEnrichment(out) => s"Transformed: $out"
+                case WiretapTapPoint.PostEnrichment(out) => s"Enriched: $out"
+              }
+              option(value := tapPointValue(p), label)
+            }
           },
         ),
         button(
           cls := "btn btn-sm btn-primary",
           i(cls := "cil-media-play me-1"),
-          "Start wiretap",
+          "Start SQ inspection",
           onClick --> { _ =>
-            val outputName = selectedOutputVar.now()
+            val tapPoint = selectedTapPointVar.now()
             val rate = latestRateVar.now()
             val proceed =
               if (rate >= HighRateWarningThreshold)
                 window.confirm(
                   f"""Standing query "$sqName" is currently matching at $rate%.1f/s (1-minute rate).
                      |
-                     |Opening a wiretap on a high-rate standing query streams every match to your browser and can noticeably slow down quine.
+                     |Opening an SQ inspection on a high-rate standing query streams every match to your browser and can noticeably slow down quine.
                      |
-                     |Open the wiretap anyway?""".stripMargin,
+                     |Open the SQ inspection anyway?""".stripMargin,
                 )
               else true
             if (proceed)
               wiretap.wiretapDispatch.onNext(
                 WiretapService.OpenTap(
                   StreamsWiretapOwner,
-                  streamsHandlerKey(sqName, outputName),
+                  WiretapHandler.sourceKey(sqName, tapPoint),
                   sqName,
-                  WiretapTapPoint.fromOutputName(outputName),
+                  tapPoint,
                 ),
               )
           },
@@ -378,8 +413,8 @@ object StandingQueryTable {
 
   private def renderActiveWiretap(handler: WiretapHandler, onClose: String => Unit): HtmlElement = {
     val displayName = handler.tapPoint match {
-      case WiretapTapPoint.Raw => s"${handler.sqName} (raw)"
-      case WiretapTapPoint.PreEnrichment(out) => s"${handler.sqName} / $out (pre)"
+      case WiretapTapPoint.Raw => s"${handler.sqName} (matches)"
+      case WiretapTapPoint.PreEnrichment(out) => s"${handler.sqName} / $out (transformed)"
       case WiretapTapPoint.PostEnrichment(out) => s"${handler.sqName} / $out"
     }
     div(
@@ -398,7 +433,7 @@ object StandingQueryTable {
         ),
         button(
           cls := "btn btn-sm btn-outline-danger py-0 px-2 flex-shrink-0",
-          title := "Stop wiretap",
+          title := "Stop SQ inspection",
           "✕",
           onClick --> { _ => onClose(handler.key) },
         ),

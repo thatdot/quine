@@ -33,9 +33,6 @@ class QuineOssViews(
     .collectStatic(Metrics)(MetricsView(dataService))
     .collectStatic(Streams)(StreamsView(options, dataService))
     .collectStatic(Landing)(LandingView(dataService))
-    .collectStatic(ExplorerSettings)(
-      ExplorerSettingsView(dataService, options),
-    )
     .signal
 
   val alwaysMountedWrapper: HtmlElement = div(

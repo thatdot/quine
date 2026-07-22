@@ -20,8 +20,23 @@ final case class ViewerState(
   exportOpen: Var[Boolean],
   csvFlat: Var[Boolean],
   colWidths: Var[Vector[Double]], // explicit per-column widths; empty = auto-fit layout
+  sampleSize: Var[Int], // current sample budget (display knob, like search/sort — not card identity)
+  sampleBatch: Var[Int], // rows added to the budget per "get more samples" (edited by the count field)
 )
 object ViewerState {
+
+  /** Every viewer starts sampled at this many results (design doc §3 "Sampling & live
+    * semantics"). Client-side display cap until the tap-sampling backend design (Lane F)
+    * lands. Lives here rather than in `cards.CardDefaults` because this slice consumes it —
+    * everything in `cards/` already depends on this package, not the other way around.
+    */
+  val DefaultSampleSize = 10
+
+  /** Batch size added to the budget per "get more samples" click, absent an explicit
+    * count-field edit.
+    */
+  val DefaultSampleBatch = 10
+
   def initial: ViewerState =
     ViewerState(
       view = Var(ResultsView.Table),
@@ -33,6 +48,8 @@ object ViewerState {
       exportOpen = Var(false),
       csvFlat = Var(false),
       colWidths = Var(Vector.empty),
+      sampleSize = Var(DefaultSampleSize),
+      sampleBatch = Var(DefaultSampleBatch),
     )
 
   /** Reset result-specific state for a fresh result (keep `view` and `csvFlat`). */

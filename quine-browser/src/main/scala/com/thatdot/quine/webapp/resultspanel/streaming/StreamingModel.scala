@@ -24,12 +24,15 @@ object StandingTapFrame {
   }
 }
 
-/** One row in a live buffer. `data` is the raw frame payload — an object whose keys are
-  * columns, or any other JSON value, surfaced under a single [[StreamRow.ValueColumn]]. The
-  * column set can grow mid-stream. A retraction (`isMatch == false`) cancels a prior match
-  * and is rendered distinctly. `seq` is a stable key for keyed rendering.
+/** One row in a live buffer. `data` is the frame's payload after decoding — an object whose
+  * keys are columns, or any other JSON value, surfaced under a single
+  * [[StreamRow.ValueColumn]]. `raw` is the frame exactly as it arrived on the wire: for a
+  * raw tap that still carries the `{"meta", "data"}` envelope `data` was unwrapped from, so
+  * the JSON view can show wire truth while the table stays column-shaped. The column set
+  * can grow mid-stream. A retraction (`isMatch == false`) cancels a prior match and is
+  * rendered distinctly. `seq` is a stable key for keyed rendering.
   */
-final case class StreamRow(seq: Long, isMatch: Boolean, data: Json) {
+final case class StreamRow(seq: Long, isMatch: Boolean, data: Json, raw: Json) {
 
   /** Column → value for this row: an object payload by its fields; any non-object value
     * under the single [[StreamRow.ValueColumn]].

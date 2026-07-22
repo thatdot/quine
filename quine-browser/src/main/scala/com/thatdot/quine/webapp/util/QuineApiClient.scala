@@ -90,11 +90,36 @@ object QuineApiClient {
       .flatMap { response =>
         if (response.status == 401) {
           AuthEvents.unauthorized.emit(())
-          Future.failed(new RuntimeException(s"Server returned ${response.status} ${response.statusText}"))
+          failWithServerMessage(response)
         } else if (!response.ok) {
-          Future.failed(new RuntimeException(s"Server returned ${response.status} ${response.statusText}"))
+          failWithServerMessage(response)
         } else Future.successful(response)
       }
+  }
+
+  /** Fail a non-2xx response with the server's own error message when it sends one.
+    *
+    * V2 error bodies follow the AIP-193 envelope `{"error": {"code", "status", "message", ...}}`.
+    * Surfacing `error.message` lets callers (e.g. the graph-projection save toast) show *why* a
+    * request was rejected — a read-only violation, a name conflict — instead of a bare
+    * "Server returned 400". Falls back to the status line when the body is absent, unparseable,
+    * or not in that shape.
+    */
+  private def failWithServerMessage(response: dom.Response): Future[dom.Response] = {
+    val statusLine = s"Server returned ${response.status} ${response.statusText}".trim
+    response
+      .text()
+      .toFuture
+      .map { body =>
+        io.circe.parser
+          .parse(body)
+          .toOption
+          .flatMap(_.hcursor.downField("error").downField("message").as[String].toOption)
+          .filter(_.nonEmpty)
+          .getOrElse(statusLine)
+      }
+      .recover { case _ => statusLine }
+      .flatMap(msg => Future.failed(new RuntimeException(msg)))
   }
 
   /** Fetch and decode a V2 API response, respecting the base URL from [[ClientRoutes]]. */

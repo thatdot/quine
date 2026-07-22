@@ -1,11 +1,14 @@
 package com.thatdot.quine.webapp.resultspanel
 
-/** Which point in a standing query's pipeline a tap observes. Three exist server-side, in
-  * pipeline order:
+/** Which point in a standing query's pipeline a tap observes, in pipeline order:
   *   - [[TapPoint.Raw]] — raw StandingQueryResults, before any output workflow (per SQ).
-  *   - [[TapPoint.PreEnrichment]] — after the output's `preEnrichmentTransformation`, before
-  *     its Cypher enrichment (per output).
-  *   - [[TapPoint.PostEnrichment]] — after all stages, what the destination receives (per output).
+  *   - [[TapPoint.PreEnrichment]] — after the output's `preEnrichmentTransformation`, before its
+  *     Cypher enrichment (per output). Only meaningful when the output defines a transformation;
+  *     without one the stream is identical to Raw, so the UI never offers it there.
+  *   - [[TapPoint.PostEnrichment]] — after the output's Cypher enrichment, what the destination
+  *     receives (per output). Only meaningful when the output defines an enrichment query;
+  *     without one the stream is identical to the previous stage, so the UI never offers Post
+  *     there.
   */
 sealed abstract class TapPoint
 object TapPoint {
@@ -31,10 +34,10 @@ final case class TapTarget(sqName: String, tapPoint: TapPoint) {
     case TapPoint.PostEnrichment(out) => s"$sqName:post:$out"
   }
 
-  /** Human-readable provenance label, e.g. `fraud · raw` or `fraud/slack · post`. */
+  /** Human-readable provenance label, e.g. `fraud · matches` or `fraud/slack · enriched`. */
   val label: String = tapPoint match {
-    case TapPoint.Raw => s"$sqName · raw"
-    case TapPoint.PreEnrichment(out) => s"$sqName/$out · pre"
-    case TapPoint.PostEnrichment(out) => s"$sqName/$out · post"
+    case TapPoint.Raw => s"$sqName · SQ matches"
+    case TapPoint.PreEnrichment(out) => s"$sqName/$out · transformed"
+    case TapPoint.PostEnrichment(out) => s"$sqName/$out · enriched"
   }
 }

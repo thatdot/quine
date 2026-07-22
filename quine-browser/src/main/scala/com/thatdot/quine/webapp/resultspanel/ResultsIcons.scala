@@ -70,9 +70,6 @@ object ResultsIcons {
       svg.path(svg.d := "M10.3 3.6 A 6 6 0 0 1 10.3 12.4"),
     )
 
-  /** Source kind — an errored run: the coreUI warning glyph. */
-  def alert: HtmlElement = i(cls := "cil-warning")
-
   /** Browser-style history navigation (header back/forward). */
   def arrowLeft: HtmlElement = i(cls := "cil-arrow-left")
   def arrowRight: HtmlElement = i(cls := "cil-arrow-right")
@@ -92,9 +89,34 @@ object ResultsIcons {
   /** Add a tap (switcher entry row) — coreUI plus. */
   def plus: HtmlElement = i(cls := "cil-plus")
 
+  /** Already-inspected tap point — coreUI bold check. */
+  def check: HtmlElement = i(cls := "cil-check-alt")
+
+  /** Minimize — coreUI window-minimize bar. */
+  def windowMinimize: HtmlElement = i(cls := "cil-window-minimize", fontSize := "12px")
+
   /** Auto garbage-collection (switcher footer) — coreUI recycle. */
   def recycle: HtmlElement = i(cls := "cil-recycle", fontSize := "12px")
 
   /** Enrichment step in the add-tap pipeline — coreUI cog. */
   def gear: HtmlElement = i(cls := "cil-cog", fontSize := "11px")
+
+  /** Cypher enrichment step in the inspect-pipeline flow — a graph triad (three connected
+    * nodes), the enrichment query being a Cypher query that reaches into the graph. (Custom —
+    * the coreUI free set has no graph glyph.)
+    */
+  def cypher: SvgElement =
+    svg.svg(
+      svg.width := "11",
+      svg.height := "11",
+      svg.viewBox := "0 0 16 16",
+      svg.fill := "none",
+      svg.stroke := "currentColor",
+      svg.strokeWidth := "1.5",
+      svg.strokeLineCap := "round",
+      svg.circle(svg.cx := "8", svg.cy := "4", svg.r := "2"),
+      svg.circle(svg.cx := "4", svg.cy := "11.5", svg.r := "2"),
+      svg.circle(svg.cx := "12", svg.cy := "11.5", svg.r := "2"),
+      svg.path(svg.d := "M7 5.7 5 9.8M9 5.7l2 4.1M6 11.5h4"),
+    )
 }

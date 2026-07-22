@@ -1838,7 +1838,7 @@ object BackpressureDiagram {
         tipOn(
           ackLabel.node().asInstanceOf[dom.Element],
           () =>
-            tipHeader(s"Ack — ${p.name}") +
+            tipHeader(s"Ack: ${p.name}") +
             tipKv(
               tipRow("post-graph-write", levelLabel(s.combined), Some(stateColor(s.combined))) +
               graphRow(p.namespace) +
@@ -2148,7 +2148,7 @@ object BackpressureDiagram {
       tipOn(
         cardEl.node().asInstanceOf[dom.Element],
         () =>
-          tipHeader(s"Ingest — ${p.name}") +
+          tipHeader(s"Ingest: ${p.name}") +
           tipKv(
             tipRow("Status", p.status, statusTint) +
             graphRow(p.namespace) +
@@ -2345,7 +2345,7 @@ object BackpressureDiagram {
         tabEl.node().asInstanceOf[dom.Element],
         () => {
           val gwState = p.preGraphWrite.combined
-          tipHeader(s"Graph write — ${p.name}") +
+          tipHeader(s"Graph write: ${p.name}") +
           tipKv(
             tipRow("pre-graph-write", levelLabel(gwState), Some(stateColor(gwState))) +
             graphRow(p.namespace) +
@@ -2472,7 +2472,7 @@ object BackpressureDiagram {
             else
               s"""<tr><td colspan="2" style="padding:7px 0 1px 0;font-size:10px;letter-spacing:0.08em;""" +
               s"""text-transform:uppercase;color:#8b93b0;">${LandingTooltip.escape(t)}</td></tr>"""
-          tipHeader(s"SQ result queue — ${sq.name}") +
+          tipHeader(s"SQ result queue: ${sq.name}") +
           tipKv(
             queueRow("State", sq.queue) +
             graphRow(sq.namespace) +
@@ -2677,7 +2677,7 @@ object BackpressureDiagram {
         tipOn(
           enrichEl.node().asInstanceOf[dom.Element],
           () =>
-            tipHeader(s"Enrichment — $outputName") +
+            tipHeader(s"Enrichment: $outputName") +
             tipKv(
               (o.enrichment match {
                 case Some(e) => levelRow("Enrichment stage", e)
@@ -2713,7 +2713,7 @@ object BackpressureDiagram {
       tipOn(
         cardEl.node().asInstanceOf[dom.Element],
         () =>
-          tipHeader(s"Output — ${sq.name}/$outputName") +
+          tipHeader(s"Output: ${sq.name}/$outputName") +
           tipKv(
             (o.enrichment match {
               case Some(e) if showEnrichment => levelRow("enrichment", e)
@@ -2723,8 +2723,8 @@ object BackpressureDiagram {
             o.destinations.map(d => levelRow(d.`type`, d.state)).mkString +
             tipRow("Throughput", s"${fmtExact(outRateVal)} / s") +
             tipRow("Total processed", f"${o.totalCount}%,d") +
-            (if (isGating) tipRow("Gating", "yes — slow destination", Some(C.amber))
-             else if (isEnrichmentBottleneck) tipRow("Gating", "yes — slow enrichment query", Some(C.amber))
+            (if (isGating) tipRow("Gating", "yes, slow destination", Some(C.amber))
+             else if (isEnrichmentBottleneck) tipRow("Gating", "yes, slow enrichment query", Some(C.amber))
              else ""),
           ) +
           tipNote(
@@ -2904,7 +2904,7 @@ object BackpressureDiagram {
       tipOn(
         persEl.node().asInstanceOf[dom.Element],
         () =>
-          tipHeader(s"Persistor — ${view.persistor.combined.`type`}") +
+          tipHeader(s"Persistor: ${view.persistor.combined.`type`}") +
           tipKv(
             tipRow("Store type", view.persistor.combined.`type`) +
             tipRow("Write latency", f"${view.persistor.combined.writeLatencyMs}%.2f ms") +

@@ -40,7 +40,7 @@ trait WiretapService {
 
 object WiretapService {
 
-  /** Owner for taps the service opens from "Enable locally" tap-query intent. The
+  /** Owner for taps the service opens from "Show on my graph" tap-query intent. The
     * per-handler `key` within this owner is the tap query's name, so multiple tap queries
     * targeting the same `(sqName, outputName)` each get their own handler (sharing the
     * underlying connection).
@@ -56,7 +56,7 @@ object WiretapService {
     * is already open.
     *
     * @param tapPoint which point in the standing query's output pipeline to tap - raw,
-    *   pre-enrichment on an output, or post-enrichment on an output
+    *   or post-enrichment on an output
     */
   final case class OpenTap(owner: WiretapOwner, key: String, sqName: String, tapPoint: WiretapTapPoint) extends Command
 

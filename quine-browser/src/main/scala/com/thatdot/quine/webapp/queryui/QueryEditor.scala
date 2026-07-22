@@ -129,6 +129,13 @@ trait QueryEditorHandle extends js.Object {
   /** Record the current query in history and fire `onRunTable`. */
   def runTable(): Unit = js.native
 
+  /** Enter multi-line editing from the outside (e.g. a menu action): focus the editor and, when
+    * the buffer is still single-line, insert a newline at the end of the buffer — the same edit
+    * Shift+Enter makes, so every follow-on behavior (auto-grow, blur-collapse, refocus-expand)
+    * is the keyboard path's. An already multi-line buffer is only focused.
+    */
+  def startMultilineEdit(): Unit = js.native
+
   /** Move the cursor to `line`/`column` (both 1-based, matching [[EditorDiagnostic]]), scroll it
     * into view, and focus the editor. Used to jump from a diagnostics-list entry to its source
     * position.

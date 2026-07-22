@@ -17,6 +17,10 @@
   /* Brand color extensions — unofficial */
   --thatdot-gradient-middle: #ebebf3;
 
+  /* Flowing/success green — matches the dashboard diagram's C.green so status badges,
+     icons, and the dashboard all read as one green */
+  --thatdot-flow-green: #12a572;
+
   /* Results-surface accent token (muted danger, not pure red) */
   --error-accent: #c4453d;
   /* Live-tap accent (teal) — distinct from the blue of query results */
@@ -44,6 +48,10 @@
   --cui-tertiary-bg: var(--thatdot-gradient-start);
   --cui-secondary-color: var(--thatdot-gray);
   --cui-primary: var(--thatdot-dark-blue);
+  /* CoreUI's stock success green (#1b9e3e) clashes with the dashboard's flow green —
+     remap it so .bg-success / .text-success utilities pick up the brand green */
+  --cui-success: var(--thatdot-flow-green);
+  --cui-success-rgb: 18, 165, 114;
 
   /*** Color Variable Selection Guidance
 
@@ -75,6 +83,50 @@
 /* ==========================================================================
    Component Styles
    ========================================================================== */
+
+/* CoreUI ships .btn-primary with its own indigo (#5856d6) baked in as literal
+   values, so the --cui-primary remap above doesn't reach it. Re-skin the
+   primary button variants to the thatDot blues. */
+.btn-primary {
+  --cui-btn-color: #fff;
+  --cui-btn-bg: var(--thatdot-brite-blue);
+  --cui-btn-border-color: var(--thatdot-brite-blue);
+  --cui-btn-hover-color: #fff;
+  --cui-btn-hover-bg: var(--thatdot-dark-blue);
+  --cui-btn-hover-border-color: var(--thatdot-dark-blue);
+  --cui-btn-focus-shadow-rgb: 22, 88, 183;
+  --cui-btn-active-color: #fff;
+  --cui-btn-active-bg: var(--thatdot-dark-blue);
+  --cui-btn-active-border-color: var(--thatdot-dark-blue);
+  --cui-btn-disabled-color: #fff;
+  --cui-btn-disabled-bg: var(--thatdot-brite-blue);
+  --cui-btn-disabled-border-color: var(--thatdot-brite-blue);
+}
+.btn-outline-primary {
+  --cui-btn-color: var(--thatdot-brite-blue);
+  --cui-btn-border-color: var(--thatdot-brite-blue);
+  --cui-btn-hover-color: #fff;
+  --cui-btn-hover-bg: var(--thatdot-brite-blue);
+  --cui-btn-hover-border-color: var(--thatdot-brite-blue);
+  --cui-btn-focus-shadow-rgb: 22, 88, 183;
+  --cui-btn-active-color: #fff;
+  --cui-btn-active-bg: var(--thatdot-brite-blue);
+  --cui-btn-active-border-color: var(--thatdot-brite-blue);
+  --cui-btn-disabled-color: var(--thatdot-brite-blue);
+}
+
+/* CoreUI bakes its stock green into .btn-ghost-success as literal values (same story as
+   .btn-primary above) — re-point it at the dashboard's flow green. */
+.btn-ghost-success {
+  --cui-btn-color: var(--thatdot-flow-green);
+  --cui-btn-hover-bg: var(--thatdot-flow-green);
+  --cui-btn-hover-border-color: var(--thatdot-flow-green);
+  --cui-btn-hover-color: #fff;
+  --cui-btn-active-bg: var(--thatdot-flow-green);
+  --cui-btn-active-border-color: var(--thatdot-flow-green);
+  --cui-btn-active-color: #fff;
+  --cui-btn-disabled-color: var(--thatdot-flow-green);
+}
 
 .gray-clickable {
   background-color: var(--cui-body-bg);
@@ -311,7 +363,11 @@ pre.wrap {
   background-color: var(--cui-primary);
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.28);
   position: relative;
-  z-index: 5;
+  /* This creates the stacking context for every popover anchored in the bar (junk drawer,
+   * query menu, graph selector), so it must sit above everything in the canvas region below:
+   * .card-popup (6), .cards-drawer (4), .loader / .result-count-indicator (100). Viewport
+   * modals (1200) and the toast (1000) still cover it. */
+  z-index: 110;
   min-height: var(--topbar-height);
   box-sizing: border-box;
   align-items: center;
@@ -389,7 +445,6 @@ pre.wrap {
   color: var(--thatdot-gradient-end);
   font-family: inherit;
   font-size: 1.1em;
-  border-radius: .25em;
   cursor: pointer;
   transition: background-color .15s ease-in-out, color .15s ease-in-out;
 }
@@ -1613,49 +1668,88 @@ table.cypher-results td, table.cypher-results th {
   opacity: 0.3;
 }
 
-/* Toast */
-.toast {
+/* Toast. Namespaced `quine-toast` rather than `toast`: CoreUI (Bootstrap) ships a
+   `.toast:not(.show) { display: none }` rule that out-specifies a bare `.toast` and
+   hides it wherever the shell loads CoreUI's stylesheet.
+   Top-center just below the top bar — adjacent to the query input whose run most
+   toasts report on. White surface + variant accent strip/icon; long server errors
+   wrap inside a capped width instead of stretching the viewport. */
+.quine-toast {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  top: calc(var(--topbar-height) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1000;
-  padding: 10px 16px;
-  border-radius: 8px;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(480px, calc(100vw - 40px));
+  padding: 12px 14px;
+  border: 1px solid var(--thatdot-gradient-start);
+  border-left: 4px solid var(--toast-accent, var(--thatdot-brite-blue));
+  border-radius: 8px;
+  background-color: var(--cui-body-bg);
+  color: var(--cui-body-color);
   font-size: 0.9rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  animation: toast-in 0.3s ease-out;
+  line-height: 1.4;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  animation: toast-in 0.2s ease-out;
 }
-.toast-info {
-  background-color: #dcebfb;
-  color: #2f59a8;
+.quine-toast > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
-.toast-success {
-  background-color: #e4f3ea;
-  color: #1f8a5b;
+.quine-toast-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--toast-accent, var(--thatdot-brite-blue));
 }
-.toast-error {
-  background-color: #fde8e8;
-  color: #c53030;
+.quine-toast-info {
+  --toast-accent: var(--thatdot-brite-blue);
 }
-.toast-close {
+.quine-toast-success {
+  --toast-accent: var(--thatdot-flow-green);
+}
+.quine-toast-error {
+  --toast-accent: var(--error-accent);
+}
+.quine-toast-close {
   background: none;
   border: none;
   font-size: 1.2rem;
   cursor: pointer;
-  color: inherit;
-  opacity: 0.7;
+  color: var(--cui-secondary-color);
   padding: 0;
+  margin-left: 2px;
   line-height: 1;
+  flex-shrink: 0;
 }
-.toast-close:hover {
-  opacity: 1;
+.quine-toast-close:hover {
+  color: var(--cui-body-color);
+}
+/* One-click affordance (e.g. "Run as text query") — a pill in the toast's accent color,
+   sitting between the message and the close button. */
+.quine-toast-action {
+  flex-shrink: 0;
+  align-self: center;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 3px 10px;
+  border: 1px solid var(--toast-accent, var(--thatdot-brite-blue));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--toast-accent, var(--thatdot-brite-blue));
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.quine-toast-action:hover {
+  background: var(--toast-accent, var(--thatdot-brite-blue));
+  color: var(--cui-body-bg);
 }
 @keyframes toast-in {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translate(-50%, -8px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
 }
 
 /* Predicate builder */
@@ -1938,12 +2032,34 @@ table.cypher-results td, table.cypher-results th {
   color: #fff;
   border-color: var(--cui-primary);
 }
-.editor-actions button:first-child:disabled {
+/* Explicit primary marker for editors whose save button isn't the first child
+ * (e.g. the graph-feed editor puts Delete/Cancel before it). */
+.editor-actions button.editor-primary-action {
+  background: var(--cui-primary);
+  color: #fff;
+  border-color: var(--cui-primary);
+}
+/* Destructive action; also cancels the :first-child primary styling when Delete leads the row. */
+.editor-actions button.editor-danger-action {
+  background: var(--cui-body-bg);
+  color: #b23b3b;
+  border-color: #dfb9b9;
+}
+.editor-actions button:first-child:disabled,
+.editor-actions button.editor-primary-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .editor-actions button:hover:not(:disabled) {
   opacity: 0.85;
+}
+/* What the disabled save button is waiting on, sitting in the flex gap before it. */
+.graph-feed-missing-hint {
+  align-self: center;
+  text-align: right;
+  padding-right: 4px;
+  font-size: 0.78rem;
+  color: #8a93b5;
 }
 .editor-anchor-chip {
   display: inline-flex;
@@ -2859,8 +2975,8 @@ table.results-grid thead th {
   font-family: var(--cui-font-sans-serif);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  /* Column names render literally — a Cypher return alias is case-significant, so no
+     text-transform (and no caps-tuned letter-spacing) here. */
   color: rgba(10, 41, 91, 0.55);
   background: #fbfbfd;
   border-bottom: 1px solid rgba(10, 41, 91, 0.14);
@@ -3010,13 +3126,10 @@ table.results-grid tbody tr:hover {
   white-space: pre-wrap;
 }
 
-/* Empty + error placeholders (NonIdealState style). */
-.results-empty,
-.results-error {
+/* Empty placeholder (NonIdealState style). */
+.results-empty {
   padding: 28px 24px;
   color: var(--thatdot-dark-blue);
-}
-.results-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3042,70 +3155,6 @@ table.results-grid tbody tr:hover {
   font-size: 13px;
   color: rgba(10, 41, 91, 0.55);
 }
-.results-error-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-.results-error-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  font-weight: 700;
-  color: var(--error-accent);
-  background: rgba(196, 69, 61, 0.1);
-  border-radius: 7px;
-}
-.results-error-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-.results-error-kind {
-  padding: 2px 7px;
-  font-family: var(--thatdot-font-mono);
-  font-size: 11px;
-  color: rgba(10, 41, 91, 0.6);
-  background: rgba(10, 41, 91, 0.06);
-  border-radius: 5px;
-}
-.results-error-location {
-  margin-bottom: 12px;
-  font-size: 12.5px;
-  color: rgba(10, 41, 91, 0.55);
-}
-.results-error-query {
-  padding: 12px 14px;
-  font-family: var(--thatdot-font-mono);
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--thatdot-dark-blue);
-  background: rgba(10, 41, 91, 0.03);
-  border-left: 3px solid var(--error-accent);
-  border-radius: 0 6px 6px 0;
-  white-space: pre;
-  overflow-x: auto;
-}
-.results-error-caret {
-  color: var(--error-accent);
-}
-.results-error-action {
-  margin-top: 14px;
-  padding: 0;
-  font-family: var(--cui-font-sans-serif);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--thatdot-brite-blue);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-.results-error-action:hover {
-  text-decoration: underline;
-}
-
 /* --- Sort / filter / export --------------------------------------------- */
 
 /* Sortable column headers. */
@@ -3713,16 +3762,6 @@ table.results-grid thead th.results-grid-sortable {
 .history-row:hover {
   background: rgba(22, 88, 183, 0.08);
 }
-/* Failed-run mark: a red ✕ (stronger than a red dot), occupying the status-dot slot. */
-.history-row-fail {
-  flex: 0 0 auto;
-  width: 10px;
-  text-align: center;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--error-accent);
-}
 /* Middle-truncation: the head ellipsizes, the tail (last chars) always shows. */
 .history-row-query {
   flex: 1 1 auto;
@@ -3832,4 +3871,1550 @@ body.results-col-resizing {
   background: rgba(196, 69, 61, 0.1);
   border: 1px solid rgba(196, 69, 61, 0.28);
   border-radius: 4px;
+}
+
+/* ============================================================================
+   Exploration UI redesign — result cards, query split button, unified tap
+   modal, junk drawer, result-count indicator.
+   ============================================================================ */
+
+/* ── Card system core ──────────────────────────────────────────────────────────────
+ *
+ * Class names come from `CardStyles.scala` (package
+ * com.thatdot.quine.webapp.resultspanel.cards). Reuses the design tokens and
+ * `--kind-accent` system defined earlier in this file (`--thatdot-brite-blue` /
+ * `--tap-accent` / `--error-accent`, `.kind-query` / `.kind-tap` / `.kind-error`,
+ * `--thatdot-font-mono`) — these rules only consume them, never redefine them.
+ */
+
+/* ── Minimized drawer: bottom-right docked panel over the canvas ───────────────────── */
+
+.cards-drawer {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  max-height: calc(100% - 32px);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-end;
+  width: 240px;
+  /* Never spill past a narrow canvas: shrinks below the usual 240px on small viewports
+     instead of overflowing off the left edge. */
+  max-width: calc(100% - 32px);
+  pointer-events: none; /* only the panel inside is interactive */
+}
+
+/* One cohesive panel: search header on top, scrolling row list below. Rows live inside
+   this shared surface (dividers, no per-row chrome) so it reads as a drawer, not a stack
+   of floating cards. */
+.cards-drawer-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(10, 41, 91, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px -12px rgba(10, 41, 91, 0.4);
+  overflow: hidden; /* clip rows/scrollbar to the radius */
+}
+
+.cards-drawer-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* let the list shrink inside the max-height so it scrolls */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cards-drawer-list::-webkit-scrollbar {
+  width: 6px;
+}
+.cards-drawer-list::-webkit-scrollbar-thumb {
+  background: rgba(10, 41, 91, 0.18);
+  border-radius: 3px;
+}
+
+/* One minimized row inside the panel: a 38px floor (never squishes when the list
+   overflows — flex items in a scroll container shrink by default) that grows for a
+   two-line-wrapped title, divider between rows, hover tint instead of per-row
+   shadow/border. */
+.mini-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 38px;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background 0.12s;
+}
+.mini-card + .mini-card {
+  border-top: 1px solid rgba(10, 41, 91, 0.08);
+}
+.mini-card:hover {
+  background: rgba(10, 41, 91, 0.05);
+}
+
+.mini-card-strip {
+  flex: 0 0 auto;
+  width: 3px;
+  background: var(--kind-accent, var(--thatdot-brite-blue));
+}
+
+/* The leading kind glyph — reuses `.source-kind-icon` (shared across the results surface)
+   with row-local spacing instead of a chip's. */
+.mini-card .source-kind-icon {
+  flex: 0 0 auto;
+  padding: 0 2px 0 8px;
+}
+
+.mini-card-kind-fx {
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mini-card-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 3px 8px;
+}
+
+/* Wraps up to two lines instead of a single truncated line, so the title is readable
+   without depending on a hover tooltip — the row's `title` attribute is still the fallback
+   for anything longer than that. */
+.mini-card-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-family: var(--thatdot-font-mono);
+  font-size: 11px;
+  line-height: 1.25;
+  color: rgba(10, 41, 91, 0.82);
+}
+
+.mini-card-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: rgba(10, 41, 91, 0.5);
+}
+
+/* Same dot language as the popup toolbar: pulsing green = streaming. */
+.mini-card-status-dot.is-live {
+  color: var(--thatdot-flow-green);
+  animation: tapGlyphPulse 1.6s ease-in-out infinite;
+}
+
+.mini-card-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: auto 6px auto 0;
+  color: rgba(10, 41, 91, 0.35);
+  border-radius: 5px;
+  opacity: 0; /* only surfaced on row hover — keeps compact rows quiet */
+  transition: opacity 0.12s;
+}
+.mini-card:hover .mini-card-close {
+  opacity: 1;
+}
+.mini-card-close:hover {
+  color: var(--error-accent);
+  background: rgba(196, 69, 61, 0.08);
+}
+
+/* Search header pinned above the scrolling card list, inside the panel. */
+.cards-drawer-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  background: rgba(10, 41, 91, 0.03);
+  border-bottom: 1px solid rgba(10, 41, 91, 0.1);
+  color: rgba(10, 41, 91, 0.4);
+}
+
+.cards-drawer-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.82);
+}
+
+/* Minimize-the-drawer button in the search header. */
+.cards-drawer-collapse {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: rgba(10, 41, 91, 0.4);
+  transition: color 0.12s, background 0.12s;
+}
+.cards-drawer-collapse:hover {
+  color: rgba(10, 41, 91, 0.7);
+  background: rgba(10, 41, 91, 0.07);
+}
+
+/* Collapsed drawer: small round corner button with a minimized-card count badge. */
+.cards-drawer-collapsed-button {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(10, 41, 91, 0.14);
+  box-shadow: 0 8px 20px -10px rgba(10, 41, 91, 0.4);
+  cursor: pointer;
+  color: rgba(10, 41, 91, 0.65);
+  transition: box-shadow 0.15s, transform 0.15s, color 0.15s;
+}
+.cards-drawer-collapsed-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px -10px rgba(10, 41, 91, 0.5);
+  color: rgba(10, 41, 91, 0.85);
+}
+
+.cards-drawer-collapsed-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--thatdot-brite-blue);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* ── Projection pills: bottom-left floating stack of per-projection live switches ──── */
+
+/* Anchor mirrors .cards-drawer on the opposite corner; only the pills themselves are
+   interactive (pointer-events: none here, auto on each pill). */
+.graph-feed-chips {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 6px;
+  max-height: calc(100% - 32px);
+  max-width: min(260px, calc(100% - 32px));
+  pointer-events: none;
+}
+
+/* Scrolls only in the expanded state; the collapsed default is capped well under it.
+   min/max-width keep a long nowrap name from propagating its min-content width up
+   through the flex chain and blowing the pill past the anchor's cap. */
+.graph-feed-chips-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: none;
+}
+/* Expanded, the list is the scroll surface: it must hit-test, or wheel gestures in the
+   gaps between pills (and scrollbar drags) fall through to the canvas and zoom the
+   graph. Collapsed, it stays pass-through so the canvas is interactive around pills. */
+.graph-feed-chips.is-expanded .graph-feed-chips-list {
+  pointer-events: auto;
+}
+
+.graph-feed-chips-list::-webkit-scrollbar {
+  width: 6px;
+}
+.graph-feed-chips-list::-webkit-scrollbar-thumb {
+  background: rgba(10, 41, 91, 0.18);
+  border-radius: 3px;
+}
+
+/* Off state is the faded ghost; the switch is the control, so no pointer cursor on
+   the pill body. */
+.graph-feed-chip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(10, 41, 91, 0.14);
+  box-shadow: 0 8px 20px -10px rgba(10, 41, 91, 0.4);
+  font-size: 11px;
+  color: rgba(10, 41, 91, 0.45);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.graph-feed-chip:hover {
+  color: rgba(10, 41, 91, 0.75);
+  box-shadow: 0 10px 24px -10px rgba(10, 41, 91, 0.5);
+}
+.graph-feed-chip.is-on {
+  color: rgba(10, 41, 91, 0.85);
+  border-color: rgba(22, 88, 183, 0.45);
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.graph-feed-chip-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(10, 41, 91, 0.25);
+}
+.graph-feed-chip.is-on .graph-feed-chip-dot {
+  background: var(--thatdot-flow-green);
+  animation: tapGlyphPulse 1.6s ease-in-out infinite;
+}
+
+/* Hard cap regardless of container width: a runaway name ellipsizes here and reads in
+   full from the pill tooltip. */
+.graph-feed-chip-name {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tiny custom on/off switch (Bootstrap's form-switch needs its .form-check wrapper and
+   fights the pill's scale): a rounded track with a sliding knob, accent when on. */
+.graph-feed-chip-switch {
+  flex: 0 0 auto;
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 26px;
+  height: 14px;
+  margin: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(10, 41, 91, 0.22);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.graph-feed-chip-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(10, 41, 91, 0.35);
+  transition: transform 0.15s;
+}
+.graph-feed-chip-switch:checked {
+  background: var(--thatdot-brite-blue);
+}
+.graph-feed-chip-switch:checked::before {
+  transform: translateX(12px);
+}
+
+/* Overflow / collapse control ("+K more" / "Less"). */
+.graph-feed-chips-more {
+  font-weight: 600;
+  color: rgba(10, 41, 91, 0.5);
+  cursor: pointer;
+  user-select: none;
+}
+.graph-feed-chips-more:hover {
+  color: rgba(10, 41, 91, 0.8);
+}
+
+/* Search pill, shown only once the expanded menu is genuinely large. */
+.graph-feed-chips-search {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(10, 41, 91, 0.14);
+  box-shadow: 0 8px 20px -10px rgba(10, 41, 91, 0.4);
+}
+.graph-feed-chips-search-input {
+  width: 140px;
+  max-width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 11px;
+  color: rgba(10, 41, 91, 0.82);
+}
+
+/* ── Expanded popup: floating over the canvas, margins on every side ───────────────── */
+
+.card-popup {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 24px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid rgba(10, 41, 91, 0.16);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px -20px rgba(10, 41, 91, 0.45);
+  overflow: hidden;
+}
+
+.card-popup-grab-rail {
+  position: relative;
+  flex: 0 0 auto;
+  height: 10px;
+  background: #f4f7fc;
+  cursor: ns-resize;
+}
+.card-popup-grab-rail::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 34px;
+  height: 4px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: rgba(10, 41, 91, 0.14);
+}
+
+.card-popup-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(10, 41, 91, 0.1);
+}
+
+.card-popup-header-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+  font-family: var(--thatdot-font-mono);
+  font-size: 13px;
+  color: rgba(10, 41, 91, 0.85);
+}
+
+.card-popup-header-title-head {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-popup-header-title-tail {
+  flex: 0 0 auto;
+  white-space: pre;
+}
+
+.card-popup-kind-pill {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--kind-accent, var(--thatdot-brite-blue));
+  background: color-mix(in srgb, var(--kind-accent, var(--thatdot-brite-blue)) 10%, transparent);
+  border-radius: 999px;
+}
+
+.card-popup-meta {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.5);
+}
+
+/* The one stream-state cue, no words: pulsing green = subscription open, rows can arrive
+   (sampling fill or live follow); static amber (streams page's paused badge color) = paused. */
+.card-popup-status-dot {
+  color: var(--thatdot-flow-green);
+  animation: tapGlyphPulse 1.6s ease-in-out infinite;
+}
+.card-popup-status-dot.is-paused {
+  color: var(--cui-warning, #ffc107);
+  animation: none;
+}
+
+.card-popup-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-popup-edit-button,
+.card-popup-run-button,
+.card-popup-live-button,
+.card-popup-more-button,
+.card-popup-minimize-button,
+.card-popup-close-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #34527d;
+  background: none;
+  border: 1px solid rgba(10, 41, 91, 0.14);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.card-popup-edit-button:hover,
+.card-popup-run-button:hover,
+.card-popup-live-button:hover:not(:disabled),
+.card-popup-more-button:hover:not(:disabled),
+.card-popup-minimize-button:hover,
+.card-popup-close-button:hover {
+  background: rgba(10, 41, 91, 0.04);
+}
+
+/* The stream cluster is a fixture: state grays controls out rather than unmounting them,
+   so positions never shift. The buttons stay neutral — the streaming/paused state is
+   worn by the status dot, not the controls. */
+.card-popup-live-button:disabled,
+.card-popup-more-button:disabled {
+  color: rgba(10, 41, 91, 0.3);
+  border-color: rgba(10, 41, 91, 0.08);
+  cursor: default;
+}
+
+.card-popup-run-button {
+  color: var(--thatdot-brite-blue);
+  border-color: color-mix(in srgb, var(--thatdot-brite-blue) 35%, transparent);
+}
+
+/* The lifecycle toggle keeps both labels mounted, stacked in one grid cell — the inactive
+   one is visibility-hidden but still holds its width, so the button never resizes when it
+   flips between "▶ Go live" and "■ Stop". */
+.card-popup-live-button {
+  display: inline-grid;
+  justify-items: center;
+  align-items: center;
+}
+.card-popup-live-button > span {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+.card-popup-live-button > span.is-hidden {
+  visibility: hidden;
+}
+
+.card-popup-batch-input {
+  width: 56px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  border: 1px solid rgba(10, 41, 91, 0.14);
+  border-radius: 7px;
+}
+.card-popup-batch-input:disabled {
+  color: rgba(10, 41, 91, 0.3);
+  border-color: rgba(10, 41, 91, 0.08);
+  background: none;
+}
+
+.card-popup-close-button:hover {
+  color: var(--error-accent);
+  border-color: color-mix(in srgb, var(--error-accent) 40%, transparent);
+}
+
+.card-popup-export-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.card-popup-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Collapsed-by-default strip showing the query behind a tap card's data — its standing
+   query's match pattern, or its output's enrichment query. */
+.card-popup-query-strip {
+  flex: 0 0 auto;
+  border-bottom: 1px solid rgba(10, 41, 91, 0.1);
+  background: #f8f9fc;
+}
+
+.card-popup-query-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(10, 41, 91, 0.55);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.card-popup-query-toggle:hover {
+  color: rgba(10, 41, 91, 0.8);
+}
+
+.card-popup-query-pre {
+  margin: 0 14px 10px;
+  padding: 8px 10px;
+  max-height: 10em;
+  overflow: auto;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.85);
+  background: #fff;
+  border: 1px solid rgba(10, 41, 91, 0.12);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Transformed cards: leads the open query strip, saying how the output's transformation
+   reshaped the rows (the match query below it produced differently-shaped data). */
+.card-popup-query-note {
+  margin: 0 14px 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgba(10, 41, 91, 0.6);
+}
+
+/*
+ * Query split button (QueryMenuButton.scala / QueryMenuStyles).
+ *
+ * Class names here must match `QueryMenuStyles` exactly.
+ *
+ * Visual language: matches the pre-redesign single "Query" button's look (`.query-input-button`
+ * + `.gray-clickable`: `--cui-body-bg` background, flush at the query input's right edge) so the
+ * split button reads as that same control, just split in two — not a new, separately-styled
+ * control. `.query-menu-split-button-main` and `-arrow` set their own background/padding/margin
+ * directly (rather than composing `.query-input-button`, whose `float: left` and `margin-right`
+ * fight this component's `inline-flex` shell — that mismatch was the visible gap and the
+ * off-height arrow segment) so both regions size and stretch identically inside the shell.
+ */
+
+/* ── split button shell ─────────────────────────────────────────────────────────────── */
+
+.query-menu-split-button {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  margin: 0 .4em 0 0; /* same outer margin .query-input-button used, now on the shell itself */
+}
+
+/* Main region: same background, font, and padding as the old single Query button. Square on
+   both sides — flush against the query input's square right edge on the left, and against the
+   arrow segment (which owns the control's rounded right edge) on the right — so input, main
+   region, and arrow read as one control. */
+.query-menu-split-button-main {
+  float: none;
+  padding: .2em .6em;
+  margin: 0;
+  font-family: inherit;
+  font-size: 1.2em;
+  border: none;
+  border-radius: 0;
+}
+
+.query-menu-split-button-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-left: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 0 .2em .2em 0;
+}
+
+.query-menu-split-button-arrow:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.query-menu-split-button-arrow-icon {
+  font-size: 10px;
+  color: inherit;
+  pointer-events: none;
+}
+
+/* ── popover menu ────────────────────────────────────────────────────────────────────── */
+
+.query-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 60;
+  margin-top: 4px;
+  min-width: 260px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+}
+
+.query-menu.open {
+  display: block;
+}
+
+.query-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #222;
+  white-space: nowrap;
+}
+
+.query-menu-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.query-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: 0 0 16px;
+  color: #666;
+  font-size: 13px;
+}
+
+.query-menu-item-label {
+  flex: 1 1 auto;
+}
+
+.query-menu-item-hint {
+  flex: 0 0 auto;
+  color: #999;
+  font-size: 11px;
+  margin-left: 12px;
+}
+
+/* Unified tap modal (design doc §2).
+ *
+ * Reused as-is, unmodified — do NOT duplicate these here:
+ *   .tap-chooser-filter-wrap / .tap-chooser-filter / .tap-chooser-count / .sq-block /
+ *   .sq-block-head / .sq-block-name / .sq-block-count / .sq-all-matches / .taps-heading-spacer /
+ *   .tap-output-row / .tap-output-name / .pre-post-group / .pre-post-connector / .enrich-node /
+ *   .no-enrichment / .tap-button / .viewing-pill / .chooser-skeleton / .chooser-skeleton-row /
+ *   .chooser-message / .chooser-message-title / .chooser-message-desc / .chooser-error /
+ *   .chooser-error-head / .results-status-dot / .is-error / .source-kind-icon / .kind-query /
+ *   .kind-tap / .manager-list* / .manager-search / .manager-header / .manager-footer /
+ *   .editor-form / .editor-field* / .editor-actions
+ * (all already defined around common.css:3440-3670 and :1800-2070). Class names below are new
+ * structure only: the modal shell, destination chooser, tab strip, graph-tap config wrapper,
+ * and active-taps list.
+ */
+
+/* ── Modal shell ────────────────────────────────────────────────────────────── */
+.tap-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200; /* above the toast (1000) so a save-failure toast raised from inside stays visible */
+  display: none; /* toggled to flex via `display <--` in TapModal.scala */
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 41, 91, 0.32);
+  backdrop-filter: blur(1px);
+  animation: tapModalFadeIn 0.14s ease-out;
+}
+
+@keyframes tapModalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.tap-modal-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1040px, calc(100vw - 48px));
+  max-height: min(760px, calc(100vh - 64px));
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(10, 41, 91, 0.28);
+  overflow: hidden;
+  animation: tapModalPopIn 0.16s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@keyframes tapModalPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tap-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #eef0f5;
+}
+
+.tap-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--thatdot-dark-blue);
+}
+
+.tap-modal-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1;
+  color: #5b6b86;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.tap-modal-close:hover {
+  background: rgba(10, 41, 91, 0.06);
+}
+
+.tap-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 18px 18px;
+}
+
+/* Explorer Settings modal (junk drawer → Configure → "Explorer settings…"): shares the
+ * tap-modal shell above; the catalog cards want more room than the tap flow does. */
+.explorer-settings-dialog {
+  width: min(980px, calc(100vw - 48px));
+}
+
+/* ── Inspect Standing Queries (Step 1): SQ picker rail + stage diagram ─────── */
+.tap-inspect-root {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  min-height: 320px;
+}
+
+.tap-inspect-rail {
+  flex: 0 0 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 12px;
+  border-right: 1px solid #eef0f5;
+}
+
+.tap-inspect-rail-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid rgba(10, 41, 91, 0.16);
+  border-radius: 8px;
+  color: rgba(10, 41, 91, 0.4);
+}
+
+.tap-inspect-rail-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: var(--cui-font-sans-serif);
+  color: var(--thatdot-dark-blue);
+}
+/* A placeholder longer than the rail ("Search standing queries…") ellipsizes instead of
+   clipping mid-word. */
+.tap-inspect-rail-search::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tap-inspect-rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.tap-inspect-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  text-align: left;
+  color: rgba(10, 41, 91, 0.75);
+  background: none;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.tap-inspect-rail-item:hover {
+  background: rgba(10, 41, 91, 0.05);
+}
+.tap-inspect-rail-item-active {
+  background: rgba(22, 88, 183, 0.08);
+  color: var(--thatdot-brite-blue);
+  font-weight: 600;
+}
+
+.tap-inspect-rail-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tap-inspect-rail-item-dot {
+  flex: 0 0 auto;
+  font-size: 8px;
+  color: var(--tap-accent);
+}
+
+/* The selected SQ's architectural stage diagram: boxes joined by arrowed lines, tap
+   points as clickable ⊕/✓ circle nodes sitting on those lines. */
+.tap-diagram {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 4px;
+  overflow-x: auto;
+}
+
+/* One-line hint explaining what selecting a point does. There is no panel heading: the
+   rail already names and highlights the selected query. */
+.tap-diagram-hint {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.5);
+}
+
+/* Tap glyphs are 28px tall and top-aligned, so the connectors' 13px top margin lands
+   every line, arrowhead, and step bead on the shared centerline. Bottom padding gives
+   the absolutely-hung tap captions (top at 30px, two wrapped lines reach ~y=57) room
+   inside the scroll container. */
+.tap-diagram-flow {
+  display: flex;
+  align-items: flex-start;
+  padding-bottom: 40px;
+}
+
+.tap-diagram-raw-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* Horizontal connector with an arrowhead, wide enough to carry a step bead. Side margins
+   keep the line and its arrowhead clear of the circles it joins. The length also spaces
+   the nodes: a node's hung caption (up to 150px, anchored at its label's left edge) can
+   overhang the label by ~90px on the shortest label, so anything much under 84px lets
+   neighboring captions crowd each other. */
+.tap-diagram-connector {
+  position: relative;
+  flex: 0 0 84px;
+  height: 2px;
+  margin: 13px 8px 0;
+  background: rgba(10, 41, 91, 0.3);
+}
+.tap-diagram-connector::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  border-left: 6px solid rgba(10, 41, 91, 0.3);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
+/* A workflow step, shrunk to an icon bead sitting on the connector line — ƒ for the
+   JavaScript transformation, a graph triad for the Cypher enrichment. The step's name
+   lives in the bead's tooltip and in the tap captions either side of it. */
+.tap-diagram-bead {
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px dashed rgba(10, 41, 91, 0.28);
+  color: rgba(10, 41, 91, 0.6);
+}
+
+.tap-diagram-bead-fx {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* Output branches: the vertical trunk drops out of the Raw glyph (left edge sits on the
+   28px glyph's center, minus half the 2px line), one arrowed stub per output row — Raw
+   feeds each output, whose steps carry the stream to its tap points. */
+.tap-diagram-branch {
+  display: flex;
+  flex-direction: column;
+  /* Rows are 28px tall; their hung captions start at y=30 and wrap to two lines,
+     reaching ~y=57, so both the row gap and the clearance under the Raw node's own
+     caption (padding-top) must exceed that. */
+  gap: 40px;
+  margin: 6px 0 0 13px;
+  padding-top: 36px;
+  border-left: 2px solid rgba(10, 41, 91, 0.3);
+}
+
+.tap-diagram-branch-row {
+  display: flex;
+  align-items: flex-start;
+}
+
+.tap-diagram-branch-stub {
+  position: relative;
+  flex: 0 0 18px;
+  height: 2px;
+  margin: 13px 8px 0 0;
+  background: rgba(10, 41, 91, 0.3);
+}
+.tap-diagram-branch-stub::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  border-left: 6px solid rgba(10, 41, 91, 0.3);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
+/* The output's name, once per branch row, as quiet text (a single output goes unnamed). */
+.tap-diagram-branch-name {
+  flex: 0 0 auto;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(10, 41, 91, 0.5);
+}
+
+/* A tappable point: filled ⊕ circle (teal ✓ once inspected) with the point's name and
+   caption stacked to its right, so caption length never moves the circle the connectors
+   join. The only filled, only interactive elements on the canvas. */
+.tap-diagram-tap {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.tap-diagram-tap:focus-visible {
+  outline: none;
+}
+
+.tap-diagram-tap-glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--thatdot-brite-blue);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  transition: box-shadow 0.12s;
+}
+.tap-diagram-tap:hover .tap-diagram-tap-glyph,
+.tap-diagram-tap:focus-visible .tap-diagram-tap-glyph {
+  box-shadow: 0 0 0 4px rgba(22, 88, 183, 0.18);
+}
+.tap-diagram-tap-tapped .tap-diagram-tap-glyph {
+  background: var(--tap-accent);
+}
+.tap-diagram-tap-tapped:hover .tap-diagram-tap-glyph,
+.tap-diagram-tap-tapped:focus-visible .tap-diagram-tap-glyph {
+  box-shadow: 0 0 0 4px rgba(14, 125, 131, 0.18);
+}
+
+/* The text block only reserves width for the label row: the caption hangs below it
+   absolutely, so a long caption never pushes the connector away from the label. */
+.tap-diagram-tap-text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding-top: 1px;
+}
+
+.tap-diagram-tap-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tap-diagram-tap-label {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--thatdot-dark-blue);
+}
+
+.tap-diagram-tap-viewing {
+  padding: 2px 5px;
+  border: 1px solid rgba(14, 125, 131, 0.4);
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tap-accent);
+}
+
+/* Hung caption: absolute so it reserves no row width (the connector attaches right
+   after the label), wrapping at 150px so it stays under its own point instead of
+   running beneath the neighboring one. Anchored a fixed 30px below the node top — just
+   under the 28px glyph — NOT below the label: the caption overhangs under the connector,
+   whose bead (20px, centered on the y=14 centerline) reaches down to y=24, so a
+   label-relative anchor (~y=17) would run text through the bead and arrowhead. The fixed
+   anchor keeps every caption below the whole connector band and on one shared line. */
+.tap-diagram-tap-caption {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  width: max-content;
+  max-width: 150px;
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: rgba(10, 41, 91, 0.5);
+}
+
+/* An un-enriched output delivers the Raw stream unchanged — say so where its tap point
+   would otherwise sit. */
+.tap-diagram-ends {
+  align-self: flex-start;
+  margin: 7px 0 0 10px;
+  font-size: 11px;
+  font-style: italic;
+  color: rgba(10, 41, 91, 0.5);
+  white-space: nowrap;
+}
+
+.tap-diagram-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.5);
+}
+
+.tap-diagram-empty {
+  flex: 1 1 auto;
+  padding: 24px 8px;
+  font-size: 12.5px;
+  color: rgba(10, 41, 91, 0.45);
+  text-align: center;
+}
+
+/* ── Graph-projection editor (Explorer Settings): the pipeline point picker ──────────
+   Hosts SqPipelineTree (Variant.PickPoint) inside the editor form; the diagram keeps the
+   inspection modal's classes above, this only frames it and tightens it to card scale. */
+.graph-feed-picker {
+  border: 1px solid #eef0f5;
+  border-radius: 10px;
+  padding: 8px 12px 0;
+  background: #fff;
+}
+.graph-feed-picker .tap-inspect-root {
+  min-height: 220px;
+}
+.graph-feed-picker .tap-inspect-rail {
+  flex-basis: 170px;
+}
+
+/* One-line echo of the picked point under the picker, in the provenance wording the
+   inspection cards use ("sq · SQ matches", "sq/out · enriched"). */
+.graph-feed-picker-status {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.55);
+}
+
+/* The query behind the picked point's data (match pattern, or enrichment query) — shown so
+   the user can see what shape of data their own Cypher below will run against. */
+.graph-feed-picker-query {
+  margin-top: 8px;
+}
+.graph-feed-picker-query-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(10, 41, 91, 0.55);
+}
+.graph-feed-picker-query-pre {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 8em;
+  overflow: auto;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: rgba(10, 41, 91, 0.85);
+  background: #f8f9fc;
+  border: 1px solid rgba(10, 41, 91, 0.12);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* Transformed points: sits between the label and the query text, saying how the output's
+   transformation reshaped the data the feed's Cypher will receive. */
+.graph-feed-picker-query-note {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgba(10, 41, 91, 0.6);
+}
+/* Shown in place of the query text when the picked point's query isn't in the catalog
+   (enrichment removed since the definition was saved, or a non-Cypher pattern). */
+.graph-feed-picker-query-missing {
+  display: block;
+  font-size: 12px;
+  font-style: italic;
+  color: rgba(10, 41, 91, 0.45);
+}
+
+/* Optional free-text description on a projection's list row, under the source line. */
+.graph-feed-list-desc {
+  font-size: 0.78rem;
+  color: var(--cui-tertiary-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================================================
+   Junk drawer + result-count indicator
+   Class constants: JunkDrawerStyles.scala (public/quine-browser/.../queryui/)
+   Uses the existing --cui-*, --thatdot-*, and --kind-accent design tokens —
+   no new custom properties introduced.
+   ============================================================================ */
+
+/* ── Junk drawer trigger ─────────────────────────────────────────────────── */
+
+.junk-drawer {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.junk-drawer-trigger {
+  display: flex;
+  align-items: center;
+  gap: .45em;
+  max-width: 14em;
+  padding: .35em .6em;
+  border: none;
+  background-color: transparent;
+  color: var(--thatdot-gradient-end);
+  font-family: inherit;
+  font-size: 1.1em;
+  cursor: pointer;
+  transition: background-color .15s ease-in-out, color .15s ease-in-out;
+}
+.junk-drawer-trigger:hover {
+  background-color: var(--cui-tertiary-bg);
+  color: var(--cui-body-color);
+}
+.junk-drawer-trigger:focus-visible {
+  outline: 2px solid var(--thatdot-brite-blue);
+  outline-offset: -2px;
+}
+.junk-drawer-trigger-icon {
+  font-size: 1.1em;
+  flex-shrink: 0;
+}
+.junk-drawer-trigger-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ── Popover ──────────────────────────────────────────────────────────────── */
+
+.junk-drawer-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  z-index: 100;
+  background-color: var(--cui-body-bg);
+  border: 1px solid var(--cui-primary);
+  border-radius: .5em;
+  min-width: 280px;
+  max-width: 360px;
+  padding: .4em 0;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+}
+.junk-drawer-menu.open {
+  display: block;
+}
+
+.junk-drawer-separator {
+  border-top: 1px solid var(--cui-border-color, #e2e5f0);
+  margin: .35em 0;
+}
+
+/* ── Sections (Graph / Configure / Maintenance) ──────────────────────────── */
+
+.junk-drawer-section {
+  display: flex;
+  flex-direction: column;
+}
+.junk-drawer-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 3px;
+}
+.junk-drawer-section-label {
+  font-family: var(--thatdot-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8b93a3;
+}
+.junk-drawer-section-body {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: .25em;
+}
+
+/* The Graph section embeds the host's GraphSelector content (a list, not the
+   selector's own floating-menu trigger) — strip outer padding/positioning so
+   it sits flush inside this section instead of relying on GraphSelector's own
+   fixed-position dropdown chrome. */
+.junk-drawer-graph-slot {
+  display: flex;
+  flex-direction: column;
+  padding: 0 4px;
+}
+
+/* Flat namespace list (GraphSelector.inlineList) inside the Graph section: rows
+   styled for the drawer's light background — no nested trigger/popover. */
+.graph-selector-inline {
+  display: flex;
+  flex-direction: column;
+}
+.graph-selector-inline-filter {
+  margin: 2px 10px 6px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: .95em;
+  color: var(--cui-body-color);
+  border: 1px solid var(--cui-border-color, #e2e5f0);
+  border-radius: .25em;
+}
+.graph-selector-inline-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.graph-selector-inline-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--cui-body-color);
+}
+.graph-selector-inline-item:hover {
+  background-color: var(--cui-tertiary-bg);
+}
+.graph-selector-inline-item.active {
+  font-weight: 600;
+  cursor: default;
+}
+.graph-selector-inline-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.graph-selector-inline-check {
+  color: var(--thatdot-brite-blue, #2f7df6);
+  flex-shrink: 0;
+}
+.graph-selector-inline-empty {
+  padding: 6px 12px;
+  color: #8b93a3;
+}
+
+/* ── Action rows (Configure / Maintenance entries) ───────────────────────── */
+
+.junk-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: .7em;
+  padding: .55em 1.2em;
+  cursor: pointer;
+  color: var(--cui-body-color);
+  font-size: .92em;
+}
+.junk-drawer-item:hover {
+  background-color: var(--cui-tertiary-bg);
+}
+.junk-drawer-item-icon {
+  font-size: 1em;
+  color: var(--cui-secondary-color);
+  flex-shrink: 0;
+}
+.junk-drawer-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.junk-drawer-item-danger .junk-drawer-item-icon,
+.junk-drawer-item-danger:hover {
+  color: var(--error-accent);
+}
+.junk-drawer-item-danger:hover .junk-drawer-item-icon {
+  color: var(--error-accent);
+}
+
+/* ============================================================================
+   Result-count indicator — semi-translucent, ephemeral overlay over the
+   canvas. Same layer/position/fade family as the existing query-progress
+   `.loader` (see common.css): absolute, top-right, high z-index. Explicitly
+   NOT toast styling — no box shadow, no dismiss button, non-interactive.
+
+   Renders the same node/edge counter structure as `Counters` (ionicon +
+   subscript count) restyled for a translucent pill over the canvas instead
+   of the nav bar's dark-on-dark chrome.
+   ============================================================================ */
+
+.result-count-indicator {
+  position: absolute;
+  top: .6em;
+  right: .6em;
+  z-index: 100;
+  padding: .3em .7em;
+  border-radius: .4em;
+  background-color: rgba(20, 24, 33, 0.66);
+  color: #fff;
+  font-size: .85em;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .25s ease-in-out, transform .25s ease-in-out;
+}
+.result-count-indicator.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.result-count-indicator-counters {
+  display: flex;
+  align-items: center;
+}
+.result-count-indicator-icon {
+  display: flex;
+  align-items: center;
+  color: #fff;
+  font-size: 1.3em;
+  padding: 0 .3em;
+}
+.result-count-indicator-icon:first-child {
+  padding-left: 0;
+}
+.result-count-indicator-icon span span {
+  margin-left: .3em;
+  font-size: .75em;
+  color: rgba(255, 255, 255, 0.85);
 }

@@ -9,7 +9,7 @@ object QueryEditorStyles {
   val queryEditorMulti = "query-editor-multi"
   val queryEditorChrome = "query-editor-chrome"
   val queryEditorContainer = "query-editor-container"
-  val queryEditorRunButton = "query-editor-run-button"
+  val queryEditorRunButtonWrap = "query-editor-run-button-wrap"
 
   // Status bar + toggleable diagnostics panel, shown at the bottom of the expanded
   // (multi-line, focused) query editor.

@@ -3,20 +3,20 @@ package com.thatdot.quine.webapp.resultspanel
 import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.webapp.Styles
+import com.thatdot.quine.webapp.resultspanel.cards.TapCardQuery
 import com.thatdot.quine.webapp.util.Pot
 
 /** The add-a-tap chooser — the switcher's create mode. A flat, always-visible list of standing
-  * queries (no accordions): each block shows the SQ's Raw tap point and, per output, a
-  * Pre—enrich—Post pipeline (or just Post when the output isn't enriched, since Pre would equal
-  * Post). A back header returns to the switcher; a legend explains the two pill states. Chooser
-  * view state (the list filter) is local and resets on each entry.
+  * queries (no accordions): each block shows the SQ's Raw tap point and, per output, an
+  * enrich—Post pipeline (or a "no enrichment" note when the output isn't enriched, since its
+  * stream would equal Raw). A back header returns to the switcher; a legend explains the two
+  * pill states. Chooser view state (the list filter) is local and resets on each entry.
   */
 object AddTapChooser {
 
   def apply(
     catalog: Signal[Pot[Vector[TapCatalogEntry]]],
     watching: Signal[Set[String]],
-    preEnabled: Boolean,
     sd: Observer[ResultsCommand],
   ): HtmlElement = {
     // Chooser-local: each entry into the chooser starts with a clear filter (fresh mount).
@@ -26,7 +26,7 @@ object AddTapChooser {
       backHeader(sd),
       legend(),
       children <-- Signal.combine(catalog, filter.signal, watching).map { case (pot, ftext, watch) =>
-        chooserBody(pot, ftext, filter, watch, preEnabled, sd)
+        chooserBody(pot, ftext, filter, watch, sd)
       },
     )
   }
@@ -46,7 +46,7 @@ object AddTapChooser {
         span(cls := Styles.chooserTitle, "Add a tap"),
         span(
           cls := Styles.chooserSubtitle,
-          "Watch any point in a standing query's flow — a tap adds load to its query, so go easy on busy ones in production",
+          "Watch any point in a standing query's flow. A tap adds load to its query, so go easy on busy ones in production",
         ),
       ),
     )
@@ -55,7 +55,7 @@ object AddTapChooser {
   private def legend(): HtmlElement =
     div(
       cls := Styles.chooserLegend,
-      span(cls := Styles.chooserLegendItem, span(cls := Styles.chooserSwatch), "tap point — click to view it live"),
+      span(cls := Styles.chooserLegendItem, span(cls := Styles.chooserSwatch), "tap point, click to view it live"),
       span(
         cls := Styles.chooserLegendItem,
         span(cls := Styles.chooserSwatch, cls := Styles.chooserSwatchTapped),
@@ -68,7 +68,6 @@ object AddTapChooser {
     ftext: String,
     filter: Var[String],
     watch: Set[String],
-    preEnabled: Boolean,
     sd: Observer[ResultsCommand],
   ): List[HtmlElement] = pot match {
     case Pot.Empty | Pot.Pending => List(loadingSkeleton())
@@ -81,7 +80,7 @@ object AddTapChooser {
           val filterEl = if (sqs.size > 6) List(filterInput(filter, sqs.size, filtered.size, ftext)) else Nil
           val list =
             if (filtered.isEmpty) List(noMatch(ftext))
-            else filtered.map(sq => sqBlock(sq, watch, preEnabled, sd)).toList
+            else filtered.map(sq => sqBlock(sq, watch, sd)).toList
           filterEl ++ list
       }
   }
@@ -105,13 +104,12 @@ object AddTapChooser {
       else emptyNode,
     )
 
-  /** One standing query: a header (name · output count · "all matches" → Raw pill) over a row per
-    * output (its Pre—enrich—Post pipeline).
+  /** One standing query: a header (name · output count · Matches pill) over a row per output
+    * (its enrich—Enriched pipeline).
     */
   private def sqBlock(
     sq: TapCatalogEntry,
     watch: Set[String],
-    preEnabled: Boolean,
     sd: Observer[ResultsCommand],
   ): HtmlElement =
     div(
@@ -123,9 +121,9 @@ object AddTapChooser {
         span(cls := Styles.sqBlockCount, outputsMeta(sq)),
         div(cls := Styles.tapsHeadingSpacer),
         span(cls := Styles.sqAllMatches, "all matches"),
-        tapControl(sq.sqName, TapPoint.Raw, "Raw", watch, sd),
+        tapControl(sq.sqName, TapPoint.Raw, "SQ Matches", sq.patternQuery, watch, sd),
       ),
-      div(sq.outputs.map(out => outputRow(sq.sqName, out, watch, preEnabled, sd))),
+      div(sq.outputs.map(out => outputRow(sq.sqName, out, watch, sd))),
     )
 
   private def outputsMeta(sq: TapCatalogEntry): String = sq.outputs.size match {
@@ -134,15 +132,14 @@ object AddTapChooser {
     case n => s"$n outputs"
   }
 
-  /** One output's tap-point pipeline. When the output is enriched (and the store can tap Pre), show
-    * Pre › enrich › Post around the enrichment query; otherwise Pre would equal Post, so show only
-    * Post (with a muted "no enrichment" note).
+  /** One output's tap-point pipeline. When the output is enriched, show enrich › Post around the
+    * enrichment query; otherwise the output's stream equals Raw, so show only a muted
+    * "no enrichment" note (tap Raw instead).
     */
   private def outputRow(
     sqName: String,
     out: TapOutput,
     watch: Set[String],
-    preEnabled: Boolean,
     sd: Observer[ResultsCommand],
   ): HtmlElement =
     div(
@@ -150,59 +147,51 @@ object AddTapChooser {
       span(cls := Styles.tapOutputName, title := out.name, out.name),
       div(
         cls := Styles.prePostGroup,
-        if (preEnabled && out.hasEnrichment)
+        if (out.hasEnrichment)
           List[Modifier[HtmlElement]](
-            tapControl(sqName, TapPoint.PreEnrichment(out.name), "Pre", watch, sd),
             enrichNode(),
-            tapControl(sqName, TapPoint.PostEnrichment(out.name), "Post", watch, sd),
+            tapControl(sqName, TapPoint.PostEnrichment(out.name), "Enriched", out.enrichmentQuery, watch, sd),
           )
         else
           List[Modifier[HtmlElement]](
-            span(cls := Styles.noEnrichment, "no enrichment"),
-            span(cls := Styles.prePostConnector, "›"),
-            tapControl(sqName, TapPoint.PostEnrichment(out.name), "Post", watch, sd),
+            span(cls := Styles.noEnrichment, "no enrichment, results match Raw"),
           ),
       ),
     )
 
-  /** The dashed "enrich" node between the Pre and Post pills — the enrichment query the two points
-    * straddle, drawn so Pre/Post read as before/after it.
+  /** The dashed "enrich" node before the Post pill — the enrichment query Post observes the
+    * results of.
     */
   private def enrichNode(): Modifier[HtmlElement] =
     Seq(
-      span(cls := Styles.prePostConnector, "›"),
       div(cls := Styles.enrichNode, title := "resultEnrichment query", ResultsIcons.gear, span("enrich")),
       span(cls := Styles.prePostConnector, "›"),
     )
 
-  /** A tap point's control: a solid "Raw/Pre/Post" button, or an outlined "✓" pill when that
-    * location is already tapped (picking it again just re-focuses the existing tap).
+  /** A tap point's control: a solid "SQ Matches/Enriched" button, or an outlined "✓" pill when
+    * that location is already tapped (picking it again just re-focuses the existing tap).
     */
   private def tapControl(
     sqName: String,
     tapPoint: TapPoint,
     label: String,
+    queryText: Option[String],
     watch: Set[String],
     sd: Observer[ResultsCommand],
   ): HtmlElement = {
     val target = TapTarget(sqName, tapPoint)
+    // Tooltip: what the point observes plus (when known) the query that produced the data —
+    // shared with the pipeline tree via TapCardQuery.hoverDesc.
     if (watch.contains(target.key))
-      span(cls := Styles.viewingPill, title := tapPointDesc(tapPoint), s"✓ $label")
+      span(cls := Styles.viewingPill, title := TapCardQuery.hoverDesc(tapPoint, queryText), s"✓ $label")
     else
       button(
         tpe := "button",
         cls := Styles.tapButton,
-        title := tapPointDesc(tapPoint),
+        title := TapCardQuery.hoverDesc(tapPoint, queryText),
         onClick --> (_ => sd.onNext(ResultsCommand.OpenTap(target))),
         label,
       )
-  }
-
-  /** What each tap point observes — shown on hover, since "Raw / Pre / Post" alone isn't obvious. */
-  private def tapPointDesc(tapPoint: TapPoint): String = tapPoint match {
-    case TapPoint.Raw => "Raw — every match the standing query produces, before any output runs."
-    case _: TapPoint.PreEnrichment => "Pre — matches entering this output, before its enrichment query runs."
-    case _: TapPoint.PostEnrichment => "Post — final results after this output's enrichment query has run."
   }
 
   private def loadingSkeleton(): HtmlElement =

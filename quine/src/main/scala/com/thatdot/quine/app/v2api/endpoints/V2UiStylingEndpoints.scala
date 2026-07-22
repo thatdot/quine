@@ -8,7 +8,8 @@ import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Endpoint, emptyOutputAs, statusCode}
 
 import com.thatdot.api.v2.ErrorResponse
-import com.thatdot.api.v2.ErrorResponseHelpers.serverError
+import com.thatdot.api.v2.ErrorResponse.BadRequest
+import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
 import com.thatdot.quine.app.util.StringOps
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, TapQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.{GraphScopedEndpoints, V2QuineEndpointDefinitions}
@@ -209,15 +210,21 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps wit
     queryUiTapQueries.serverLogic[Future](queryUiTapQueriesLogic)
 
   protected[endpoints] val updateQueryUiTapQueries
-    : Endpoint[Unit, (NamespaceId, Vector[TapQuery]), ErrorResponse.ServerError, Unit, Any] =
+    : Endpoint[Unit, (NamespaceId, Vector[TapQuery]), Either[ErrorResponse.ServerError, BadRequest], Unit, Any] =
     graphScopedEndpoint("queryUi", "tapQueries")
       .tag("UI Styling")
       .errorOut(serverError())
+      .errorOutEither(
+        badRequestError("A tap query is invalid or has write effects; graph projections must be read-only."),
+      )
       .name("replace-tap-queries")
       .summary("Replace Tap Queries")
       .description(
         "Replace all tap queries for the given graph in the Explorer Settings page.\n\n" +
-        "Tap queries applied here will replace any currently existing tap queries for that graph.",
+        "Tap queries applied here will replace any currently existing tap queries for that graph.\n\n" +
+        "Every tap query must compile and be read-only: a projection only observes and draws results, so " +
+        "a query that fails to compile, or that has write effects (CREATE, MERGE, SET, DELETE, REMOVE, a " +
+        "writing procedure, ...), is rejected with a 400 and nothing is saved.",
       )
       .put
       .in(jsonOrYamlBody[Vector[TapQuery]](Some(TapQuery.defaults)))
@@ -225,16 +232,55 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps wit
       .out(emptyOutputAs(()))
       .attribute(Visibility.attributeKey, Visibility.Hidden)
 
+  /** Every `$name` a projection query references. A projection reads its incoming standing-query
+    * result through parameters (the wiretap envelope's `$data`, `$meta`, ...), so those must be
+    * declared when we compile the query to check it — otherwise compilation fails on the
+    * parameter reference and tells us nothing about write effects. (That gap is how a mutating
+    * `CALL purgeNode(...)` reading `$data` slipped through an earlier version of this check, while
+    * a parameter-less `CREATE` was correctly rejected.) Over-declaring is harmless, so we take
+    * every `$`-reference in the text.
+    */
+  private val ParamRef = """\$(\w+)""".r
+
+  /** Validate a projection query at save time. `Right(())` for a compilable, read-only query;
+    * `Left(reason)` when the query has write effects or fails to compile — in both cases we
+    * refuse to save it (a graph projection only observes and draws, and there is no point
+    * persisting a query that cannot run). Declaring the referenced parameters means a remaining
+    * compile failure is a genuine syntax/semantic error the projection would hit at run time.
+    */
+  private def validateReadOnlyTapQuery(tq: TapQuery): Either[String, Unit] = {
+    val declaredParams = ParamRef.findAllMatchIn(tq.query).map(_.group(1)).toSeq.distinct
+    scala.util.Try(appMethods.analyze(tq.query, declaredParams)) match {
+      case scala.util.Failure(e) =>
+        val detail = Option(e.getMessage).filter(_.nonEmpty).getOrElse(e.toString)
+        Left(s"""Projection "${tq.name}" has an invalid query: $detail""")
+      case scala.util.Success(effects) if !effects.isReadOnly =>
+        Left(
+          s"""Projection "${tq.name}" would modify the graph. Graph projections are read-only — remove any """ +
+          "write clauses (CREATE, MERGE, SET, DELETE, DETACH DELETE, REMOVE) from the query.",
+        )
+      case scala.util.Success(_) => Right(())
+    }
+  }
+
   protected[endpoints] val updateQueryUiTapQueriesLogic
-    : ((NamespaceId, Vector[TapQuery])) => Future[Either[ErrorResponse.ServerError, Unit]] = { case (ns, m) =>
-    recoverServerError(appMethods.setTapQueries(ns, m))(_ => ())
+    : ((NamespaceId, Vector[TapQuery])) => Future[Either[Either[ErrorResponse.ServerError, BadRequest], Unit]] = {
+    case (ns, m) =>
+      val firstProblem: Option[String] =
+        m.iterator.flatMap(tq => validateReadOnlyTapQuery(tq).left.toOption).nextOption()
+      val result: Future[Either[BadRequest, Unit]] =
+        firstProblem match {
+          case Some(reason) => Future.successful(Left(BadRequest(reason)))
+          case None => appMethods.setTapQueries(ns, m).map(Right(_))(ExecutionContext.parasitic)
+        }
+      recoverServerErrorEitherFlat(result)(_ => ())
   }
 
   private val updateQueryUiTapQueriesServerEndpoint: Full[
     Unit,
     Unit,
     (NamespaceId, Vector[TapQuery]),
-    ErrorResponse.ServerError,
+    Either[ErrorResponse.ServerError, BadRequest],
     Unit,
     Any,
     Future,

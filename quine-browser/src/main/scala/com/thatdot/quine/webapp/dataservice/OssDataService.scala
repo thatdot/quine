@@ -275,13 +275,28 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
         .flatMapSwitch(_ => QuineApiClient.standingQueries(ns.namespaceId, clientRoutes).potSignal)
     }.distinct
 
-  lazy val tapQueriesSignal: Signal[Vector[V2TapQuery]] =
-    if (!canReadTapQueries) Val(Vector.empty)
+  // A Pot rather than a bare Vector because SaveTapQueries is a whole-list replace:
+  // consumers must be able to tell "not loaded yet" from "loaded, empty", or a save
+  // dispatched before the first fetch resolves would wipe every other definition. The
+  // scan holds the last known list across refresh restarts (as `PendingStale`) so a
+  // save-triggered refetch doesn't blank the list, and folds fetch errors into
+  // `Failed`/`FailedStale` instead of silently dropping them. A namespace switch
+  // resets to `Pending` (the scan lives inside the switch) so one graph's list is
+  // never shown — or saved — against another's.
+  lazy val tapQueriesSignal: Signal[Pot[Vector[V2TapQuery]]] =
+    if (!canReadTapQueries) Val(Pot.Empty)
     else
       currentNamespaceSignal.flatMapSwitch { ns =>
-        tapQueriesRefresh.events
-          .startWith(())
-          .flatMapSwitch(_ => QuineApiClient.tapQueries(ns.namespaceId, clientRoutes).values.startWith(Vector.empty))
+        EventStream
+          .merge(EventStream.fromValue(()), tapQueriesRefresh.events)
+          .flatMapSwitch(_ => QuineApiClient.tapQueries(ns.namespaceId, clientRoutes).potSignal.updates)
+          .scanLeft(Pot.Pending: Pot[Vector[V2TapQuery]]) {
+            case (prev, Pot.Pending) =>
+              prev.toOption.fold[Pot[Vector[V2TapQuery]]](Pot.Pending)(Pot.PendingStale(_))
+            case (prev, Pot.Failed(msg)) =>
+              prev.toOption.fold[Pot[Vector[V2TapQuery]]](Pot.Failed(msg))(Pot.FailedStale(_, msg))
+            case (_, next) => next
+          }
       }.distinct
 
   lazy val clusterStatusSignal: Signal[Pot[V2ServiceStatus]] =
@@ -329,9 +344,10 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       .startWith(Vector.empty)
       .distinct
 
-  /** Per-tab persistence of which tap queries are enabled locally, one sessionStorage
-    * entry per graph namespace — a tab restores its own enabled taps on reload while two
-    * tabs can have different taps enabled at once.
+  /** Per-tab persistence of which tap queries are locally *enabled*, one sessionStorage
+    * entry per graph namespace — tap queries are disabled by default, so only the opt-ins
+    * are recorded. A tab restores its own enabled set on reload while two tabs can have
+    * different taps enabled at once.
     */
   private object EnabledTapsStorage {
     private val KeyPrefix = "thatdot.explorer.enabledTaps."
@@ -362,15 +378,17 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
   }
 
   /** Wiretap runtime: one [[WiretapStore]] per graph namespace, renewed when the current
-    * namespace changes (the old namespace's sockets close). "Enable locally" tap-query
-    * intent is persisted per graph in sessionStorage and reconciled against the server's
-    * tap-query list, so enabled taps restore on reload or graph revisit and follow
-    * server-side edits without a re-toggle. Bootstrapped lazily by the first use of any
-    * wiretap member — construction must not force `currentNamespaceSignal`, which
-    * subclasses override with members that do not exist until their own initialization
-    * runs. Once bootstrapped, the service itself owns the namespace subscription: the one
-    * deliberate departure from "no work until a consumer subscribes", safe because the
-    * app root holds exactly one service for the app's lifetime.
+    * namespace changes (the old namespace's sockets close). Tap queries are disabled
+    * locally *by default*: a definition on the server's tap-query list gets an open
+    * tap only when the user turns it on, and only that opt-in set is persisted per graph
+    * in sessionStorage — so an explicit enable survives reloads and graph revisits, while
+    * new definitions appearing server-side stay off until enabled. Bootstrapped
+    * lazily by the first use of any wiretap member — construction must not force
+    * `currentNamespaceSignal`, which subclasses override with members that do not exist
+    * until their own initialization runs. Once bootstrapped, the service itself owns the
+    * namespace subscription: the one deliberate departure from "no work until a consumer
+    * subscribes", safe because the app root holds exactly one service for the app's
+    * lifetime.
     */
   final private class WiretapRuntime {
     private val owner = new ManualOwner
@@ -378,15 +396,16 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     val storeVar: Var[Option[WiretapStore]] = Var(None)
     val enabledTapQueriesVar: Var[Map[String, V2TapQuery]] = Var(Map.empty)
 
-    // "Enable locally" intent for the current namespace: tap-query names only. The
-    // metadata map above is filled from the toggle's payload or the server list, so the
-    // dispatch host always acts on the freshest definition.
+    // "Enable locally" opt-ins for the current namespace: tap-query names only. Every
+    // server-side definition *in* this set is wanted; the metadata map above is
+    // filled from the toggle's payload or the server list, so the dispatch host always
+    // acts on the freshest definition.
     private val enabledIntentVar: Var[Set[String]] = Var(Set.empty)
     private var currentNs: String = NamespaceParameter.defaultNamespaceParameter.namespaceId
 
     // Fires synchronously with the current namespace on subscription, so `storeVar` holds
     // a store from the moment the runtime exists. Restores the new namespace's persisted
-    // intent; reconcile reopens its taps once the server list arrives.
+    // opt-ins; reconcile opens their taps once the server list arrives.
     currentNamespaceSignal.foreach { ns =>
       storeVar.now().foreach(_.closeAll())
       enabledTapQueriesVar.set(Map.empty)
@@ -395,46 +414,46 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       enabledIntentVar.set(EnabledTapsStorage.load(ns.namespaceId))
     }(owner)
 
-    // Persist intent per namespace on every change (toggles, restores, server prunes).
+    // Persist opt-ins per namespace on every change (toggles, restores, server prunes).
     enabledIntentVar.signal.foreach(names => EnabledTapsStorage.save(currentNs, names))(owner)
 
     // The server's tap-query list for the current namespace, tagged with the namespace it
-    // belongs to (so one graph's intent is never reconciled against another's list) and
-    // polled only while some tap is enabled — no intent, no fetch.
+    // belongs to (so one graph's opt-ins are never reconciled against another's list).
+    // Always polled (when readable): the wanted set is the opt-in set intersected with the
+    // server list, which must stay current as definitions are added, edited, or dropped.
     private val tapListSignal: Signal[Option[(String, Vector[V2TapQuery])]] =
-      enabledIntentVar.signal
-        .map(_.nonEmpty)
-        .distinct
-        .combineWith(currentNamespaceSignal)
-        .flatMapSwitch {
-          case (true, ns) if canReadTapQueries =>
+      currentNamespaceSignal
+        .flatMapSwitch { ns =>
+          if (canReadTapQueries)
             QuineApiClient
               .tapQueries(ns.namespaceId, clientRoutes)
               .values
               .map(tapQueries => Option(ns.namespaceId -> tapQueries))
               .startWith(None)
-          case _ => Val(None)
+          else Val(None)
         }
 
     enabledIntentVar.signal
       .combineWith(tapListSignal)
       .foreach {
-        case (want, Some((ns, tapQueries))) if ns == currentNs => reconcile(want, tapQueries)
+        case (enabled, Some((ns, tapQueries))) if ns == currentNs => reconcile(enabled, tapQueries)
         case _ => ()
       }(owner)
 
-    /** Bring open handlers (and the metadata the dispatch host reads) in line with intent
-      * and the server list: open newly-wanted taps, close no-longer-wanted ones, prune
-      * intent of taps the server dropped, refresh metadata for edited queries, and reopen
-      * a tap only when its tap point (SQ/output) actually moved — an edit to the query
-      * alone reuses the open handler.
+    /** Bring open handlers (and the metadata the dispatch host reads) in line with the
+      * opt-in set intersected with the server list: open newly-enabled taps, close ones
+      * the user turned off, prune opt-ins for taps the server dropped (a later re-create
+      * starts disabled again), refresh metadata for edited queries, and reopen a tap only
+      * when its tap point (SQ/output) actually moved — an edit to the query alone reuses
+      * the open handler.
       */
-    private def reconcile(want: Set[String], tapQueries: Vector[V2TapQuery]): Unit =
+    private def reconcile(enabled: Set[String], tapQueries: Vector[V2TapQuery]): Unit =
       storeVar.now().foreach { store =>
         val byName = tapQueries.iterator.map(t => t.name -> t).toMap
-        val pruned = want.intersect(byName.keySet)
-        if (pruned != want) enabledIntentVar.set(pruned) // re-enters with the pruned set
+        val prunedEnabled = enabled.intersect(byName.keySet)
+        if (prunedEnabled != enabled) enabledIntentVar.set(prunedEnabled) // re-enters with the pruned set
         else {
+          val want = byName.keySet.intersect(enabled)
           val have = store.activeKeys(WiretapService.TapQueryOwner)
           have.diff(want).foreach { name =>
             store.close(WiretapService.TapQueryOwner, name)
@@ -447,7 +466,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
                 WiretapService.TapQueryOwner,
                 name,
                 t.standingQueryName,
-                WiretapTapPoint.fromOutputName(t.outputName),
+                WiretapTapPoint.fromOutputName(t.outputName, t.preEnrichment),
               )
             }
           }
@@ -456,14 +475,18 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
               val prev = enabledTapQueriesVar.now().get(name)
               if (!prev.contains(t)) enabledTapQueriesVar.update(_ + (name -> t))
               val tapPointMoved =
-                prev.exists(p => p.standingQueryName != t.standingQueryName || p.outputName != t.outputName)
+                prev.exists(p =>
+                  p.standingQueryName != t.standingQueryName ||
+                  p.outputName != t.outputName ||
+                  p.preEnrichment != t.preEnrichment,
+                )
               if (tapPointMoved) {
                 store.close(WiretapService.TapQueryOwner, name)
                 store.open(
                   WiretapService.TapQueryOwner,
                   name,
                   t.standingQueryName,
-                  WiretapTapPoint.fromOutputName(t.outputName),
+                  WiretapTapPoint.fromOutputName(t.outputName, t.preEnrichment),
                 )
               }
             }
@@ -471,7 +494,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
         }
       }
 
-    /** Record intent and open immediately — the toggle carries the full tap query, so
+    /** Record the opt-in and open immediately — the toggle carries the full tap query, so
       * there is nothing to wait for. Reconcile keeps the tap current afterwards.
       */
     def enable(tapQuery: V2TapQuery): Unit = {
@@ -484,7 +507,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
             WiretapService.TapQueryOwner,
             tapQuery.name,
             tapQuery.standingQueryName,
-            WiretapTapPoint.fromOutputName(tapQuery.outputName),
+            WiretapTapPoint.fromOutputName(tapQuery.outputName, tapQuery.preEnrichment),
           ),
         )
     }

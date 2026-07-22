@@ -20,6 +20,7 @@ import com.thatdot.quine.Util.escapeHtml
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
 import com.thatdot.quine.v2api.routes.{V2QuerySort, V2QuickQuery, V2UiNodeQuickQuery}
+import com.thatdot.quine.webapp.components.streams.EmbeddedEditorConfig
 import com.thatdot.quine.webapp.components.{
   ContextMenu,
   ContextMenuItem,
@@ -28,6 +29,7 @@ import com.thatdot.quine.webapp.components.{
   MenuAction,
   MenuSection,
   Toast,
+  ToastAction,
   ToastMessage,
   ToastVariant,
   ToolbarButton,
@@ -44,31 +46,29 @@ import com.thatdot.quine.webapp.dataservice.{
   WiretapHandler,
   WiretapOwner,
 }
-import com.thatdot.quine.webapp.queryui.{
-  DownloadUtils,
-  HistoryJsonSchema,
-  HistoryNavigationButtons,
-  NetworkLayout,
-  QueryMethod,
-  QueryUiEvent,
-  QueryUiVisEdgeExt,
-  QueryUiVisNodeExt,
-  SvgSnapshot,
-  TopBar,
-  UiQueryType,
+import com.thatdot.quine.webapp.resultspanel.cards.{
+  CardDefaults,
+  CardId,
+  CardKind,
+  CardPopup,
+  CardSnapshot,
+  CardsStore,
+  MinimizedDrawer,
+  TapCardQuery,
 }
+import com.thatdot.quine.webapp.resultspanel.streaming.LiveStream
+import com.thatdot.quine.webapp.resultspanel.tapmodal.TapModal
 import com.thatdot.quine.webapp.resultspanel.{
-  CanvasDoor,
   HistoryEntry,
   HistoryState,
+  LiveSource,
   ResultOutcome,
-  ResultsAction,
   ResultsContent,
-  ResultsPanel,
-  ResultsStore,
-  StructuredError,
+  SourceStatus,
   TapCatalogEntry,
+  TapEntry,
   TapOutput,
+  TapTarget,
 }
 import com.thatdot.quine.webapp.util.Pot
 import com.thatdot.quine.webapp.v2api.{QuickQueryConversions, V2ApiTypes}
@@ -115,7 +115,6 @@ object QueryUi {
     uiNodeAppearances: Vector[UiNodeAppearance],
     atTime: Option[Long],
     namespace: NamespaceParameter,
-    areSampleQueriesVisible: Boolean,
   )
 
   private case class ContextMenuState(x: Double, y: Double, model: ContextMenuModel)
@@ -137,7 +136,6 @@ object QueryUi {
         uiNodeAppearances = Vector.empty,
         atTime = props.initialAtTime,
         namespace = props.initialNamespace,
-        areSampleQueriesVisible = false,
       ),
     )
 
@@ -153,6 +151,9 @@ object QueryUi {
     val nodePopupRefreshVar = Var(Option.empty[(Double, Double) => Unit])
     val toastVar = Var(Option.empty[ToastMessage])
     val resultsVar = Var(Option.empty[ResultsContent])
+    // Ephemeral result-count overlay (design doc §5): one event per completed query, never
+    // for errors. Emitted from submitQuery's Success branches below.
+    val resultCountBus = new EventBus[ResultCountEvent]
     val bookmarkDraftVar: Var[Option[SampleQueryDraft]] = Var(None)
 
     /** True while a namespace snapshot (initial-load or namespace-switch) is being applied to
@@ -173,33 +174,223 @@ object QueryUi {
     // queries, quick queries). Gates the shared-feed bindings — an unbound signal never polls.
     val canViewUiData: Boolean =
       props.permissions.forall(perms => Set("StoredQueryRead", "NodeAppearanceRead").subsetOf(perms))
+    // The Explorer Settings modal manages shared configuration (sample queries, quick
+    // queries, node appearances), so its junk-drawer entry is keyed on the write
+    // permissions rather than the reads that merely using the Explorer requires —
+    // the same gate the old dedicated settings page used.
+    val canEditExplorerSettings: Boolean =
+      props.permissions.forall(perms => Set("StoredQueryWrite", "NodeAppearanceWrite").subsetOf(perms))
+    val settingsModalOpenVar: Var[Boolean] = Var(false)
+    // Per-browser "show in graph menu" preference for graph feeds: which ones get a pill
+    // in the canvas's bottom-left menu (GraphFeedChips). Shared between the settings
+    // modal (where the preference is set) and the chips (which it filters).
+    val graphMenuPrefs = new GraphMenuPrefs(props.dataService.currentNamespaceSignal.map(_.namespaceId))
     val tapCatalogSignal: Signal[Pot[Vector[TapCatalogEntry]]] =
       if (canReadStandingQueries)
         props.dataService.standingQueriesSignal.map(
           _.map(sqs =>
-            sqs.map(sq => TapCatalogEntry(sq.name, sq.outputs.map(o => TapOutput(o.name, o.hasEnrichment)))).toVector,
+            sqs
+              .map(sq =>
+                TapCatalogEntry(
+                  sq.name,
+                  sq.outputs.map(o =>
+                    TapOutput(o.name, o.hasEnrichment, o.hasTransformation, o.enrichmentQuery, o.transformationType),
+                  ),
+                  sq.pattern.flatMap(_.query),
+                ),
+              )
+              .toVector,
           ),
         )
       else Val(Pot.Empty)
+    // One-shot resolution of the query behind a tap target's data (design doc: "render the
+    // standing query / enrichment query in the tap card too"), read off the catalog at open
+    // time. A resolved query is carried through entry swaps (`CardsStore.replaceTapTableEntry`),
+    // so a later catalog edit doesn't retroactively change an already-open card; a card that
+    // opened or restored without one (catalog still loading, pre-capture snapshot) is
+    // backfilled on its next restart via the same call.
+    def resolveTapCardQuery(target: TapTarget): Option[TapCardQuery] = {
+      val catalogObs = tapCatalogSignal.observe(unsafeWindowOwner)
+      val catalogNow = catalogObs.now().toOption.getOrElse(Vector.empty)
+      catalogObs.killOriginalSubscription()
+      TapCardQuery.resolve(catalogNow, target)
+    }
     // Taps open under the explorer's own owner; the facade scopes the panel's source list to it.
     val tapSubscriptions = new PanelTapSubscriptions(props.dataService, WiretapOwner("explorer"))
-    // The results-surface store. History + collapse are owned by the host (persisted/restored to
-    // session storage above); the rest of the panel's state lives inside the store.
-    val resultsStore = new ResultsStore(
+    // TODO(lane G cleanup): the old ResultsStore/ResultsPanel/CanvasDoor drawer surface is no
+    // longer constructed or mounted — the card system (CardsStore, below) replaced it for adhoc
+    // runs and the tap modal replaced AddTapChooser for taps (design doc §3 phase 1/2: "the old
+    // drawer no longer opens for adhoc runs"). `resultsHistory` is now vestigial — nothing
+    // populates it, and the snapshot restore/persist paths ignore it (its snapshot-format
+    // fields are kept for compatibility but persisted empty); `resultsCollapsedVar` still
+    // feeds the snapshot format below (see `persistCurrentNamespace`). Once Lane G (G3/G5)
+    // deletes ResultsPanel/ResultsHeader/HistoryState, replace these with the card system's
+    // own persistence path (A11, not yet implemented — see laneA-integration.md §4).
+
+    // ── Result cards (exploration UI redesign) ──────────────────────────────────────
+    // The card system's store: adhoc query results auto-capture into floating cards
+    // (design doc §3). Tap cards are created by the tap modal below via
+    // addTapTableCard; tap lifecycle effects (close/stop/restart/go-live)
+    // are wired to the same PanelTapSubscriptions/WiretapService the old drawer used.
+    // `submitQuery` is defined later in this method (it needs many locals declared in between,
+    // e.g. wsClients/textQuery/nodeQuery), so `onReRun` can't reference it directly here without
+    // a forward-reference compile error — it goes through this mutable forwarding cell instead,
+    // assigned once `submitQuery` exists (just before the cardsStore/tapModal wiring is used).
+    // Returns whether the run was actually accepted (false on submitQuery's early-outs:
+    // blank query, pending text query) so `CardsStore.reRun` only claims the edit
+    // association for runs that will really produce content.
+    var submitQueryRef: (String, QueryLanguage) => Boolean = (_, _) => false
+    // Restarting a stopped tap-table card reopens its tap and, once the fresh LiveSource
+    // arrives, swaps a new TapEntry into the existing card (a frozen LiveStream is not
+    // revivable — see CardsStore.stopCard). Target keys awaiting that swap are tracked
+    // here and resolved by the same sources binder that resolves pending opens below.
+    val pendingTabularRestartsVar: Var[Set[String]] = Var(Set.empty)
+    // Backstop for opens/restarts whose source never arrives (WS down, SQ deleted since
+    // the catalog loaded): a still-pending key is dropped after this long and the failure
+    // surfaced via toast — otherwise the user gets no feedback at all and the dangling
+    // key spawns a surprise card when a later source (e.g. a session restore) reuses it.
+    val PendingTapTimeoutMs = 10000
+    def timeoutPendingTap(pendingVar: Var[Set[String]], target: TapTarget): Unit = {
+      val _ = window.setTimeout(
+        () =>
+          if (pendingVar.now().contains(target.key)) {
+            pendingVar.update(_ - target.key)
+            toastVar.set(
+              Some(
+                ToastMessage(s"Could not open tap on ${target.label}: no response from the server", ToastVariant.Error),
+              ),
+            )
+          },
+        PendingTapTimeoutMs.toDouble,
+      )
+    }
+    val cardsStore = new CardsStore(
       liveContent = resultsVar.signal,
-      subscriptions = tapSubscriptions,
-      catalog = tapCatalogSignal,
-      history = resultsHistory,
-      collapsedVar = resultsCollapsedVar,
-      onUseQuery = Observer[String](q => stateVar.update(_.copy(queryBarColor = None, query = q))),
+      onEditQuery = Observer[String](q => stateVar.update(_.copy(queryBarColor = None, query = q))),
+      onReRun = (query, language) => submitQueryRef(query, language),
+      onCloseTap = target => tapSubscriptions.close(target.key),
+      // Stop = the store froze the card's buffer; free the tap subscription server-side.
+      onStopTap = target => tapSubscriptions.close(target.key),
+      // Restart = reopen the tap; the swap happens in resolvePendingTabularOpens. On
+      // failure (timeout below, or an errored source in the binder) the card just stays
+      // stopped — honest state.
+      onRestartTap = target => {
+        pendingTabularRestartsVar.update(_ + target.key)
+        tapSubscriptions.open(target.key, target)
+        timeoutPendingTap(pendingTabularRestartsVar, target)
+      },
     )
 
-    val iconFontFace = "Ionicons"
+    // One tap-card stream session: buffers `src`'s frames under the card's sample budget.
+    // Filling the budget ends the session — the stream freezes itself, the entry is marked
+    // ended, and the tap subscription is released so the server stops streaming. Fetch-more
+    // and go-live reopen through the restart flow below (CardsStore seeds the continuation).
+    def connectBudgetedTapStream(src: LiveSource, target: TapTarget): TapEntry = {
+      val stream = new LiveStream
+      val entry = new TapEntry(src, stream)
+      stream.connect(
+        src.records,
+        budget = () => cardsStore.sampleBudgetFor(target),
+        onBudgetFilled = () => {
+          entry.ended.set(true)
+          tapSubscriptions.close(target.key)
+        },
+      )
+      entry
+    }
 
-    val currentQueryBookmarked: Signal[Boolean] =
-      stateVar.signal.map(_.query.trim).combineWith(stateVar.signal.map(_.sampleQueries)).map { case (query, sqs) =>
-        query.nonEmpty && sqs.exists(_.query.trim == query)
+    // ── Unified tap modal (exploration UI redesign) ─────────────────────────────────
+    val tapModalOpenVar: Var[Boolean] = Var(false)
+    def openTapModal(): Unit = tapModalOpenVar.set(true)
+
+    // Tabular-destination opens (design doc §2 step 2 "Results card"): open the tap via
+    // PanelTapSubscriptions, then once its LiveSource appears, spawn a tap-table card for it.
+    // Target keys awaiting a card are tracked here and resolved by the lifecycleMods binder
+    // below — the same "open now, select/create once the source arrives" shape as
+    // TapsState.pendingSelectKey/sync, scoped to the card system instead.
+    val pendingTabularOpensVar: Var[Set[String]] = Var(Set.empty)
+    def openTabularTap(target: TapTarget): Unit = {
+      pendingTabularOpensVar.update(_ + target.key)
+      tapSubscriptions.open(target.key, target)
+      timeoutPendingTap(pendingTabularOpensVar, target)
+    }
+    val resolvePendingTabularOpens: Binder[HtmlElement] = tapSubscriptions.sources --> { srcs =>
+      val pendingOpens = pendingTabularOpensVar.now()
+      val pendingRestarts = pendingTabularRestartsVar.now()
+      if (pendingOpens.nonEmpty || pendingRestarts.nonEmpty)
+        srcs.foreach { src =>
+          src.tapTarget.foreach { target =>
+            if (pendingRestarts.contains(target.key) || pendingOpens.contains(target.key)) {
+              // One-shot read of the producer's current status (observe + kill — a Signal
+              // has no ownerless `now`): a source that arrives already errored must not
+              // become a card the user never asked to see fail.
+              val statusObs = src.status.observe(unsafeWindowOwner)
+              val statusNow = statusObs.now()
+              statusObs.killOriginalSubscription()
+              statusNow match {
+                case SourceStatus.Error(message) =>
+                  // Failed open/restart: drop the pending key (a dangling key would spawn
+                  // a surprise card from a later source on the same target), free the tap,
+                  // and surface the failure. A restarting card just stays stopped.
+                  pendingTabularRestartsVar.update(_ - target.key)
+                  pendingTabularOpensVar.update(_ - target.key)
+                  tapSubscriptions.close(target.key)
+                  toastVar.set(
+                    Some(ToastMessage(s"Could not open tap on ${target.label}: $message", ToastVariant.Error)),
+                  )
+                case _ if pendingRestarts.contains(target.key) =>
+                  val entry = connectBudgetedTapStream(src, target)
+                  val installed = cardsStore.replaceTapTableEntry(target, entry, resolveTapCardQuery(target))
+                  if (!installed) {
+                    // Card closed while the reopen was in flight: free the reopened tap + stream.
+                    entry.stream.freeze()
+                    tapSubscriptions.close(target.key)
+                  }
+                  pendingTabularRestartsVar.update(_ - target.key)
+                case _ =>
+                  val entry = connectBudgetedTapStream(src, target)
+                  cardsStore.addTapTableCard(target, entry, resolveTapCardQuery(target))
+                  pendingTabularOpensVar.update(_ - target.key)
+              }
+            }
+          }
+        }
+    }
+
+    /** Install a restored card set (from a namespace snapshot — reload or namespace
+      * switch; design doc §6 / checklist A11+C10). States are rebuilt via
+      * [[CardSnapshot.toState]] (adhoc cards with their full saved outcome, tap cards
+      * from their coordinates); tap-table cards that were live at save time then
+      * reconnect through the same restart flow a manual Restart uses — the card sits
+      * `stopped` on its placeholder entry until the fresh source arrives and
+      * `resolvePendingTabularOpens` swaps it in. If the tap can't reopen (SQ deleted,
+      * WS down) the card simply stays stopped.
+      */
+    def restoreCards(snapshots: Seq[CardSnapshot], expandedCardId: Option[String]): Unit = {
+      val states = snapshots.flatMap(CardSnapshot.toState).toVector
+      cardsStore.restore(states, expandedCardId.map(CardId(_)))
+      snapshots.foreach { snap =>
+        if (snap.kind == CardSnapshot.KindTapTable && !snap.stopped)
+          CardSnapshot.tapTargetOf(snap).foreach { target =>
+            pendingTabularRestartsVar.update(_ + target.key)
+            tapSubscriptions.open(target.key, target)
+            timeoutPendingTap(pendingTabularRestartsVar, target)
+          }
       }
+    }
+
+    def cardTapTarget(kind: CardKind): Option[TapTarget] = kind match {
+      case CardKind.TapTableCard(target, _, _) => Some(target)
+      case _: CardKind.AdhocCard => None
+    }
+
+    // Currently-tapped keys — drives the pipeline tree's ✓ badge.
+    val tappedKeys: Signal[Set[String]] =
+      cardsStore.cards.map(_.flatMap(c => cardTapTarget(c.kind).map(_.key)).toSet)
+
+    val editorConfig = EmbeddedEditorConfig(props.qpEnabled, props.routes.baseUrlOpt)
+
+    val iconFontFace = "Ionicons"
 
     def toggleBookmarkDialog(): Unit = {
       val query = stateVar.now().query.trim
@@ -213,13 +404,29 @@ object QueryUi {
       }
     }
 
-    /** Show an error in the results surface. `query` is echoed in the error block
-      * (empty for non-query errors, e.g. a bad history upload).
+    lazy val cypherQueryRegex = js.RegExp(
+      raw"^\s*(optional|match|return|unwind|create|foreach|merge|call|load|with|explain|show|profile)[^a-z]",
+      flags = "i",
+    )
+
+    def guessQueryLanguage(query: String): QueryLanguage = cypherQueryRegex.test(query) match {
+      case true => QueryLanguage.Cypher
+      case false => QueryLanguage.Gremlin
+    }
+
+    /** Surface a failed query run as an error toast. A failed run never enters
+      * `resultsVar`/the card system — errors are ephemeral, not tracked cards.
+      *
+      * Server compile errors embed their internal position representation verbatim
+      * (`... @ Some(Position(1,18,17,SourceText(match (n) ...))) match (n) ... ^`) —
+      * strip that tail: the human-readable part ("CompileError at 1.18 ...") already
+      * carries the location, and the user's query is sitting right there in the bar.
       */
-    def showResultError(message: String, query: String = "", actions: Seq[ResultsAction] = Seq.empty): Unit =
-      resultsVar.set(
-        Some(ResultsContent(ResultOutcome.ErrorResult(StructuredError.parse(message, query), actions), query)),
-      )
+    def showQueryError(message: String): Unit = {
+      val cleaned = message.replaceAll("""\s*@\s*Some\(Position\([\s\S]*""", "").trim
+      val text = if (cleaned.nonEmpty) cleaned else "Query failed"
+      toastVar.set(Some(ToastMessage(text, ToastVariant.Error)))
+    }
 
     // Mutable refs
     var network: Option[vis.Network] = None
@@ -262,6 +469,13 @@ object QueryUi {
       resultsEntries: Vector[HistoryEntry],
       resultsCurrentIdx: Int,
       resultsCollapsed: Boolean,
+      /** The card system's cards, kept in serialized form even in this in-memory snapshot:
+        * live tap streams can't survive a namespace switch anyway (the wiretap store
+        * renews per namespace), so memory- and IndexedDB-restores share one shape and one
+        * restore path (`restoreCards`).
+        */
+      cards: Seq[CardSnapshot],
+      expandedCardId: Option[String],
     )
 
     /** In-memory cache of full graph state (nodes, edges, history, results) for namespaces
@@ -322,20 +536,20 @@ object QueryUi {
         collapsedClusters = serializedClusters,
         clusterPositions = snap.clusterPositions.view.mapValues(p => (p.x, p.y)).toMap,
         resultsEntries = snap.resultsEntries.map { entry =>
-          val (wasError, errorMessage) = entry.content.outcome match {
-            case ResultOutcome.ErrorResult(err, _) => (true, Some(err.raw))
-            case _ => (false, None)
-          }
+          // Errors surface as toasts, never as history entries — `wasError` remains only
+          // for persisted-format compatibility (old snapshots may still carry it).
           SerializableHistoryEntry(
             query = entry.content.queryEcho,
             pinned = entry.pinned,
             timeLabel = entry.timeLabel,
-            wasError = wasError,
-            errorMessage = errorMessage,
+            wasError = false,
+            errorMessage = None,
           )
         },
         resultsCurrentIdx = snap.resultsCurrentIdx,
         resultsCollapsed = snap.resultsCollapsed,
+        cards = snap.cards,
+        expandedCardId = snap.expandedCardId,
         savedAt = js.Date.now(),
       )
     }
@@ -378,13 +592,16 @@ object QueryUi {
             if (entry.wasError) ResultOutcome.Restored(entry.errorMessage)
             else ResultOutcome.Restored(None)
           HistoryEntry(
-            content = ResultsContent(outcome, entry.query),
+            content =
+              ResultsContent(outcome, entry.query, guessQueryLanguage(entry.query), runId = ResultsContent.nextRunId()),
             pinned = entry.pinned,
             timeLabel = entry.timeLabel,
           )
         }.toVector,
         resultsCurrentIdx = snap.resultsCurrentIdx,
         resultsCollapsed = snap.resultsCollapsed,
+        cards = snap.cards,
+        expandedCardId = snap.expandedCardId,
       )
     }
 
@@ -425,9 +642,14 @@ object QueryUi {
           clusterPositions = readClusterPositions(state.history).view.mapValues { case (x, y) =>
             CanvasPosition(x, y)
           }.toMap,
-          resultsEntries = resultsHistory.entries.now(),
-          resultsCurrentIdx = resultsHistory.currentIdx.now(),
+          // Nothing populates `resultsHistory` since the drawer surface was removed, and
+          // `applySnapshot` no longer restores these fields — persist them empty (the fields
+          // stay in the snapshot format for compatibility).
+          resultsEntries = Vector.empty,
+          resultsCurrentIdx = -1,
           resultsCollapsed = resultsCollapsedVar.now(),
+          cards = cardsStore.currentCards.map(CardSnapshot.fromState),
+          expandedCardId = cardsStore.currentExpandedId.map(_.value),
         )
       }
     }
@@ -463,6 +685,11 @@ object QueryUi {
       resultsHistory.entries.set(Vector.empty)
       resultsHistory.currentIdx.set(-1)
       resultsCollapsedVar.set(false)
+      // Reset means reset: close every card through the normal close path, which also
+      // frees tap subscriptions and disables graph-tap definitions server-side.
+      cardsStore.closeAllCards()
+      pendingTabularOpensVar.set(Set.empty)
+      pendingTabularRestartsVar.set(Set.empty)
     }
 
     /** Apply a saved namespace view to the canvas: disable physics, re-add nodes/
@@ -535,10 +762,13 @@ object QueryUi {
                     ),
                   )
                   if (reapplyAppearancesEagerly) reapplyAppearances()
-                  resultsHistory.entries.set(snapshot.resultsEntries)
-                  resultsHistory.currentIdx.set(snapshot.resultsCurrentIdx)
+                  // `snapshot.resultsEntries` is deliberately ignored (the field remains in the
+                  // snapshot format for compatibility): the surface that displayed restored
+                  // results history is gone, and re-running the entries registered invisible
+                  // pending text queries that blocked submitQuery. The card system's own
+                  // persistence below is the replacement.
                   resultsCollapsedVar.set(snapshot.resultsCollapsed)
-                  rerunRestoredEntries()
+                  restoreCards(snapshot.cards, snapshot.expandedCardId)
                   refetchNodeProperties(namespace, snapshot.atTime)
                   window.requestAnimationFrame { _ =>
                     network.foreach(
@@ -893,7 +1123,7 @@ object QueryUi {
     def uploadHistory(files: dom.FileList): Unit = {
       val file = if (files.length != 1) {
         val msg = s"Expected one file, but got ${files.length}"
-        showResultError(msg)
+        toastVar.set(Some(ToastMessage(msg, ToastVariant.Error)))
         return
       } else {
         files(0)
@@ -901,7 +1131,7 @@ object QueryUi {
 
       if (file.`type` != "application/json") {
         val msg = s"Expected JSON file, but `${file.name}' has type '${file.`type`}'."
-        showResultError(msg)
+        toastVar.set(Some(ToastMessage(msg, ToastVariant.Error)))
         return
       }
 
@@ -929,7 +1159,7 @@ object QueryUi {
 
           case Validated.Invalid(errs) =>
             val msg = s"Malformed JSON history file:${errs.toList.mkString("\n  ", "\n  ", "")}"
-            showResultError(msg)
+            toastVar.set(Some(ToastMessage(msg, ToastVariant.Error)))
         }
       }
       reader.readAsText(file)
@@ -995,16 +1225,6 @@ object QueryUi {
       DownloadUtils.downloadGraphJsonLd(props.graphData.nodeSet, props.graphData.edgeSet)
 
     // --- Query logic ---
-
-    lazy val cypherQueryRegex = js.RegExp(
-      raw"^\s*(optional|match|return|unwind|create|foreach|merge|call|load|with|explain|show|profile)[^a-z]",
-      flags = "i",
-    )
-
-    def guessQueryLanguage(query: String): QueryLanguage = cypherQueryRegex.test(query) match {
-      case true => QueryLanguage.Cypher
-      case false => QueryLanguage.Gremlin
-    }
 
     def invalidToException(invalid: Invalid): Exception = new Exception(invalid.errors mkString "\n")
 
@@ -1279,12 +1499,17 @@ object QueryUi {
       * its results (or fails on error). Useful for callers that need to chain follow-up work
       * after the graph is updated, like overlaying synthetic edges.
       */
+    /** `None` when the submission was rejected without starting a run (blank query, a
+      * pending text query already in flight) — callers that claim per-run state (e.g. a
+      * card's edit association) must not do so in that case; `Some` completes when the
+      * accepted run finishes.
+      */
     def submitQuery(
       uiQueryType: UiQueryType,
       queryOverride: Option[String] = None,
       namespaceOverride: Option[NamespaceParameter] = None,
       parameters: Map[String, Json] = Map.empty,
-    ): Future[Unit] = {
+    ): Option[Future[Unit]] = {
       val state = stateVar.now()
       val namespace = namespaceOverride.getOrElse(state.namespace)
 
@@ -1296,7 +1521,7 @@ object QueryUi {
         case other =>
           other
       }
-      if (query.isBlank) return Future.successful(())
+      if (query.isBlank) return None
 
       val language = guessQueryLanguage(query)
 
@@ -1306,7 +1531,7 @@ object QueryUi {
             |Pending queries can be cancelled by clicking on the spinning loader in the top right.
             |""".stripMargin,
         )
-        return Future.successful(())
+        return None
       }
 
       val done = Promise[Unit]()
@@ -1326,13 +1551,24 @@ object QueryUi {
           // SideEffectsText intentionally never populates the result panel — the query returns no
           // rows by design (only the query-bar color flash signals completion). Plain Text renders
           // its results in the panel as usual.
+          var lastResultCount: Int = 0
+          // One run identity for every emission of this submission; the revision bump per
+          // batch is what lets downstream `.distinctBy((runId, revision))` see new batches
+          // without deep-comparing the growing result buffer.
+          val runId = ResultsContent.nextRunId()
+          var revision: Int = 0
           def updateResults(result: Either[Seq[Json], CypherQueryResult]): Unit =
             if (uiQueryType == UiQueryType.Text) {
               val outcome = result match {
                 case Left(values) => ResultOutcome.TextResults(values)
                 case Right(results) => ResultOutcome.Tabular(results)
               }
-              resultsVar.set(Some(ResultsContent(outcome, query)))
+              lastResultCount = result match {
+                case Left(values) => values.size
+                case Right(results) => results.results.size
+              }
+              revision += 1
+              resultsVar.set(Some(ResultsContent(outcome, query, language, runId, revision)))
             }
 
           textQuery(query, state.atTime, namespace, language, parameters, updateResults).onComplete {
@@ -1341,8 +1577,9 @@ object QueryUi {
               // leave the panel unpopulated (it stays None from submit-start).
               if (uiQueryType == UiQueryType.Text && outcome.isEmpty)
                 resultsVar.update {
-                  case Some(c) => Some(c.copy(outcome = ResultOutcome.toEmpty(c.outcome)))
-                  case None => Some(ResultsContent(ResultOutcome.EmptyResult(wasTabular = true, Nil), query))
+                  case Some(c) => Some(c.copy(outcome = ResultOutcome.toEmpty(c.outcome), revision = c.revision + 1))
+                  case None =>
+                    Some(ResultsContent(ResultOutcome.EmptyResult(wasTabular = true, Nil), query, language, runId))
                 }
               // SideEffectsText flashes grey (ran cleanly, no rows by design); Text flashes grey when
               // empty, green otherwise.
@@ -1360,11 +1597,17 @@ object QueryUi {
                 () => stateVar.update(_.copy(queryBarColor = None)),
                 750,
               )
+              // Ephemeral result-count overlay trigger (design doc §5): fires the indicator's
+              // fade-in, which then displays the live canvas node/edge counters — Text only —
+              // SideEffectsText returns no rows by design and doesn't populate the results
+              // surface either.
+              if (uiQueryType == UiQueryType.Text)
+                resultCountBus.emit(ResultCountEvent(lastResultCount, nodeCount = None))
               done.success(())
               ()
 
             case Failure(err) =>
-              showResultError(Option(err.getMessage).getOrElse(""), query)
+              showQueryError(Option(err.getMessage).getOrElse(""))
               stateVar.update(s =>
                 s.copy(
                   queryBarColor = Some(Styles.queryResultError),
@@ -1482,10 +1725,10 @@ object QueryUi {
               case None =>
                 Nil
             }
-          } yield (nodes, edges)
+          } yield (nodes, edges, rawNodesOpt.fold(nodes.length)(_.length))
 
           nodesEdgesFut.onComplete {
-            case Success((nodes, edges)) =>
+            case Success((nodes, edges, rawResultCount)) =>
               val (syntheticEdges, explodeFromIdOpt) = uiQueryType match {
                 case UiQueryType.NodeFromId(explodeFromId, Some(syntheticEdgeLabel)) =>
                   nodes.map(n => UiEdge(explodeFromId, syntheticEdgeLabel, n.id)) -> Some(explodeFromId)
@@ -1515,40 +1758,61 @@ object QueryUi {
                 updateHistory(hist => Some(hist.observe(addEvent)))
               }
               stateVar.update(s => s.copy(runningQueryCount = s.runningQueryCount - 1))
+              // Ephemeral result-count overlay trigger (design doc §5): fires the indicator's
+              // fade-in on completion. The event payload itself isn't rendered — the indicator
+              // shows the live canvas node/edge counters (stateVar.foundNodesCount/
+              // foundEdgesCount, updated just above via updateHistory/the addEvent) — but is
+              // kept for now as a record of what this query actually produced.
+              resultCountBus.emit(
+                ResultCountEvent(
+                  rawResultCount,
+                  nodeCount = if (nodes.length == rawResultCount) None else Some(nodes.length),
+                ),
+              )
               done.success(())
 
             case Failure(err) =>
               val message = Option(err.getMessage).filter(_.nonEmpty).getOrElse("Cannot connect to server")
-              val actions =
-                if (message.startsWith("TypeMismatchError Expected type(s) Node but got value")) {
-                  val failedQuery = stateVar.now().query
-                  Seq(
-                    ResultsAction(
-                      "Run again as text query",
-                      () => {
-                        stateVar.update(_.copy(query = failedQuery))
-                        val _ = submitQuery(
-                          UiQueryType.Text,
-                          queryOverride = None,
-                          namespaceOverride = None,
-                          parameters = parameters,
-                        )
-                      },
-                    ),
-                  )
-                } else Seq.empty
               stateVar.update(s =>
                 s.copy(
                   queryBarColor = Some(Styles.queryResultError),
                   runningQueryCount = s.runningQueryCount - 1,
                 ),
               )
-              showResultError(message, query, actions)
+              // A valid query that simply returns non-node values fails the node/graph run
+              // with a TypeMismatch (thrown server-side in QueryUiCypherApiMethods when a node
+              // query yields a non-node result). Rather than surface that raw type error, tell
+              // the user the query is fine and offer to re-run it as a text/table query — the
+              // same "Run as text query" path adhoc cards use.
+              if (message.contains("Expected type(s) Node but got value"))
+                toastVar.set(
+                  Some(
+                    ToastMessage(
+                      "This query is valid but returns values that aren't nodes. " +
+                      "Run it as a text query to see the results.",
+                      ToastVariant.Info,
+                      Some(
+                        ToastAction(
+                          "Run as text query",
+                          () =>
+                            submitQuery(UiQueryType.Text, Some(query), namespaceOverride, parameters)
+                              .foreach(_ => ()),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                showQueryError(message)
               done.failure(err)
           }
       }
-      done.future
+      Some(done.future)
     }
+    // Now that submitQuery exists, point the forwarding cell cardsStore's onReRun uses at the
+    // real thing — adhoc cards' Re-run always runs as a text/table query (design doc §3: "Adhoc
+    // cards are always run as text/table queries"), same path "Run as text query" uses.
+    submitQueryRef = (query, _language) => submitQuery(UiQueryType.Text, Some(query), None, Map.empty).isDefined
 
     /** Run the tap query's Cypher to populate the graph, then overlay any configured synthetic
       * edges by reading their endpoint IDs out of the wiretap message.
@@ -1565,6 +1829,7 @@ object QueryUi {
       parameters: Map[String, Json],
     ): Unit = {
       val graphFut = submitQuery(UiQueryType.Node, queryOverride = Some(query), parameters = parameters)
+        .getOrElse(Future.successful(()))
       if (syntheticEdgeSpecs.nonEmpty) {
         graphFut.foreach { _ =>
           val edges = syntheticEdgeSpecs.flatMap { spec =>
@@ -2096,41 +2361,6 @@ object QueryUi {
       }
     }
 
-    def rerunRestoredEntries(): Unit = {
-      val entries = resultsHistory.entries.now()
-      val state = stateVar.now()
-      entries.zipWithIndex.foreach { case (entry, idx) =>
-        entry.content.outcome match {
-          case _: ResultOutcome.Restored =>
-            val query = entry.content.queryEcho
-            val language = guessQueryLanguage(query)
-            textQuery(
-              query,
-              state.atTime,
-              state.namespace,
-              language,
-              Map.empty,
-              { result =>
-                val outcome = result match {
-                  case Left(values) => ResultOutcome.TextResults(values)
-                  case Right(results) => ResultOutcome.Tabular(results)
-                }
-                val updated = entry.copy(content = ResultsContent(outcome, query))
-                resultsHistory.entries.update(es => es.updated(idx, updated))
-              },
-            ).recover { case err: Throwable =>
-              val errorContent = ResultsContent(
-                ResultOutcome.ErrorResult(StructuredError.parse(Option(err.getMessage).getOrElse(""), query)),
-                query,
-              )
-              resultsHistory.entries.update(es => es.updated(idx, entry.copy(content = errorContent)))
-              Option.empty[Unit]
-            }
-          case _ => ()
-        }
-      }
-    }
-
     def reapplyAppearances(): Unit =
       props.graphData.nodeSet.get().foreach { visNode =>
         val ext = visNode.asInstanceOf[QueryUiVisNodeExt]
@@ -2346,6 +2576,15 @@ object QueryUi {
           ExplorerStore.save(key, toFullSnapshot(snap))
         }
 
+        // Cards are namespace-scoped, like everything else persisted: the outgoing set
+        // was just captured above, so drop it client-side (no server-side closes — the
+        // wiretap runtime renews its per-namespace store on switch and closes the old
+        // namespace's sockets itself) and forget any in-flight tap opens/restarts so a
+        // stale key can't spawn a card in the target namespace.
+        cardsStore.resetForNamespaceSwitch()
+        pendingTabularOpensVar.set(Set.empty)
+        pendingTabularRestartsVar.set(Set.empty)
+
         // Clear the graph and swap in the target namespace's saved view, if any
         props.graphData.nodeSet.remove(props.graphData.nodeSet.getIds())
         props.graphData.edgeSet.remove(props.graphData.edgeSet.getIds())
@@ -2476,7 +2715,7 @@ object QueryUi {
           .combineWith(props.dataService.enabledTapQueriesSignal)
           .map { case (active, meta) =>
             val tapHandlersByName: Map[String, WiretapHandler] =
-              active.getOrElse(ExplorerSettingsPage.TapQueryOwner, List.empty).map(h => h.key -> h).toMap
+              active.getOrElse(ExplorerSettingsModal.TapQueryOwner, List.empty).map(h => h.key -> h).toMap
             meta.iterator.flatMap { case (name, tapQuery) =>
               tapHandlersByName.get(name).map(h => (name, tapQuery, h))
             }.toList
@@ -2511,6 +2750,8 @@ object QueryUi {
       width := "100%",
       overflow := "hidden",
       position := "relative",
+      display := "flex",
+      flexDirection := "column",
       // Subscribe to external namespace changes (if provided).
       // Using signal --> (not _.updates) so we receive the current value on mount,
       // avoiding a race where fetchNamespaces completes before the subscription is active.
@@ -2571,6 +2812,11 @@ object QueryUi {
       resultsHistory.entries.signal.updates --> { _ => persistenceDirty = true },
       resultsHistory.currentIdx.signal.updates --> { _ => persistenceDirty = true },
       resultsCollapsedVar.signal.updates --> { _ => persistenceDirty = true },
+      // Card list / expansion changes ride the same periodic autosave. Viewer-level Var
+      // tweaks (search, sort, column widths) don't tick these signals — like pan/zoom,
+      // they're flushed by the keep-alive save, namespace switch, and beforeunload.
+      cardsStore.cards.updates --> { _ => persistenceDirty = true },
+      cardsStore.expandedId.updates --> { _ => persistenceDirty = true },
       onMountCallback { _ =>
         val PeriodicSaveIntervalMs = 30000d
         // Force a save at least this often even when nothing is dirty, so this tab's
@@ -2612,14 +2858,51 @@ object QueryUi {
       },
       // TopBar
       if (props.isQueryBarVisible) {
+        // Lifted out of HistoryNavigationButtons' construction (design doc §4: the reload icon
+        // moved into the junk drawer's Maintenance section, wired below).
+        // Multi-namespace hosts announce themselves one of two ways: enterprise injects a
+        // graph selector (`queryBarTrailing`), Novelty drives its Model dropdown through
+        // `namespaceSignal`. OSS sets neither — the one single-namespace host — and never
+        // sees namespace wording: its confirm drops the scope clause and the drawer offers
+        // no all-namespaces purge at all (see JunkDrawer's Maintenance section).
+        val multiNamespace = props.queryBarTrailing.isDefined || props.namespaceSignal.isDefined
+        val resetGraph: () => Unit = () =>
+          if (
+            window.confirm(
+              "Reset Canvas?\n\nThis will clear all nodes, edges, and results from the canvas " +
+              "and delete persisted browser session storage" +
+              (if (multiNamespace) " for this namespace." else "."),
+            )
+          ) {
+            val nsKey = namespaceKeyFor(stateVar.now().namespace)
+            namespaceSnapshots.remove(nsKey)
+            ExplorerStore.remove(nsKey)
+            clearCanvas()
+          }
+        val resetAllNamespaces: () => Unit = () =>
+          if (
+            window.confirm(
+              "Clear All Namespaces?\n\nThis will clear the canvas and delete all persisted " +
+              "browser state for every namespace in this tab.",
+            )
+          ) {
+            namespaceSnapshots.clear()
+            ExplorerStore.clear()
+            wsClients.values.foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
+            wsClientsV2.values.foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
+            wsClients.clear()
+            wsClientsV2.clear()
+            clearCanvas()
+          }
         TopBar(
           query = stateVar.signal.map(_.query),
           updateQuery = (newQuery: String) => stateVar.update(_.copy(queryBarColor = None, query = newQuery)),
-          runningTextQuery = stateVar.signal.map(_.pendingTextQueries.nonEmpty),
+          // .distinct: every stateVar update (query-bar color reset, canvas updates, keystrokes)
+          // re-emits; downstream `child <--` blocks rebuild the query menu button on each
+          // emission, tearing down its open popover and document listeners.
+          runningTextQuery = stateVar.signal.map(_.pendingTextQueries.nonEmpty).distinct,
           queryBarColor = stateVar.signal.map(_.queryBarColor),
           sampleQueries = stateVar.signal.map(_.sampleQueries),
-          foundNodesCount = stateVar.signal.map(_.foundNodesCount),
-          foundEdgesCount = stateVar.signal.map(_.foundEdgesCount),
           submitButton = (uiQueryType: UiQueryType) => {
             val _ = submitQuery(uiQueryType)
           },
@@ -2689,127 +2972,195 @@ object QueryUi {
             setTime = setAtTime(_),
             toggleLayout = toggleNetworkLayout,
             recenterViewport = recenterNetworkViewport,
-            resetGraph = () =>
-              if (
-                window.confirm(
-                  "Reset Canvas?\n\nThis will clear all nodes, edges, and results from the canvas " +
-                  "and delete persisted browser session storage for this namespace.",
-                )
-              ) {
-                val nsKey = namespaceKeyFor(stateVar.now().namespace)
-                namespaceSnapshots.remove(nsKey)
-                ExplorerStore.remove(nsKey)
-                clearCanvas()
-              },
-            resetAllNamespaces = () =>
-              if (
-                window.confirm(
-                  "Clear All Namespaces?\n\nThis will clear the canvas and delete all persisted " +
-                  "browser state for every namespace in this tab.",
-                )
-              ) {
-                namespaceSnapshots.clear()
-                ExplorerStore.clear()
-                wsClients.values.foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
-                wsClientsV2.values.foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
-                wsClients.clear()
-                wsClientsV2.clear()
-                clearCanvas()
-              },
           ),
           useV2Api = props.queryMethod match {
             case QueryMethod.RestfulV2 | QueryMethod.WebSocketV2 => true
             case QueryMethod.Restful | QueryMethod.WebSocket => false
           },
           qpEnabled = props.qpEnabled,
-          trailing = props.queryBarTrailing,
-          permissions = props.permissions,
-          bookmark = BookmarkUi(
-            button = SampleQueryBookmark.queryBarToggle(currentQueryBookmarked, () => toggleBookmarkDialog()),
-            dialog = SampleQueryBookmark.editDialog(
-              bookmarkDraftVar,
-              onSave = (existingIdx, sq) => {
-                val current = stateVar.now().sampleQueries
-                val updated = existingIdx match {
-                  case Some(idx) if idx < current.size => current.updated(idx, sq)
-                  case _ => current :+ sq
-                }
-                saveSampleQueries(updated)
-              },
-              onDelete = idx => {
-                val current = stateVar.now().sampleQueries
-                saveSampleQueries(current.patch(idx, Nil, 1))
-              },
+          // The JunkDrawer mounts in every host — it carries the only canvas-reset and
+          // persisted-state-purge affordances, so it must not depend on the optional
+          // enterprise-injected `queryBarTrailing` content. That content (the graph
+          // selector) just fills the drawer's Graph section when present.
+          trailing = Some(
+            JunkDrawer(
+              activeGraphName = stateVar.signal.map(_.namespace.namespaceId),
+              graphSection = props.queryBarTrailing,
+              multiNamespace = multiNamespace,
+              // Opens the Explorer Settings modal mounted below (no navigation — the old
+              // dedicated settings page is gone). Hidden for users lacking the settings
+              // write permissions, matching the gate the old nav item used.
+              showExplorerSettings = canEditExplorerSettings,
+              onOpenExplorerSettings = () => settingsModalOpenVar.set(true),
+              onClearNamespace = resetGraph,
+              onResetAllNamespaces = resetAllNamespaces,
+              // Selecting a graph in the drawer's namespace list changes the namespace; close
+              // the drawer on that change like a menu selection.
+              closeOn = stateVar.signal.map(_.namespace).distinct.updates.mapTo(()),
             ),
           ),
+          permissions = props.permissions,
+          bookmarkDialog = SampleQueryBookmark.editDialog(
+            bookmarkDraftVar,
+            onSave = (existingIdx, sq) => {
+              val current = stateVar.now().sampleQueries
+              val updated = existingIdx match {
+                case Some(idx) if idx < current.size => current.updated(idx, sq)
+                case _ => current :+ sq
+              }
+              saveSampleQueries(updated)
+            },
+            onDelete = idx => {
+              val current = stateVar.now().sampleQueries
+              saveSampleQueries(current.patch(idx, Nil, 1))
+            },
+          ),
+          onBookmark = () => toggleBookmarkDialog(),
+          onOpenTapModal = () => openTapModal(),
         )
       } else emptyNode,
-      // Loader — shows for running queries and during graph restore
-      child <-- stateVar.signal.map(_.runningQueryCount).combineWith(restoringVar.signal).map {
-        case (queryCount, restoring) =>
-          val pendingCount = queryCount + (if (restoring) 1 else 0)
-          Loader(
-            pendingCount,
-            if (
-              queryCount > 0 &&
-              (props.queryMethod == QueryMethod.WebSocket || props.queryMethod == QueryMethod.WebSocketV2)
+      // Canvas region: everything below the TopBar (VisNetwork plus every overlay anchored to
+      // it — Loader, node-properties popup, result cards, the ephemeral count indicator, the
+      // context menu). `position: relative` here — not on the outer flex container above, which
+      // spans the TopBar too — is what makes `.cards-drawer` / `.card-popup` / the loader's
+      // `right: 0` etc. resolve against the visible canvas box instead of a box that starts at
+      // the TopBar's top edge. `flex: 1` + `min-height: 0` lets it fill exactly the space the
+      // TopBar doesn't take (flex-basis 0 avoids the intrinsic min-content height a plain flex
+      // item would otherwise impose, which is what let this region overflow its own container).
+      div(
+        cls := Styles.canvasRegion,
+        position := "relative",
+        flex := "1 1 0%",
+        minHeight := "0",
+        width := "100%",
+        overflow := "hidden",
+        // Loader — shows for running queries and during graph restore
+        child <-- stateVar.signal.map(_.runningQueryCount).combineWith(restoringVar.signal).map {
+          case (queryCount, restoring) =>
+            val pendingCount = queryCount + (if (restoring) 1 else 0)
+            Loader(
+              pendingCount,
+              if (
+                queryCount > 0 &&
+                (props.queryMethod == QueryMethod.WebSocket || props.queryMethod == QueryMethod.WebSocketV2)
+              )
+                Some(() => cancelQueries())
+              else None,
             )
-              Some(() => cancelQueries())
-            else None,
-          )
-      },
-      // VisNetwork
-      VisNetwork(
-        data = props.graphData,
-        afterNetworkInit = afterNetworkInit,
-        clickHandler = _ => contextMenuVar.set(None),
-        contextMenuHandler = _.preventDefault(),
-        keyDownHandler = networkKeyDown,
-        options = networkOptions,
+        },
+        // VisNetwork
+        VisNetwork(
+          data = props.graphData,
+          afterNetworkInit = afterNetworkInit,
+          clickHandler = _ => contextMenuVar.set(None),
+          contextMenuHandler = _.preventDefault(),
+          keyDownHandler = networkKeyDown,
+          options = networkOptions,
+        ),
+        stateVar.signal.map(_.uiNodeAppearances).distinct.updates --> { _ =>
+          reapplyAppearances()
+        },
+        // Physics toggle
+        // `.distinct` is essential: `Signal.map` does not dedupe, so without it this
+        // subscriber fires on every unrelated `stateVar` update and overrides the
+        // physics state that `withPhysics` is trying to maintain.
+        stateVar.signal.map(_.animating).distinct.updates --> { animating =>
+          network.foreach(_.setOptions(new vis.Network.Options {
+            override val physics = new vis.Network.Options.Physics {
+              override val enabled = animating
+            }
+          }))
+        },
+        // Node properties popup
+        child <-- nodePopupVar.signal.map {
+          case Some(state) =>
+            val canWrite = props.permissions match {
+              case Some(perms) => Set("GraphWrite").subsetOf(perms)
+              case None => true
+            }
+            NodePropertiesPopup(
+              state,
+              closePopup = () => nodePopupVar.set(None),
+              submitQuery =
+                query => submitQuery(UiQueryType.Node, queryOverride = Some(query)).getOrElse(Future.successful(())),
+              onBack = (bx, by) => nodePopupBackVar.now().fold(nodePopupVar.set(None))(_(bx, by)),
+              onRefreshProperties = (rx, ry) => nodePopupRefreshVar.now().foreach(_(rx, ry)),
+              canWrite = canWrite,
+            )
+          case None => emptyNode
+        },
+        // Result cards (exploration UI redesign): right-edge minimized drawer + the one
+        // expanded popup, floating over the canvas. Adhoc query results auto-capture into
+        // cards via cardsStore.lifecycleMods; the old ResultsPanel drawer/CanvasDoor no
+        // longer mount here, so adhoc runs land only in cards (design doc §3, phase 1).
+        MinimizedDrawer(
+          cardsStore.minimizedCards,
+          cardsStore.drawerSearch,
+          cardsStore.dispatch,
+          hasCards = cardsStore.cards.map(_.nonEmpty),
+        ),
+        CardPopup(
+          cardsStore.expandedCard,
+          cardsStore.dispatch,
+        ),
+        // Bottom-left graph-feed pills: the live on/off switch for each feed the
+        // user keeps in their graph menu (see GraphFeedChips). Mounted unconditionally:
+        // it needs only tap-query read, and `tapQueriesSignal` self-gates to `Pot.Empty`
+        // without that permission, so no unpermitted polling starts.
+        GraphFeedChips(
+          tapQueries = props.dataService.tapQueriesSignal,
+          wiretap = props.dataService,
+          prefs = graphMenuPrefs,
+          currentNamespace = props.dataService.currentNamespaceSignal.map(_.namespaceId),
+        ),
+        graphMenuPrefs.mods,
+        cardsStore.lifecycleMods,
+        resolvePendingTabularOpens,
+        // Ephemeral result-count overlay (design doc §5), same layer/positioning family as
+        // the Loader above.
+        ResultCountIndicator(
+          resultCountBus.events,
+          // `.distinct` so the indicator's counters DOM isn't rebuilt on every unrelated
+          // stateVar tick (e.g. per keystroke in the query bar) — same reason the other
+          // stateVar projections below distinct.
+          nodeCount = stateVar.signal.map(_.foundNodesCount).distinct,
+          edgeCount = stateVar.signal.map(_.foundEdgesCount).distinct,
+          fadeMs = CardDefaults.IndicatorFadeMs,
+        ),
+        // ContextMenu
+        child <-- contextMenuVar.signal.map {
+          case Some(ContextMenuState(x, y, model)) => ContextMenu.fromModel(x, y, model)
+          case None => emptyNode
+        },
+      ), // end canvas region
+      // Standing-query tap modal (design doc §2): opened from the query split button's
+      // "Standing query results…" item. Fixed-position overlay (`.tap-modal-overlay`
+      // is `position: fixed; inset: 0`), so it is mounted outside the canvas region rather
+      // than anchored to it — a true viewport-level modal, not a canvas overlay.
+      TapModal(
+        openSignal = tapModalOpenVar.signal,
+        setOpen = tapModalOpenVar.writer,
+        catalog = tapCatalogSignal,
+        tappedKeys = tappedKeys,
+        onOpenTabular = (target: TapTarget) => openTabularTap(target),
+        onFocusExisting = (target: TapTarget) => cardsStore.focusTarget(target),
       ),
-      stateVar.signal.map(_.uiNodeAppearances).distinct.updates --> { _ =>
-        reapplyAppearances()
-      },
-      // Physics toggle
-      // `.distinct` is essential: `Signal.map` does not dedupe, so without it this
-      // subscriber fires on every unrelated `stateVar` update and overrides the
-      // physics state that `withPhysics` is trying to maintain.
-      stateVar.signal.map(_.animating).distinct.updates --> { animating =>
-        network.foreach(_.setOptions(new vis.Network.Options {
-          override val physics = new vis.Network.Options.Physics {
-            override val enabled = animating
-          }
-        }))
-      },
-      // Node properties popup
-      child <-- nodePopupVar.signal.map {
-        case Some(state) =>
-          val canWrite = props.permissions match {
-            case Some(perms) => Set("GraphWrite").subsetOf(perms)
-            case None => true
-          }
-          NodePropertiesPopup(
-            state,
-            closePopup = () => nodePopupVar.set(None),
-            submitQuery = query => submitQuery(UiQueryType.Node, queryOverride = Some(query)),
-            onBack = (bx, by) => nodePopupBackVar.now().fold(nodePopupVar.set(None))(_(bx, by)),
-            onRefreshProperties = (rx, ry) => nodePopupRefreshVar.now().foreach(_(rx, ry)),
-            canWrite = canWrite,
-          )
-        case None => emptyNode
-      },
-      // Results surface (mounted persistently so its view/height/drawer state
-      // survives across queries) + its canvas-layer collapse control. Both read the
-      // shared session history; the surface auto-captures each live result into it.
-      // (The per-namespace tap wiring lives with the shared WiretapStore setup above —
-      // integration scoped it to owners so Streams-page taps and panel taps coexist.)
-      ResultsPanel.surface(resultsStore),
-      CanvasDoor(resultsStore.doorReads),
-      // ContextMenu
-      child <-- contextMenuVar.signal.map {
-        case Some(ContextMenuState(x, y, model)) => ContextMenu.fromModel(x, y, model)
-        case None => emptyNode
-      },
+      // Explorer Settings modal (junk drawer → Configure → "Explorer settings…"): the
+      // tap-query / sample-query / quick-query / node-appearance catalogs, overlaying the
+      // explorer instead of navigating to the old dedicated settings page. Same
+      // viewport-level fixed overlay as the tap modal above. Mounted only for users
+      // allowed to edit settings: the modal's feed binders subscribe on mount (the modal
+      // is always mounted, only display-toggled), and an unpermitted user's subscription
+      // would start the very polls `canViewUiData` gates off above.
+      if (canEditExplorerSettings)
+        ExplorerSettingsModal(
+          openSignal = settingsModalOpenVar.signal,
+          setOpen = settingsModalOpenVar.writer,
+          dataService = props.dataService,
+          editorConfig = editorConfig,
+          menuPrefs = graphMenuPrefs,
+        )
+      else emptyNode,
       // WiretapStore lifecycle + tap-query dispatch host. Mounted as long as QueryUi is
       // mounted so subscriptions survive across UI state; the namespace-keyed inner child
       // renews the WiretapStore on namespace change and tears down all open WebSockets

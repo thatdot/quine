@@ -16,8 +16,8 @@ object WiretapStatus {
 }
 
 /** Which point in a standing query's output pipeline a tap observes - the dataservice's own
-  * vocabulary for this, independent of any consumer's tap-point type. Mirrors the three points
-  * the server exposes (see the consumer-facing equivalent, resultspanel.TapPoint).
+  * vocabulary for this, independent of any consumer's tap-point type (see the consumer-facing
+  * equivalent, resultspanel.TapPoint).
   */
 sealed abstract class WiretapTapPoint
 object WiretapTapPoint {
@@ -25,11 +25,12 @@ object WiretapTapPoint {
   final case class PreEnrichment(output: String) extends WiretapTapPoint
   final case class PostEnrichment(output: String) extends WiretapTapPoint
 
-  /** Saved tap-query configs (V2TapQuery.outputName) only ever target raw or post-enrichment -
-    * pre-enrichment has no saved-catalog representation server-side.
+  /** Tap point for a plain `(sqName, outputName)` source: no output name means the raw
+    * match stream; an output name means its post-enrichment stream, or its pre-enrichment
+    * (post-transformation) stream when `preEnrichment` is set.
     */
-  def fromOutputName(outputName: Option[String]): WiretapTapPoint =
-    outputName.fold[WiretapTapPoint](Raw)(PostEnrichment)
+  def fromOutputName(outputName: Option[String], preEnrichment: Boolean = false): WiretapTapPoint =
+    outputName.fold[WiretapTapPoint](Raw)(out => if (preEnrichment) PreEnrichment(out) else PostEnrichment(out))
 }
 
 /** The UI surface that asked for a wiretap. Two different surfaces (e.g. the Streams
@@ -54,7 +55,7 @@ final case class WiretapOwner(name: String)
   * WebSocket if they target the same source.
   *
   * @param tapPoint which point in the standing query's output pipeline this handler observes -
-  *   raw, pre-enrichment on an output, or post-enrichment on an output
+  *   raw, or post-enrichment on an output
   */
 final class WiretapHandler private[dataservice] (
   val key: String,
@@ -136,11 +137,11 @@ final class WiretapStore(graphName: String, routes: ClientRoutes) {
   private def rawTapUrl(sqName: String): String =
     s"$wsBase/api/v2/graph/$graphName/standingQueries/$sqName:tap"
 
-  private def postEnrichmentTapUrl(sqName: String, outputName: String): String =
-    s"$wsBase/api/v2/graph/$graphName/standingQueries/$sqName/outputs/$outputName:tap"
-
   private def preEnrichmentTapUrl(sqName: String, outputName: String): String =
     s"$wsBase/api/v2/graph/$graphName/standingQueries/$sqName/outputs/$outputName:tapPreEnrichment"
+
+  private def postEnrichmentTapUrl(sqName: String, outputName: String): String =
+    s"$wsBase/api/v2/graph/$graphName/standingQueries/$sqName/outputs/$outputName:tap"
 
   private def tapUrl(sqName: String, tapPoint: WiretapTapPoint): String = tapPoint match {
     case WiretapTapPoint.Raw => rawTapUrl(sqName)
@@ -153,7 +154,7 @@ final class WiretapStore(graphName: String, routes: ClientRoutes) {
     * WebSocket for it.
     */
   def open(owner: WiretapOwner, key: String, sqName: String, tapPoint: WiretapTapPoint): Unit =
-    if (!isOpen(owner, key)) {
+    if (!isOpen(owner, key) && !isAttached(owner, key)) {
       val srcKey = WiretapHandler.sourceKey(sqName, tapPoint)
       val conn = connections.getOrElseUpdate(srcKey, openConnection(sqName, tapPoint))
       val handler = createHandler(key, sqName, tapPoint, conn)
@@ -204,6 +205,13 @@ final class WiretapStore(graphName: String, routes: ClientRoutes) {
 
   private def isOpen(owner: WiretapOwner, key: String): Boolean =
     activeVar.now().get(owner).exists(_.exists(_.key == key))
+
+  // `activeVar.update` defers to a queued transaction when `open` runs inside one, so a
+  // second `open` for the same pair in that window passes the `isOpen` check and creates
+  // a duplicate handler (the socket then feeds one instance while consumers subscribe
+  // the other). `attached` is mutated synchronously, closing that window.
+  private def isAttached(owner: WiretapOwner, key: String): Boolean =
+    connections.valuesIterator.exists(_.attached.contains((owner, key)))
 
   private def removeHandler(
     m: Map[WiretapOwner, List[WiretapHandler]],

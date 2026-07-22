@@ -772,7 +772,7 @@ object SchemaFormRenderer {
             value <-- selectedDiscSignal,
             onChange.mapToValue --> typeObserver,
           ),
-          if (!isRequired) List(option(value := "", "\u2014 None \u2014")) else Nil,
+          if (!isRequired) List(option(value := "", "None")) else Nil,
           mapping.keys.toList.sorted.map(discValue =>
             option(value := discValue, SchemaFormState.humanizeFieldName(discValue)),
           ),

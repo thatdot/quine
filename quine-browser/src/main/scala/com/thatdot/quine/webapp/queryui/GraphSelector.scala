@@ -18,6 +18,68 @@ object GraphSelector {
   /** Show the filter input once this many graphs can be listed */
   private val FilterThreshold = 8
 
+  /** Flat namespace list for embedding inside an already-open surface — the junk drawer's Graph
+    * section. No trigger button and no floating popover of its own (a popover nested inside the
+    * drawer's popover is exactly the UX this replaces): just the rows, styled for the drawer's
+    * light background, with the active graph marked. Selecting a row emits `onSelect`; closing
+    * whatever contains this list is the container's concern (see [[JunkDrawer]]'s `closeOn`).
+    *
+    * Same parameters and semantics as [[apply]]. `onOpen` fires on every mount — the junk drawer
+    * rebuilds its sections each time it opens, so mount is exactly "the drawer opened" and the
+    * graph list refreshes just like the old dropdown did on its trigger click.
+    */
+  def inlineList(
+    selected: Signal[String],
+    onSelect: Observer[String],
+    knownNamespaces: Signal[Seq[String]],
+    onOpen: Option[() => Unit] = None,
+    defaultNamespace: Option[String] = None,
+  ): HtmlElement = {
+    val filterVar = Var("")
+    div(
+      cls := Styles.graphSelectorInline,
+      onMountCallback { _ =>
+        filterVar.set("")
+        onOpen.foreach(_())
+      },
+      child <-- knownNamespaces.map(_.length > FilterThreshold).distinct.map {
+        case true =>
+          input(
+            cls := Styles.graphSelectorInlineFilter,
+            tpe := "text",
+            placeholder := "Filter graphs…",
+            value <-- filterVar,
+            onInput.mapToValue --> filterVar,
+          )
+        case false => span(display := "none")
+      },
+      div(
+        cls := Styles.graphSelectorInlineList,
+        children <-- filterVar.signal.combineWith(knownNamespaces, selected).map { case (rawQuery, known, current) =>
+          val query = rawQuery.trim.toLowerCase
+          // Default graph pinned to the top, the rest alphabetical (case-insensitive), matching
+          // the dropdown's ordering.
+          val visible = known
+            .filter(_.toLowerCase.contains(query))
+            .sortBy(n => (!defaultNamespace.contains(n), n.toLowerCase))
+          if (known.isEmpty) Seq(div(cls := Styles.graphSelectorInlineEmpty, "No graphs"))
+          else if (visible.isEmpty) Seq(div(cls := Styles.graphSelectorInlineEmpty, "No matching graph"))
+          else
+            visible.map { ns =>
+              val active = ns == current
+              div(
+                cls := s"${Styles.graphSelectorInlineItem}${if (active) " active" else ""}",
+                title := (if (active) s"$ns is the active graph" else s"Switch to $ns"),
+                onClick --> (_ => if (!active) onSelect.onNext(ns)),
+                span(cls := Styles.graphSelectorInlineName, ns),
+                if (active) span(cls := Styles.graphSelectorInlineCheck, "✓") else emptyNode,
+              )
+            }
+        },
+      ),
+    )
+  }
+
   def apply(
     selected: Signal[String],
     onSelect: Observer[String],

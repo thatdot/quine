@@ -35,7 +35,7 @@ object ResultsHeader {
     div(
       cls := Styles.resultsHeader,
       navArrows(nav, sd),
-      queryChip(content.queryEcho, content.outcome, hasLiveTaps, sd),
+      queryChip(content.queryEcho, hasLiveTaps, sd),
       resultMeta(content.outcome, reads.search),
       // While the switcher is open the bar is its header (search + Cancel); otherwise the result-value
       // controls, which act on the content the picker covers.
@@ -144,16 +144,15 @@ object ResultsHeader {
     */
   private def queryChip(
     text: String,
-    outcome: ResultOutcome,
     hasLiveTaps: Signal[Boolean],
     sd: Observer[ResultsCommand],
   ): HtmlElement =
     div(
       cls := Styles.resultsChip,
-      cls := SourceFace.outcomeClass(outcome),
+      cls := SourceFace.queryClass,
       title := "Browse queries & taps",
       onClick --> (_ => sd.onNext(ResultsCommand.ToggleHistory)),
-      span(cls := Styles.sourceKindIcon, SourceFace.outcomeIcon(outcome)),
+      span(cls := Styles.sourceKindIcon, SourceFace.queryIcon),
       queryChipName(text),
       if (text.nonEmpty) chipAction("Edit query", ResultsIcons.pencil, ResultsCommand.UseQuery(text), sd)
       else emptyNode,
@@ -220,7 +219,7 @@ object ResultsHeader {
   }
 
   /** A tap's bar text: the standing-query name, then a muted ` · point` suffix (the label bakes the
-    * tap point in as `"sq · post"`). The name ellipsizes; the suffix always shows so the tap point
+    * tap point in as `"sq · enriched"`). The name ellipsizes; the suffix always shows so the tap point
     * stays legible. Fills the bar's flexible middle.
     */
   private def tapChipName(label: String): HtmlElement = {
@@ -299,7 +298,6 @@ object ResultsHeader {
       )
     case ResultOutcome.TextResults(values) => span(cls := Styles.resultsRowCount, s"${values.size} results")
     case _: ResultOutcome.EmptyResult => span(cls := Styles.resultsRowCount, "no rows")
-    case _: ResultOutcome.ErrorResult => span(cls := Styles.resultsRowCount, "failed")
     case ResultOutcome.Restored(Some(_)) => span(cls := Styles.resultsRowCount, "error (restored)")
     case _: ResultOutcome.Restored => span(cls := Styles.resultsRowCount, "restored")
   }

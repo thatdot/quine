@@ -33,28 +33,63 @@ final class LiveStream {
   private var interval: Option[SetIntervalHandle] = None
   private val streamOwner = new KillableOwner
   private var started = false
+  private var budgetOf: () => Option[Int] = () => None
+  private var onFilled: () => Unit = () => ()
 
-  /** Begin consuming a producer's frame stream. Call once per session. */
-  def connect(records: EventStream[Json]): Unit = if (!started) {
+  /** Begin consuming a producer's frame stream. Call once per session.
+    *
+    * @param budget row budget for this session, re-read at every append (`None` =
+    *   unbounded). Once the buffer holds `budget()` rows the session is over: overflow
+    *   rows are dropped, the stream freezes itself, and `onBudgetFilled` fires (exactly
+    *   once — freezing stops consumption) so the owner can release the producer's tap.
+    *   Growing the budget takes a fresh session (the stop/restart reopen protocol) —
+    *   a frozen stream is not revivable.
+    */
+  def connect(
+    records: EventStream[Json],
+    budget: () => Option[Int] = () => None,
+    onBudgetFilled: () => Unit = () => (),
+  ): Unit = if (!started) {
     started = true
+    budgetOf = budget
+    onFilled = onBudgetFilled
     val _ = records.foreach(onFrame)(streamOwner)
     interval = Some(setInterval(LiveStream.throttleMs)(tick()))
+  }
+
+  /** Pre-populate this (not yet connected) buffer with a predecessor session's snapshot,
+    * continuing its `seq` numbering so row keys never collide across the reopen — the
+    * continuation half of the sampling reopen protocol (rows already on screen stay put;
+    * the fresh session appends after them).
+    */
+  def seedFrom(prev: LiveStream): Unit = {
+    rows.set(prev.rows.now())
+    columns.set(prev.columns.now())
+    seq = prev.seq
   }
 
   private def onFrame(json: Json): Unit =
     json.as[StandingTapFrame].toOption.foreach { frame =>
       seq += 1
-      pending += StreamRow(seq, frame.isPositiveMatch, frame.data)
+      pending += StreamRow(seq, frame.isPositiveMatch, frame.data, raw = json)
     }
 
   private def appendRows(newRows: Seq[StreamRow]): Unit = if (newRows.nonEmpty) {
+    // Budget cap first, so dropped overflow rows contribute neither rows nor columns.
+    val cap = budgetOf()
+    val room = cap.map(c => (c - rows.now().size).max(0))
+    val kept = room.fold(newRows)(newRows.take)
     val existing = columns.now()
     val seen = existing.toSet
     val added = mutable.LinkedHashSet.empty[String]
-    newRows.foreach(_.columnKeys.foreach(k => if (!seen.contains(k)) added += k))
+    kept.foreach(_.columnKeys.foreach(k => if (!seen.contains(k)) added += k))
     if (added.nonEmpty) columns.set(existing ++ added)
-    val combined = rows.now() ++ newRows
+    val combined = rows.now() ++ kept
     rows.set(if (combined.size > LiveStream.maxRows) combined.takeRight(LiveStream.maxRows) else combined)
+    if (cap.exists(combined.size >= _)) {
+      freeze()
+      onFilled()
+    }
   }
 
   private def tick(): Unit =

@@ -13,8 +13,6 @@ object TopBar {
     runningTextQuery: Signal[Boolean],
     queryBarColor: Signal[Option[String]],
     sampleQueries: Signal[Seq[SampleQuery]],
-    foundNodesCount: Signal[Option[Int]],
-    foundEdgesCount: Signal[Option[Int]],
     submitButton: UiQueryType => Unit,
     cancelButton: () => Unit,
     navButtons: HtmlElement,
@@ -23,7 +21,9 @@ object TopBar {
     serverUrl: Option[String],
     trailing: Option[HtmlElement] = None,
     permissions: Option[Set[String]] = None,
-    bookmark: BookmarkUi,
+    bookmarkDialog: HtmlElement,
+    onBookmark: () => Unit,
+    onOpenTapModal: () => Unit,
   ): HtmlElement = {
     val canRead = permissions match {
       case Some(perms) => Set("GraphRead").subsetOf(perms)
@@ -44,26 +44,14 @@ object TopBar {
         useV2Api = useV2Api,
         qpEnabled = qpEnabled,
         serverUrl = serverUrl,
-        bookmark = bookmark,
+        bookmarkDialog = bookmarkDialog,
+        onBookmark = onBookmark,
+        onOpenTapModal = onOpenTapModal,
       ),
       navButtons,
-      // Reserve the counters' horizontal footprint so the slot keeps a stable width whether or
-      // not the counters are shown. submitQuery resets foundNodesCount/foundEdgesCount to None at
-      // the start of every submit (they repopulate when results arrive), so without a reserved
-      // slot the freed space is absorbed by the flex-grow query input — which visibly widens and
-      // snaps back on each submit. min-width matches the rendered counters' footprint (two icons
-      // + counts).
-      div(
-        flexGrow := "0",
-        minWidth := "116px",
-        display := "flex",
-        alignItems := "center",
-        justifyContent := "flex-end",
-        child <-- foundNodesCount.combineWith(foundEdgesCount).map {
-          case (None, None) => emptyNode
-          case (n, e) => Counters.nodeEdgeCounters(n, e)
-        },
-      ),
+      // Node/edge counters no longer live here (design doc §5 / Lane D): they now render as the
+      // ephemeral ResultCountIndicator that fades in over the canvas on query completion, rather
+      // than sitting permanently in the bar. See QueryUi's ResultCountIndicator mount.
       // Trailing widget (graph selector) pinned to the far right, preceded by a
       // vertical divider. Fixed width so it never resizes the query input.
       trailing

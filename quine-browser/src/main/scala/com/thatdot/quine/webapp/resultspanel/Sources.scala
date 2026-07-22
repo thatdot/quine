@@ -138,15 +138,12 @@ object TapsState {
   }
 }
 
-/** Read-only projection of [[TapsState]] for the Source picker. `preEnrichmentSupported`
-  * is a static capability of the backing — the picker offers the Pre tap point only when set.
-  */
+/** Read-only projection of [[TapsState]] for the Source picker. */
 final case class TapsReads(
   entries: Signal[Vector[TapEntry]],
   selectedId: Signal[Option[String]],
-  preEnrichmentSupported: Boolean,
 )
 object TapsReads {
   def of(t: TapsState): TapsReads =
-    TapsReads(t.entries.signal, t.selectedId.signal, t.subscriptions.supportsPreEnrichment)
+    TapsReads(t.entries.signal, t.selectedId.signal)
 }

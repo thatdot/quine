@@ -371,7 +371,10 @@ object ApiUiStyling {
     * @param name              Display name shown in Explorer Settings.
     * @param description       Optional longer-form description of what this tap query does.
     * @param standingQueryName Name of the standing query to tap.
-    * @param outputName        If set, tap that output's post-enrichment stream; otherwise tap raw results.
+    * @param outputName        If set, tap that output's stream; otherwise tap raw results.
+    * @param preEnrichment     When `outputName` is set, whether to tap the output's pre-enrichment
+    *                          stream (before its enrichment query runs) instead of the
+    *                          post-enrichment stream. Ignored when `outputName` is unset.
     * @param query             Cypher query run on each incoming message. SQ result fields are available
     *                          as Cypher variables (e.g. backtick-quoted column names from the SQ).
     * @param syntheticEdges    Optional virtual edges drawn between paired node-returning columns.
@@ -382,8 +385,13 @@ object ApiUiStyling {
     @description("Display name for this tap query.") name: String,
     @description("Optional longer description of what this tap query does.") description: Option[String],
     @description("Name of the standing query to tap.") standingQueryName: String,
-    @description("If set, tap this output's post-enrichment stream; otherwise tap raw results.")
+    @description("If set, tap this output's stream; otherwise tap raw results.")
     outputName: Option[String],
+    @description(
+      "When outputName is set, tap the output's pre-enrichment stream instead of post-enrichment. " +
+      "Ignored when outputName is unset.",
+    )
+    preEnrichment: Boolean = false,
     @description("Cypher query run against each incoming wiretap message.") query: String,
     @description("Optional virtual edges drawn between paired node-returning result columns.")
     syntheticEdges: Vector[SyntheticEdge] = Vector.empty,

@@ -11,6 +11,11 @@ object Styles {
   val rightIcon = "right-icon"
   val navBarButton = "nav-bar-button"
   val navBar = "nav-bar"
+  // The canvas region below the TopBar: VisNetwork plus every overlay anchored to it (Loader,
+  // node-properties popup, result cards, the ephemeral count indicator, the context menu).
+  // Its own `position: relative` is the containing block those overlays position against, kept
+  // separate from the outer QueryUi container (which also spans the TopBar).
+  val canvasRegion = "canvas-region"
   // Trailing slot at the far right of the nav-bar (graph selector)
   val navBarTrailing = "nav-bar-trailing"
   val navBarDivider = "nav-bar-divider"
@@ -31,6 +36,14 @@ object Styles {
   val graphSelectorMenuCreate = "graph-selector-menu-create"
   val graphSelectorMenuCreatePlus = "graph-selector-menu-create-plus"
   val graphSelectorMenuEmpty = "graph-selector-menu-empty"
+  // Flat namespace list embedded in the junk drawer's Graph section
+  val graphSelectorInline = "graph-selector-inline"
+  val graphSelectorInlineFilter = "graph-selector-inline-filter"
+  val graphSelectorInlineList = "graph-selector-inline-list"
+  val graphSelectorInlineItem = "graph-selector-inline-item"
+  val graphSelectorInlineName = "graph-selector-inline-name"
+  val graphSelectorInlineCheck = "graph-selector-inline-check"
+  val graphSelectorInlineEmpty = "graph-selector-inline-empty"
   // Query input bar
   val queryInput = "query-input"
   val queryInputInput = "query-input-input"
@@ -129,15 +142,6 @@ object Styles {
   val resultsEmptyIcon = "results-empty-icon"
   val resultsEmptyTitle = "results-empty-title"
   val resultsEmptyDesc = "results-empty-desc"
-  val resultsError = "results-error"
-  val resultsErrorHead = "results-error-head"
-  val resultsErrorBadge = "results-error-badge"
-  val resultsErrorTitle = "results-error-title"
-  val resultsErrorKind = "results-error-kind"
-  val resultsErrorLocation = "results-error-location"
-  val resultsErrorQuery = "results-error-query"
-  val resultsErrorCaret = "results-error-caret"
-  val resultsErrorAction = "results-error-action"
   // Results surface — sort / filter / export
   val resultsGridSortable = "results-grid-sortable"
   val resultsGridFixed = "is-fixed"
@@ -217,7 +221,6 @@ object Styles {
   val chooserError = "chooser-error"
   val chooserErrorHead = "chooser-error-head"
   val historyRow = "history-row"
-  val historyRowFail = "history-row-fail" // red ✕ marking a failed run (stronger than a red dot)
   val historyRowQuery = "history-row-query"
   val historyRowQueryHead = "history-row-query-head" // ellipsizing leading part of the query
   val historyRowQueryTail = "history-row-query-tail" // always-shown trailing part (where refinements differ)
@@ -330,8 +333,12 @@ object Styles {
   val slideOverPanelResizeHandle = "slide-over-panel-resize-handle"
 
   // Toast
-  val toast = "toast"
-  val toastClose = "toast-close"
+  // "quine-toast", not "toast": the enterprise shell loads CoreUI (Bootstrap), whose
+  // `.toast:not(.show) { display: none }` out-specifies our rule and hides the toast.
+  val toast = "quine-toast"
+  val toastIcon = "quine-toast-icon"
+  val toastClose = "quine-toast-close"
+  val toastAction = "quine-toast-action"
 
   // Predicate builder
   val predicateBuilder = "predicate-builder"

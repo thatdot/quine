@@ -37,10 +37,6 @@ final class PanelTapSubscriptions(wiretap: WiretapService, owner: WiretapOwner) 
 
   def close(key: String): Unit = wiretap.wiretapDispatch.onNext(WiretapService.CloseTap(owner, key))
 
-  // The dataservice's WiretapStore models all three tap points (raw, pre-enrichment,
-  // post-enrichment), so the picker can safely offer Pre.
-  override val supportsPreEnrichment: Boolean = true
-
   val sources: Signal[Vector[LiveSource]] =
     wiretap.wiretapsSignal.map(_.getOrElse(owner, Nil).toVector.map(PanelTapSubscriptions.adapt))
 }
@@ -71,9 +67,9 @@ object PanelTapSubscriptions {
     )
 
   private def label(h: WiretapHandler): String = h.tapPoint match {
-    case WiretapTapPoint.Raw => s"${h.sqName} · raw"
-    case WiretapTapPoint.PreEnrichment(out) => s"${h.sqName}/$out · pre"
-    case WiretapTapPoint.PostEnrichment(out) => s"${h.sqName}/$out · post"
+    case WiretapTapPoint.Raw => s"${h.sqName} · matches"
+    case WiretapTapPoint.PreEnrichment(out) => s"${h.sqName}/$out · transformed"
+    case WiretapTapPoint.PostEnrichment(out) => s"${h.sqName}/$out · enriched"
   }
 
   private def toSourceStatus(s: WiretapStatus): SourceStatus = s match {

@@ -19,12 +19,6 @@ trait TapSubscriptions {
   /** Close (unsubscribe) the tap held under `key`; idempotent. */
   def close(key: String): Unit
 
-  /** Whether this backing can open the pre-enrichment tap point. The server and
-    * [[TapPoint.PreEnrichment]] model it, but a given store may not yet — the picker offers
-    * the Pre point only when this is `true`. Defaults off; capable backings override it.
-    */
-  def supportsPreEnrichment: Boolean = false
-
   /** The current set of viewable tap sources. */
   def sources: Signal[Vector[LiveSource]]
 }

@@ -2,6 +2,7 @@ package com.thatdot.quine.webapp.dataservice
 
 import com.raquo.airstream.core.{Observer, Signal}
 
+import com.thatdot.quine.webapp.util.Pot
 import com.thatdot.quine.webapp.v2api.V2ApiTypes.V2TapQuery
 
 /** Saved tap-query capability: the current graph's persisted tap-query list. Live tap
@@ -15,8 +16,11 @@ trait TapQueryService {
     */
   def tapQueryDispatch: Observer[TapQueryService.Command]
 
-  /** Saved tap queries for the current graph namespace. */
-  def tapQueriesSignal: Signal[Vector[V2TapQuery]]
+  /** Saved tap queries for the current graph namespace. A [[Pot]] so consumers can tell
+    * "not loaded yet" from "loaded, empty" — [[TapQueryService.SaveTapQueries]] replaces
+    * the whole list, so mutations must not be built from a list that never loaded.
+    */
+  def tapQueriesSignal: Signal[Pot[Vector[V2TapQuery]]]
 }
 
 object TapQueryService {

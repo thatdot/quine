@@ -61,7 +61,7 @@ object QuickQueryManager {
                 div(
                   cls := Styles.managerListItemMain,
                   span(cls := Styles.managerListItemName, s"$sortIcon ${qq.quickQuery.name}"),
-                  span(cls := Styles.managerListItemDetail, s"${qq.quickQuery.querySuffix} — $predSummary"),
+                  span(cls := Styles.managerListItemDetail, s"${qq.quickQuery.querySuffix}, $predSummary"),
                 ),
                 div(
                   cls := Styles.managerListItemActions,

@@ -17,7 +17,8 @@ import com.thatdot.quine.webapp.{QueryEditorStyles, Styles}
   * history while single-line. Losing focus collapses the editor to single-line; refocus re-expands.
   *
   * The single Query button routes graph vs table by the server's `quine/queryKind` verdict in rich
-  * mode, or by the buffer in basic mode (non-empty → graph, Shift → table) when `qpEnabled` is false.
+  * mode, or by the buffer in basic mode (non-empty → graph) when `qpEnabled` is false. In both
+  * modes Shift (and the menu's "Run as text query" / Ctrl+Shift+Enter) forces a table run.
   */
 object MonacoQueryInput {
 
@@ -39,7 +40,9 @@ object MonacoQueryInput {
     useV2Api: Boolean,
     qpEnabled: Boolean,
     serverUrl: Option[String],
-    bookmark: BookmarkUi,
+    bookmarkDialog: HtmlElement,
+    onBookmark: () => Unit,
+    onOpenTapModal: () => Unit,
   ): HtmlElement = {
     // Mutable mirrors of reactive state needed inside the editor's JS callbacks (Signals expose
     // no current-value accessor). They are kept in sync by binders on the root element below.
@@ -93,9 +96,11 @@ object MonacoQueryInput {
     // bar, diagnostics panel, in-editor run button) — exactly when it is multi-line AND focused.
     // Derived once and reused so the gating can't drift between those affordances.
     val isExpanded: Signal[Boolean] =
-      isMultilineMode.signal.combineWith(editorHasFocus.signal).map { case (multiline, focused) =>
-        multiline && focused
-      }
+      isMultilineMode.signal
+        .combineWith(editorHasFocus.signal)
+        .map { case (multiline, focused) =>
+          multiline && focused
+        }
 
     // This being true is a prerequisite for showing the sample query dropdown.
     val showSampleQueryDropdown: Var[Boolean] = Var(false)
@@ -108,6 +113,14 @@ object MonacoQueryInput {
     // query dropdown.
     val highlightedIdx: Var[Option[Int]] = Var(None)
 
+    // In rich mode `onRunTable` fires both for explicit force-table intent (the editor's
+    // Ctrl+Shift+Enter binding, the menu's "Run as text query", Shift+Click) and for
+    // runByVerdict routing a Table/SideEffects verdict through `h.runTable()`. This one-shot
+    // marker (set just before the verdict-routed call, consumed by submitFromEditor) lets
+    // submitFromEditor tell the two apart, so an explicit force-table run is honored as a
+    // text run instead of being silently re-routed by the verdict.
+    var verdictRoutedTableRun: Boolean = false
+
     // The Query buttons' run path: pick graph vs table, then delegate to the editor handle (which
     // routes back through submitFromEditor). forceTable = the Shift modifier was held.
     def runByVerdict(forceTable: Boolean): Unit = {
@@ -116,8 +129,12 @@ object MonacoQueryInput {
         !isRunning && !RunAvailability.isBlocked(RunAvailability.evaluate(canRead, hasErrorDiagnostics.now(), kind))
       ) {
         editorHandle.foreach { h =>
-          val runOnGraph = if (qpEnabled) QueryKind.runsOnGraph(kind) else !forceTable
-          if (runOnGraph) h.runGraph() else h.runTable()
+          val runOnGraph = if (qpEnabled) QueryKind.runsOnGraph(kind) && !forceTable else !forceTable
+          if (runOnGraph) h.runGraph()
+          else {
+            verdictRoutedTableRun = qpEnabled && !forceTable
+            h.runTable()
+          }
         }
       }
     }
@@ -125,7 +142,8 @@ object MonacoQueryInput {
     def runButtonTitle(kind: QueryKind): String =
       if (qpEnabled)
         kind match {
-          case QueryKind.Node => "Run query, showing results on the graph canvas"
+          case QueryKind.Node =>
+            "Run query, showing results on the graph canvas (hold Shift to show results as a table)"
           case QueryKind.Table => "Run query, showing results as a table"
           case QueryKind.SideEffects => "Run query for its side effects (returns no rows)"
           case QueryKind.Unknown => "Waiting for query classification from the language server"
@@ -137,16 +155,22 @@ object MonacoQueryInput {
         }
 
     // Wired to the editor's `onRunGraph`/`onRunTable`; `asTable` reflects which fired. Rich mode
-    // routes by the server verdict (so sideEffects queries, which fire `onRunTable`, stay distinct
-    // from genuine table queries); basic mode has no verdict, so `asTable` picks text-vs-graph.
+    // routes by the server verdict (so sideEffects queries, which runByVerdict routes through
+    // `onRunTable`, stay distinct from genuine table queries) — except for an explicit
+    // force-table run (`asTable` without the `verdictRoutedTableRun` marker), which is honored
+    // as a text run; basic mode has no verdict, so `asTable` picks text-vs-graph.
     def submitFromEditor(asTable: Boolean): js.Function1[String, Unit] = (queryText: String) => {
+      val verdictRouted = verdictRoutedTableRun
+      verdictRoutedTableRun = false
       val kind = queryKind.now()
       if (
         !isRunning && !RunAvailability.isBlocked(RunAvailability.evaluate(canRead, hasErrorDiagnostics.now(), kind))
       ) {
         updateQuery(queryText)
         val uiQueryType =
-          if (qpEnabled) QueryKind.toUiQueryType(kind)
+          if (qpEnabled)
+            if (asTable && !verdictRouted) UiQueryType.Text
+            else QueryKind.toUiQueryType(kind)
           else if (asTable) UiQueryType.Text
           else UiQueryType.Node
         submitButton(uiQueryType)
@@ -164,6 +188,30 @@ object MonacoQueryInput {
       editorHandle.foreach(handle => if (handle.getValue() != value) handle.setValue(value))
     }
 
+    // Shared disabled binding for both run affordances (nav-bar split button and the in-editor
+    // one), so their availability can't drift apart.
+    val runBlocked: Signal[Boolean] = hasErrorDiagnostics.signal
+      .combineWith(queryKind.signal)
+      .map { case (hasErrors, kind) =>
+        RunAvailability.isBlocked(RunAvailability.evaluate(canRead, hasErrors, kind))
+      }
+
+    // Builds the split "Query" button (main run region + secondary-actions menu). Instantiated
+    // twice — once in the nav bar and once anchored inside the expanded editor overlay — with
+    // identical wiring, so multi-line mode (whose widened overlay covers the nav-bar instance)
+    // still offers the full menu, not just a bare run button.
+    def splitQueryButton(): HtmlElement =
+      QueryMenuButton(
+        label = "Query",
+        onRun = (shiftHeld: Boolean) => runByVerdict(forceTable = shiftHeld),
+        runDisabled = runBlocked,
+        runTitle = queryKind.signal.map(runButtonTitle),
+        onRunAsText = () => editorHandle.foreach(_.runTable()),
+        onMultiline = () => editorHandle.foreach(_.startMultilineEdit()),
+        onBookmark = onBookmark,
+        onOpenTapModal = onOpenTapModal,
+      )
+
     // The element the editor is mounted into. The package drives its height (auto-grow with
     // cap); CSS in common.css positions it to overlay the content below the bar as it grows.
     val editorContainer: Div = div(
@@ -172,36 +220,6 @@ object MonacoQueryInput {
       styleAttr <-- runningTextQuery.map { running =>
         if (running) "animation: activequery 1.5s ease infinite" else ""
       },
-      // Run affordance anchored to the top-right corner of the expanded container. Visible only
-      // while the editor is expanded — multi-line AND focused — so a collapsed (blurred) editor
-      // shows only the nav-bar Query button rather than two. The standard nav-bar Query/Cancel
-      // buttons remain the sole controls while single-line. The button mirrors the nav-bar Query
-      // button exactly: same runByVerdict() path, same disabled conditions (no verdict / error
-      // diagnostics / !canRead / isRunning), same tooltip, and the .query-input-button:disabled
-      // grey-out styling. Hidden during a running query so a stale enabled affordance is never
-      // shown while Cancel is the right action; the nav-bar Cancel button remains reachable (it is
-      // not covered by the expanded container).
-      child <-- isExpanded
-        .combineWith(runningTextQuery)
-        .map {
-          case (true, false) =>
-            button(
-              cls := s"${Styles.grayClickable} ${Styles.queryInputButton} ${QueryEditorStyles.queryEditorRunButton}",
-              // Suppress the default mousedown focus shift so clicking the button doesn't blur the
-              // editor first — a blur would flip editorHasFocus to false and unmount this button
-              // before the click lands. (Same guard the sample-query dropdown items use.)
-              onMouseDown --> (_.preventDefault()),
-              onClick --> { e => runByVerdict(forceTable = e.shiftKey) },
-              title <-- queryKind.signal.map(runButtonTitle),
-              disabled <-- hasErrorDiagnostics.signal
-                .combineWith(queryKind.signal)
-                .map { case (hasErrors, kind) =>
-                  RunAvailability.isBlocked(RunAvailability.evaluate(canRead, hasErrors, kind))
-                },
-              "Query",
-            )
-          case _ => span(display := "none")
-        },
     )
 
     // Chrome wrapper: the absolutely-positioned overlay that grows downward as the editor
@@ -213,6 +231,34 @@ object MonacoQueryInput {
     val editorChrome: Div = div(
       cls := QueryEditorStyles.queryEditorChrome,
       editorContainer,
+      // Run affordance anchored to the top-right corner of the expanded overlay. Visible only
+      // while the editor is expanded — multi-line AND focused — so a collapsed
+      // (blurred) editor shows only the nav-bar split button rather than two. This is the same
+      // full split button as the nav bar's (run region + menu), because the expanded overlay
+      // widens over the nav-bar instance and would otherwise leave the menu (multi-line editing,
+      // bookmark, tap modal…) unreachable exactly while multi-line editing is on. It lives on
+      // the chrome, NOT inside editorContainer: the container's overflow:hidden (which clips
+      // Monaco) would clip the popover menu, while the chrome's overflow is visible. Hidden
+      // during a running query so a stale enabled affordance is never shown while Cancel is the
+      // right action; the nav-bar Cancel button remains reachable (rendered above the overlay).
+      child <-- isExpanded
+        .combineWith(runningTextQuery)
+        // .distinct: rebuilding on same-valued emissions would tear down QueryMenuButton's
+        // open popover and its document listeners.
+        .distinct
+        .map {
+          case (true, false) =>
+            div(
+              cls := QueryEditorStyles.queryEditorRunButtonWrap,
+              // Suppress the default mousedown focus shift so clicking the button or its menu
+              // doesn't blur the editor first — a blur would flip editorHasFocus to false and
+              // unmount this affordance before the click lands. (Same guard the sample-query
+              // dropdown items use.)
+              onMouseDown --> (_.preventDefault()),
+              splitQueryButton(),
+            )
+          case _ => span(display := "none")
+        },
       child <-- isExpanded.map {
         case true =>
           QueryDiagnosticsView(
@@ -340,7 +386,6 @@ object MonacoQueryInput {
         updateQuery,
         showSampleQueryDropdown,
       ),
-      bookmark.button,
       child <-- runningTextQuery.map { running =>
         if (running)
           button(
@@ -350,20 +395,9 @@ object MonacoQueryInput {
             disabled := !canRead,
             "Cancel",
           )
-        else
-          button(
-            cls := s"${Styles.grayClickable} ${Styles.queryInputButton}",
-            onClick --> { e => runByVerdict(forceTable = e.shiftKey) },
-            title <-- queryKind.signal.map(runButtonTitle),
-            disabled <-- hasErrorDiagnostics.signal
-              .combineWith(queryKind.signal)
-              .map { case (hasErrors, kind) =>
-                RunAvailability.isBlocked(RunAvailability.evaluate(canRead, hasErrors, kind))
-              },
-            "Query",
-          )
+        else splitQueryButton()
       },
-      bookmark.dialog,
+      bookmarkDialog,
     )
   }
 

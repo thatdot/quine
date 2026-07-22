@@ -130,8 +130,6 @@ object ResultsPanel {
         div(cls := Styles.resultsBody, pre(cls := Styles.resultsJson, textJson(values)))
       case ResultOutcome.EmptyResult(_, _) =>
         div(cls := Styles.resultsBody, ResultsPlaceholder.empty(c.queryEcho))
-      case ResultOutcome.ErrorResult(err, actions) =>
-        div(cls := Styles.resultsBody, ResultsPlaceholder.error(err, actions))
       case ResultOutcome.Restored(errorMessage) =>
         div(cls := Styles.resultsBody, ResultsPlaceholder.restored(c.queryEcho, errorMessage))
     }

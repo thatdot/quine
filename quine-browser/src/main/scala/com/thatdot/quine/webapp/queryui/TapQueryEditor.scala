@@ -7,21 +7,34 @@ import io.circe.syntax._
 import com.thatdot.quine.webapp.Styles
 import com.thatdot.quine.webapp.components.ApiJsonPreview
 import com.thatdot.quine.webapp.components.streams.{EmbeddedEditorConfig, EmbeddedQueryEditor}
+import com.thatdot.quine.webapp.resultspanel.cards.TapCardQuery
+import com.thatdot.quine.webapp.resultspanel.tapmodal.SqPipelineTree
+import com.thatdot.quine.webapp.resultspanel.{TapCatalogEntry, TapOutput, TapPoint, TapTarget}
+import com.thatdot.quine.webapp.util.Pot
 import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2StandingQueryInfo, V2SyntheticEdge, V2TapQuery}
 
 sealed trait TapQueryEditorMode
 object TapQueryEditorMode {
   case object Creating extends TapQueryEditorMode
-  final case class Editing(index: Int) extends TapQueryEditorMode
+
+  /** Editing the definition that had `name` when edit mode was entered. Keyed by name, not
+    * an index into the definitions list — the list keeps refetching underneath an open edit
+    * (other sessions, reconcile), so a captured index can silently point at the wrong entry
+    * by save/delete time.
+    */
+  final case class Editing(name: String) extends TapQueryEditorMode
 }
 
+/** The graph-feed editor (the UI name for a `V2TapQuery`): instead of naming a standing
+  * query and a tap point in dropdowns, the source is picked on the same pipeline diagram the
+  * Standing Query Inspection modal uses ([[SqPipelineTree]] in `Variant.PickPoint`) — click the
+  * point to draw from, then write the Cypher that runs for every result arriving there.
+  */
 object TapQueryEditor {
 
-  private val RawSentinel = "__raw__"
-  private val NoSqSentinel = "__no_sq__"
-
   /** The `nodeIdsFrom` value every synthetic edge is saved with. The endpoint IDs are always read
-    * from the wiretap message (`NodeIdsSource.WiretapMessage`), so this is not surfaced in the UI.
+    * from the projected result message (`NodeIdsSource.WiretapMessage`), so this is not surfaced
+    * in the UI.
     */
   private val WiretapMessageSource = "WIRETAP_MESSAGE"
 
@@ -62,6 +75,27 @@ object TapQueryEditor {
         )
     }
 
+  /** The saved source as a pipeline point: no output means the raw match stream, an output
+    * name means the stream after that output's enrichment — or after its transformation only,
+    * when the `preEnrichment` flag is set.
+    */
+  private def initialTarget(value: Option[V2TapQuery]): Option[TapTarget] =
+    value.map { m =>
+      TapTarget(
+        m.standingQueryName,
+        m.outputName.fold[TapPoint](TapPoint.Raw) { out =>
+          if (m.preEnrichment) TapPoint.PreEnrichment(out) else TapPoint.PostEnrichment(out)
+        },
+      )
+    }
+
+  /** The wire `(outputName, preEnrichment)` pair for a picked point. */
+  private def wireSource(target: TapTarget): (Option[String], Boolean) = target.tapPoint match {
+    case TapPoint.Raw => (None, false)
+    case TapPoint.PostEnrichment(out) => (Some(out), false)
+    case TapPoint.PreEnrichment(out) => (Some(out), true)
+  }
+
   def apply(
     mode: TapQueryEditorMode,
     initialValue: Option[V2TapQuery],
@@ -70,20 +104,21 @@ object TapQueryEditor {
     onSave: V2TapQuery => Unit,
     onDelete: Option[() => Unit],
     onCancel: () => Unit,
+    // True while the host's save round-trip is in flight; disables the save button so a
+    // double-click can't dispatch the whole-list save (and its onSaved side effects) twice.
+    saving: Signal[Boolean] = Signal.fromValue(false),
   ): HtmlElement = {
 
-    val (initialName, initialDescription, initialSq, initialOutput, initialQuery, initialEdges) =
+    val (initialName, initialDescription, initialQuery, initialEdges) =
       initialValue match {
-        case Some(m) =>
-          (m.name, m.description.getOrElse(""), m.standingQueryName, m.outputName, m.query, m.syntheticEdges)
-        case None => ("", "", "", Option.empty[String], "", Vector.empty[V2SyntheticEdge])
+        case Some(m) => (m.name, m.description.getOrElse(""), m.query, m.syntheticEdges)
+        case None => ("", "", "", Vector.empty[V2SyntheticEdge])
       }
 
     val nameVar = Var(initialName)
     val descriptionVar = Var(initialDescription)
-    val sqNameVar = Var(initialSq)
-    val outputNameVar: Var[Option[String]] = Var(initialOutput)
     val queryVar = Var(initialQuery)
+    val selectionVar: Var[Option[TapTarget]] = Var(initialTarget(initialValue))
 
     val initialRows: Vector[EdgeRow] = initialEdges.zipWithIndex.map { case (e, i) =>
       EdgeRow(i, e.fromNode, e.toNode, e.label, normalizeDirection(e.direction))
@@ -105,22 +140,99 @@ object TapQueryEditor {
 
     val isEditing = mode.isInstanceOf[TapQueryEditorMode.Editing]
 
-    val edgesSignal: Signal[Vector[V2SyntheticEdge]] = edgeRowsVar.signal.map(buildEdges)
+    // The picker's catalog, mapped from the standing-query feed. Only outputs with a
+    // transformation or an enrichment offer a point to draw from (an output with neither
+    // delivers the raw match stream unchanged), but a previously saved selection stays
+    // offered while editing, even if its output has since lost the step that defined it,
+    // so opening an old definition doesn't silently blank its source.
+    val savedSelection: Option[TapTarget] = initialTarget(initialValue)
+    val catalog: Signal[Pot[Vector[TapCatalogEntry]]] = standingQueries.map { sqs =>
+      Pot.Ready(
+        sqs.toVector.map { sq =>
+          val pinnedPost: Option[String] = savedSelection.collect {
+            case TapTarget(sqName, TapPoint.PostEnrichment(out)) if sqName == sq.name => out
+          }
+          val pinnedPre: Option[String] = savedSelection.collect {
+            case TapTarget(sqName, TapPoint.PreEnrichment(out)) if sqName == sq.name => out
+          }
+          TapCatalogEntry(
+            sq.name,
+            sq.outputs.map(o =>
+              TapOutput(
+                o.name,
+                o.hasEnrichment || pinnedPost.contains(o.name),
+                o.hasTransformation || pinnedPre.contains(o.name),
+                o.enrichmentQuery,
+                o.transformationType,
+              ),
+            ),
+            sq.pattern.flatMap(_.query),
+          )
+        },
+      )
+    }
 
-    val canSave: Signal[Boolean] = nameVar.signal
-      .combineWith(sqNameVar.signal, queryVar.signal)
-      .map { case (n, sq, q) =>
-        n.trim.nonEmpty && sq.trim.nonEmpty && q.trim.nonEmpty
+    // The query behind the picked point's data — the standing query's match pattern for Raw,
+    // its output's enrichment query for Enriched — shown under the picker as a hint at the
+    // data the "Run for every result" Cypher will receive (for a Transformed point the
+    // label notes the transformation has reshaped it since; see TapCardQuery.labelFor).
+    // `Left(label)` when the point is picked but its query text isn't in the catalog — a
+    // pinned selection whose output has since lost its enrichment, or a non-Cypher pattern —
+    // so the panel can say so instead of silently showing nothing.
+    val selectedQuery: Signal[Option[Either[String, TapCardQuery]]] =
+      catalog.combineWith(selectionVar.signal).map { case (pot, selOpt) =>
+        for {
+          sel <- selOpt
+          sqs <- pot.toOption
+          sq <- sqs.find(_.sqName == sel.sqName)
+        } yield TapCardQuery.forPoint(sq, sel.tapPoint).toRight(TapCardQuery.labelFor(sel.tapPoint))
       }
 
+    // The example query's parameter shape follows the picked point: a raw standing-query match
+    // (and any output with neither step, which the picker folds into the raw stream) exposes
+    // result fields under `$data`, while an enriched or transformed point exposes its fields as
+    // top-level parameters. The Monaco handle has no live "set placeholder" API, so the editor
+    // is remounted when the shape flips; `.distinct` keeps that to the rare point change (not
+    // every keystroke), and the query text survives the remount via the `currentValue` binder.
+    val exampleQuerySignal: Signal[String] =
+      selectionVar.signal.map {
+        case Some(TapTarget(_, TapPoint.PostEnrichment(_) | TapPoint.PreEnrichment(_))) =>
+          "MATCH (n) WHERE id(n) = $id RETURN n"
+        case _ => "MATCH (n) WHERE id(n) = $data.id RETURN n"
+      }.distinct
+
+    val edgesSignal: Signal[Vector[V2SyntheticEdge]] = edgeRowsVar.signal.map(buildEdges)
+
+    // What the user still has to provide before the feed can be saved, in form order;
+    // empty means saveable. Rendered next to the save button so the disabled state
+    // explains itself.
+    val missingFields: Signal[Vector[String]] = nameVar.signal
+      .combineWith(selectionVar.signal, queryVar.signal)
+      .map { case (n, sel, q) =>
+        Vector(
+          Option.when(n.trim.isEmpty)("a name"),
+          Option.when(sel.isEmpty)("a point to draw from"),
+          Option.when(q.trim.isEmpty)("the query to run"),
+        ).flatten
+      }
+
+    val canSave: Signal[Boolean] = missingFields.map(_.isEmpty)
+
     val jsonPreview: Signal[Json] = nameVar.signal
-      .combineWith(descriptionVar.signal, sqNameVar.signal, outputNameVar.signal, queryVar.signal, edgesSignal)
-      .map { case (name, desc, sq, out, q, edges) =>
+      .combineWith(
+        descriptionVar.signal,
+        selectionVar.signal,
+        queryVar.signal,
+        edgesSignal,
+      )
+      .map { case (name, desc, sel, q, edges) =>
+        val (outName, pre) = sel.map(wireSource).getOrElse((None, false))
         Json.obj(
           "name" -> Json.fromString(name),
           "description" -> (if (desc.trim.nonEmpty) Json.fromString(desc) else Json.Null),
-          "standingQueryName" -> Json.fromString(sq),
-          "outputName" -> out.fold(Json.Null)(Json.fromString),
+          "standingQueryName" -> sel.fold(Json.Null)(t => Json.fromString(t.sqName)),
+          "outputName" -> outName.fold(Json.Null)(Json.fromString),
+          "preEnrichment" -> Json.fromBoolean(pre),
           "query" -> Json.fromString(q),
           "syntheticEdges" -> edges.map { e =>
             Json.obj(
@@ -187,96 +299,130 @@ object TapQueryEditor {
         fontSize := "0.88em",
         color := "#56618f",
         marginBottom := "4px",
-        "Tap a Standing Query output and run a Cypher query against each match. Saved to the server — ",
+        "A graph feed watches a point in a standing query's pipeline and draws every matching result " +
+        "onto the graph, live. Saved to the server, ",
         b("shared with everyone"),
         ".",
       ),
-      // Name
+      // Name + description, side by side: the name is the feed's identity everywhere
+      // (delete, enable, reconcile), the description is free text for the list.
       div(
         cls := Styles.editorField,
-        span(cls := Styles.editorFieldLabel, "Name"),
-        input(
-          cls := Styles.editorInput,
-          typ := "text",
-          placeholder := "e.g. login-attempts",
-          controlled(
-            value <-- nameVar.signal,
-            onInput.mapToValue --> nameVar.writer,
-          ),
-        ),
-      ),
-      // Description
-      div(
-        cls := Styles.editorField,
-        span(cls := Styles.editorFieldLabel, "Description (optional)"),
-        input(
-          cls := Styles.editorInput,
-          typ := "text",
-          placeholder := "What this tap query does",
-          controlled(
-            value <-- descriptionVar.signal,
-            onInput.mapToValue --> descriptionVar.writer,
-          ),
-        ),
-      ),
-      // Standing Query
-      div(
-        cls := Styles.editorField,
-        span(cls := Styles.editorFieldLabel, "Standing Query"),
-        select(
-          cls := "form-select form-select-sm",
-          onChange.mapToValue --> { v =>
-            sqNameVar.set(if (v == NoSqSentinel) "" else v)
-            // Reset output when SQ changes — the previously selected output may not exist on the new SQ.
-            outputNameVar.set(None)
-          },
-          children <-- standingQueries.combineWith(sqNameVar.signal).distinct.map { case (sqs, sel) =>
-            option(value := NoSqSentinel, selected := sel.isEmpty, "-- select --") ::
-              sqs.map(sq => option(value := sq.name, selected := sel == sq.name, sq.name)).toList
-          },
-        ),
-      ),
-      // Tap point (outputs of selected SQ + Raw)
-      div(
-        cls := Styles.editorField,
-        span(cls := Styles.editorFieldLabel, "Tap point"),
-        child <-- sqNameVar.signal.combineWith(standingQueries).distinct.map { case (sqName, sqs) =>
-          val outputs = sqs.find(_.name == sqName).map(_.outputs).getOrElse(Nil)
-          select(
-            cls := "form-select form-select-sm",
-            onChange.mapToValue --> { v =>
-              outputNameVar.set(if (v == RawSentinel) None else Some(v))
-            },
-            option(
-              value := RawSentinel,
-              selected <-- outputNameVar.signal.map(_.isEmpty),
-              "Raw (before any output workflow)",
+        div(
+          display := "flex",
+          gap := "10px",
+          div(
+            flex := "0 0 240px",
+            display := "flex",
+            flexDirection := "column",
+            span(cls := Styles.editorFieldLabel, "Name"),
+            input(
+              cls := Styles.editorInput,
+              typ := "text",
+              placeholder := "e.g. login-attempts",
+              controlled(
+                value <-- nameVar.signal,
+                onInput.mapToValue --> nameVar.writer,
+              ),
             ),
-            outputs.map { o =>
-              option(
-                value := o.name,
-                selected <-- outputNameVar.signal.map(_.contains(o.name)),
-                s"Post-enrichment: ${o.name}",
-              )
-            },
-          )
+          ),
+          div(
+            flex := "1 1 auto",
+            display := "flex",
+            flexDirection := "column",
+            span(cls := Styles.editorFieldLabel, "Description (optional)"),
+            input(
+              cls := Styles.editorInput,
+              typ := "text",
+              placeholder := "What this feed shows",
+              controlled(
+                value <-- descriptionVar.signal,
+                onInput.mapToValue --> descriptionVar.writer,
+              ),
+            ),
+          ),
+        ),
+      ),
+      // Where to draw from: the same pipeline diagram the Standing Query Inspection modal
+      // uses, in single-selection mode.
+      div(
+        cls := Styles.editorField,
+        span(cls := Styles.editorFieldLabel, "Draw from"),
+        div(
+          cls := "graph-feed-picker",
+          SqPipelineTree(
+            catalog = catalog,
+            tappedKeys = selectionVar.signal.map(_.map(_.key).toSet),
+            onPickNew = target => selectionVar.set(Some(target)),
+            // Re-clicking the selected point keeps it selected — there is nothing to focus here.
+            onFocusExisting = target => selectionVar.set(Some(target)),
+            variant = SqPipelineTree.Variant.PickPoint,
+            initialSqName = savedSelection.map(_.sqName),
+          ),
+        ),
+        div(
+          cls := "graph-feed-picker-status",
+          child <-- selectionVar.signal.map {
+            case Some(target) => span("Drawing from ", b(target.label))
+            case None => span("No point selected yet. Click one above.")
+          },
+        ),
+        // The query that produced the picked point's data, so the user can see what shape
+        // of data (and which fields) their own Cypher below will run against.
+        child <-- selectedQuery.map {
+          case Some(Right(q)) =>
+            div(
+              cls := "graph-feed-picker-query",
+              span(cls := "graph-feed-picker-query-label", q.label),
+              q.note.map(n => span(cls := "graph-feed-picker-query-note", n)).getOrElse(emptyNode: Node),
+              pre(cls := "graph-feed-picker-query-pre", q.query),
+            )
+          case Some(Left(label)) =>
+            div(
+              cls := "graph-feed-picker-query",
+              span(cls := "graph-feed-picker-query-label", label),
+              span(
+                cls := "graph-feed-picker-query-missing",
+                "No query text available for this point. The source may have changed since this definition was saved.",
+              ),
+            )
+          case None => emptyNode
         },
       ),
-      // Query
+      // What to run there
       div(
         cls := Styles.editorField,
-        span(cls := Styles.editorFieldLabel, "Cypher query"),
+        span(cls := Styles.editorFieldLabel, "Run for every result"),
         span(
           fontSize := "0.78em",
           color := "#8a93b5",
-          " — match fields available as $field_name (or WIRETAP_MESSAGE for the whole object)",
+          "This Cypher query must ",
+          b("return nodes"),
+          " which are drawn onto the graph. Returning scalars, relationships, or other values instead " +
+          "produces errors. Each result is passed in as " +
+          "parameters, and where the fields live depends on the point you picked. For matches taken " +
+          "directly on the standing query, and for outputs with neither transformation nor enrichment, " +
+          "the returned columns are the fields of ",
+          b("$data"),
+          " (e.g. ",
+          b("$data.id"),
+          "), alongside ",
+          b("$meta"),
+          " match metadata. For enriched outputs, the enrichment query's returned columns are top-level " +
+          "parameters instead (e.g. ",
+          b("$id"),
+          "). For a transformed point, the transformation's returned object fields are top-level " +
+          "parameters the same way; a transformation returning something other than an object " +
+          "provides no parameters.",
         ),
-        EmbeddedQueryEditor(
-          currentValue = queryVar.signal,
-          onUpdate = v => queryVar.set(v),
-          placeholderText = "MATCH (n) WHERE n.id = $userId RETURN n",
-          editorConfig = editorConfig,
-        ),
+        child <-- exampleQuerySignal.map { example =>
+          EmbeddedQueryEditor(
+            currentValue = queryVar.signal,
+            onUpdate = v => queryVar.set(v),
+            placeholderText = example,
+            editorConfig = editorConfig,
+          )
+        },
       ),
       // Synthetic edges — one editable row per edge.
       div(
@@ -286,11 +432,11 @@ object TapQueryEditor {
           fontSize := "0.78em",
           color := "#8a93b5",
           margin := "0 0 4px",
-          "Draw extra relationships in the graph that aren't in your data. For each match, the ",
+          "Draw extra relationships in the graph that aren't in your data. For each result, the ",
           b("from"),
           " and ",
           b("to"),
-          " node IDs are read from the wiretap message at the paths you enter, then joined by an " +
+          " node IDs are read from the result message at the paths you enter, then joined by an " +
           "edge with the given label and direction.",
         ),
         div(
@@ -315,10 +461,19 @@ object TapQueryEditor {
         cls := Styles.editorActions,
         onDelete
           .map { deleteFn =>
-            button("Delete", onClick --> (_ => deleteFn()))
+            button("Delete", cls := "editor-danger-action", onClick --> (_ => deleteFn()))
           }
           .getOrElse(emptyNode),
-        span(flexGrow := 1),
+        // While the save button is disabled, say what's still needed instead of leaving
+        // a dead-looking button unexplained.
+        span(
+          flexGrow := 1,
+          cls := "graph-feed-missing-hint",
+          child <-- missingFields.map { missing =>
+            if (missing.isEmpty) emptyNode
+            else span(s"Still needed: ${missing.mkString(", ")}")
+          },
+        ),
         button(
           "Cancel",
           background := "none",
@@ -329,20 +484,25 @@ object TapQueryEditor {
           onClick --> (_ => onCancel()),
         ),
         button(
-          if (isEditing) "Save tap query" else "Create tap query",
-          disabled <-- canSave.map(!_),
+          if (isEditing) "Save feed" else "Create feed",
+          cls := "editor-primary-action",
+          disabled <-- canSave.combineWith(saving).map { case (ok, inFlight) => !ok || inFlight },
           onClick --> { _ =>
-            val descOpt = if (descriptionVar.now().trim.nonEmpty) Some(descriptionVar.now().trim) else None
-            val edges = buildEdges(edgeRowsVar.now())
-            val tapQuery = V2TapQuery(
-              name = nameVar.now().trim,
-              description = descOpt,
-              standingQueryName = sqNameVar.now().trim,
-              outputName = outputNameVar.now(),
-              query = queryVar.now().trim,
-              syntheticEdges = edges,
-            )
-            onSave(tapQuery)
+            selectionVar.now().foreach { target =>
+              val descOpt = if (descriptionVar.now().trim.nonEmpty) Some(descriptionVar.now().trim) else None
+              val edges = buildEdges(edgeRowsVar.now())
+              val (outName, pre) = wireSource(target)
+              val tapQuery = V2TapQuery(
+                name = nameVar.now().trim,
+                description = descOpt,
+                standingQueryName = target.sqName,
+                outputName = outName,
+                preEnrichment = pre,
+                query = queryVar.now().trim,
+                syntheticEdges = edges,
+              )
+              onSave(tapQuery)
+            }
           },
         ),
       ),

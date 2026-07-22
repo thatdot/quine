@@ -22,9 +22,6 @@ final class StubTapSubscriptions extends TapSubscriptions {
     opened.update(_ - key)
   }
 
-  // The stub synthesizes a source for any tap point, including pre-enrichment.
-  override val supportsPreEnrichment: Boolean = true
-
   val sources: Signal[Vector[LiveSource]] =
     opened.signal.map(_.values.toVector.distinctBy(_.id).sortBy(_.id))
 }
@@ -32,12 +29,13 @@ final class StubTapSubscriptions extends TapSubscriptions {
 object StubTapSubscriptions {
 
   /** A sample standing-query catalog for the picker (varied output counts, one no-output SQ,
-    * one long name, a mix of enriched and un-enriched outputs, and enough entries to exercise
-    * the filter).
+    * one long name, a mix of transformed, enriched, and bare outputs, and enough entries to
+    * exercise the filter).
     */
-  private def out(name: String, enriched: Boolean = false): TapOutput = TapOutput(name, enriched)
+  private def out(name: String, enriched: Boolean = false, transformed: Boolean = false): TapOutput =
+    TapOutput(name, enriched, transformed)
   val catalog: Vector[TapCatalogEntry] = Vector(
-    TapCatalogEntry("fraudRing", List(out("slack", enriched = true), out("s3"))),
+    TapCatalogEntry("fraudRing", List(out("slack", enriched = true, transformed = true), out("s3"))),
     TapCatalogEntry("highValueTxn", List(out("webhook", enriched = true))),
     TapCatalogEntry("newAccountVelocity", Nil),
     TapCatalogEntry("cardTestingBurst", List(out("kafka"), out("s3", enriched = true))),

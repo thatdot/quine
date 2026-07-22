@@ -180,6 +180,15 @@ export interface QueryEditorHandle {
   /** Record the current query in history and fire `onRunTable`. */
   runTable(): void;
   /**
+   * Enter multi-line editing from the outside (e.g. a menu action): focus the
+   * editor and, when the buffer is still single-line, insert a newline at the
+   * end of the buffer — the same edit Shift+Enter makes, so every follow-on
+   * behavior (auto-grow, blur-collapse, refocus-expand) is the keyboard path's.
+   * An already multi-line buffer is only focused; focusing alone restores the
+   * expanded layout.
+   */
+  startMultilineEdit(): void;
+  /**
    * Move the cursor to `lineNumber`/`column` (both 1-based, matching Monaco and
    * {@link EditorDiagnostic}), scroll that position into view, and focus the
    * editor. Used to jump from a diagnostics-list entry to its source position.
@@ -611,6 +620,14 @@ export function createQueryEditor(
     },
     runGraph,
     runTable,
+    startMultilineEdit: () => {
+      editor.focus();
+      if (!isMultiline(model.getValue())) {
+        const lastLine = model.getLineCount();
+        editor.setPosition({ lineNumber: lastLine, column: model.getLineMaxColumn(lastLine) });
+        editor.trigger("startMultilineEdit", "type", { text: "\n" });
+      }
+    },
     revealRange: (lineNumber: number, column: number): void => {
       editor.setPosition({ lineNumber, column });
       editor.revealPositionInCenter({ lineNumber, column });

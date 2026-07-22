@@ -10,7 +10,7 @@ object SourceKind {
   case object Tap extends SourceKind
 }
 
-/** Display-only provenance for a source, e.g. `Provenance(Tap, "fraud/highRisk · post")`.
+/** Display-only provenance for a source, e.g. `Provenance(Tap, "fraud/highRisk · enriched")`.
   * The viewer labels with this; it never branches rendering on it.
   */
 final case class Provenance(kind: SourceKind, label: String)

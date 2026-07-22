@@ -39,7 +39,7 @@ object SourcesPanel {
       // The add-tap chooser vs. the switcher list is store state, so the header "+ Tap" can open
       // straight to the chooser.
       child <-- addingTap.map { isAdding =>
-        if (isAdding) AddTapChooser(catalog, watching, taps.preEnrichmentSupported, sd)
+        if (isAdding) AddTapChooser(catalog, watching, sd)
         else switcher(taps, session.entries, viewingIdx, search, keptOnly, sd)
       },
     )
@@ -201,7 +201,7 @@ object SourcesPanel {
     val viewing: Signal[Boolean] = viewingIdx.map(_.contains(idx))
     div(
       cls := Styles.historyRow,
-      cls := SourceFace.outcomeClass(entry.content.outcome),
+      cls := SourceFace.queryClass,
       cls(Styles.resultsViewing) <-- viewing, // current run: left accent bar + tint (the design's marker)
       onClick --> (_ => sd.onNext(ResultsCommand.OpenEntry(idx))),
       statusMark(entry.content.outcome),
@@ -211,7 +211,7 @@ object SourcesPanel {
         tpe := "button",
         cls := Styles.historyRowPin,
         cls(Styles.resultsKeepActive) := entry.pinned,
-        title := (if (entry.pinned) "Bookmarked (click to remove)" else "Bookmark — keep this run"),
+        title := (if (entry.pinned) "Bookmarked (click to remove)" else "Bookmark, keep this run"),
         onClick --> { ev =>
           ev.stopPropagation()
           sd.onNext(ResultsCommand.TogglePinAt(idx))
@@ -221,16 +221,11 @@ object SourcesPanel {
     )
   }
 
-  /** The history row's status mark: a red ✕ for a failed run (a stronger fail signal than a dot),
-    * otherwise a colored status dot.
-    */
-  private def statusMark(outcome: ResultOutcome): HtmlElement = outcome match {
-    case _: ResultOutcome.ErrorResult => span(cls := Styles.historyRowFail, "✕")
-    case o => span(cls := Styles.resultsStatusDot, cls := dotClass(o))
-  }
+  /** The history row's status mark: a colored status dot. */
+  private def statusMark(outcome: ResultOutcome): HtmlElement =
+    span(cls := Styles.resultsStatusDot, cls := dotClass(outcome))
 
   private def dotClass(outcome: ResultOutcome): String = outcome match {
-    case _: ResultOutcome.ErrorResult => Styles.resultsStatusError
     case _: ResultOutcome.EmptyResult => Styles.resultsStatusEmpty
     case _ => Styles.resultsStatusOk
   }
@@ -254,7 +249,6 @@ object SourcesPanel {
       case ResultOutcome.Tabular(result) => s"${result.results.size} rows"
       case ResultOutcome.TextResults(values) => s"${values.size} results"
       case _: ResultOutcome.EmptyResult => "0 rows"
-      case _: ResultOutcome.ErrorResult => "error"
       case _: ResultOutcome.Restored => "restored"
     }
     s"$rows · ${entry.timeLabel}"

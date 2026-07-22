@@ -22,9 +22,11 @@
    sum and it grows downward OVER the page content as the editor expands.
    z-index 20 places this stacking context above the sample-query dropdown (z-index 10) so
    Monaco's overflow widgets — suggest/completion, hover — layer over the dropdown when both
-   are open. (Monaco escapes those widgets to document.body via fixedOverflowWidgets, so
-   overflow:hidden here clips only the square-cornered children to the rounded corner, not the
-   widgets.) */
+   are open. (Monaco escapes those widgets to document.body via fixedOverflowWidgets.)
+   overflow must stay visible: the in-editor split button's popover menu (.query-menu, an
+   absolutely-positioned descendant) opens below the chrome's box and would be clipped by
+   overflow:hidden. The children are square-cornered against the .2em radius, which is
+   imperceptible at this size. */
 .query-editor-chrome {
   position: absolute;
   top: 0;
@@ -35,7 +37,7 @@
   flex-direction: column;
   background-color: white;
   border-radius: .2em 0 0 .2em;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 /* Multi-line mode: the editor expands rightward toward page width, overlapping adjacent
@@ -45,12 +47,12 @@
    button, and margins). */
 .query-editor-host.query-editor-multi .query-editor-chrome {
   right: auto;
-  min-width: min(900px, calc(100vw - 280px));
+  min-width: min(1100px, calc(100vw - 280px));
 }
 .query-editor-container {
-  /* In flow inside .query-editor-chrome (the chrome is the overlay now). position:relative
-     anchors the in-editor run button, which is absolutely positioned at this container's
-     top-right corner.
+  /* In flow inside .query-editor-chrome (the chrome is the overlay now). The in-editor run
+     affordance (.query-editor-run-button-wrap) anchors to the chrome, not here — this
+     container's overflow:hidden would clip its popover menu.
      The editor package sets this element's height to Monaco's content height (auto-grow with
      cap). content-box keeps that inline height authoritative for Monaco's layout while the
      vertical padding vertically centers the editor chrome so its total visual height
@@ -99,26 +101,34 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
-/* In-editor run affordance for multi-line mode. Anchored to the top-right corner of
-   .query-editor-container (which is z-index 20). The button sits outside the Monaco
-   scrollable text area — Monaco occupies the container's full width up to the right
-   edge, but the editor leaves ~4px of internal right padding before the vertical
-   scrollbar; anchoring at top/right 0 places the button in the container's padding
-   box outside the text viewport. z-index 25 keeps it above the container's stacking
-   context (20) without reaching Monaco's own suggest-widget (z-index ~52+) or the
-   toolbar context-menu (z-index 100). The border-radius override produces a pill
-   shape flush with the top-right corner. */
-.query-editor-run-button {
+/* In-editor run affordance for multi-line mode: the same split Query button as the nav bar's
+   (QueryMenuButton), anchored to the top-right corner of .query-editor-chrome (which is also
+   the top-right corner of the Monaco container, its first in-flow child). Monaco leaves ~4px
+   of internal right padding before the vertical scrollbar, so the button sits outside the
+   text viewport. z-index 25 keeps it above the Monaco container without reaching Monaco's own
+   suggest-widget (z-index ~52+) or the toolbar context-menu (z-index 100). The nested
+   .query-menu popover (z-index 60) opens below, escaping the chrome via its
+   overflow:visible. */
+.query-editor-run-button-wrap {
   position: absolute;
   top: 0;
   right: 0;
   z-index: 25;
-  border-radius: 0 .2em 0 .2em;
-  /* Compact padding so the button is proportional to the 48px resting bar */
+}
+/* Drop the shell's nav-bar outer margin and shrink the segments so the control is proportional
+   to the compact in-editor corner (mirrors the old in-editor pill's sizing). */
+.query-editor-run-button-wrap .query-menu-split-button {
+  margin: 0;
+  box-shadow: -1px 1px 4px rgba(0, 0, 0, 0.12);
+}
+.query-editor-run-button-wrap .query-menu-split-button-main {
   padding: .15em .55em;
   font-size: 1.1em;
-  /* Keep a subtle separator from the container edge */
-  box-shadow: -1px 1px 4px rgba(0, 0, 0, 0.12);
+}
+.query-editor-run-button-wrap .query-menu-split-button-arrow {
+  width: 24px;
+  min-width: 24px;
+  border-radius: 0 .2em 0 .2em;
 }
 /* "More lines" hint shown by the editor package while a multi-line query is collapsed
    by blur: line 1 is visible and this pill indicates the total line count. The badge is

@@ -80,9 +80,11 @@ final class ResultsStore(
     }
 
   // The active source (Main pane): a selected tap, else the current query run. A source is
-  // `Left(query)` or `Right(tap)` — the viewer renders either uniformly. `.distinct`: pinning
+  // `Left(query)` or `Right(tap)` — the viewer renders either uniformly. `.distinctBy`: pinning
   // rewrites the history Vector without changing the shown content, so without it the body and
-  // headers would rebuild on every Keep toggle.
+  // headers would rebuild on every Keep toggle. Keyed on the content's `(runId, revision)`
+  // (and the tap entry's reference) rather than structural equality, so no comparison ever
+  // walks the result payload itself.
   val mainContent: Signal[Option[Either[ResultsContent, TapEntry]]] =
     activeTap
       .combineWith(displayed)
@@ -91,7 +93,7 @@ final class ResultsStore(
           .map(t => Right(t): Either[ResultsContent, TapEntry])
           .orElse(queryOpt.map(c => Left(c): Either[ResultsContent, TapEntry]))
       }
-      .distinct
+      .distinctBy(_.map(_.left.map(c => (c.runId, c.revision))))
 
   /** Whether a result or tap is showing — read by the corner control (which can't see the taps
     * slice itself). Replaces the former output `contentShown` Var written by the view.
@@ -107,7 +109,7 @@ final class ResultsStore(
   // ── command interpreter ─────────────────────────────────────────────────────
   // Synchronous export of the current (derived) result; closes the menu.
   private def runExport(st: ViewerState, content: Option[ResultsContent])(f: CypherQueryResult => Unit): Unit =
-    content.collect { case ResultsContent(ResultOutcome.Tabular(r), _) => r }.foreach { r =>
+    content.map(_.outcome).collect { case ResultOutcome.Tabular(r) => r }.foreach { r =>
       f(ResultsData.derive(r, st.search.now(), st.sortCol.now(), st.sortDir.now()))
       st.exportOpen.set(false)
     }
