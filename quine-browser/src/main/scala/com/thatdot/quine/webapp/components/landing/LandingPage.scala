@@ -33,6 +33,7 @@ object LandingPage {
     clusterStatusSignal: Option[Signal[Pot[V2ServiceStatus]]] = None,
     extraCards: Seq[(Set[String], HtmlElement)] = Seq.empty,
     userPermissions: Option[Set[String]] = None,
+    showScopePicker: Boolean = false,
   ): HtmlElement = {
     def allowed(needed: Set[String]): Boolean = hasPermissions(userPermissions, needed)
 
@@ -112,7 +113,11 @@ object LandingPage {
                 // Only pass cluster status to the diagram when the user may read it. The signal can
                 // be populated with a trimmed, member-positions-only status for ingest-capable roles
                 // (to drive the Streams host selector); those roles must not see cluster health here.
-                BackpressureDiagram(backpressureService, if (canSeeClusterHealth) clusterStatusSignal else None),
+                BackpressureDiagram(
+                  backpressureService,
+                  if (canSeeClusterHealth) clusterStatusSignal else None,
+                  showScopePicker = showScopePicker,
+                ),
               ),
             ),
           )

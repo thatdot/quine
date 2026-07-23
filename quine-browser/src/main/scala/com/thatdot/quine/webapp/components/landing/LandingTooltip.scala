@@ -125,8 +125,11 @@ object LandingTooltip {
     el
   }
 
-  /** Position the tooltip relative to a rect, preferring the right side but flipping
-    * to the left (and clamping to the viewport) when it would overflow.
+  /** Position the tooltip relative to a rect, preferring the right side (then the left) for a
+    * compact anchor. An anchor wider than the tooltip — a full-width card row — has no useful side:
+    * either edge lands the tooltip out in the page margin, far from where the pointer is. Those sit
+    * the tooltip just below the row (or above, if there is no room below) so it reads as belonging
+    * to it, instead of being flipped into a viewport corner.
     */
   def showNear(html: String, anchor: dom.DOMRect): Unit = {
     tooltipEl.innerHTML = html
@@ -136,14 +139,21 @@ object LandingTooltip {
     val vh = dom.window.innerHeight
     val tw = tooltipEl.getBoundingClientRect().width
     val th = tooltipEl.getBoundingClientRect().height
-    val preferredLeft = anchor.right + 8
-    val finalLeft =
-      if (preferredLeft + tw <= vw - 4) preferredLeft
-      else math.max(4, anchor.left - tw - 8)
-    val preferredTop = anchor.top
-    val finalTop =
-      if (preferredTop + th <= vh - 4) preferredTop
-      else math.max(4, vh - th - 4)
+    val wideAnchor = anchor.width > tw
+    val fitsRight = !wideAnchor && anchor.right + 8 + tw <= vw - 4
+    val fitsLeft = !wideAnchor && anchor.left - tw - 8 >= 4
+    val (finalLeft, finalTop) =
+      if (fitsRight) (anchor.right + 8, math.min(anchor.top, vh - th - 4))
+      else if (fitsLeft) (anchor.left - tw - 8, math.min(anchor.top, vh - th - 4))
+      else {
+        // Below the anchor, aligned to its left edge and clamped into the viewport; flip above when
+        // there is no room below.
+        val left = math.max(4.0, math.min(anchor.left, vw - tw - 4))
+        val top =
+          if (anchor.bottom + 8 + th <= vh - 4) anchor.bottom + 8
+          else math.max(4.0, anchor.top - th - 8)
+        (left, top)
+      }
     tooltipEl.style.left = s"${finalLeft}px"
     tooltipEl.style.top = s"${finalTop}px"
   }

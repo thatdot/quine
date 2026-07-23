@@ -445,10 +445,15 @@ object BackpressureDiagram {
     *                       only this slice, so it cannot send another capability's commands.
     * @param clusterSignal If defined, the diagram shows a cluster card above the Q node.
     *                       Only present when running Quine Enterprise with cluster target size > 1.
+    * @param showScopePicker Whether to render the scope-picker bar above the diagram: the
+    *                       cluster-member chips and the named-graph filter. Off by default — with a
+    *                       single member and a single graph there is nothing to pick, so the bar has
+    *                       nothing to offer. Callers that can have several of either enable it.
     */
   def apply(
     service: BackpressureService,
     clusterSignal: Option[Signal[Pot[V2ServiceStatus]]] = None,
+    showScopePicker: Boolean = false,
   ): HtmlElement = {
     var lastRefreshMs: Double = {
       val stored = dom.window.localStorage.getItem(StorageKey)
@@ -977,10 +982,11 @@ object BackpressureDiagram {
       // to filter them, and hiding the control with the chips would take it away from exactly the
       // deployments most likely to be running a handful of graphs on one host.
       child <-- membersSignal.combineWith(allNamespacesVar.signal).map { case (members, allNs) =>
-        val showChips = members.sizeIs > 1
-        // Show the graph list whenever any graph exists — including a lone graph. The list is how a
-        // deployment sees which graphs it has, so a single-graph deployment (all of OSS) still gets it.
-        val showGraphs = allNs.nonEmpty
+        val showChips = showScopePicker && members.sizeIs > 1
+        // Show the graph list whenever any graph exists — even a lone graph, so a deployment can see
+        // which graphs it has. Gated on `showScopePicker`: where only one member and one graph can
+        // ever exist, the bar has nothing to pick and is omitted entirely rather than shown empty.
+        val showGraphs = showScopePicker && allNs.nonEmpty
         if (!showChips && !showGraphs) emptyNode
         else {
           // Jump to the typed member. The box is deliberately not cleared: the Enter handler
