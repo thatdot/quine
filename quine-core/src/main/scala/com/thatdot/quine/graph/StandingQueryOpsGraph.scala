@@ -2,10 +2,11 @@ package com.thatdot.quine.graph
 
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.stream.scaladsl.{BroadcastHub, Keep, Sink, Source}
@@ -55,6 +56,28 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
   def removeStandingQueryNamespace(namespace: NamespaceId): Option[Unit] =
     namespaceStandingQueries.remove(namespace).map(_.cancelAllStandingQueries())
+
+  /** Application-supplied observer invoked once per standing query result as it drains from the
+    * results queue, before the broadcast hub fans it out to output workflows. This is the one
+    * place each result is seen exactly once per member regardless of how many outputs are
+    * attached (including zero, when only the fallback drain consumes the hub), which makes it
+    * the right spot for the raw tap publish.
+    *
+    * The stream stage reads this reference at element time, so an observer registered after
+    * standing queries are already running (e.g. queries restored from the persistor before the
+    * application layer exists) still applies to subsequent results. Defaults to a no-op.
+    *
+    * Exceptions thrown by the observer are caught and logged at the call site: a failure to
+    * observe a result must never fail the results stream (which would cancel the standing query
+    * and stop all of its outputs).
+    */
+  private val standingQueryRawResultObserver =
+    new AtomicReference[(NamespaceId, StandingQueryInfo, StandingQueryResult) => Unit]((_, _, _) => ())
+
+  def setStandingQueryRawResultObserver(
+    observer: (NamespaceId, StandingQueryInfo, StandingQueryResult) => Unit,
+  ): Unit =
+    standingQueryRawResultObserver.set(observer)
 
   val dgnRegistry: DomainGraphNodeRegistry = new DomainGraphNodeRegistry(
     metrics.registerGaugeDomainGraphNodeCount,
@@ -325,12 +348,20 @@ trait StandingQueryOpsGraph extends BaseGraph {
           }
           x
         }
-        // Count and time each result exactly once, as it drains from the queue — BEFORE the broadcast
-        // hub fans it out to N outputs. Metering after the hub counted each result once per consumer,
-        // inflating the consumption rate to N times the production rate.
+        // Count, time, and observe each result exactly once, as it drains from the queue — BEFORE
+        // the broadcast hub fans it out to N outputs. Metering after the hub counted each result
+        // once per consumer, inflating the consumption rate to N times the production rate; the
+        // raw result observer (the raw tap publish) has the same once-per-result requirement.
         .map { case StandingQueryResult.WithQueueTimer(r, timerCtx) =>
           timerCtx.stop()
           consumptionMeter.mark()
+          try standingQueryRawResultObserver.get()(namespace, sq, r)
+          catch {
+            case NonFatal(e) =>
+              logger.warn(
+                log"Raw result observer threw for standing query ${Safe(sq.name)}; the result still flows to outputs" withException e,
+              )
+          }
           r
         }
         .named(s"sq-results-for-${sq.name}")

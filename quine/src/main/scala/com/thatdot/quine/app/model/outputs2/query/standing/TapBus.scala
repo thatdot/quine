@@ -12,7 +12,8 @@ import org.apache.pekko.stream.{Materializer, OverflowStrategy}
 import sttp.ws.WebSocketFrame
 
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
-import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.graph.{NamespaceId, StandingQueryInfo, StandingQueryResult}
+import com.thatdot.quine.model.QuineIdProvider
 
 sealed trait SqTapStage {
   def key: String
@@ -52,6 +53,23 @@ trait TapBus {
 object TapBus {
   def topicForSq(namespaceId: NamespaceId, sqName: String, outputName: String, stage: SqTapStage): String =
     s"sq-tap/${namespaceId.name}/$sqName/$outputName/${stage.key}"
+
+  /** Observer for `com.thatdot.quine.graph.StandingQueryOpsGraph.setStandingQueryRawResultObserver`:
+    * publishes each raw standing query result to `tapBus`. Registered upstream of each SQ's
+    * broadcast hub, so the raw tap emits exactly one frame per result regardless of how many
+    * outputs are attached (including zero) — publishing from per-output workflows instead would
+    * emit one copy per output and none for output-less queries.
+    */
+  def rawResultObserver(
+    tapBus: TapBus,
+    idProvider: QuineIdProvider,
+  ): (NamespaceId, StandingQueryInfo, StandingQueryResult) => Unit = {
+    val foldable = StandingQueryResultWorkflow.sqDataFoldableFrom(idProvider)
+    (namespaceId, sq, result) => {
+      val topic = topicForSq(namespaceId, sq.name, "_raw_", SqTapStage.Raw)
+      if (tapBus.hasSubscribers(topic)) tapBus.publish(topic, result)(foldable)
+    }
+  }
 }
 
 /** Single-node implementation. One `BroadcastHub` per topic, fed by an actor-ref source.

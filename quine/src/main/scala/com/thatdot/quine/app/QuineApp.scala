@@ -93,6 +93,10 @@ final class QuineApp(
 
   implicit private[this] val idProvider: QuineIdProvider = graph.idProvider
 
+  // Publish raw standing query results to the tap bus from the once-per-result observer upstream
+  // of each SQ's broadcast hub, see TapBus.rawResultObserver.
+  graph.setStandingQueryRawResultObserver(TapBus.rawResultObserver(tapBus, idProvider))
+
   /** == Local state ==
     * Notes on synchronization:
     * Accesses to the following collections must be threadsafe. Additionally, the persisted copy of these collections

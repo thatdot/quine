@@ -145,8 +145,13 @@ case class StandingQueryResultWorkflow(
   destinationStepsList: NonEmptyList[DataFoldableSink],
 ) {
 
-  /** Builds the end-to-end output flow: raw tap → workflow (filter/transform/pre-tap/enrich) →
+  /** Builds the end-to-end output flow: workflow (filter/transform/pre-tap/enrich) →
     * post-enrichment tap → fanout to all configured sinks.
+    *
+    * The raw tap is NOT published here: this flow runs once per output, so publishing raw results
+    * from it would emit one copy per attached output (and none when an SQ has zero outputs). Raw
+    * results are instead published from the once-per-result observer registered via
+    * `StandingQueryOpsGraph.setStandingQueryRawResultObserver`, upstream of the broadcast hub.
     *
     * @param tapCtx contains a referencet to the tapbus and the identifying triple (namespace / SQ / output) used to compute tap topic names
     */
@@ -154,12 +159,6 @@ case class StandingQueryResultWorkflow(
     logConfig: LogConfig,
     tapCtx: TapContext,
   ): Flow[StandingQueryResult, Unit, NotUsed] = {
-    val rawTapFlow: Flow[StandingQueryResult, StandingQueryResult, NotUsed] = {
-      val topic = topicForSq(tapCtx.namespaceId, tapCtx.sqName, "_raw_", SqTapStage.Raw)
-      implicit val foldable = StandingQueryResultWorkflow.sqDataFoldableFrom(graph.idProvider)
-      Flow[StandingQueryResult].map { x => if (tapCtx.bus.hasSubscribers(topic)) tapCtx.bus.publish(topic, x); x }
-    }
-
     val preBroadcastFlow = workflow.flow(outputName, namespaceId)(graph, logConfig, tapCtx)
 
     val postEnrichFlow = {
@@ -200,7 +199,6 @@ case class StandingQueryResultWorkflow(
       } else Flow[StandingQueryResult]
 
     entryFlow
-      .via(rawTapFlow)
       .via(postEnrichFlow)
       .map { x => throughputMeter.mark(); x }
       .alsoToAll(instrumentedSinks: _*)
