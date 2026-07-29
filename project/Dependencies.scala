@@ -1,7 +1,7 @@
 import sbt._
 
 object Dependencies {
-  val amazonKinesisClientV = "3.5.0"
+  val amazonKinesisClientV = "3.5.1"
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.1"
   // On update, check whether nettyOverrideV override is removable
