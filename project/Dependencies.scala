@@ -45,7 +45,7 @@ object Dependencies {
   val laminarV = "17.2.1"
   val waypointV = "10.0.0-M7"
   // Keep in sync with the version kafka-clients (kafkaClientsV) depends on
-  val lz4JavaV = "1.10.4"
+  val lz4JavaV = "1.11.1"
   // On update, check whether net.jpountz.lz4:lz4 exclusion in quine-mapdb-persistor is removable
   val mapDbV = "3.1.0"
   val metricsInfluxdbV = "1.1.0"
