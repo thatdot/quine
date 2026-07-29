@@ -5,7 +5,7 @@ object Dependencies {
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.1"
   // On update, check whether nettyOverrideV override is removable
-  val awsSdkV = "2.47.5"
+  val awsSdkV = "2.49.5"
   // On update, check whether netty-nio-client override in quine-serialization is removable
   val amazonGlueV = "1.1.27"
   val betterMonadicForV = "0.3.1"
