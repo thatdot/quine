@@ -97,7 +97,7 @@ object Dependencies {
   val scalajsMacroTaskExecutorV = "1.1.1"
   val scoptV = "4.1.0"
   val shapelessV = "2.3.13"
-  val ayzaV = "10.0.5"
+  val ayzaV = "10.0.6"
   // On update, check whether com.datastax.oss exclusion in quine-cassandra-persistor is removable
   val sigv4AuthCassandraPluginV = "4.0.9"
   // On update, check whether any NPM Override Versions (below) are removable
