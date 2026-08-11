@@ -20,10 +20,15 @@ Global / concurrentRestrictions := Seq(
 // workspace root"). Giving it its own private package.json breaks the workspace chain.
 lazy val prepareJsdomInstall = taskKey[Unit]("Prepare isolated directory for jsdom installation")
 
+// Annotations recording per-definition decisions of a formal verification. Deliberately
+// zero-dependency so anything can depend on it.
+lazy val `quine-verify`: Project = project
+  .settings(commonSettings)
+
 // Core streaming graph interpreter
 lazy val `quine-core`: Project = project
   .settings(commonSettings)
-  .dependsOn(`quine-language`)
+  .dependsOn(`quine-language`, `quine-verify`)
   .settings(
     libraryDependencies ++= Seq(
       "org.graalvm.js" % "js" % graalV,

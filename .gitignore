@@ -21,8 +21,17 @@ local.conf
 project/metals.sbt
 .metals
 
+# scala-cli (quint/tools/* are scala-cli scripts)
+.scala-build/
+
+# quint / apalache model-checking scratch output
+_apalache-out/
+
 # vs code
 .vscode
+
+# claude code local (machine-specific; the shared skill in .claude/skills IS committed)
+.claude/settings.local.json
 
 # sbt
 project/project/

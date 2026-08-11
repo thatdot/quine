@@ -21,11 +21,17 @@ import org.msgpack.value.ValueType
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.common.logging.Pretty.PrettyHelper
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.verify.VerifyObservedOnly
 
 /** Values that are recognized by the Quine interpreter. When talking about Quine
   * as a graph interpreter, these are a part of the "values" handled by this
   * interpreter.
   */
+@VerifyObservedOnly(
+  "cluster_instruction",
+  "no property depends on structure inside a result value; C2 only needs a result token to " +
+  "correspond to a sent message",
+)
 sealed abstract class QuineValue {
 
   /** Underlying JVM type */
