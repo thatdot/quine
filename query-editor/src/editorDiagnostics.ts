@@ -1,4 +1,4 @@
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import * as monaco from "monaco-editor/editor/editor.api.js";
 
 /**
  * A single LSP diagnostic on the editor's model, in a serializable plain-object

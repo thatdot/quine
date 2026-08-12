@@ -79,13 +79,14 @@ editor so history is recorded consistently.
 
 ## What the consumer owns (deliberately not in this package)
 
-`monaco-editor` is a **peerDependency** (`^0.55`) and is never bundled —
+`monaco-editor` is a **peerDependency** (`^0.56`) and is never bundled —
 Monaco is singleton-by-design, and worker/CSS/font wiring is
 bundler-specific. The consuming app must:
 
-1. Install `monaco-editor` itself, pinned within `^0.55` (this package uses
-   deep `esm/vs/...` imports, which are internal paths that can move between
-   Monaco minors — keep the pin in lockstep).
+1. Install `monaco-editor` itself, pinned within `^0.56` (this package uses
+   deep imports of internal paths, which can move between Monaco minors —
+   0.56 both re-rooted the `exports` map and relocated the Cypher grammar, so
+   keep the pin in lockstep).
 2. Wire `MonacoEnvironment.getWorker` to Monaco's `editor.worker` per its
    bundler's recipe (see `playground/main.ts` for the Vite flavor; webpack
    uses a plain ESM worker entry — no monaco-editor-webpack-plugin).

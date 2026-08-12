@@ -1,4 +1,14 @@
-import { MonacoLspClient, WebSocketTransport } from "monaco-editor/esm/external/monaco-lsp-client/out/index.js";
+// Monaco's first-party LSP client. 0.56's `exports` map roots every subpath at `esm/vs/`, so the
+// vendored client — which sits outside that root — has no bare specifier of its own. Reaching it
+// through the package root's `lsp` namespace instead would drag in the full contribution set and
+// all ~80 language registers, so consumers alias `monaco-lsp-client` straight to the file (see
+// each browser module's common.webpack.config.js, and vite.config.ts for the playground).
+import { MonacoLspClient, WebSocketTransport } from "monaco-lsp-client";
+
+/** `MonacoLspClient` plus the `dispose()` that `webpack/patch-monaco-lsp-client-loader.cjs`
+ * injects into the vendored bundle. Upstream ships neither the method nor a type for it, and
+ * closing the WebSocket does not tear down the client's global Monaco registrations. */
+type PatchedLspClient = MonacoLspClient & { dispose(): void };
 
 /** Reconnect backoff (ms): 1 s, 2 s, 4 s, 8 s, 16 s, then 30 s for every attempt beyond. */
 const LSP_BACKOFF_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000] as const;
@@ -50,7 +60,7 @@ export function connectLspWithBackoff(url: string): LspConnection {
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let stableTimer: ReturnType<typeof setTimeout> | null = null;
   let currentWs: WebSocket | null = null;
-  let client: MonacoLspClient | null = null;
+  let client: PatchedLspClient | null = null;
   let attempt = 0;
   let connectedCallback: ((ws: WebSocket) => void) | undefined;
   let disconnectedCallback: (() => void) | undefined;
@@ -93,7 +103,7 @@ export function connectLspWithBackoff(url: string): LspConnection {
       disposeClient();
       // Constructing the client runs initialize → initialized and registers all LSP features
       // (semantic tokens, diagnostics, completions, …) against the global Monaco registry.
-      client = new MonacoLspClient(transport);
+      client = new MonacoLspClient(transport) as PatchedLspClient;
       // Let the caller attach custom-request watchers to the open socket.
       connectedCallback?.(ws);
       // Reset the backoff only once the connection proves stable (see STABLE_CONNECTION_MS).

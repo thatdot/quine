@@ -1,4 +1,4 @@
-import type * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import type * as monaco from "monaco-editor/editor/editor.api.js";
 
 import { connectLspWithBackoff, type LspConnection } from "./lsp.js";
 import { watchQueryKind, type QueryKind, type QueryKindWatcher } from "./queryKind.js";

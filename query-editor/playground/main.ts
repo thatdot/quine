@@ -5,7 +5,7 @@
  * bundler-specific worker/CSS/font setup. This is the Vite flavor.
  */
 import "./playground.css";
-import editorWorker from "monaco-editor/esm/vs/editor/editor.worker.js?worker";
+import editorWorker from "monaco-editor/editor/editor.worker.js?worker";
 
 import { createQueryEditor, type QueryEditorHandle } from "../src/index.js";
 

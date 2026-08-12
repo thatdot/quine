@@ -91,6 +91,20 @@ object QuineSettings {
   val startupMessage = settingKey[String]("If non-empty, print this message on startup")
     .withRank(KeyRanks.Invisible)
 
+  /** Settings for browser projects that bundle `@thatdot/query-editor` (the TypeScript project
+    * defined in `public/query-editor`).
+    */
+  val queryEditorSettings: Seq[Setting[?]] = Seq(
+    // This tells `sbt clean` to also delete the `public/query-editor/node_modules/` directory.
+    // Since `query-editor` is not a Scala project, this doesn't automatically happen.
+    cleanFiles += {
+      val queryEditorNodeModules =
+        (ThisBuild / baseDirectory).value / "public" / "query-editor" / "node_modules"
+      IO.delete(queryEditorNodeModules)
+      queryEditorNodeModules
+    },
+  )
+
   /* Settings for projects using vis-network (CSP-compliant peer build)
    *
    * The peer build avoids dynamic code evaluation (eval), allowing stricter

@@ -1,8 +1,8 @@
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
-// Deep import of the Monarch grammar only: its `.contribution.js` sibling
-// drags in `editor.all` (+270 KB gzip). Deep `esm/vs/` paths are unstable
-// across Monaco minors — the narrow ^0.55 peer range is the guard.
-import { conf, language } from "monaco-editor/esm/vs/basic-languages/cypher/cypher.js";
+import * as monaco from "monaco-editor/editor/editor.api.js";
+// Deep import of the Monarch grammar only: its `register.js` sibling
+// drags in the full contribution set (+270 KB gzip). Deep paths are unstable
+// across Monaco minors — the narrow ^0.56 peer range is the guard.
+import { conf, language } from "monaco-editor/languages/definitions/cypher/cypher.js";
 
 export const CYPHER_LANGUAGE_ID = "cypher";
 

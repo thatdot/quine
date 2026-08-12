@@ -1,4 +1,4 @@
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import * as monaco from "monaco-editor/editor/editor.api.js";
 
 /** Theme name registered by {@link defineQueryEditorTheme}. */
 export const QUERY_EDITOR_THEME = "thatdot-query-light";

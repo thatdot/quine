@@ -1,13 +1,16 @@
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import * as monaco from "monaco-editor/editor/editor.api.js";
 // Editor feature contributions (side-effect imports). Only what the query
 // bar needs — `editor.main` would pull in every language and feature.
-// Deep `esm/vs/` paths are unstable across Monaco minors; the narrow ^0.55
-// peer range is the guard.
-import "monaco-editor/esm/vs/editor/contrib/placeholderText/browser/placeholderText.contribution.js"; // `placeholder` option
-import "monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController.js"; // suggest widget (completions)
-import "monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution.js"; // marker hovers (diagnostics)
-import "monaco-editor/esm/vs/editor/contrib/semanticTokens/browser/documentSemanticTokens.js"; // semantic highlighting
-import "monaco-editor/esm/vs/editor/contrib/bracketMatching/browser/bracketMatching.js";
+// 0.56 ships `features/<name>/register.js` entries, but they are not
+// equivalents for two of these: `features/suggest` registers inline
+// completions rather than the suggest widget, and `features/semanticTokens`
+// the viewport provider rather than the document one. Deep paths are unstable
+// across Monaco minors; the narrow ^0.56 peer range is the guard.
+import "monaco-editor/editor/contrib/placeholderText/browser/placeholderText.contribution.js"; // `placeholder` option
+import "monaco-editor/editor/contrib/suggest/browser/suggestController.js"; // suggest widget (completions)
+import "monaco-editor/editor/contrib/hover/browser/hoverContribution.js"; // marker hovers (diagnostics)
+import "monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticTokens.js"; // semantic highlighting
+import "monaco-editor/editor/contrib/bracketMatching/browser/bracketMatching.js";
 
 import { CYPHER_LANGUAGE_ID, installCypherMonarchTokenizer, registerCypherLanguage } from "./cypher.js";
 import { setupDiagnosticsTracking, type EditorDiagnostic } from "./editorDiagnostics.js";

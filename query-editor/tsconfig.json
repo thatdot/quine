@@ -16,7 +16,14 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+
+    // `monaco-lsp-client` is not a package — it is the alias consumers' bundlers map to Monaco's
+    // vendored client, which 0.56's `exports` map puts out of reach of any bare specifier (see
+    // src/lsp.ts). Point tsc at the file's own shipped types so the alias typechecks here too.
+    "paths": {
+      "monaco-lsp-client": ["./node_modules/monaco-editor/esm/external/monaco-lsp-client/out/index"]
+    }
   },
   "include": ["src", "test", "playground"]
 }

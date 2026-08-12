@@ -365,7 +365,7 @@ lazy val `model-converters`: Project = project
 
 // Quine web application
 lazy val `quine-browser`: Project = project
-  .settings(commonSettings, visNetworkSettings)
+  .settings(commonSettings, visNetworkSettings, queryEditorSettings)
   .dependsOn(`quine-endpoints`.js, `visnetwork-facade`, `quine-endpoints2`.js, `openapi-schema`.js)
   .enablePlugins(ScalaJSBundlerPlugin)
   .settings(
@@ -381,7 +381,7 @@ lazy val `quine-browser`: Project = project
     ),
     Compile / npmDevDependencies ++= Seq(
       // When updating, check whether the minimatch yarn resolution below is still needed
-      "ts-loader" -> "8.0.0",
+      "ts-loader" -> "9.6.2",
       "typescript" -> "4.9.5",
       "@types/node" -> "16.7.13",
       // Webpack 5 loaders and polyfills (required by common.webpack.config.js)

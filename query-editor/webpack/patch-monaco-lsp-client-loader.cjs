@@ -1,4 +1,4 @@
-// Patches monaco-editor 0.55.x's vendored monaco-lsp-client
+// Patches monaco-editor 0.56.x's vendored monaco-lsp-client
 // (esm/external/monaco-lsp-client/out/index.js), the native LSP client this editor uses. The
 // webpack rule scopes this loader to that one file. Two patches, each asserting its anchor so a
 // monaco-editor bump that moves the code fails the build loudly instead of silently reverting:

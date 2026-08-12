@@ -123,9 +123,9 @@ object Dependencies {
   // alias in common.webpack.config.js), so it is not an npm dependency.
   // monaco-editor is that package's peer dependency and must be pinned EXACTLY, in lockstep
   // with the version the package targets: Monaco breaks APIs in 0.x minors and the package
-  // deep-imports unstable `esm/vs/` paths. yarn 1 does not auto-install peer dependencies, so
+  // deep-imports unstable internal paths. yarn 1 does not auto-install peer dependencies, so
   // the pin lives here in each consuming browser module.
-  val monacoEditorV = "0.55.1"
+  val monacoEditorV = "0.56.0"
 
   // zod is a runtime dependency of the in-tree query editor package (its JSON-RPC / LSP payload
   // parsing). Pinned in lockstep with public/query-editor/package.json, like monaco-editor above.

@@ -8,12 +8,12 @@ module.exports = {
     // entry (the plain-ESM path recommended by Monaco — no monaco-editor-webpack-plugin) and
     // loaded at runtime via `MonacoEnvironment.getWorker` (see QueryEditor.scala).
     entry: {
-        'editor.worker': 'monaco-editor/esm/vs/editor/editor.worker.js'
+        'editor.worker': 'monaco-editor/editor/editor.worker.js'
     },
     module: {
         rules: [
             {
-                // Patches monaco-editor 0.55.x's vendored monaco-lsp-client: strips a stray
+                // Patches monaco-editor 0.56.x's vendored monaco-lsp-client: strips a stray
                 // `debugger;` and injects a dispose() for reconnect teardown (see the loader header).
                 test: /monaco-lsp-client[\\/]out[\\/]index\.js$/,
                 loader: path.resolve(__dirname, "../../../../../query-editor/webpack/patch-monaco-lsp-client-loader.cjs")
@@ -70,6 +70,13 @@ module.exports = {
         alias: {
             "NodeModules": path.resolve(__dirname, "../../scalajs-bundler/main/node_modules"),
             "resources": path.resolve(__dirname, "../../../../src/main/resources"),
+            // Monaco's vendored LSP client (imported by public/query-editor/src/lsp.ts). Monaco
+            // 0.56's `exports` map roots every subpath at `esm/vs/`, so this file — which sits
+            // outside that root — is unreachable by any bare specifier; the package root's `lsp`
+            // namespace re-exports it, but only alongside the full contribution set and ~80
+            // language registers. Aliasing to the file bypasses the exports map and keeps those
+            // out of the bundle. Exact-match (`$`) so it can't shadow other specifiers.
+            "monaco-lsp-client$": path.resolve(__dirname, "../../scalajs-bundler/main/node_modules/monaco-editor/esm/external/monaco-lsp-client/out/index.js"),
             // The query editor package: TypeScript source vendored in-tree at
             // public/query-editor. Webpack compiles it through the ts-loader rule above —
             // there is no separate build step and no node_modules copy. From this bundler
