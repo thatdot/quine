@@ -216,7 +216,7 @@ object GraphFeedChips {
       // Full name leads the tooltip: the pill ellipsizes long names, so hover is where
       // the whole thing is readable.
       title <-- tSig.map { t =>
-        val source = t.outputName.fold(s"${t.standingQueryName} · SQ matches") { o =>
+        val source = t.outputName.fold(s"${t.standingQueryName} · Standing Query Results") { o =>
           s"${t.standingQueryName}/$o · ${if (t.preEnrichment) "transformed" else "enriched"}"
         }
         t.description.fold(s"${t.name}\n$source")(desc => s"${t.name}\n$source\n$desc")

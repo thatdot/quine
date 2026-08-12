@@ -68,7 +68,7 @@ object TapCardQuery {
     case _: TapPoint.PostEnrichment => "Enrichment query"
   }
 
-  /** Shape note for a Raw (SQ Matches) card: the table unwraps each result's `data` into
+  /** Shape note for a Raw (Standing Query Results) card: the table unwraps each result's `data` into
     * columns, so the JSON view is where the full wire shape lives.
     */
   val rawEnvelopeNote: String =
@@ -123,7 +123,7 @@ object TapCardQuery {
   def hoverDesc(tapPoint: TapPoint, queryText: Option[String]): String = {
     val base = tapPoint match {
       case TapPoint.Raw =>
-        "SQ Matches: every match the standing query produces, before any output runs. " +
+        "Standing Query Results: every match the standing query produces, before any output runs. " +
           "Each result is the raw {\"meta\", \"data\"} match envelope."
       case _: TapPoint.PreEnrichment =>
         "Transformed: results after this output's transformation, before its enrichment query. " +

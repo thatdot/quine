@@ -338,7 +338,7 @@ object StandingQueryTable {
       sqInfoSignal.map(clusterRatePerSecond(_).getOrElse(0.0)) --> latestRateVar.writer,
       div(
         cls := "d-flex justify-content-between align-items-center mb-2",
-        strong("SQ Inspections"),
+        strong("Standing Query Inspections"),
       ),
       // Picker row: tap-point dropdown + Start button.
       div(
@@ -365,7 +365,7 @@ object StandingQueryTable {
         button(
           cls := "btn btn-sm btn-primary",
           i(cls := "cil-media-play me-1"),
-          "Start SQ inspection",
+          "Start inspection",
           onClick --> { _ =>
             val tapPoint = selectedTapPointVar.now()
             val rate = latestRateVar.now()
@@ -374,9 +374,9 @@ object StandingQueryTable {
                 window.confirm(
                   f"""Standing query "$sqName" is currently matching at $rate%.1f/s (1-minute rate).
                      |
-                     |Opening an SQ inspection on a high-rate standing query streams every match to your browser and can noticeably slow down quine.
+                     |Opening an inspection on a high-rate standing query streams every match to your browser and can noticeably slow down quine.
                      |
-                     |Open the SQ inspection anyway?""".stripMargin,
+                     |Open the inspection anyway?""".stripMargin,
                 )
               else true
             if (proceed)
@@ -433,7 +433,7 @@ object StandingQueryTable {
         ),
         button(
           cls := "btn btn-sm btn-outline-danger py-0 px-2 flex-shrink-0",
-          title := "Stop SQ inspection",
+          title := "Stop inspection",
           "✕",
           onClick --> { _ => onClose(handler.key) },
         ),

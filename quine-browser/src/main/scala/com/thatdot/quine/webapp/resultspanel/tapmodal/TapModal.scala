@@ -61,15 +61,13 @@ object TapModal {
       // into the host's open observer even while the modal is closed.
       documentEvents(_.onKeyDown)
         .filter(_.key == "Escape")
-        .withCurrentValueOf(openSignal) --> { case (_, open) =>
-        if (open) close()
-      },
+        .withCurrentValueOf(openSignal) --> { case (_, open) => if (open) close() },
       div(
         cls := TapModalStyles.dialog,
         onClick.stopPropagation --> (_ => ()), // dialog clicks must not bubble to the overlay's outside-click handler
         div(
           cls := TapModalStyles.header,
-          span(cls := TapModalStyles.title, "Standing Query Inspection"),
+          span(cls := TapModalStyles.title, "Standing Query Results Inspection"),
           button(
             tpe := "button",
             cls := TapModalStyles.closeButton,

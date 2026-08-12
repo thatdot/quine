@@ -36,9 +36,6 @@ object QueryMenuButton {
     * @param onMultiline "Multi-line editing" one-shot action (the Shift+Enter path).
     * @param onBookmark "Bookmark this query" one-shot action.
     * @param onOpenTapModal "Standing query results…" one-shot action.
-    * @param menuDisabled disables the arrow segment entirely (e.g. before the tap modal exists,
-    *                     a host may instead choose to keep the menu enabled and pass a no-op to
-    *                     `onOpenTapModal` — either is supported).
     */
   def apply(
     label: String,
@@ -49,7 +46,6 @@ object QueryMenuButton {
     onMultiline: () => Unit,
     onBookmark: () => Unit,
     onOpenTapModal: () => Unit,
-    menuDisabled: Signal[Boolean] = Signal.fromValue(false),
   ): HtmlElement = {
     val menuOpenVar: Var[Boolean] = Var(false)
     var rootEl: Option[dom.html.Element] = None
@@ -102,7 +98,6 @@ object QueryMenuButton {
         title := "More query actions",
         aria.hasPopup := true,
         aria.expanded <-- menuOpenVar.signal,
-        disabled <-- menuDisabled,
         onClick --> (_ => toggleMenu()),
         i(cls := s"cil-chevron-bottom ${QueryMenuStyles.splitButtonArrowIcon}"),
       ),
@@ -155,7 +150,7 @@ object QueryMenuButton {
       cls := QueryMenuStyles.menuItem,
       onClick --> (_ => onClick0()),
       span(cls := QueryMenuStyles.menuItemIcon, i(cls := "ion-radio-waves")),
-      span(cls := QueryMenuStyles.menuItemLabel, "Standing Query Inspection"),
+      span(cls := QueryMenuStyles.menuItemLabel, "Standing Query Results Inspection"),
     )
 }
 

@@ -307,8 +307,8 @@ object ExplorerSettingsModal {
     * list/create/edit/delete surface plus the per-row "Show in graph menu" preference
     * (whether the feed gets a pill in the canvas's bottom-left menu, where its
     * live drawing is toggled — see [[GraphFeedChips]]). The
-    * editor picks its source on the Standing Query Inspection pipeline diagram instead
-    * of dropdowns. `canMutate` gates every
+    * editor picks its source on the Standing Query Results Inspection pipeline diagram
+    * instead of dropdowns. `canMutate` gates every
     * whole-list save behind the feed having loaded (see `tapQueriesLoaded`); `editVar`
     * keys edits by the definition's name at edit-entry time — the list keeps refetching
     * underneath an open edit, so a captured index could point at the wrong entry by
@@ -502,7 +502,7 @@ object ExplorerSettingsModal {
     // Provenance in the inspection modal's own words — the same point names the pipeline
     // diagram uses, so a row reads as "where it draws from".
     val sourceLabel: String =
-      t.outputName.fold(s"${t.standingQueryName} · SQ matches") { o =>
+      t.outputName.fold(s"${t.standingQueryName} · Standing Query Results") { o =>
         s"${t.standingQueryName}/$o · ${if (t.preEnrichment) "transformed" else "enriched"}"
       }
 

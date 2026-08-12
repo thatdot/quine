@@ -27,8 +27,8 @@ object TapQueryEditorMode {
 
 /** The graph-feed editor (the UI name for a `V2TapQuery`): instead of naming a standing
   * query and a tap point in dropdowns, the source is picked on the same pipeline diagram the
-  * Standing Query Inspection modal uses ([[SqPipelineTree]] in `Variant.PickPoint`) — click the
-  * point to draw from, then write the Cypher that runs for every result arriving there.
+  * Standing Query Results Inspection modal uses ([[SqPipelineTree]] in `Variant.PickPoint`) —
+  * click the point to draw from, then write the Cypher that runs for every result arriving there.
   */
 object TapQueryEditor {
 
@@ -95,6 +95,39 @@ object TapQueryEditor {
     case TapPoint.PostEnrichment(out) => (Some(out), false)
     case TapPoint.PreEnrichment(out) => (Some(out), true)
   }
+
+  /** A help sentence under "Run for every result" for the raw tap point. */
+  private def rawParamsHelp: HtmlElement =
+    span("For the ", b("Standing Query Results"), " tap point, use ", b("$data"), " and ", b("$meta"), ". ")
+
+  /** A help sentence under "Run for every result" for the Transformed tap point. */
+  private def transformedParamsHelp: HtmlElement =
+    span(
+      "For the ",
+      b("Transformed"),
+      " tap point, the data is unwrapped out of its ",
+      b("$data"),
+      " envelope. Each field of ",
+      b("$data"),
+      " becomes a parameter of the same name, and the data in ",
+      b("$meta"),
+      " becomes inaccessible. ",
+    )
+
+  /** A help sentence under "Run for every result" for the Enriched point. */
+  private def enrichedParamsHelp: HtmlElement =
+    span(
+      "For the ",
+      b("Enriched"),
+      " tap point, each column of the result has a corresponding ",
+      "parameter of the same name (e.g., ",
+      b("$id"),
+      ", ",
+      b("$date"),
+      ", ",
+      b("$location"),
+      ").",
+    )
 
   def apply(
     mode: TapQueryEditorMode,
@@ -343,7 +376,7 @@ object TapQueryEditor {
           ),
         ),
       ),
-      // Where to draw from: the same pipeline diagram the Standing Query Inspection modal
+      // Where to draw from: the same pipeline diagram the Standing Query Results Inspection modal
       // uses, in single-selection mode.
       div(
         cls := Styles.editorField,
@@ -396,24 +429,19 @@ object TapQueryEditor {
         span(
           fontSize := "0.78em",
           color := "#8a93b5",
-          "This Cypher query must ",
+          "This Cypher query transforms every standing query result into nodes that get drawn ",
+          "onto the graph in real time. ",
+          "The query must ",
           b("return nodes"),
-          " which are drawn onto the graph. Returning scalars, relationships, or other values instead " +
-          "produces errors. Each result is passed in as " +
-          "parameters, and where the fields live depends on the point you picked. For matches taken " +
-          "directly on the standing query, and for outputs with neither transformation nor enrichment, " +
-          "the returned columns are the fields of ",
-          b("$data"),
-          " (e.g. ",
-          b("$data.id"),
-          "), alongside ",
-          b("$meta"),
-          " match metadata. For enriched outputs, the enrichment query's returned columns are top-level " +
-          "parameters instead (e.g. ",
-          b("$id"),
-          "). For a transformed point, the transformation's returned object fields are top-level " +
-          "parameters the same way; a transformation returning something other than an object " +
-          "provides no parameters.",
+          "; returning scalars, relationships, or other values is incorrect. ",
+          "A standing query result is accessed via Cypher parameters, and the tap point selected ",
+          "above determines which parameters are available. ",
+          children <-- selectionVar.signal.map {
+            case Some(TapTarget(_, TapPoint.Raw)) => List(rawParamsHelp)
+            case Some(TapTarget(_, TapPoint.PreEnrichment(_))) => List(transformedParamsHelp)
+            case Some(TapTarget(_, TapPoint.PostEnrichment(_))) => List(enrichedParamsHelp)
+            case None => List(rawParamsHelp, transformedParamsHelp, enrichedParamsHelp)
+          },
         ),
         child <-- exampleQuerySignal.map { example =>
           EmbeddedQueryEditor(

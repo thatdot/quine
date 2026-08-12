@@ -36,7 +36,6 @@ object MonacoQueryInput {
     sampleQueries: Signal[Seq[SampleQuery]],
     submitButton: UiQueryType => Unit,
     cancelButton: () => Unit,
-    canRead: Boolean,
     useV2Api: Boolean,
     qpEnabled: Boolean,
     serverUrl: Option[String],
@@ -125,9 +124,7 @@ object MonacoQueryInput {
     // routes back through submitFromEditor). forceTable = the Shift modifier was held.
     def runByVerdict(forceTable: Boolean): Unit = {
       val kind = queryKind.now()
-      if (
-        !isRunning && !RunAvailability.isBlocked(RunAvailability.evaluate(canRead, hasErrorDiagnostics.now(), kind))
-      ) {
+      if (!isRunning && !RunAvailability.isBlocked(RunAvailability.evaluate(hasErrorDiagnostics.now(), kind))) {
         editorHandle.foreach { h =>
           val runOnGraph = if (qpEnabled) QueryKind.runsOnGraph(kind) && !forceTable else !forceTable
           if (runOnGraph) h.runGraph()
@@ -163,9 +160,7 @@ object MonacoQueryInput {
       val verdictRouted = verdictRoutedTableRun
       verdictRoutedTableRun = false
       val kind = queryKind.now()
-      if (
-        !isRunning && !RunAvailability.isBlocked(RunAvailability.evaluate(canRead, hasErrorDiagnostics.now(), kind))
-      ) {
+      if (!isRunning && !RunAvailability.isBlocked(RunAvailability.evaluate(hasErrorDiagnostics.now(), kind))) {
         updateQuery(queryText)
         val uiQueryType =
           if (qpEnabled)
@@ -193,7 +188,7 @@ object MonacoQueryInput {
     val runBlocked: Signal[Boolean] = hasErrorDiagnostics.signal
       .combineWith(queryKind.signal)
       .map { case (hasErrors, kind) =>
-        RunAvailability.isBlocked(RunAvailability.evaluate(canRead, hasErrors, kind))
+        RunAvailability.isBlocked(RunAvailability.evaluate(hasErrors, kind))
       }
 
     // Builds the split "Query" button (main run region + secondary-actions menu). Instantiated
@@ -288,7 +283,7 @@ object MonacoQueryInput {
           new QueryEditorOptions {
             onRunGraph = submitFromEditor(asTable = false): js.Function1[String, Unit]
             onRunTable = submitFromEditor(asTable = true): js.Function1[String, Unit]
-            placeholder = if (canRead) "Query returning nodes" else "Not Authorized to READ from graph"
+            placeholder = "Query returning nodes"
             initialValue = latestQuery
             onChange = ((value: String) => if (value != latestQuery) updateQuery(value)): js.Function1[String, Unit]
             onDiagnosticsChange = ((errors: Boolean) => hasErrorDiagnostics.set(errors)): js.Function1[Boolean, Unit]
@@ -392,7 +387,6 @@ object MonacoQueryInput {
             cls := s"${Styles.grayClickable} ${Styles.queryInputButton}",
             onClick --> (_ => cancelButton()),
             title := "Cancel query",
-            disabled := !canRead,
             "Cancel",
           )
         else splitQueryButton()

@@ -35,8 +35,8 @@ object SqPipelineTree {
 
   /** How the tree is being used; the structure is shared, the copy and the offered points are
     * not.
-    *   - [[Variant.Inspect]] — the Standing Query Inspection modal: every distinct point (Raw,
-    *     Transformed, Enriched) is offered, a marked point means "already inspected" and
+    *   - [[Variant.Inspect]] — the Standing Query Results Inspection modal: every distinct point
+    *     (Raw, Transformed, Enriched) is offered, a marked point means "already inspected" and
     *     clicking it focuses the existing card.
     *   - [[Variant.PickPoint]] — the graph-feed editor's point picker: every distinct point
     *     (Raw, Transformed, Enriched) is offered, and the marked point is the editor's
@@ -219,7 +219,7 @@ object SqPipelineTree {
       tapNode(
         sq.sqName,
         TapPoint.Raw,
-        "SQ Matches",
+        "Standing Query Results",
         rawCaption,
         sq.patternQuery,
         tapped,
@@ -371,9 +371,9 @@ object SqPipelineTree {
       else
         Some(variant match {
           case Variant.Inspect =>
-            if (inBranch) "delivers Matches as-is, watch it above" else "delivers Matches as-is"
+            if (inBranch) "delivers results as-is, watch it above" else "delivers results as-is"
           case Variant.PickPoint =>
-            if (inBranch) "delivers Matches as-is, select SQ Matches above" else "delivers Matches as-is"
+            if (inBranch) "delivers results as-is, select Standing Query Results above" else "delivers results as-is"
         })
     endNote match {
       case Some(note) => transformed :+ span(cls := TapModalStyles.diagramEnds, note)

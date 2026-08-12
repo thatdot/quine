@@ -34,9 +34,11 @@ final case class TapTarget(sqName: String, tapPoint: TapPoint) {
     case TapPoint.PostEnrichment(out) => s"$sqName:post:$out"
   }
 
-  /** Human-readable provenance label, e.g. `fraud · matches` or `fraud/slack · enriched`. */
+  /** Human-readable provenance label, e.g. `fraud · Standing Query Results` or
+    * `fraud/slack · enriched`.
+    */
   val label: String = tapPoint match {
-    case TapPoint.Raw => s"$sqName · SQ matches"
+    case TapPoint.Raw => s"$sqName · Standing Query Results"
     case TapPoint.PreEnrichment(out) => s"$sqName/$out · transformed"
     case TapPoint.PostEnrichment(out) => s"$sqName/$out · enriched"
   }

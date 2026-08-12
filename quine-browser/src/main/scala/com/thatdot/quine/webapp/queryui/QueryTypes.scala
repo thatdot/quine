@@ -115,11 +115,8 @@ object EdgeKind {
 sealed abstract class RunAvailability
 object RunAvailability {
 
-  /** Authorized, classified, and free of errors — the run buttons are enabled. */
+  /** Classified and free of errors — the run buttons are enabled. */
   case object Runnable extends RunAvailability
-
-  /** The user lacks READ permission on the graph. */
-  case object NotAuthorized extends RunAvailability
 
   /** The buffer has at least one error-severity diagnostic. */
   case object HasErrors extends RunAvailability
@@ -128,11 +125,12 @@ object RunAvailability {
   case object Unclassified extends RunAvailability
 
   /** Evaluates run availability, reporting the first blocking reason in precedence order:
-    * authorization, then errors, then classification.
+    * errors, then classification. Authorization is not a reason here: the whole Exploration
+    * UI is hidden from users lacking graph-read permission, so every user who reaches this
+    * query bar may read the graph.
     */
-  def evaluate(canRead: Boolean, hasErrors: Boolean, kind: QueryKind): RunAvailability =
-    if (!canRead) NotAuthorized
-    else if (hasErrors) HasErrors
+  def evaluate(hasErrors: Boolean, kind: QueryKind): RunAvailability =
+    if (hasErrors) HasErrors
     else if (!QueryKind.isRunnable(kind)) Unclassified
     else Runnable
 

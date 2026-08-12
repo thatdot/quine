@@ -1508,7 +1508,7 @@ object ApiIngest {
   }
 
   case class RecordRetrySettings(
-    @default(200)
+    @default(2000)
     @description("Minimum duration to backoff between issuing retries, in milliseconds.")
     minBackoff: Int = 2000,
     @description("Maximum duration to backoff between issuing retries, in seconds.")

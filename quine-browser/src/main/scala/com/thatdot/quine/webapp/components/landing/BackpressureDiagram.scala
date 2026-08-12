@@ -1629,9 +1629,10 @@ object BackpressureDiagram {
     val clusterH = 82.0
     val loopGap = math.max(104, bandHalf * 0.6)
     val clusterGap = math.max(86, bandHalf * 0.4)
+    val bandTopPad = if (sqs.sizeIs > 1) 58.0 else 40.0
     val aboveExtent =
-      if (hasClusterCard) math.max(bandHalf + 40, gHalf + clusterGap + clusterH / 2.0 + 6)
-      else math.max(bandHalf + 40, gHalf + 30)
+      if (hasClusterCard) math.max(bandHalf + bandTopPad, gHalf + clusterGap + clusterH / 2.0 + 6)
+      else math.max(bandHalf + bandTopPad, gHalf + 30)
     val belowExtent = math.max(bandHalf + 100, gHalf + loopGap + persCardH / 2.0 + 58)
     val cx = 660.0
     val cy = aboveExtent
@@ -2007,8 +2008,8 @@ object BackpressureDiagram {
           else ""
         val note = tipNote(
           if (open)
-            "All ingests can flow. The valve closes when any SQ result queue reaches its backpressure threshold."
-          else "Paused by SQ-output backpressure. All ingests are held until queues drain below threshold.",
+            "All ingests can flow. The valve closes when any result queue reaches its backpressure threshold."
+          else "Paused by result-queue backpressure. All ingests are held until queues drain below threshold.",
         )
         base + sqSection + note
       }
@@ -2478,7 +2479,7 @@ object BackpressureDiagram {
             else
               s"""<tr><td colspan="2" style="padding:7px 0 1px 0;font-size:10px;letter-spacing:0.08em;""" +
               s"""text-transform:uppercase;color:#8b93b0;">${LandingTooltip.escape(t)}</td></tr>"""
-          tipHeader(s"SQ result queue: ${sq.name}") +
+          tipHeader(s"Result queue: ${sq.name}") +
           tipKv(
             queueRow("State", sq.queue) +
             graphRow(sq.namespace) +

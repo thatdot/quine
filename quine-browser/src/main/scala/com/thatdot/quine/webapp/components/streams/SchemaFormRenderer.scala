@@ -250,6 +250,10 @@ object SchemaFormRenderer {
   ): HtmlElement = {
     val expanded = Var(isRequired)
     val fieldLabel = node.title.getOrElse[String](SchemaFormState.humanizeFieldName(path.lastOption.getOrElse("")))
+    // Monaco renders its placeholder as one nowrap, ellipsized line sized to the editor width,
+    // so a whole schema description arrives truncated mid-sentence. Only the lede goes in the
+    // editor; the remainder becomes wrapping help text under it.
+    val (descLede, descRest) = node.description.map(splitDescription).getOrElse(("", None))
 
     div(
       // Header — always visible, click to toggle
@@ -282,10 +286,16 @@ object SchemaFormRenderer {
             EmbeddedQueryEditor(
               currentValue,
               v => stateVar.update(SchemaFormState.setAt(_, path, Json.fromString(v))),
-              node.description.getOrElse(""),
+              descLede,
               editorConfig,
             )
           else emptyNode
+        },
+        child <-- expanded.signal.map { isExpanded =>
+          descRest match {
+            case Some(rest) if isExpanded => div(cls := "form-text small mt-1", rest)
+            case _ => emptyNode
+          }
         },
       ),
     )

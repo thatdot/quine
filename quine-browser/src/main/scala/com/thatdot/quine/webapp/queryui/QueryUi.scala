@@ -2999,7 +2999,6 @@ object QueryUi {
               closeOn = stateVar.signal.map(_.namespace).distinct.updates.mapTo(()),
             ),
           ),
-          permissions = props.permissions,
           bookmarkDialog = SampleQueryBookmark.editDialog(
             bookmarkDraftVar,
             onSave = (existingIdx, sq) => {

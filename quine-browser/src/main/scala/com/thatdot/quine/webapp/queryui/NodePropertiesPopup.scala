@@ -960,9 +960,12 @@ object NodePropertiesPopup {
           dismissOverlays.emit(())
         }
         lazy val onUp: js.Function1[dom.MouseEvent, Unit] = { (_: dom.MouseEvent) =>
+          dom.document.body.classList.remove(Styles.panelDragging)
           dom.document.removeEventListener("mousemove", onMove)
           dom.document.removeEventListener("mouseup", onUp)
         }
+        // closes the header's open hand into a grabbing one, document-wide, for the drag
+        dom.document.body.classList.add(Styles.panelDragging)
         dom.document.addEventListener("mousemove", onMove)
         dom.document.addEventListener("mouseup", onUp)
       }

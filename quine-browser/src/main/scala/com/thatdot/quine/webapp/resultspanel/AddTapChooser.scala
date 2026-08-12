@@ -121,7 +121,7 @@ object AddTapChooser {
         span(cls := Styles.sqBlockCount, outputsMeta(sq)),
         div(cls := Styles.tapsHeadingSpacer),
         span(cls := Styles.sqAllMatches, "all matches"),
-        tapControl(sq.sqName, TapPoint.Raw, "SQ Matches", sq.patternQuery, watch, sd),
+        tapControl(sq.sqName, TapPoint.Raw, "Standing Query Results", sq.patternQuery, watch, sd),
       ),
       div(sq.outputs.map(out => outputRow(sq.sqName, out, watch, sd))),
     )
@@ -168,7 +168,7 @@ object AddTapChooser {
       span(cls := Styles.prePostConnector, "›"),
     )
 
-  /** A tap point's control: a solid "SQ Matches/Enriched" button, or an outlined "✓" pill when
+  /** A tap point's control: a solid "Standing Query Results/Enriched" button, or an outlined "✓" pill when
     * that location is already tapped (picking it again just re-focuses the existing tap).
     */
   private def tapControl(

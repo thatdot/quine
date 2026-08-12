@@ -3811,6 +3811,16 @@ body.results-col-resizing {
   user-select: none !important;
 }
 
+/* While a draggable panel (the node-properties popup, the graph context menu) is being dragged
+   by its header, close the grabbing hand everywhere: the pointer routinely drifts off the header
+   onto the canvas or the panel's own controls, each of which sets its own cursor, so the
+   descendant `*` rule is what actually wins over those. */
+body.panel-dragging,
+body.panel-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 /* Progressive disclosure: drop the row count as the bar narrows (View / Filter / Export are all
    icon-sized and stay visible at any width). */
 @container (max-width: 460px) {
@@ -4939,13 +4949,33 @@ body.results-col-resizing {
      caption (padding-top) must exceed that. */
   gap: 40px;
   margin: 6px 0 0 13px;
+  padding-left: 2px;
   padding-top: 36px;
-  border-left: 2px solid rgba(10, 41, 91, 0.3);
 }
 
+/* Each row carries its own piece of the trunk — the gap above it, plus its own height —
+   rather than one border down the container. */
 .tap-diagram-branch-row {
+  position: relative;
   display: flex;
   align-items: flex-start;
+}
+.tap-diagram-branch-row::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: -40px; /* up through the gap, meeting the segment of the row above */
+  bottom: 0;
+  width: 2px;
+  background: rgba(10, 41, 91, 0.3);
+}
+/* The first row reaches up through the container's padding to the Raw glyph. */
+.tap-diagram-branch-row:first-child::before {
+  top: -36px;
+}
+/* The last one stops flush with the bottom edge of its stub (y=15) for a square elbow. */
+.tap-diagram-branch-row:last-child::before {
+  bottom: calc(100% - 15px);
 }
 
 .tap-diagram-branch-stub {
@@ -5116,7 +5146,7 @@ body.results-col-resizing {
 }
 
 /* One-line echo of the picked point under the picker, in the provenance wording the
-   inspection cards use ("sq · SQ matches", "sq/out · enriched"). */
+   inspection cards use ("sq · Standing Query Results", "sq/out · enriched"). */
 .graph-feed-picker-status {
   margin-top: 6px;
   font-size: 12px;

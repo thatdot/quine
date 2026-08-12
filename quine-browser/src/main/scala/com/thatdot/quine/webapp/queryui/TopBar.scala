@@ -20,16 +20,10 @@ object TopBar {
     qpEnabled: Boolean,
     serverUrl: Option[String],
     trailing: Option[HtmlElement] = None,
-    permissions: Option[Set[String]] = None,
     bookmarkDialog: HtmlElement,
     onBookmark: () => Unit,
     onOpenTapModal: () => Unit,
-  ): HtmlElement = {
-    val canRead = permissions match {
-      case Some(perms) => Set("GraphRead").subsetOf(perms)
-      case None => true
-    }
-
+  ): HtmlElement =
     div(
       cls := Styles.navBar,
       MonacoQueryInput(
@@ -40,7 +34,6 @@ object TopBar {
         sampleQueries = sampleQueries,
         submitButton = submitButton,
         cancelButton = cancelButton,
-        canRead = canRead,
         useV2Api = useV2Api,
         qpEnabled = qpEnabled,
         serverUrl = serverUrl,
@@ -64,6 +57,5 @@ object TopBar {
         }
         .getOrElse(emptyNode),
     )
-  }
 
 }

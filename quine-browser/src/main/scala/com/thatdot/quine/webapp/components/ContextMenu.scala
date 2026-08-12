@@ -85,8 +85,8 @@ object ContextMenu {
               val el = e.currentTarget.asInstanceOf[dom.HTMLElement].parentElement
               val startX = e.clientX
               val startY = e.clientY
-              val startLeft = el.offsetLeft.toDouble
-              val startTop = el.offsetTop.toDouble
+              val startLeft = el.offsetLeft
+              val startTop = el.offsetTop
 
               val onMove: js.Function1[dom.MouseEvent, Unit] = { (me: dom.MouseEvent) =>
                 val pad = 8.0
@@ -113,9 +113,12 @@ object ContextMenu {
                 el.style.top = s"${clampedTop - parentTop}px"
               }
               lazy val onUp: js.Function1[dom.MouseEvent, Unit] = { (_: dom.MouseEvent) =>
+                dom.document.body.classList.remove(Styles.panelDragging)
                 dom.document.removeEventListener("mousemove", onMove)
                 dom.document.removeEventListener("mouseup", onUp)
               }
+              // closes the header's open hand into a grabbing one, document-wide, for the drag
+              dom.document.body.classList.add(Styles.panelDragging)
               dom.document.addEventListener("mousemove", onMove)
               dom.document.addEventListener("mouseup", onUp)
             },

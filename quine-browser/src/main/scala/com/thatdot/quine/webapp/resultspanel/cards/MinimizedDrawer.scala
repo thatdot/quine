@@ -126,7 +126,7 @@ object MinimizedDrawer {
   }
 
   /** The leading kind glyph for a row: a query card reads as a run (terminal glyph); a tap
-    * card reads as which pipeline stage it's watching — SQ matches (broadcast), a
+    * card reads as which pipeline stage it's watching — Standing Query Results (broadcast), a
     * transformation step (ƒ), or the post-enrichment stage (the enrichment's graph glyph) —
     * echoing the same glyph language as the tap-point selector (see
     * [[com.thatdot.quine.webapp.resultspanel.tapmodal.SqPipelineTree]]).

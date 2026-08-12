@@ -227,6 +227,8 @@ object Styles {
   val historyRowMeta = "history-row-meta"
   val historyRowPin = "history-row-pin"
   val colResizing = "results-col-resizing" // body class while dragging a column-resize handle
+  // body class while dragging a panel (node-properties popup, context menu) by its header
+  val panelDragging = "panel-dragging"
   val sourceDotLive = "is-live"
   // Live table treatments
   val streamRow = "results-stream-row"
