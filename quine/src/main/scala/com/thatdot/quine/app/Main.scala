@@ -34,6 +34,7 @@ import com.thatdot.quine.app.migrations.instances.{DefaultNamespaceRename, Multi
 import com.thatdot.quine.app.migrations.{Migration, QuineMigrations}
 import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
 import com.thatdot.quine.app.routes.{HealthAppRoutes, QuineAppRoutes}
+import com.thatdot.quine.app.v2api.OssApiMethods
 import com.thatdot.quine.graph._
 import com.thatdot.quine.migrations.{MigrationError, MigrationVersion}
 import com.thatdot.quine.util.Log.implicits._
@@ -311,6 +312,10 @@ object Main extends App with LazySafeLogging {
       interpreter.run(quineApp.thisMemberIdx)
       interpreter
     case Recipe.V2(r) =>
+      // Route recipe registration through the same validation path the V2 API uses, rather than
+      // calling the graph's add* methods directly. OssApiMethods is a stateless façade over the
+      // graph/app, so building one here (before the web server binds) is cheap and side-effect-free.
+      val registrar = new ApiRecipeRegistrar(new OssApiMethods(graph, quineApp, config, timeout))(ec)
       val interpreter = RecipeInterpreterV2(
         statusLines,
         r,
@@ -318,6 +323,7 @@ object Main extends App with LazySafeLogging {
         graph,
         bindAndResolvableAddresses.map(_._2),
         quineApp.protobufSchemaCache,
+        registrar,
       )(graph.idProvider)
       interpreter.run()
       interpreter

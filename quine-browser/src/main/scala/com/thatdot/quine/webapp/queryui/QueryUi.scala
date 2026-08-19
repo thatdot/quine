@@ -2705,19 +2705,19 @@ object QueryUi {
     val wiretapLifecycle: HtmlElement =
       div(
         display := "none",
-        // Tap query dispatch host — joins the service's enabled tap queries (the V2TapQuery
+        // Tap query dispatch host — joins the service's enabled tap queries (the V2GraphFeed
         // context registered by whichever UI enabled one locally, keyed by tap-query name)
-        // with its live handlers under TapQueryOwner; only names present in both get a
+        // with its live handlers under GraphFeedOwner; only names present in both get a
         // dispatch span. `splitSeq` keys those by tap-query name so each span is created
         // once when a tap query becomes (enabled AND live) and torn down when either
         // condition drops — without disturbing the others when the entry set changes.
         children <-- props.dataService.wiretapsSignal
-          .combineWith(props.dataService.enabledTapQueriesSignal)
+          .combineWith(props.dataService.enabledGraphFeedsSignal)
           .map { case (active, meta) =>
             val tapHandlersByName: Map[String, WiretapHandler] =
-              active.getOrElse(ExplorerSettingsModal.TapQueryOwner, List.empty).map(h => h.key -> h).toMap
-            meta.iterator.flatMap { case (name, tapQuery) =>
-              tapHandlersByName.get(name).map(h => (name, tapQuery, h))
+              active.getOrElse(ExplorerSettingsModal.GraphFeedOwner, List.empty).map(h => h.key -> h).toMap
+            meta.iterator.flatMap { case (name, graphFeed) =>
+              tapHandlersByName.get(name).map(h => (name, graphFeed, h))
             }.toList
           }
           .splitSeq(_._1) { strictSignal =>
@@ -2728,16 +2728,16 @@ object QueryUi {
                 // Read the tap query fresh on each match rather than capturing it at span
                 // creation, so edits to the query or synthetic edges apply live: the tap-query
                 // name (and thus this span) is unchanged, so `strictSignal` carries the update.
-                val tapQuery = strictSignal.now()._2
+                val graphFeed = strictSignal.now()._2
                 // The wiretap envelope is always a JSON object (`{meta: ..., data: ...}`), so each
                 // top-level field becomes a Cypher parameter: queries reference `$data.foo`,
                 // `$meta.isPositiveMatch`, etc. Values flow via the parameter map, so no
                 //  risk of injection from the wiretap message itself.
                 val params = message.asObject.map(_.toMap).getOrElse(Map.empty[String, Json])
                 submitQueryWithSyntheticEdges(
-                  tapQuery.query,
+                  graphFeed.query,
                   message,
-                  tapQuery.syntheticEdges,
+                  graphFeed.syntheticEdges,
                   parameters = params,
                 )
               },
@@ -3104,10 +3104,10 @@ object QueryUi {
         ),
         // Bottom-left graph-feed pills: the live on/off switch for each feed the
         // user keeps in their graph menu (see GraphFeedChips). Mounted unconditionally:
-        // it needs only tap-query read, and `tapQueriesSignal` self-gates to `Pot.Empty`
+        // it needs only tap-query read, and `graphFeedsSignal` self-gates to `Pot.Empty`
         // without that permission, so no unpermitted polling starts.
         GraphFeedChips(
-          tapQueries = props.dataService.tapQueriesSignal,
+          graphFeeds = props.dataService.graphFeedsSignal,
           wiretap = props.dataService,
           prefs = graphMenuPrefs,
           currentNamespace = props.dataService.currentNamespaceSignal.map(_.namespaceId),

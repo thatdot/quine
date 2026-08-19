@@ -75,10 +75,10 @@ final case class CardSnapshot(
   // tap kinds
   sqName: String,
   tapPoint: String, // "raw" | "post:<output>"
-  tapQueryLabel: Option[String], // "Match query" | "Enrichment query" — see TapCardQuery
-  tapQueryText: Option[String],
+  graphFeedLabel: Option[String], // "Match query" | "Enrichment query" — see TapCardQuery
+  graphFeedText: Option[String],
   // Transformed cards' shape note (TapCardQuery.note); missing in older snapshots → None.
-  tapQueryNote: Option[String] = None,
+  graphFeedNote: Option[String] = None,
 )
 
 object CardSnapshot {
@@ -198,9 +198,9 @@ object CardSnapshot {
       outcome = None,
       sqName = "",
       tapPoint = "",
-      tapQueryLabel = None,
-      tapQueryText = None,
-      tapQueryNote = None,
+      graphFeedLabel = None,
+      graphFeedText = None,
+      graphFeedNote = None,
     )
     c.kind match {
       case CardKind.AdhocCard(query, language, outcome) =>
@@ -215,9 +215,9 @@ object CardSnapshot {
           kind = KindTapTable,
           sqName = target.sqName,
           tapPoint = encodeTapPoint(target.tapPoint),
-          tapQueryLabel = query.map(_.label),
-          tapQueryText = query.map(_.query),
-          tapQueryNote = query.flatMap(_.note),
+          graphFeedLabel = query.map(_.label),
+          graphFeedText = query.map(_.query),
+          graphFeedNote = query.flatMap(_.note),
         )
     }
   }
@@ -266,9 +266,9 @@ object CardSnapshot {
         Some(CardKind.AdhocCard(snap.query, language, outcome))
       case KindTapTable =>
         val query = for {
-          label <- snap.tapQueryLabel
-          text <- snap.tapQueryText
-        } yield TapCardQuery(label, text, snap.tapQueryNote)
+          label <- snap.graphFeedLabel
+          text <- snap.graphFeedText
+        } yield TapCardQuery(label, text, snap.graphFeedNote)
         tapTargetOf(snap).map(target => CardKind.TapTableCard(target, placeholderEntry(target), query))
       case _ => None
     }

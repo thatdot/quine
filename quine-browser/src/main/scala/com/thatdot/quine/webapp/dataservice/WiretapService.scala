@@ -2,7 +2,7 @@ package com.thatdot.quine.webapp.dataservice
 
 import com.raquo.airstream.core.{Observer, Signal}
 
-import com.thatdot.quine.webapp.v2api.V2ApiTypes.V2TapQuery
+import com.thatdot.quine.webapp.v2api.V2ApiTypes.V2GraphFeed
 
 /** Live-tap capability: standing-query match streams, exposed as signals and driven by
   * commands. That the implementation feeds them over WebSockets is as hidden as any other
@@ -35,7 +35,7 @@ trait WiretapService {
     * name. Joined with [[wiretapsSignal]] by the explorer's match-dispatch host: only
     * names present in both are dispatched.
     */
-  def enabledTapQueriesSignal: Signal[Map[String, V2TapQuery]]
+  def enabledGraphFeedsSignal: Signal[Map[String, V2GraphFeed]]
 }
 
 object WiretapService {
@@ -45,7 +45,7 @@ object WiretapService {
     * targeting the same `(sqName, outputName)` each get their own handler (sharing the
     * underlying connection).
     */
-  val TapQueryOwner: WiretapOwner = WiretapOwner("tapQuery")
+  val GraphFeedOwner: WiretapOwner = WiretapOwner("graphFeed")
 
   /** A state-changing request to the wiretap capability, sent via
     * [[WiretapService.wiretapDispatch]].
@@ -63,12 +63,12 @@ object WiretapService {
   /** Close the tap for `(owner, key)`; no-op if none is open. */
   final case class CloseTap(owner: WiretapOwner, key: String) extends Command
 
-  /** Enable a tap query locally: the service opens its tap under [[TapQueryOwner]],
+  /** Enable a tap query locally: the service opens its tap under [[GraphFeedOwner]],
     * remembers the intent per graph for this browser tab, and keeps the tap current
-    * across reloads and server-side edits (see [[WiretapService.enabledTapQueriesSignal]]).
+    * across reloads and server-side edits (see [[WiretapService.enabledGraphFeedsSignal]]).
     */
-  final case class EnableTapQuery(tapQuery: V2TapQuery) extends Command
+  final case class EnableGraphFeed(graphFeed: V2GraphFeed) extends Command
 
   /** Disable a locally-enabled tap query: closes its tap and forgets the intent. */
-  final case class DisableTapQuery(name: String) extends Command
+  final case class DisableGraphFeed(name: String) extends Command
 }

@@ -10,7 +10,7 @@ import sttp.tapir.Schema.annotations.{default, description, title}
 
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, ResourceName}
 import com.thatdot.common.security.Secret
-import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{GraphFeed, SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
   IngestSource,
   OnRecordErrorHandler,
@@ -27,10 +27,12 @@ import com.thatdot.quine.app.v2api.definitions.query.standing.{
 /** V2 Recipe Schema - aligned with V2 API structure */
 object RecipeV2 {
 
-  // Use the same configuration as the V2 API types (with "type" discriminator)
-  // This ensures proper decoding of nested sealed traits like IngestSource, StandingQueryPattern, etc.
+  // Decode the recipe wrapper types with the exact same Circe configuration the V2 API types use,
+  // so decoding behaviour (the "type" discriminator, optional-with-defaults fields, and strict
+  // rejection of unknown/misspelled fields) is defined in a single place for the whole app rather
+  // than duplicated and allowed to drift.
   implicit private val circeConfig: Configuration =
-    Configuration.default.withDefaults.withDiscriminator("type")
+    com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 
   val currentVersion: Int = 2
 
@@ -192,6 +194,9 @@ object RecipeV2 {
     @description("Sample queries for the web UI dropdown.")
     @default(List.empty)
     sampleQueries: List[SampleQuery] = List.empty,
+    @description("Graph feeds (saved wiretap + Cypher projection pairs) for the Explorer Settings page.")
+    @default(List.empty)
+    graphFeeds: List[GraphFeed] = List.empty,
     @description("Cypher query to be run periodically while Recipe is running.")
     statusQuery: Option[StatusQueryV2] = None,
   ) {

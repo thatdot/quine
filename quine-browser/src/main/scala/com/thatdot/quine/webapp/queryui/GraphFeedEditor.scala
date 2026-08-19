@@ -11,26 +11,26 @@ import com.thatdot.quine.webapp.resultspanel.cards.TapCardQuery
 import com.thatdot.quine.webapp.resultspanel.tapmodal.SqPipelineTree
 import com.thatdot.quine.webapp.resultspanel.{TapCatalogEntry, TapOutput, TapPoint, TapTarget}
 import com.thatdot.quine.webapp.util.Pot
-import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2StandingQueryInfo, V2SyntheticEdge, V2TapQuery}
+import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2GraphFeed, V2StandingQueryInfo, V2SyntheticEdge}
 
-sealed trait TapQueryEditorMode
-object TapQueryEditorMode {
-  case object Creating extends TapQueryEditorMode
+sealed trait GraphFeedEditorMode
+object GraphFeedEditorMode {
+  case object Creating extends GraphFeedEditorMode
 
   /** Editing the definition that had `name` when edit mode was entered. Keyed by name, not
     * an index into the definitions list — the list keeps refetching underneath an open edit
     * (other sessions, reconcile), so a captured index can silently point at the wrong entry
     * by save/delete time.
     */
-  final case class Editing(name: String) extends TapQueryEditorMode
+  final case class Editing(name: String) extends GraphFeedEditorMode
 }
 
-/** The graph-feed editor (the UI name for a `V2TapQuery`): instead of naming a standing
+/** The graph-feed editor (the UI name for a `V2GraphFeed`): instead of naming a standing
   * query and a tap point in dropdowns, the source is picked on the same pipeline diagram the
   * Standing Query Results Inspection modal uses ([[SqPipelineTree]] in `Variant.PickPoint`) —
   * click the point to draw from, then write the Cypher that runs for every result arriving there.
   */
-object TapQueryEditor {
+object GraphFeedEditor {
 
   /** The `nodeIdsFrom` value every synthetic edge is saved with. The endpoint IDs are always read
     * from the projected result message (`NodeIdsSource.WiretapMessage`), so this is not surfaced
@@ -79,7 +79,7 @@ object TapQueryEditor {
     * name means the stream after that output's enrichment — or after its transformation only,
     * when the `preEnrichment` flag is set.
     */
-  private def initialTarget(value: Option[V2TapQuery]): Option[TapTarget] =
+  private def initialTarget(value: Option[V2GraphFeed]): Option[TapTarget] =
     value.map { m =>
       TapTarget(
         m.standingQueryName,
@@ -130,11 +130,11 @@ object TapQueryEditor {
     )
 
   def apply(
-    mode: TapQueryEditorMode,
-    initialValue: Option[V2TapQuery],
+    mode: GraphFeedEditorMode,
+    initialValue: Option[V2GraphFeed],
     standingQueries: Signal[Seq[V2StandingQueryInfo]],
     editorConfig: EmbeddedEditorConfig,
-    onSave: V2TapQuery => Unit,
+    onSave: V2GraphFeed => Unit,
     onDelete: Option[() => Unit],
     onCancel: () => Unit,
     // True while the host's save round-trip is in flight; disables the save button so a
@@ -171,7 +171,7 @@ object TapQueryEditor {
       edgeRowsVar.update(_ :+ EdgeRow(id, "", "", "", "OUT"))
     }
 
-    val isEditing = mode.isInstanceOf[TapQueryEditorMode.Editing]
+    val isEditing = mode.isInstanceOf[GraphFeedEditorMode.Editing]
 
     // The picker's catalog, mapped from the standing-query feed. Only outputs with a
     // transformation or an enrichment offer a point to draw from (an output with neither
@@ -520,7 +520,7 @@ object TapQueryEditor {
               val descOpt = if (descriptionVar.now().trim.nonEmpty) Some(descriptionVar.now().trim) else None
               val edges = buildEdges(edgeRowsVar.now())
               val (outName, pre) = wireSource(target)
-              val tapQuery = V2TapQuery(
+              val graphFeed = V2GraphFeed(
                 name = nameVar.now().trim,
                 description = descOpt,
                 standingQueryName = target.sqName,
@@ -529,7 +529,7 @@ object TapQueryEditor {
                 query = queryVar.now().trim,
                 syntheticEdges = edges,
               )
-              onSave(tapQuery)
+              onSave(graphFeed)
             }
           },
         ),

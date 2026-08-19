@@ -30,7 +30,7 @@ import com.thatdot.quine.app.model.outputs2.query.standing.{TapBus, TapContext}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.converters.ApiToStanding
-import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.TapQuery
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.GraphFeed
 import com.thatdot.quine.app.v2api.definitions.query.{standing => V2ApiStanding}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
@@ -146,11 +146,11 @@ final class QuineApp(
   private[this] var nodeAppearances: Vector[V1.UiNodeAppearance] = Vector.empty
   final private[this] val nodeAppearancesLock = new AnyRef
 
-  // Tap queries are per-namespace: each entry references a standing query in its namespace.
+  // Graph feeds are per-namespace: each entry references a standing query in its namespace.
   // Persistence is one metadata key per namespace via `makeNamespaceMetaDataKey`.
   @volatile
-  private[this] var tapQueries: Map[NamespaceId, Vector[TapQuery]] = Map.empty
-  final private[this] val tapQueriesLock = new AnyRef
+  private[this] var graphFeeds: Map[NamespaceId, Vector[GraphFeed]] = Map.empty
+  final private[this] val graphFeedsLock = new AnyRef
 
   @volatile
   private[this] var outputTargets: NamespaceOutputTargets = Map(defaultNamespaceId -> Map.empty)
@@ -198,19 +198,19 @@ final class QuineApp(
       storeGlobalMetaData(NodeAppearancesKey, nodeAppearances)
     }
 
-  // Tap queries on the wire/at rest are keyed by the namespace's name (a plain string) so
+  // Graph feeds on the wire/at rest are keyed by the namespace's name (a plain string) so
   // endpoints4s schema derivation has a Map[String, _] to work with rather than a value
   // class. In-memory state uses NamespaceId for type safety.
-  implicit private val tapQueriesEncoderDecoder: EncoderDecoder[Map[String, Vector[TapQuery]]] =
-    EncoderDecoder.ofEncodeDecode[Map[String, Vector[TapQuery]]]
+  implicit private val graphFeedsEncoderDecoder: EncoderDecoder[Map[String, Vector[GraphFeed]]] =
+    EncoderDecoder.ofEncodeDecode[Map[String, Vector[GraphFeed]]]
 
-  def getTapQueries(namespace: NamespaceId): Future[Vector[TapQuery]] =
-    Future.successful(tapQueries.getOrElse(namespace, Vector.empty))
+  def getGraphFeeds(namespace: NamespaceId): Future[Vector[GraphFeed]] =
+    Future.successful(graphFeeds.getOrElse(namespace, Vector.empty))
 
-  def setTapQueries(namespace: NamespaceId, newTapQueries: Vector[TapQuery]): Future[Unit] =
-    synchronizedFakeFuture(tapQueriesLock) {
-      tapQueries = tapQueries.updated(namespace, newTapQueries)
-      storeGlobalMetaData(TapQueriesKey, tapQueries.map { case (ns, v) => ns.name -> v })
+  def setGraphFeeds(namespace: NamespaceId, newGraphFeeds: Vector[GraphFeed]): Future[Unit] =
+    synchronizedFakeFuture(graphFeedsLock) {
+      graphFeeds = graphFeeds.updated(namespace, newGraphFeeds)
+      storeGlobalMetaData(GraphFeedsKey, graphFeeds.map { case (ns, v) => ns.name -> v })
     }
 
   def addStandingQueryV2(
@@ -1260,8 +1260,8 @@ final class QuineApp(
       getOrDefaultGlobalMetaData(SampleQueriesKey, V1.SampleQuery.defaults)
     val quickQueriesFut = getOrDefaultGlobalMetaData(QuickQueriesKey, V1.UiNodeQuickQuery.defaults)
     val nodeAppearancesFut = getOrDefaultGlobalMetaData(NodeAppearancesKey, V1.UiNodeAppearance.defaults)
-    val tapQueriesFut =
-      getOrDefaultGlobalMetaData(TapQueriesKey, Map.empty: Map[String, Vector[TapQuery]])
+    val graphFeedsFut =
+      getOrDefaultGlobalMetaData(GraphFeedsKey, Map.empty: Map[String, Vector[GraphFeed]])
         .map(_.map { case (name, v) => NamespaceId(name) -> v })
 
     // Register all user-defined procedures that require app/graph information (the rest will be loaded
@@ -1370,7 +1370,7 @@ final class QuineApp(
       sq <- sampleQueriesFut
       qq <- quickQueriesFut
       na <- nodeAppearancesFut
-      tq <- tapQueriesFut
+      gf <- graphFeedsFut
       so <- standingQueryOutputsFut
       so2 <- standingQueryOutput2Fut
       is <- ingestStreamFut
@@ -1379,7 +1379,7 @@ final class QuineApp(
       sampleQueries = sq
       quickQueries = qq
       nodeAppearances = na
-      tapQueries = tq
+      graphFeeds = gf
       // Note: SQs on _the graph_ are restored and started during GraphService initialization.
       //       This sections restores the external handler for those results that publishes to outside systems.
       val v1OutputNamespaces = so.flatMap { case (namespace, outputTarget) =>
@@ -1580,7 +1580,7 @@ object QuineApp {
   final val SampleQueriesKey = "sample_queries"
   final val QuickQueriesKey = "quick_queries"
   final val NodeAppearancesKey = "node_appearances"
-  final val TapQueriesKey = "tap_queries"
+  final val GraphFeedsKey = "graph_feeds"
   final val StandingQueryOutputsKey = "standing_query_outputs"
   final val V2StandingQueryOutputsKey = "v2_standing_query_outputs"
   final val IngestStreamsKey = "ingest_streams"

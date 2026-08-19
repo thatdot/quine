@@ -262,7 +262,7 @@ object V2ApiTypes {
   /** Mirrors the tap-query wire shape.
     * @see [[public/quine/src/main/scala/com/thatdot/quine/app/v2api/definitions/ApiUiStyling.scala]]
     */
-  final case class V2TapQuery(
+  final case class V2GraphFeed(
     name: String,
     description: Option[String],
     standingQueryName: String,
@@ -273,8 +273,8 @@ object V2ApiTypes {
     query: String,
     syntheticEdges: Vector[V2SyntheticEdge],
   )
-  object V2TapQuery {
-    implicit val decoder: Decoder[V2TapQuery] = (c: HCursor) =>
+  object V2GraphFeed {
+    implicit val decoder: Decoder[V2GraphFeed] = (c: HCursor) =>
       for {
         name <- c.downField("name").as[String]
         description <- c.downField("description").as[Option[String]]
@@ -286,9 +286,9 @@ object V2ApiTypes {
           .downField("syntheticEdges")
           .as[Option[Vector[V2SyntheticEdge]]]
           .map(_.getOrElse(Vector.empty))
-      } yield V2TapQuery(name, description, sqName, outputName, preEnrichment, query, syntheticEdges)
+      } yield V2GraphFeed(name, description, sqName, outputName, preEnrichment, query, syntheticEdges)
 
-    implicit val encoder: Encoder[V2TapQuery] = (t: V2TapQuery) =>
+    implicit val encoder: Encoder[V2GraphFeed] = (t: V2GraphFeed) =>
       Json.obj(
         "name" -> Json.fromString(t.name),
         "description" -> t.description.fold(Json.Null)(Json.fromString),

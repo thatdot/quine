@@ -28,7 +28,7 @@ import com.thatdot.quine.app.model.ingest2.{KafkaIngest, V2IngestEntities}
 import com.thatdot.quine.app.model.outputs2.query.{AllNodeScanException, CypherQuery => CypherQueryModel}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.v2api.converters._
-import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, TapQuery, UiNodeAppearance, UiNodeQuickQuery}
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{GraphFeed, SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest, DeadLetterQueueOutput}
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
@@ -644,11 +644,55 @@ trait QuineApiMethods
   def setNodeAppearances(newNodeAppearances: Vector[UiNodeAppearance]): Future[Unit] =
     graph.requiredGraphIsReadyFuture(app.setNodeAppearances(newNodeAppearances.map(ApiToUiStyling.apply)))
 
-  def getTapQueries(namespace: NamespaceId): Future[Vector[TapQuery]] =
-    graph.requiredGraphIsReadyFuture(app.getTapQueries(namespace))
+  def getGraphFeeds(namespace: NamespaceId): Future[Vector[GraphFeed]] =
+    graph.requiredGraphIsReadyFuture(app.getGraphFeeds(namespace))
 
-  def setTapQueries(namespace: NamespaceId, newTapQueries: Vector[TapQuery]): Future[Unit] =
-    graph.requiredGraphIsReadyFuture(app.setTapQueries(namespace, newTapQueries))
+  /** Every `$name` a projection query references. A projection reads its incoming standing-query
+    * result through parameters (the wiretap envelope's `$data`, `$meta`, ...), so those must be
+    * declared when we compile the query to check it — otherwise compilation fails on the
+    * parameter reference and tells us nothing about write effects. (That gap is how a mutating
+    * `CALL purgeNode(...)` reading `$data` slipped through an earlier version of this check, while
+    * a parameter-less `CREATE` was correctly rejected.) Over-declaring is harmless, so we take
+    * every `$`-reference in the text.
+    */
+  private val GraphFeedParamRef = """\$(\w+)""".r
+
+  /** Validate a projection query at save time. `Right(())` for a compilable, read-only query;
+    * `Left(reason)` when the query has write effects or fails to compile — in both cases we
+    * refuse to save it (a graph projection only observes and draws, and there is no point
+    * persisting a query that cannot run). Declaring the referenced parameters means a remaining
+    * compile failure is a genuine syntax/semantic error the projection would hit at run time.
+    */
+  private def validateReadOnlyGraphFeed(feed: GraphFeed): Either[String, Unit] = {
+    val declaredParams = GraphFeedParamRef.findAllMatchIn(feed.query).map(_.group(1)).toSeq.distinct
+    scala.util.Try(analyze(feed.query, declaredParams)) match {
+      case scala.util.Failure(e) =>
+        val detail = Option(e.getMessage).filter(_.nonEmpty).getOrElse(e.toString)
+        Left(s"""Projection "${feed.name}" has an invalid query: $detail""")
+      case scala.util.Success(effects) if !effects.isReadOnly =>
+        Left(
+          s"""Projection "${feed.name}" would modify the graph. Graph projections are read-only — remove any """ +
+          "write clauses (CREATE, MERGE, SET, DELETE, DETACH DELETE, REMOVE) from the query.",
+        )
+      case scala.util.Success(_) => Right(())
+    }
+  }
+
+  /** Validate every projection query (read-only + compilable) and, only if all pass, replace all
+    * graph feeds for the namespace. `Left` carries one message per invalid feed and nothing is
+    * saved. Shared by the V2 API and the recipe interpreter so both enforce the same rules.
+    */
+  def replaceGraphFeeds(
+    namespace: NamespaceId,
+    feeds: Vector[GraphFeed],
+  ): Future[Either[Seq[String], Unit]] = {
+    val problems: Seq[String] = feeds.iterator.flatMap(f => validateReadOnlyGraphFeed(f).left.toOption).toSeq
+    if (problems.nonEmpty) Future.successful(Left(problems))
+    else
+      graph
+        .requiredGraphIsReadyFuture(app.setGraphFeeds(namespace, feeds))
+        .map(Right(_))(ExecutionContext.parasitic)
+  }
 
   def deleteSQOutput(
     name: String,

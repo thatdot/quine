@@ -9,16 +9,16 @@ import com.thatdot.quine.webapp.components.streams.EmbeddedEditorConfig
 import com.thatdot.quine.webapp.components.{Toast, ToastMessage, ToastVariant}
 import com.thatdot.quine.webapp.dataservice.{
   DataService,
+  GraphFeedService,
   QueryUiConfigService,
   SaveFailed,
   SaveResult,
   SaveSucceeded,
-  TapQueryService,
   WiretapOwner,
   WiretapService,
 }
 import com.thatdot.quine.webapp.resultspanel.tapmodal.TapModalStyles
-import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2StandingQueryInfo, V2TapQuery}
+import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2GraphFeed, V2StandingQueryInfo}
 
 /** Explorer Settings as a modal overlaying the explorer (replacing the dedicated
   * Explorer Settings nav page): the tap-query / sample-query / quick-query /
@@ -29,10 +29,10 @@ import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2StandingQueryInfo, V2TapQuer
 object ExplorerSettingsModal {
 
   /** Owner of the taps the service opens from "Show on my graph" intent; the per-handler
-    * `key` within it is the tap query's `name`. Re-exported for the explorer's dispatch
+    * `key` within it is the graph feed's `name`. Re-exported for the explorer's dispatch
     * host, which joins the service's wiretaps with the enabled-tap metadata by this owner.
     */
-  val TapQueryOwner: WiretapOwner = WiretapService.TapQueryOwner
+  val GraphFeedOwner: WiretapOwner = WiretapService.GraphFeedOwner
 
   private val ConfigModalCss =
     """.config-manager-wrap .manager-header { display: none; }
@@ -50,7 +50,7 @@ object ExplorerSettingsModal {
     menuPrefs: GraphMenuPrefs,
   ): HtmlElement = {
     val sampleQueriesVar: Var[Vector[SampleQuery]] = Var(Vector.empty)
-    val tapQueriesVar: Var[Vector[V2TapQuery]] = Var(Vector.empty)
+    val graphFeedsVar: Var[Vector[V2GraphFeed]] = Var(Vector.empty)
     // Quick queries are modeled in the v1 shape end to end: v1's UiNodeQuickQuery is a strict
     // superset of V2's (it adds `queryLanguage`; the V2 API is Cypher-only), so a v1 Gremlin
     // entry never loses its language on the display/edit round trip. The lossy projection to
@@ -62,9 +62,9 @@ object ExplorerSettingsModal {
     val sqEditVar: Var[Option[SampleQueryEditorMode]] = Var(None)
     val qqEditVar: Var[Option[QuickQueryEditorMode]] = Var(None)
     val naEditVar: Var[Option[NodeAppearanceEditorMode]] = Var(None)
-    val tapQueryEditVar: Var[Option[TapQueryEditorMode]] = Var(None)
+    val graphFeedEditVar: Var[Option[GraphFeedEditorMode]] = Var(None)
 
-    val tapQueriesExpandedVar = Var(true)
+    val graphFeedsExpandedVar = Var(true)
     val sqExpandedVar = Var(true)
     val qqExpandedVar = Var(true)
     val naExpandedVar = Var(true)
@@ -76,11 +76,11 @@ object ExplorerSettingsModal {
     var latestSampleQueries: Vector[SampleQuery] = Vector.empty
     var latestQuickQueries: Vector[UiNodeQuickQuery] = Vector.empty
     var latestAppearances: Vector[UiNodeAppearance] = Vector.empty
-    var latestTapQueries: Vector[V2TapQuery] = Vector.empty
-    // Whether the tap-query feed reflects a completed fetch: SaveTapQueries replaces the
+    var latestGraphFeeds: Vector[V2GraphFeed] = Vector.empty
+    // Whether the tap-query feed reflects a completed fetch: SaveGraphFeeds replaces the
     // whole per-graph list, so a save built from a never-loaded list would delete every
     // other definition. Mutations are refused until this is true.
-    var tapQueriesLoaded: Boolean = false
+    var graphFeedsLoaded: Boolean = false
 
     def close(): Unit = setOpen.onNext(false)
 
@@ -91,7 +91,7 @@ object ExplorerSettingsModal {
     // edit. The header × still closes.
     def editorOpen(): Boolean =
       sqEditVar.now().isDefined || qqEditVar.now().isDefined || naEditVar.now().isDefined ||
-      tapQueryEditVar.now().isDefined
+      graphFeedEditVar.now().isDefined
 
     def saveSampleQueries(sqs: Vector[SampleQuery]): Unit = {
       val previous = sampleQueriesVar.now()
@@ -130,17 +130,17 @@ object ExplorerSettingsModal {
     // Tap queries are scoped per-graph, replacing only the current graph's list; no need
     // to preserve other graphs' entries client-side. The service targets the graph the
     // user is viewing and refetches the shared feed on success.
-    def saveTapQueries(tqs: Vector[V2TapQuery]): Unit = {
-      val previous = tapQueriesVar.now()
-      tapQueriesVar.set(tqs)
-      dataService.tapQueryDispatch.onNext(
-        TapQueryService.SaveTapQueries(
+    def saveGraphFeeds(tqs: Vector[V2GraphFeed]): Unit = {
+      val previous = graphFeedsVar.now()
+      graphFeedsVar.set(tqs)
+      dataService.graphFeedDispatch.onNext(
+        GraphFeedService.SaveGraphFeeds(
           tqs,
           replyTo = Observer[SaveResult] {
             case SaveSucceeded =>
               toastVar.set(Some(ToastMessage("Graph feeds saved (shared with everyone)", ToastVariant.Success)))
             case SaveFailed(message) =>
-              tapQueriesVar.set(previous)
+              graphFeedsVar.set(previous)
               toastVar.set(Some(ToastMessage(s"Save failed: $message", ToastVariant.Error)))
           },
         ),
@@ -198,14 +198,14 @@ object ExplorerSettingsModal {
         if (naEditVar.now().isEmpty) appearancesVar.set(nas)
       },
       // The tap-query feed is a Pot (graph-scoped, refetched per namespace): the list
-      // renders from the last known value, while mutations gate on `tapQueriesLoaded` —
+      // renders from the last known value, while mutations gate on `graphFeedsLoaded` —
       // see its declaration. A namespace switch resets the Pot to Pending, so a save
       // against the wrong graph's list can't slip through mid-switch.
-      dataService.tapQueriesSignal --> { pot =>
-        tapQueriesLoaded = pot.toOption.isDefined
+      dataService.graphFeedsSignal --> { pot =>
+        graphFeedsLoaded = pot.toOption.isDefined
         pot.toOption.foreach { tqs =>
-          latestTapQueries = tqs
-          if (tapQueryEditVar.now().isEmpty) tapQueriesVar.set(tqs)
+          latestGraphFeeds = tqs
+          if (graphFeedEditVar.now().isEmpty) graphFeedsVar.set(tqs)
         }
       },
       // Each open starts fresh: abandon any editor left open when the modal was last
@@ -215,11 +215,11 @@ object ExplorerSettingsModal {
         sqEditVar.set(None)
         qqEditVar.set(None)
         naEditVar.set(None)
-        tapQueryEditVar.set(None)
+        graphFeedEditVar.set(None)
         sampleQueriesVar.set(latestSampleQueries)
         quickQueriesVar.set(latestQuickQueries)
         appearancesVar.set(latestAppearances)
-        tapQueriesVar.set(latestTapQueries)
+        graphFeedsVar.set(latestGraphFeeds)
       },
       div(
         cls := s"${TapModalStyles.dialog} explorer-settings-dialog",
@@ -238,15 +238,15 @@ object ExplorerSettingsModal {
         ),
         div(
           cls := TapModalStyles.body,
-          tapQueriesCard(
-            tapQueriesVar,
+          graphFeedsCard(
+            graphFeedsVar,
             standingQueries = dataService.standingQueriesSignal.map(_.toOption.map(_.toVector).getOrElse(Vector.empty)),
             currentNamespace = dataService.currentNamespaceSignal.map(_.namespaceId),
-            editVar = tapQueryEditVar,
+            editVar = graphFeedEditVar,
             editorConfig = editorConfig,
-            save = saveTapQueries,
+            save = saveGraphFeeds,
             canMutate = () =>
-              if (tapQueriesLoaded) true
+              if (graphFeedsLoaded) true
               else {
                 toastVar.set(
                   Some(ToastMessage("Graph feeds are still loading, try again in a moment", ToastVariant.Error)),
@@ -254,7 +254,7 @@ object ExplorerSettingsModal {
                 false
               },
             notifyError = message => toastVar.set(Some(ToastMessage(message, ToastVariant.Error))),
-            expandedVar = tapQueriesExpandedVar,
+            expandedVar = graphFeedsExpandedVar,
             menuPrefs = menuPrefs,
           ),
           div(cls := "mt-4"),
@@ -299,28 +299,27 @@ object ExplorerSettingsModal {
     )
 
   // ---------------------------------------------------------------------------
-  // Tap Queries
+  // Graph Feeds
   // ---------------------------------------------------------------------------
 
-  /** The graph-feed catalog (saved V2TapQuery definitions — "tap query" in the code
-    * and the API, "graph feed" in the UI) for the current graph, with a
+  /** The graph-feed catalog (saved V2GraphFeed definitions) for the current graph, with a
     * list/create/edit/delete surface plus the per-row "Show in graph menu" preference
     * (whether the feed gets a pill in the canvas's bottom-left menu, where its
     * live drawing is toggled — see [[GraphFeedChips]]). The
     * editor picks its source on the Standing Query Results Inspection pipeline diagram
     * instead of dropdowns. `canMutate` gates every
-    * whole-list save behind the feed having loaded (see `tapQueriesLoaded`); `editVar`
+    * whole-list save behind the feed having loaded (see `graphFeedsLoaded`); `editVar`
     * keys edits by the definition's name at edit-entry time — the list keeps refetching
     * underneath an open edit, so a captured index could point at the wrong entry by
     * save/delete time.
     */
-  private def tapQueriesCard(
-    dataVar: Var[Vector[V2TapQuery]],
+  private def graphFeedsCard(
+    dataVar: Var[Vector[V2GraphFeed]],
     standingQueries: Signal[Vector[V2StandingQueryInfo]],
     currentNamespace: Signal[String],
-    editVar: Var[Option[TapQueryEditorMode]],
+    editVar: Var[Option[GraphFeedEditorMode]],
     editorConfig: EmbeddedEditorConfig,
-    save: Vector[V2TapQuery] => Unit,
+    save: Vector[V2GraphFeed] => Unit,
     canMutate: () => Boolean,
     notifyError: String => Unit,
     expandedVar: Var[Boolean],
@@ -332,7 +331,7 @@ object ExplorerSettingsModal {
           cls := "btn btn-primary btn-sm",
           i(cls := "cil-plus me-1"),
           "New Feed",
-          onClick --> { _ => expandedVar.set(true); editVar.set(Some(TapQueryEditorMode.Creating)) },
+          onClick --> { _ => expandedVar.set(true); editVar.set(Some(GraphFeedEditorMode.Creating)) },
         )
       case Some(_) =>
         button(
@@ -374,43 +373,43 @@ object ExplorerSettingsModal {
             "A feed watches a point in a standing query's pipeline and draws every matching result " +
             "onto the graph, live. Feeds are saved to the server and shared with everyone.",
           ),
-          tapQueriesList(
+          graphFeedsList(
             dataVar.signal.distinct,
-            onEdit = name => editVar.set(Some(TapQueryEditorMode.Editing(name))),
-            onNew = () => editVar.set(Some(TapQueryEditorMode.Creating)),
+            onEdit = name => editVar.set(Some(GraphFeedEditorMode.Editing(name))),
+            onNew = () => editVar.set(Some(GraphFeedEditorMode.Creating)),
             onDelete = confirmAndDelete,
             menuPrefs = menuPrefs,
           ),
         )
       case Some(mode) =>
         val priorName: Option[String] = mode match {
-          case TapQueryEditorMode.Editing(name) => Some(name)
+          case GraphFeedEditorMode.Editing(name) => Some(name)
           case _ => None
         }
         div(
           graphLabel(),
-          TapQueryEditor(
+          GraphFeedEditor(
             mode = mode,
             initialValue = priorName.flatMap(name => dataVar.now().find(_.name == name)),
             standingQueries = standingQueries,
             editorConfig = editorConfig,
-            onSave = { newTapQuery =>
+            onSave = { newGraphFeed =>
               if (canMutate()) {
                 val visible = dataVar.now()
                 // Names are the identity everywhere downstream (delete-by-name, "Enable
                 // locally", reconcile's byName map), so a create — or an edit renaming
                 // onto *another* entry — must not introduce a duplicate.
-                if (visible.exists(d => d.name == newTapQuery.name && !priorName.contains(d.name)))
-                  notifyError(s"""A feed named "${newTapQuery.name}" already exists""")
+                if (visible.exists(d => d.name == newGraphFeed.name && !priorName.contains(d.name)))
+                  notifyError(s"""A feed named "${newGraphFeed.name}" already exists""")
                 else {
                   val updated = priorName
                     .flatMap { name =>
                       visible.indexWhere(_.name == name) match {
                         case -1 => None
-                        case idx => Some(visible.updated(idx, newTapQuery))
+                        case idx => Some(visible.updated(idx, newGraphFeed))
                       }
                     }
-                    .getOrElse(visible :+ newTapQuery)
+                    .getOrElse(visible :+ newGraphFeed)
                   save(updated)
                   editVar.set(None)
                 }
@@ -428,8 +427,8 @@ object ExplorerSettingsModal {
     collapsibleCard("Graph Feeds", expandedVar, headerButton, body)
   }
 
-  private def tapQueriesList(
-    tapQueries: Signal[Vector[V2TapQuery]],
+  private def graphFeedsList(
+    graphFeeds: Signal[Vector[V2GraphFeed]],
     onEdit: String => Unit,
     onNew: () => Unit,
     onDelete: String => Unit,
@@ -437,8 +436,8 @@ object ExplorerSettingsModal {
   ): HtmlElement = {
     val searchVar = Var("")
 
-    val filtered: Signal[Vector[V2TapQuery]] =
-      tapQueries.combineWith(searchVar.signal).map { case (tqs, search) =>
+    val filtered: Signal[Vector[V2GraphFeed]] =
+      graphFeeds.combineWith(searchVar.signal).map { case (tqs, search) =>
         val needle = search.trim.toLowerCase
         if (needle.isEmpty) tqs
         else
@@ -470,11 +469,11 @@ object ExplorerSettingsModal {
       ),
       // An empty catalog and an empty search result are different states: the first
       // deserves a pointer at what a feed is for, the second just says no match.
-      child <-- filtered.combineWith(tapQueries).map { case (items, all) =>
+      child <-- filtered.combineWith(graphFeeds).map { case (items, all) =>
         if (items.nonEmpty)
           div(
             cls := Styles.managerList,
-            items.map(t => tapQueryListItem(t, onEdit, onDelete, menuPrefs)),
+            items.map(t => graphFeedListItem(t, onEdit, onDelete, menuPrefs)),
           )
         else if (all.isEmpty)
           div(
@@ -486,13 +485,13 @@ object ExplorerSettingsModal {
       },
       div(
         cls := Styles.managerFooter,
-        child.text <-- tapQueries.map(tqs => s"${tqs.size} ${if (tqs.size == 1) "feed" else "feeds"}"),
+        child.text <-- graphFeeds.map(tqs => s"${tqs.size} ${if (tqs.size == 1) "feed" else "feeds"}"),
       ),
     )
   }
 
-  private def tapQueryListItem(
-    t: V2TapQuery,
+  private def graphFeedListItem(
+    t: V2GraphFeed,
     onEdit: String => Unit,
     onDelete: String => Unit,
     menuPrefs: GraphMenuPrefs,

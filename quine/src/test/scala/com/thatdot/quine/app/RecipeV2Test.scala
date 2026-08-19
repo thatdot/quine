@@ -4,6 +4,8 @@ import scala.annotation.nowarn
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext}
 
+import org.apache.pekko.util.Timeout
+
 import cats.data.{NonEmptyList, Validated}
 import io.circe.Error.showError
 import org.scalatest.concurrent.Eventually
@@ -13,8 +15,10 @@ import org.scalatest.{BeforeAndAfterAll, EitherValues}
 import com.thatdot.api.v2.ResourceName
 import com.thatdot.common.logging.Log.{LogConfig, SafeLogger}
 import com.thatdot.common.security.Secret
-import com.thatdot.quine.app.config.{FileAccessPolicy, ResolutionMode}
+import com.thatdot.quine.app.config.{FileAccessPolicy, QuineConfig, ResolutionMode}
 import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
+import com.thatdot.quine.app.v2api.OssApiMethods
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.GraphFeed
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{IngestFormat, IngestSource}
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern
@@ -38,6 +42,10 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
 
   implicit val ec: ExecutionContext = graph.shardDispatcherEC
 
+  // Recipes register through the same validation path as the V2 API.
+  private val registrar: RecipeRegistrar =
+    new ApiRecipeRegistrar(new OssApiMethods(graph, quineApp, QuineConfig(), Timeout(10.seconds)))
+
   override def beforeAll(): Unit =
     while (!graph.isReady) Thread.sleep(10)
 
@@ -52,6 +60,7 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
       graphService = graph,
       quineWebserverUri = None,
       protobufSchemaCache = ProtobufSchemaCache.Blocking: @nowarn("cat=deprecation"),
+      registrar = registrar,
     )(graph.idProvider)
 
   private def rn(s: String): ResourceName = ResourceName(s).fold(err => fail(err), identity)
@@ -131,6 +140,39 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
           statusQuery = Some(RecipeV2.StatusQueryV2("MATCH (n) RETURN count(n)")),
         ),
     )
+  }
+
+  test("shipped v2 recipes parse under the shared strict decoder") {
+    import java.nio.charset.StandardCharsets
+    import java.nio.file.{Files, Path, Paths}
+    import scala.jdk.CollectionConverters._
+
+    // Anchor to the module's compiled-classes location so this is independent of the test working
+    // directory: <module>/target/scala-2.13/test-classes -> <module>/recipes
+    val classes: Path = Paths.get(getClass.getProtectionDomain.getCodeSource.getLocation.toURI)
+    val recipesDir: Path = classes.resolve("../../../recipes").normalize()
+    assert(Files.isDirectory(recipesDir), s"Could not locate shipped recipes directory at $recipesDir")
+
+    val v2Recipes = Files
+      .list(recipesDir)
+      .iterator()
+      .asScala
+      .toList
+      .filter { p =>
+        val n = p.toString; n.endsWith(".yaml") || n.endsWith(".yml")
+      }
+      .map(p => p -> new String(Files.readAllBytes(p), StandardCharsets.UTF_8))
+      .filter { case (_, content) =>
+        io.circe.yaml.v12.parser
+          .parse(content)
+          .toOption
+          .flatMap(_.hcursor.downField("version").as[Int].toOption)
+          .contains(2)
+      }
+
+    v2Recipes.foreach { case (p, content) =>
+      assert(parseV2Yaml(content).isRight, s"Shipped V2 recipe $p failed to parse: ${parseV2Yaml(content)}")
+    }
   }
 
   test("applySubstitution - literal string unchanged") {
@@ -302,6 +344,51 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
     try {
       interpreter.run()
       assert(quineApp.getIngestStream(ingestName.value, namespace).isDefined)
+    } finally { val _ = interpreter.cancel() }
+  }
+
+  test("v2 interpreter registers graph feeds from recipe") {
+    val recipe = RecipeV2.Recipe(
+      title = "graph-feed-registration-test",
+      graphFeeds = List(
+        GraphFeed(
+          name = "feed-registration",
+          description = None,
+          standingQueryName = "any-sq",
+          outputName = None,
+          query = "MATCH (n) RETURN n",
+        ),
+      ),
+    )
+
+    val interpreter = makeInterpreter(recipe)
+    try {
+      interpreter.run()
+      val feeds = Await.result(quineApp.getGraphFeeds(namespace), 5.seconds)
+      assert(feeds.map(_.name).contains("feed-registration"))
+    } finally { val _ = interpreter.cancel() }
+  }
+
+  test("v2 interpreter rejects a graph feed whose projection has write effects") {
+    val recipe = RecipeV2.Recipe(
+      title = "bad-graph-feed-test",
+      graphFeeds = List(
+        GraphFeed(
+          name = "writing-feed",
+          description = None,
+          standingQueryName = "any-sq",
+          outputName = None,
+          query = "CREATE (n) RETURN n", // write effect -> rejected by the shared read-only validation
+        ),
+      ),
+    )
+
+    val interpreter = makeInterpreter(recipe)
+    try {
+      interpreter.run()
+      // Rejected feeds are not saved (same rule the V2 API PUT enforces).
+      val feeds = Await.result(quineApp.getGraphFeeds(namespace), 5.seconds)
+      assert(!feeds.map(_.name).contains("writing-feed"))
     } finally { val _ = interpreter.cancel() }
   }
 

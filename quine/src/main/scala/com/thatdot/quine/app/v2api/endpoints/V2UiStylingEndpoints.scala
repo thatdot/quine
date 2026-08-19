@@ -11,7 +11,7 @@ import com.thatdot.api.v2.ErrorResponse
 import com.thatdot.api.v2.ErrorResponse.BadRequest
 import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, serverError}
 import com.thatdot.quine.app.util.StringOps
-import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{SampleQuery, TapQuery, UiNodeAppearance, UiNodeQuickQuery}
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{GraphFeed, SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.{GraphScopedEndpoints, V2QuineEndpointDefinitions}
 import com.thatdot.quine.app.v2api.endpoints.Visibility
 import com.thatdot.quine.graph.NamespaceId
@@ -183,108 +183,79 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps wit
     Future,
   ] = updateQueryUiQuickQueries.serverLogic[Future](updateQueryUiQuickQueriesLogic)
 
-  // Tap queries are graph-scoped: each one targets a standing query that only exists in
+  // Graph feeds are graph-scoped: each one targets a standing query that only exists in
   // one graph (namespace), so the storage and URL follow the graph
-  // (`/api/v2/graph/{graphName}/queryUi/tapQueries`).
-  protected[endpoints] val queryUiTapQueries
-    : Endpoint[Unit, NamespaceId, ErrorResponse.ServerError, Vector[TapQuery], Any] =
-    graphScopedEndpoint("queryUi", "tapQueries")
+  // (`/api/v2/graph/{graphName}/queryUi/graphFeeds`).
+  protected[endpoints] val queryUiGraphFeeds
+    : Endpoint[Unit, NamespaceId, ErrorResponse.ServerError, Vector[GraphFeed], Any] =
+    graphScopedEndpoint("queryUi", "graphFeeds")
       .tag("UI Styling")
       .errorOut(serverError())
-      .name("list-tap-queries")
-      .summary("List Tap Queries")
+      .name("list-graph-feeds")
+      .summary("List Graph Feeds")
       .description(
         "Named wiretap + Cypher query pairs scoped to a graph, listed in the Explorer Settings page.",
       )
       .get
       .out(statusCode(StatusCode.Ok))
-      .out(jsonBody[Vector[TapQuery]].example(TapQuery.defaults))
+      .out(jsonBody[Vector[GraphFeed]].example(GraphFeed.defaults))
       .attribute(Visibility.attributeKey, Visibility.Hidden)
 
-  protected[endpoints] val queryUiTapQueriesLogic
-    : NamespaceId => Future[Either[ErrorResponse.ServerError, Vector[TapQuery]]] =
-    ns => recoverServerError(appMethods.getTapQueries(ns))(identity)
+  protected[endpoints] val queryUiGraphFeedsLogic
+    : NamespaceId => Future[Either[ErrorResponse.ServerError, Vector[GraphFeed]]] =
+    ns => recoverServerError(appMethods.getGraphFeeds(ns))(identity)
 
-  private val queryUiTapQueriesServerEndpoint
-    : Full[Unit, Unit, NamespaceId, ErrorResponse.ServerError, Vector[TapQuery], Any, Future] =
-    queryUiTapQueries.serverLogic[Future](queryUiTapQueriesLogic)
+  private val queryUiGraphFeedsServerEndpoint
+    : Full[Unit, Unit, NamespaceId, ErrorResponse.ServerError, Vector[GraphFeed], Any, Future] =
+    queryUiGraphFeeds.serverLogic[Future](queryUiGraphFeedsLogic)
 
-  protected[endpoints] val updateQueryUiTapQueries
-    : Endpoint[Unit, (NamespaceId, Vector[TapQuery]), Either[ErrorResponse.ServerError, BadRequest], Unit, Any] =
-    graphScopedEndpoint("queryUi", "tapQueries")
+  protected[endpoints] val updateQueryUiGraphFeeds
+    : Endpoint[Unit, (NamespaceId, Vector[GraphFeed]), Either[ErrorResponse.ServerError, BadRequest], Unit, Any] =
+    graphScopedEndpoint("queryUi", "graphFeeds")
       .tag("UI Styling")
       .errorOut(serverError())
       .errorOutEither(
-        badRequestError("A tap query is invalid or has write effects; graph projections must be read-only."),
+        badRequestError("A graph feed is invalid or has write effects; graph projections must be read-only."),
       )
-      .name("replace-tap-queries")
-      .summary("Replace Tap Queries")
+      .name("replace-graph-feeds")
+      .summary("Replace Graph Feeds")
       .description(
-        "Replace all tap queries for the given graph in the Explorer Settings page.\n\n" +
-        "Tap queries applied here will replace any currently existing tap queries for that graph.\n\n" +
-        "Every tap query must compile and be read-only: a projection only observes and draws results, so " +
+        "Replace all graph feeds for the given graph in the Explorer Settings page.\n\n" +
+        "Graph feeds applied here will replace any currently existing graph feeds for that graph.\n\n" +
+        "Every graph feed must compile and be read-only: a projection only observes and draws results, so " +
         "a query that fails to compile, or that has write effects (CREATE, MERGE, SET, DELETE, REMOVE, a " +
         "writing procedure, ...), is rejected with a 400 and nothing is saved.",
       )
       .put
-      .in(jsonOrYamlBody[Vector[TapQuery]](Some(TapQuery.defaults)))
+      .in(jsonOrYamlBody[Vector[GraphFeed]](Some(GraphFeed.defaults)))
       .out(statusCode(StatusCode.NoContent))
       .out(emptyOutputAs(()))
       .attribute(Visibility.attributeKey, Visibility.Hidden)
 
-  /** Every `$name` a projection query references. A projection reads its incoming standing-query
-    * result through parameters (the wiretap envelope's `$data`, `$meta`, ...), so those must be
-    * declared when we compile the query to check it — otherwise compilation fails on the
-    * parameter reference and tells us nothing about write effects. (That gap is how a mutating
-    * `CALL purgeNode(...)` reading `$data` slipped through an earlier version of this check, while
-    * a parameter-less `CREATE` was correctly rejected.) Over-declaring is harmless, so we take
-    * every `$`-reference in the text.
-    */
-  private val ParamRef = """\$(\w+)""".r
-
-  /** Validate a projection query at save time. `Right(())` for a compilable, read-only query;
-    * `Left(reason)` when the query has write effects or fails to compile — in both cases we
-    * refuse to save it (a graph projection only observes and draws, and there is no point
-    * persisting a query that cannot run). Declaring the referenced parameters means a remaining
-    * compile failure is a genuine syntax/semantic error the projection would hit at run time.
-    */
-  private def validateReadOnlyTapQuery(tq: TapQuery): Either[String, Unit] = {
-    val declaredParams = ParamRef.findAllMatchIn(tq.query).map(_.group(1)).toSeq.distinct
-    scala.util.Try(appMethods.analyze(tq.query, declaredParams)) match {
-      case scala.util.Failure(e) =>
-        val detail = Option(e.getMessage).filter(_.nonEmpty).getOrElse(e.toString)
-        Left(s"""Projection "${tq.name}" has an invalid query: $detail""")
-      case scala.util.Success(effects) if !effects.isReadOnly =>
-        Left(
-          s"""Projection "${tq.name}" would modify the graph. Graph projections are read-only — remove any """ +
-          "write clauses (CREATE, MERGE, SET, DELETE, DETACH DELETE, REMOVE) from the query.",
-        )
-      case scala.util.Success(_) => Right(())
-    }
-  }
-
-  protected[endpoints] val updateQueryUiTapQueriesLogic
-    : ((NamespaceId, Vector[TapQuery])) => Future[Either[Either[ErrorResponse.ServerError, BadRequest], Unit]] = {
+  protected[endpoints] val updateQueryUiGraphFeedsLogic
+    : ((NamespaceId, Vector[GraphFeed])) => Future[Either[Either[ErrorResponse.ServerError, BadRequest], Unit]] = {
     case (ns, m) =>
-      val firstProblem: Option[String] =
-        m.iterator.flatMap(tq => validateReadOnlyTapQuery(tq).left.toOption).nextOption()
+      // Validation (read-only projection queries) lives on QuineApiMethods so the recipe
+      // interpreter enforces the same rules via the same code path.
       val result: Future[Either[BadRequest, Unit]] =
-        firstProblem match {
-          case Some(reason) => Future.successful(Left(BadRequest(reason)))
-          case None => appMethods.setTapQueries(ns, m).map(Right(_))(ExecutionContext.parasitic)
-        }
+        appMethods
+          .replaceGraphFeeds(ns, m)
+          .map {
+            case Left(problems) => Left(BadRequest.ofErrorStrings(problems.toList))
+            case Right(()) => Right(())
+          }(ExecutionContext.parasitic)
       recoverServerErrorEitherFlat(result)(_ => ())
   }
 
-  private val updateQueryUiTapQueriesServerEndpoint: Full[
+  private val updateQueryUiGraphFeedsServerEndpoint: Full[
     Unit,
     Unit,
-    (NamespaceId, Vector[TapQuery]),
+    (NamespaceId, Vector[GraphFeed]),
     Either[ErrorResponse.ServerError, BadRequest],
     Unit,
     Any,
     Future,
-  ] = updateQueryUiTapQueries.serverLogic[Future](updateQueryUiTapQueriesLogic)
+  ] = updateQueryUiGraphFeeds.serverLogic[Future](updateQueryUiGraphFeedsLogic)
 
   lazy val uiEndpoints: List[ServerEndpoint[Any, Future]] = List(
     queryUiSampleQueriesServerEndpoint,
@@ -293,8 +264,8 @@ trait V2UiStylingEndpoints extends V2QuineEndpointDefinitions with StringOps wit
     updateQueryUiAppearanceServerEndpoint,
     queryUiQuickQueriesServerEndpoint,
     updateQueryUiQuickQueriesServerEndpoint,
-    queryUiTapQueriesServerEndpoint,
-    updateQueryUiTapQueriesServerEndpoint,
+    queryUiGraphFeedsServerEndpoint,
+    updateQueryUiGraphFeedsServerEndpoint,
   )
 
 }

@@ -7,7 +7,7 @@ import org.scalajs.dom
 import com.thatdot.quine.routes.exts.NamespaceParameter
 import com.thatdot.quine.webapp.dataservice.WiretapService
 import com.thatdot.quine.webapp.util.Pot
-import com.thatdot.quine.webapp.v2api.V2ApiTypes.V2TapQuery
+import com.thatdot.quine.webapp.v2api.V2ApiTypes.V2GraphFeed
 
 /** Which graph feeds get a pill in the canvas's bottom-left graph menu — a per-browser
   * preference, not a property of the (server-shared) feed itself. Only the
@@ -113,7 +113,7 @@ object GraphFeedChips {
   private val searchInput = "graph-feed-chips-search-input"
 
   def apply(
-    tapQueries: Signal[Pot[Vector[V2TapQuery]]],
+    graphFeeds: Signal[Pot[Vector[V2GraphFeed]]],
     wiretap: WiretapService,
     prefs: GraphMenuPrefs,
     currentNamespace: Signal[String],
@@ -123,15 +123,15 @@ object GraphFeedChips {
 
     // Renders the last known list through refetches (`PendingStale`/`FailedStale`),
     // nothing before the first load — the same policy as the settings modal's list.
-    val all: Signal[Vector[V2TapQuery]] = tapQueries.map(_.toOption.getOrElse(Vector.empty))
+    val all: Signal[Vector[V2GraphFeed]] = graphFeeds.map(_.toOption.getOrElse(Vector.empty))
 
     // Server order, unfiltered by search: a switch flip never reshuffles the stack.
-    val menuItems: Signal[Vector[V2TapQuery]] =
+    val menuItems: Signal[Vector[V2GraphFeed]] =
       all.combineWith(prefs.hiddenSignal).map { case (tqs, hidden) => tqs.filterNot(t => hidden(t.name)) }
 
     // Same match fields as the settings modal's feed search, minus the query text
     // (a pill search is for finding a name, not grepping Cypher).
-    val filtered: Signal[Vector[V2TapQuery]] =
+    val filtered: Signal[Vector[V2GraphFeed]] =
       menuItems.combineWith(searchVar.signal).map { case (tqs, search) =>
         val needle = search.trim.toLowerCase
         if (needle.isEmpty) tqs
@@ -143,7 +143,7 @@ object GraphFeedChips {
           }
       }
 
-    val visible: Signal[Vector[V2TapQuery]] =
+    val visible: Signal[Vector[V2GraphFeed]] =
       expandedVar.signal.combineWith(menuItems, filtered).map {
         case (false, items, _) => items.take(MaxCollapsedChips)
         case (true, _, matches) => matches
@@ -164,7 +164,7 @@ object GraphFeedChips {
       },
       // Prune hidden names only against a fully-loaded list — never a pending or
       // failed fetch (see GraphMenuPrefs.pruneTo).
-      tapQueries --> {
+      graphFeeds --> {
         case Pot.Ready(tqs) => prefs.pruneTo(tqs.iterator.map(_.name).toSet)
         case _ => ()
       },
@@ -204,11 +204,11 @@ object GraphFeedChips {
     * dispatch samples the row's signal so an enable always carries the freshest server
     * definition (the wiretap runtime's reconcile keeps it current from there).
     */
-  private def pill(name: String, tSig: Signal[V2TapQuery], wiretap: WiretapService): HtmlElement = {
+  private def pill(name: String, tSig: Signal[V2GraphFeed], wiretap: WiretapService): HtmlElement = {
     // Same source of truth as every other tap-query surface: a handler open under
-    // TapQueryOwner with this name means "drawing on the graph".
+    // GraphFeedOwner with this name means "drawing on the graph".
     val enabledSig: Signal[Boolean] =
-      wiretap.wiretapsSignal.map(_.get(WiretapService.TapQueryOwner).exists(_.exists(_.key == name)))
+      wiretap.wiretapsSignal.map(_.get(WiretapService.GraphFeedOwner).exists(_.exists(_.key == name)))
 
     div(
       cls := chip,
@@ -230,8 +230,8 @@ object GraphFeedChips {
         title := "Draw this feed's results on your graph. Only affects this browser.",
         checked <-- enabledSig,
         onChange.mapToChecked.compose(_.withCurrentValueOf(tSig)) --> { case (isChecked, t) =>
-          if (isChecked) wiretap.wiretapDispatch.onNext(WiretapService.EnableTapQuery(t))
-          else wiretap.wiretapDispatch.onNext(WiretapService.DisableTapQuery(t.name))
+          if (isChecked) wiretap.wiretapDispatch.onNext(WiretapService.EnableGraphFeed(t))
+          else wiretap.wiretapDispatch.onNext(WiretapService.DisableGraphFeed(t.name))
         },
       ),
     )

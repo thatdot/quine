@@ -5,7 +5,7 @@ import scala.io.{Codec, Source}
 import scala.util.Try
 import scala.util.matching.Regex
 
-import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.TapQuery
+import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.GraphFeed
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.routes.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 
@@ -66,8 +66,8 @@ trait QueryUiConfigurationState {
 
   def setNodeAppearances(newNodeAppearances: Vector[UiNodeAppearance]): Future[Unit]
 
-  def getTapQueries(namespace: NamespaceId): Future[Vector[TapQuery]]
+  def getGraphFeeds(namespace: NamespaceId): Future[Vector[GraphFeed]]
 
-  def setTapQueries(namespace: NamespaceId, newTapQueries: Vector[TapQuery]): Future[Unit]
+  def setGraphFeeds(namespace: NamespaceId, newGraphFeeds: Vector[GraphFeed]): Future[Unit]
 
 }

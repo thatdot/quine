@@ -161,8 +161,8 @@ object QuineApiClient {
     )
 
   /** Polled feed of saved tap queries for the given graph namespace. */
-  def tapQueries(graphName: String, routes: ClientRoutes): Feed[Vector[V2TapQuery]] =
-    poll(fetchV2[Vector[V2TapQuery]](s"api/v2/graph/$graphName/queryUi/tapQueries", routes))
+  def graphFeeds(graphName: String, routes: ClientRoutes): Feed[Vector[V2GraphFeed]] =
+    poll(fetchV2[Vector[V2GraphFeed]](s"api/v2/graph/$graphName/queryUi/graphFeeds", routes))
 
   /** Polled feed of ingest streams for the given graph namespace. */
   def ingestStreams(graphName: String, routes: ClientRoutes): Feed[Seq[V2IngestInfo]] =
@@ -276,12 +276,12 @@ object QuineApiClient {
   /** Replace `namespace`'s tap-query list (V2-only endpoint — tap queries have no V1 twin).
     * The UI mirror types convert to the wire types here, at the PUT boundary.
     */
-  def saveTapQueries(
+  def saveGraphFeeds(
     namespace: NamespaceParameter,
-    tapQueries: Vector[V2TapQuery],
+    graphFeeds: Vector[V2GraphFeed],
     routes: ClientRoutes,
   ): Future[Unit] =
-    putV2(s"api/v2/graph/${namespace.namespaceId}/queryUi/tapQueries", tapQueries, routes)
+    putV2(s"api/v2/graph/${namespace.namespaceId}/queryUi/graphFeeds", graphFeeds, routes)
 
   private def errorMessage(t: Throwable): String = {
     val raw = Option(t.getMessage).filter(_.nonEmpty)

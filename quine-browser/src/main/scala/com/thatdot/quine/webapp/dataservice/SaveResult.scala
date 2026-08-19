@@ -4,7 +4,7 @@ package com.thatdot.quine.webapp.dataservice
   * observer (so only the surface that issued the save reacts — it owns optimistic UI,
   * rollback, and toasts; the data effect broadcasts through the slice's signal via
   * invalidation). Shared by every capability slice whose commands persist state
-  * ([[QueryUiConfigService]], [[TapQueryService]]).
+  * ([[QueryUiConfigService]], [[GraphFeedService]]).
   */
 sealed trait SaveResult
 case object SaveSucceeded extends SaveResult

@@ -15,5 +15,5 @@ trait DataService
     with StandingQueryService
     with IngestStreamService
     with QueryUiConfigService
-    with TapQueryService
+    with GraphFeedService
     with WiretapService

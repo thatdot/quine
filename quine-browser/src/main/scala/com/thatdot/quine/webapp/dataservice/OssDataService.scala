@@ -24,10 +24,10 @@ import com.thatdot.quine.routes.{
 import com.thatdot.quine.webapp.util.{Pot, QuineApiClient}
 import com.thatdot.quine.webapp.v2api.V2ApiTypes.{
   V2BackpressureSnapshot,
+  V2GraphFeed,
   V2IngestInfo,
   V2ServiceStatus,
   V2StandingQueryInfo,
-  V2TapQuery,
 }
 
 /** @param useV2Api when false, resources with a V1 twin (the queryUi trio) are read and
@@ -46,7 +46,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
   private val sampleQueriesRefresh = new EventBus[Unit]
   private val quickQueriesRefresh = new EventBus[Unit]
   private val nodeAppearancesRefresh = new EventBus[Unit]
-  private val tapQueriesRefresh = new EventBus[Unit]
+  private val graphFeedsRefresh = new EventBus[Unit]
 
   /** Mirror of the validated current namespace, for imperative reads (mutations act on the
     * graph the user is viewing). Lazily bootstrapped with an owned observer, same as the
@@ -89,7 +89,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     * never 401 against the tap-query endpoint. OSS has no auth, so it is always readable;
     * [[EnterpriseDataService]] overrides this from the user's permissions.
     */
-  protected def canReadTapQueries: Boolean = true
+  protected def canReadGraphFeeds: Boolean = true
 
   /** Whether the signed-in user may GET the full cluster status (`ClusterStatusRead`). Gates the
     * landing page's cluster-health visuals. OSS has no auth, so it is always readable;
@@ -135,11 +135,11 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       )
   }
 
-  lazy val tapQueryDispatch: Observer[TapQueryService.Command] = Observer {
-    case TapQueryService.SaveTapQueries(tapQueries, replyTo) =>
+  lazy val graphFeedDispatch: Observer[GraphFeedService.Command] = Observer {
+    case GraphFeedService.SaveGraphFeeds(graphFeeds, replyTo) =>
       completeSave(
-        QuineApiClient.saveTapQueries(currentNamespaceMirror.now(), tapQueries, clientRoutes),
-        tapQueriesRefresh,
+        QuineApiClient.saveGraphFeeds(currentNamespaceMirror.now(), graphFeeds, clientRoutes),
+        graphFeedsRefresh,
         replyTo,
       )
   }
@@ -275,7 +275,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
         .flatMapSwitch(_ => QuineApiClient.standingQueries(ns.namespaceId, clientRoutes).potSignal)
     }.distinct
 
-  // A Pot rather than a bare Vector because SaveTapQueries is a whole-list replace:
+  // A Pot rather than a bare Vector because SaveGraphFeeds is a whole-list replace:
   // consumers must be able to tell "not loaded yet" from "loaded, empty", or a save
   // dispatched before the first fetch resolves would wipe every other definition. The
   // scan holds the last known list across refresh restarts (as `PendingStale`) so a
@@ -283,18 +283,18 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
   // `Failed`/`FailedStale` instead of silently dropping them. A namespace switch
   // resets to `Pending` (the scan lives inside the switch) so one graph's list is
   // never shown — or saved — against another's.
-  lazy val tapQueriesSignal: Signal[Pot[Vector[V2TapQuery]]] =
-    if (!canReadTapQueries) Val(Pot.Empty)
+  lazy val graphFeedsSignal: Signal[Pot[Vector[V2GraphFeed]]] =
+    if (!canReadGraphFeeds) Val(Pot.Empty)
     else
       currentNamespaceSignal.flatMapSwitch { ns =>
         EventStream
-          .merge(EventStream.fromValue(()), tapQueriesRefresh.events)
-          .flatMapSwitch(_ => QuineApiClient.tapQueries(ns.namespaceId, clientRoutes).potSignal.updates)
-          .scanLeft(Pot.Pending: Pot[Vector[V2TapQuery]]) {
+          .merge(EventStream.fromValue(()), graphFeedsRefresh.events)
+          .flatMapSwitch(_ => QuineApiClient.graphFeeds(ns.namespaceId, clientRoutes).potSignal.updates)
+          .scanLeft(Pot.Pending: Pot[Vector[V2GraphFeed]]) {
             case (prev, Pot.Pending) =>
-              prev.toOption.fold[Pot[Vector[V2TapQuery]]](Pot.Pending)(Pot.PendingStale(_))
+              prev.toOption.fold[Pot[Vector[V2GraphFeed]]](Pot.Pending)(Pot.PendingStale(_))
             case (prev, Pot.Failed(msg)) =>
-              prev.toOption.fold[Pot[Vector[V2TapQuery]]](Pot.Failed(msg))(Pot.FailedStale(_, msg))
+              prev.toOption.fold[Pot[Vector[V2GraphFeed]]](Pot.Failed(msg))(Pot.FailedStale(_, msg))
             case (_, next) => next
           }
       }.distinct
@@ -394,7 +394,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     private val owner = new ManualOwner
 
     val storeVar: Var[Option[WiretapStore]] = Var(None)
-    val enabledTapQueriesVar: Var[Map[String, V2TapQuery]] = Var(Map.empty)
+    val enabledGraphFeedsVar: Var[Map[String, V2GraphFeed]] = Var(Map.empty)
 
     // "Enable locally" opt-ins for the current namespace: tap-query names only. Every
     // server-side definition *in* this set is wanted; the metadata map above is
@@ -408,7 +408,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     // opt-ins; reconcile opens their taps once the server list arrives.
     currentNamespaceSignal.foreach { ns =>
       storeVar.now().foreach(_.closeAll())
-      enabledTapQueriesVar.set(Map.empty)
+      enabledGraphFeedsVar.set(Map.empty)
       currentNs = ns.namespaceId
       storeVar.set(Some(new WiretapStore(ns.namespaceId, clientRoutes)))
       enabledIntentVar.set(EnabledTapsStorage.load(ns.namespaceId))
@@ -421,14 +421,14 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     // belongs to (so one graph's opt-ins are never reconciled against another's list).
     // Always polled (when readable): the wanted set is the opt-in set intersected with the
     // server list, which must stay current as definitions are added, edited, or dropped.
-    private val tapListSignal: Signal[Option[(String, Vector[V2TapQuery])]] =
+    private val tapListSignal: Signal[Option[(String, Vector[V2GraphFeed])]] =
       currentNamespaceSignal
         .flatMapSwitch { ns =>
-          if (canReadTapQueries)
+          if (canReadGraphFeeds)
             QuineApiClient
-              .tapQueries(ns.namespaceId, clientRoutes)
+              .graphFeeds(ns.namespaceId, clientRoutes)
               .values
-              .map(tapQueries => Option(ns.namespaceId -> tapQueries))
+              .map(graphFeeds => Option(ns.namespaceId -> graphFeeds))
               .startWith(None)
           else Val(None)
         }
@@ -436,7 +436,7 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     enabledIntentVar.signal
       .combineWith(tapListSignal)
       .foreach {
-        case (enabled, Some((ns, tapQueries))) if ns == currentNs => reconcile(enabled, tapQueries)
+        case (enabled, Some((ns, graphFeeds))) if ns == currentNs => reconcile(enabled, graphFeeds)
         case _ => ()
       }(owner)
 
@@ -447,23 +447,23 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       * when its tap point (SQ/output) actually moved — an edit to the query alone reuses
       * the open handler.
       */
-    private def reconcile(enabled: Set[String], tapQueries: Vector[V2TapQuery]): Unit =
+    private def reconcile(enabled: Set[String], graphFeeds: Vector[V2GraphFeed]): Unit =
       storeVar.now().foreach { store =>
-        val byName = tapQueries.iterator.map(t => t.name -> t).toMap
+        val byName = graphFeeds.iterator.map(t => t.name -> t).toMap
         val prunedEnabled = enabled.intersect(byName.keySet)
         if (prunedEnabled != enabled) enabledIntentVar.set(prunedEnabled) // re-enters with the pruned set
         else {
           val want = byName.keySet.intersect(enabled)
-          val have = store.activeKeys(WiretapService.TapQueryOwner)
+          val have = store.activeKeys(WiretapService.GraphFeedOwner)
           have.diff(want).foreach { name =>
-            store.close(WiretapService.TapQueryOwner, name)
-            enabledTapQueriesVar.update(_ - name)
+            store.close(WiretapService.GraphFeedOwner, name)
+            enabledGraphFeedsVar.update(_ - name)
           }
           want.diff(have).foreach { name =>
             byName.get(name).foreach { t =>
-              enabledTapQueriesVar.update(_ + (name -> t))
+              enabledGraphFeedsVar.update(_ + (name -> t))
               store.open(
-                WiretapService.TapQueryOwner,
+                WiretapService.GraphFeedOwner,
                 name,
                 t.standingQueryName,
                 WiretapTapPoint.fromOutputName(t.outputName, t.preEnrichment),
@@ -472,8 +472,8 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
           }
           want.intersect(have).foreach { name =>
             byName.get(name).foreach { t =>
-              val prev = enabledTapQueriesVar.now().get(name)
-              if (!prev.contains(t)) enabledTapQueriesVar.update(_ + (name -> t))
+              val prev = enabledGraphFeedsVar.now().get(name)
+              if (!prev.contains(t)) enabledGraphFeedsVar.update(_ + (name -> t))
               val tapPointMoved =
                 prev.exists(p =>
                   p.standingQueryName != t.standingQueryName ||
@@ -481,9 +481,9 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
                   p.preEnrichment != t.preEnrichment,
                 )
               if (tapPointMoved) {
-                store.close(WiretapService.TapQueryOwner, name)
+                store.close(WiretapService.GraphFeedOwner, name)
                 store.open(
-                  WiretapService.TapQueryOwner,
+                  WiretapService.GraphFeedOwner,
                   name,
                   t.standingQueryName,
                   WiretapTapPoint.fromOutputName(t.outputName, t.preEnrichment),
@@ -497,25 +497,25 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     /** Record the opt-in and open immediately — the toggle carries the full tap query, so
       * there is nothing to wait for. Reconcile keeps the tap current afterwards.
       */
-    def enable(tapQuery: V2TapQuery): Unit = {
-      enabledTapQueriesVar.update(_ + (tapQuery.name -> tapQuery))
-      enabledIntentVar.update(_ + tapQuery.name)
+    def enable(graphFeed: V2GraphFeed): Unit = {
+      enabledGraphFeedsVar.update(_ + (graphFeed.name -> graphFeed))
+      enabledIntentVar.update(_ + graphFeed.name)
       storeVar
         .now()
         .foreach(
           _.open(
-            WiretapService.TapQueryOwner,
-            tapQuery.name,
-            tapQuery.standingQueryName,
-            WiretapTapPoint.fromOutputName(tapQuery.outputName, tapQuery.preEnrichment),
+            WiretapService.GraphFeedOwner,
+            graphFeed.name,
+            graphFeed.standingQueryName,
+            WiretapTapPoint.fromOutputName(graphFeed.outputName, graphFeed.preEnrichment),
           ),
         )
     }
 
     def disable(name: String): Unit = {
       enabledIntentVar.update(_ - name)
-      enabledTapQueriesVar.update(_ - name)
-      storeVar.now().foreach(_.close(WiretapService.TapQueryOwner, name))
+      enabledGraphFeedsVar.update(_ - name)
+      storeVar.now().foreach(_.close(WiretapService.GraphFeedOwner, name))
     }
   }
 
@@ -526,9 +526,9 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       wiretapRuntime.storeVar.now().foreach(_.open(tapOwner, key, sqName, tapPoint))
     case WiretapService.CloseTap(tapOwner, key) =>
       wiretapRuntime.storeVar.now().foreach(_.close(tapOwner, key))
-    case WiretapService.EnableTapQuery(tapQuery) =>
-      wiretapRuntime.enable(tapQuery)
-    case WiretapService.DisableTapQuery(name) =>
+    case WiretapService.EnableGraphFeed(graphFeed) =>
+      wiretapRuntime.enable(graphFeed)
+    case WiretapService.DisableGraphFeed(name) =>
       wiretapRuntime.disable(name)
   }
 
@@ -538,8 +538,8 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       case None => Val(Map.empty[WiretapOwner, List[WiretapHandler]])
     }
 
-  lazy val enabledTapQueriesSignal: Signal[Map[String, V2TapQuery]] =
-    wiretapRuntime.enabledTapQueriesVar.signal
+  lazy val enabledGraphFeedsSignal: Signal[Map[String, V2GraphFeed]] =
+    wiretapRuntime.enabledGraphFeedsVar.signal
 
   lazy val ingestStreamsSignal: Signal[Pot[Seq[V2IngestInfo]]] =
     currentNamespaceSignal.flatMapSwitch { ns =>

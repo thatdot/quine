@@ -311,8 +311,8 @@ object ApiUiStyling {
     *  - `WiretapMessage`: read dot-paths into the wiretap message JSON envelope, e.g.
     *    `data.even1`. Currently the only supported source.
     *
-    * Sealed for future expansion (e.g. `QueryResult` to read columns from the tap
-    * query's own result, or `AuxiliaryQuery` for a separately-configured lookup query).
+    * Sealed for future expansion (e.g. `QueryResult` to read columns from the graph
+    * feed's own result, or `AuxiliaryQuery` for a separately-configured lookup query).
     */
   sealed trait NodeIdsSource
   object NodeIdsSource {
@@ -328,9 +328,9 @@ object ApiUiStyling {
     implicit lazy val schema: Schema[NodeIdsSource] = Schema.string[NodeIdsSource]
   }
 
-  /** A virtual edge to draw between two nodes referenced by a tap query's data source.
+  /** A virtual edge to draw between two nodes referenced by a graph feed's data source.
     *
-    * For each fire of the tap query, the UI extracts node IDs at the `fromNode` and `toNode`
+    * For each fire of the graph feed, the UI extracts node IDs at the `fromNode` and `toNode`
     * paths/columns of the source named by `nodeIdsFrom`, and adds a visual-only edge between
     * them with the configured label and direction. The edge is not persisted in the graph.
     *
@@ -341,7 +341,7 @@ object ApiUiStyling {
     * @param nodeIdsFrom  Which data source to read endpoint IDs from (defaults to `WIRETAP_MESSAGE`).
     */
   @title("Synthetic Edge")
-  @description("A visual edge added between two node IDs read from a tap query's data source.")
+  @description("A visual edge added between two node IDs read from a graph feed's data source.")
   final case class SyntheticEdge(
     @description("Path/column where the edge's first endpoint node ID is found.") fromNode: String,
     @description("Path/column where the edge's second endpoint node ID is found.") toNode: String,
@@ -357,19 +357,19 @@ object ApiUiStyling {
     implicit lazy val schema: Schema[SyntheticEdge] = Schema.derived
   }
 
-  /** A saved tap query — a wiretap paired with a Cypher query.
+  /** A saved graph feed — a wiretap paired with a Cypher query.
     *
-    * Each tap query identifies a wiretap (a standing query, optionally a specific output)
+    * Each graph feed identifies a wiretap (a standing query, optionally a specific output)
     * and a Cypher query that the UI runs against each incoming message — the result is
     * displayed in the explorer just as if the user had typed it manually.
     *
     * If `syntheticEdges` are configured, the UI reads the endpoint node IDs from the wiretap
     * message JSON (the default `nodeIdsFrom = WIRETAP_MESSAGE`). `fromNode` / `toNode`
-    * are dot-paths into that message (e.g. `"data.even1"`). For each fire of the tap query,
+    * are dot-paths into that message (e.g. `"data.even1"`). For each fire of the graph feed,
     * a visual-only edge is drawn between the resolved nodes.
     *
     * @param name              Display name shown in Explorer Settings.
-    * @param description       Optional longer-form description of what this tap query does.
+    * @param description       Optional longer-form description of what this graph feed does.
     * @param standingQueryName Name of the standing query to tap.
     * @param outputName        If set, tap that output's stream; otherwise tap raw results.
     * @param preEnrichment     When `outputName` is set, whether to tap the output's pre-enrichment
@@ -379,11 +379,11 @@ object ApiUiStyling {
     *                          as Cypher variables (e.g. backtick-quoted column names from the SQ).
     * @param syntheticEdges    Optional virtual edges drawn between paired node-returning columns.
     */
-  @title("TapQuery")
+  @title("GraphFeed")
   @description("A saved wiretap + Cypher query pair, listed in Explorer Settings.")
-  final case class TapQuery(
-    @description("Display name for this tap query.") name: String,
-    @description("Optional longer description of what this tap query does.") description: Option[String],
+  final case class GraphFeed(
+    @description("Display name for this graph feed.") name: String,
+    @description("Optional longer description of what this graph feed does.") description: Option[String],
     @description("Name of the standing query to tap.") standingQueryName: String,
     @description("If set, tap this output's stream; otherwise tap raw results.")
     outputName: Option[String],
@@ -397,11 +397,11 @@ object ApiUiStyling {
     syntheticEdges: Vector[SyntheticEdge] = Vector.empty,
   )
 
-  object TapQuery {
-    implicit val encoder: Encoder[TapQuery] = deriveConfiguredEncoder
-    implicit val decoder: Decoder[TapQuery] = deriveConfiguredDecoder
-    implicit lazy val schema: Schema[TapQuery] = Schema.derived
+  object GraphFeed {
+    implicit val encoder: Encoder[GraphFeed] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[GraphFeed] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[GraphFeed] = Schema.derived
 
-    val defaults: Vector[TapQuery] = Vector.empty
+    val defaults: Vector[GraphFeed] = Vector.empty
   }
 }

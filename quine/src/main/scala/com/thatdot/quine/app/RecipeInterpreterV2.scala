@@ -4,31 +4,23 @@ import java.net.URL
 import java.util.concurrent.TimeoutException
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 import org.apache.pekko.actor.Cancellable
 import org.apache.pekko.http.scaladsl.model.Uri
-import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
 import com.thatdot.api.v2.ResourceName
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities
-import com.thatdot.quine.app.model.ingest2.V2IngestEntities.QuineIngestConfiguration
-import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryInterfaceV2}
-import com.thatdot.quine.app.v2api.converters.{ApiToIngest, ApiToUiStyling}
-import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
+import com.thatdot.quine.app.routes.QueryUiConfigurationState
+import com.thatdot.quine.app.v2api.converters.ApiToUiStyling
 import com.thatdot.quine.graph.cypher.{RunningCypherQuery, Value}
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.serialization.ProtobufSchemaCache
 import com.thatdot.quine.util.Log.implicits._
-
-object RecipeInterpreterV2 {
-  type RecipeStateV2 = QueryUiConfigurationState with IngestStreamState with StandingQueryInterfaceV2
-}
 
 /** Runs a V2 Recipe by making a series of blocking graph method calls as determined
   * by the recipe content.
@@ -39,26 +31,32 @@ object RecipeInterpreterV2 {
 case class RecipeInterpreterV2(
   statusLines: StatusLines,
   recipe: RecipeV2.Recipe,
-  appState: RecipeInterpreterV2.RecipeStateV2,
+  // Only the cosmetic UI-styling config is set directly through `appState` (node appearances, quick
+  // queries, sample queries). Everything that needs validation — standing queries, ingest streams,
+  // graph feeds — goes through the `registrar` seam instead.
+  appState: QueryUiConfigurationState,
   graphService: CypherOpsGraph,
   quineWebserverUri: Option[URL],
   protobufSchemaCache: ProtobufSchemaCache,
+  registrar: RecipeRegistrar,
 )(implicit idProvider: QuineIdProvider)
     extends Cancellable {
 
   private var tasks: List[Cancellable] = List.empty
 
-  // Fallback templates are constructor-controlled and always valid; the throw surfaces a
-  // future template regression rather than letting a malformed name reach the API response.
-  private def syntheticResourceName(s: String): ResourceName =
-    ResourceName(s).getOrElse(
-      throw new AssertionError(s"Synthetic recipe fallback name '$s' is not a valid ResourceName"),
-    )
-
   // Recipes always use the default namespace.
   val namespace: NamespaceId = defaultNamespaceId
 
   implicit val ec: ExecutionContext = graphService.system.dispatcher
+
+  /** Ceiling for the blocking wait on each recipe resource registration. Registration now routes
+    * through the V2 API's validation (see [[RecipeRegistrar]]), whose dominant cost is the Kafka
+    * bootstrap connectivity check (5s per Kafka ingest source / DLQ destination) plus
+    * enrichment-Cypher compilation. Kept well above those internal timeouts so a slow-but-successful
+    * validation is not reported as a spurious failure — a too-short wait throws `TimeoutException`
+    * while the registration keeps running, leaving an untracked resource.
+    */
+  private val registrationTimeout: FiniteDuration = 30.seconds
 
   /** Cancel all the tasks, returning true if any task cancel returns true. */
   override def cancel(): Boolean = tasks.foldLeft(false)((a, b) => b.cancel() || a)
@@ -85,103 +83,68 @@ case class RecipeInterpreterV2(
       appState.setSampleQueries(v1SampleQueries)
     }
 
-    // Create Standing Queries using V2 API
+    // Create Standing Queries through the same validation path as the V2 API.
     for {
       (standingQueryDef, sqIndex) <- recipe.standingQueries.zipWithIndex
     } {
       val standingQueryRn: ResourceName =
-        standingQueryDef.name.getOrElse(syntheticResourceName(s"standing-query-$sqIndex"))
+        standingQueryDef.name.getOrElse(RecipeRegistrar.syntheticResourceName(s"standing-query-$sqIndex"))
       val standingQueryName: String = standingQueryRn.value
 
-      // Convert recipe SQ definition to API format
-      val apiSqDef = ApiStanding.StandingQuery.StandingQueryDefinition(
-        name = standingQueryRn,
-        pattern = standingQueryDef.pattern,
-        outputs = standingQueryDef.outputs.zipWithIndex.map { case (workflow, wfIndex) =>
-          ApiStanding.StandingQueryResultWorkflow(
-            name = workflow.name.getOrElse(syntheticResourceName(s"output-$wfIndex")),
-            filter = workflow.filter,
-            preEnrichmentTransformation = workflow.preEnrichmentTransformation,
-            resultEnrichment = workflow.resultEnrichment.map(e =>
-              com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps.CypherQuery(
-                query = e.query,
-                parameter = e.parameter,
-              ),
-            ),
-            destinations = workflow.destinations,
-          )
-        },
-        includeCancellations = standingQueryDef.includeCancellations,
-        inputBufferSize = standingQueryDef.inputBufferSize,
-      )
-
-      val addResult: Future[StandingQueryInterfaceV2.Result] =
-        appState.addStandingQueryV2(standingQueryName, namespace, apiSqDef)
-
-      try Await.result(addResult, 5.seconds) match {
-        case StandingQueryInterfaceV2.Result.Success =>
+      try Await.result(
+        registrar.registerStandingQuery(standingQueryRn, namespace, standingQueryDef),
+        registrationTimeout,
+      ) match {
+        case Right(_) =>
           statusLines.info(log"Running Standing Query ${Safe(standingQueryName)}")
-          tasks +:= standingQueryProgressReporter(statusLines, appState, graphService, standingQueryName)
-        case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
-          statusLines.error(log"Standing Query ${Safe(standingQueryName)} already exists")
-        case StandingQueryInterfaceV2.Result.NotFound(msg) =>
-          statusLines.error(log"Namespace not found: ${Safe(msg)}")
+          tasks +:= standingQueryProgressReporter(statusLines, graphService, standingQueryName)
+        case Left(errors) =>
+          statusLines.error(
+            log"Failed creating Standing Query ${Safe(standingQueryName)}: ${Safe(errors.mkString(", "))}",
+          )
       } catch {
         case NonFatal(ex) =>
-          statusLines.error(
-            log"Failed creating Standing Query ${Safe(standingQueryName)}",
-            ex,
-          )
+          statusLines.error(log"Failed creating Standing Query ${Safe(standingQueryName)}", ex)
       }
     }
 
-    // Create Ingest Streams using V2 API
+    // Create Ingest Streams through the same validation path as the V2 API.
     for {
       (ingestStream, ingestIndex) <- recipe.ingestStreams.zipWithIndex
     } {
-      val ingestStreamName: String =
-        ingestStream.name.getOrElse(syntheticResourceName(s"ingest-stream-$ingestIndex")).value
+      val ingestStreamRn: ResourceName =
+        ingestStream.name.getOrElse(RecipeRegistrar.syntheticResourceName(s"ingest-stream-$ingestIndex"))
+      val ingestStreamName: String = ingestStreamRn.value
 
-      // Convert recipe ingest to V2 internal model
-      val v2IngestSource = ApiToIngest(ingestStream.source)
-      val onStreamError = ingestStream.onStreamError
-        .map(ApiToIngest.apply)
-        .getOrElse(V2IngestEntities.LogStreamError)
-
-      val v2IngestConfig = QuineIngestConfiguration(
-        name = ingestStreamName,
-        source = v2IngestSource,
-        query = ingestStream.query,
-        parameter = ingestStream.parameter,
-        transformation = None, // TODO: handle transformation conversion
-        parallelism = ingestStream.parallelism,
-        maxPerSecond = ingestStream.maxPerSecond,
-        onRecordError = ingestStream.onRecordError,
-        onStreamError = onStreamError,
-      )
-
-      val result: Future[Either[Seq[String], Unit]] = appState.addV2IngestStream(
-        name = ingestStreamName,
-        settings = v2IngestConfig,
-        intoNamespace = namespace,
-        timeout = 5.seconds,
-        memberIdx = None, // recipes run on the member interpreting them
-      )
-
-      try Await.result(result, 10.seconds) match {
+      try Await.result(
+        registrar.registerIngest(ingestStreamRn, namespace, ingestStream),
+        registrationTimeout,
+      ) match {
+        case Right(warnings) =>
+          warnings.foreach(w => statusLines.warn(log"Ingest Stream ${Safe(ingestStreamName)}: ${Safe(w)}"))
+          statusLines.info(log"Running Ingest Stream ${Safe(ingestStreamName)}")
+          tasks +:= ingestStreamProgressReporter(statusLines, graphService, ingestStreamName)
         case Left(errors) =>
           statusLines.error(
             log"Failed creating Ingest Stream ${Safe(ingestStreamName)}: ${Safe(errors.mkString(", "))}",
           )
-        case Right(_) =>
-          statusLines.info(log"Running Ingest Stream ${Safe(ingestStreamName)}")
-          tasks +:= ingestStreamProgressReporter(statusLines, appState, graphService, ingestStreamName)
       } catch {
         case NonFatal(ex) =>
-          statusLines.error(
-            log"Failed creating Ingest Stream ${Safe(ingestStreamName)}",
-            ex,
-          )
+          statusLines.error(log"Failed creating Ingest Stream ${Safe(ingestStreamName)}", ex)
+      }
+    }
+
+    // Register Graph Feeds through the same validation path as the V2 API (read-only projection
+    // queries). Registered after standing queries because a graph feed references a standing query.
+    if (recipe.graphFeeds.nonEmpty) {
+      statusLines.info(log"Using ${Safe(recipe.graphFeeds.length)} graph feeds")
+      try Await.result(registrar.registerGraphFeeds(namespace, recipe.graphFeeds.toVector), registrationTimeout) match {
+        case Right(_) => ()
+        case Left(errors) =>
+          statusLines.error(log"Failed setting graph feeds: ${Safe(errors.mkString(", "))}")
+      } catch {
+        case NonFatal(ex) =>
+          statusLines.error(log"Failed setting graph feeds", ex)
       }
     }
 
@@ -212,7 +175,6 @@ case class RecipeInterpreterV2(
 
   private def ingestStreamProgressReporter(
     statusLines: StatusLines,
-    appState: RecipeInterpreterV2.RecipeStateV2,
     graphService: BaseGraph,
     ingestStreamName: String,
     interval: FiniteDuration = 1.second,
@@ -223,38 +185,36 @@ case class RecipeInterpreterV2(
       initialDelay = interval,
       interval = interval,
     ) { () =>
-      appState.getIngestStream(ingestStreamName, namespace) match {
-        case None =>
-          statusLines.error(log"Failed getting Ingest Stream ${Safe(ingestStreamName)} (it does not exist)")
-          task.cancel()
-          statusLines.remove(statusLine)
-          ()
-        case Some(ingestStream) =>
-          ingestStream
-            .status(Materializer.matFromSystem(actorSystem))
-            .foreach { status =>
-              val stats = ingestStream.metrics.toEndpointResponse
-              val message =
-                s"$ingestStreamName status is ${status.toString.toLowerCase} and ingested ${stats.ingestedCount}"
-              if (status.isTerminal) {
-                statusLines.info(log"${Safe(message)}")
-                task.cancel()
-                statusLines.remove(statusLine)
-              } else {
-                statusLines.update(
-                  statusLine,
-                  message,
-                )
-              }
-            }(graphService.system.dispatcher)
-      }
+      registrar
+        .ingestStreamStatus(ingestStreamName, namespace)
+        .onComplete {
+          case Failure(ex) =>
+            statusLines.error(log"Failed getting Ingest Stream ${Safe(ingestStreamName)}" withException ex)
+            task.cancel()
+            statusLines.remove(statusLine)
+            ()
+          case Success(None) =>
+            statusLines.error(log"Failed getting Ingest Stream ${Safe(ingestStreamName)} (it does not exist)")
+            task.cancel()
+            statusLines.remove(statusLine)
+            ()
+          case Success(Some(info)) =>
+            val message =
+              s"$ingestStreamName status is ${info.status.toString.toLowerCase} and ingested ${info.stats.ingestedCount}"
+            if (info.status.isTerminal) {
+              statusLines.info(log"${Safe(message)}")
+              task.cancel()
+              statusLines.remove(statusLine)
+            } else {
+              statusLines.update(statusLine, message)
+            }
+        }(graphService.system.dispatcher)
     }(graphService.system.dispatcher)
     task
   }
 
   private def standingQueryProgressReporter(
     statusLines: StatusLines,
-    appState: RecipeInterpreterV2.RecipeStateV2,
     graph: BaseGraph,
     standingQueryName: String,
     interval: FiniteDuration = 1.second,
@@ -265,8 +225,8 @@ case class RecipeInterpreterV2(
       initialDelay = interval,
       interval = interval,
     ) { () =>
-      appState
-        .getStandingQueryV2(standingQueryName, namespace)
+      registrar
+        .standingQueryStatus(standingQueryName, namespace)
         .onComplete {
           case Failure(ex) =>
             statusLines.error(log"Failed getting Standing Query ${Safe(standingQueryName)}" withException ex)
