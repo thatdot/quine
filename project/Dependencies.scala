@@ -1,12 +1,13 @@
 import sbt._
 
 object Dependencies {
+  // On update, check whether opentelemetryOverrideV is removable
   val amazonKinesisClientV = "3.5.1"
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.1"
-  // On update, check whether nettyOverrideV override is removable
+  // On update, check whether jacksonOverrideV override is removable
   val awsSdkV = "2.49.5"
-  // On update, check whether netty-nio-client override in quine-serialization is removable
+  // On update, check whether nettyOverrideV or wireOverrideV are removable
   val amazonGlueV = "1.1.27"
   val betterMonadicForV = "0.3.1"
   val boopickleV = "1.5.0"
@@ -17,6 +18,7 @@ object Dependencies {
   val fontsourceInterV = "5.2.8"
   val fontsourceJetBrainsMonoV = "5.2.8"
   val caffeineV = "3.2.4"
+  // On update check whether hdrhistographOverrideV is removable
   val cassandraClientV = "4.19.3"
   val catsV = "2.13.0"
   val catsEffectV = "3.7.0"
@@ -143,15 +145,36 @@ object Dependencies {
   // === JVM Override Versions ===
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
-  // Parent: AWS SDK (awsSdkV)
-  val jacksonOverride = "2.22.1"
+  /** Parent: [[awsSdkV]] */
+  val jacksonOverrideV = "2.22.1"
+
+  /** Parent: [[amazonGlueV]] */
+  val wireOverrideV = "6.4.5"
+
+  val okhttpOverrideV = "5.3.2"
+
+  /** Parent: [[amazonKinesisClientV]] */
+  val opentelemetryOverrideV = "1.62.0"
+
+  /** Parent: [[cassandraClientV]] */
+  val hdrhistographOverrideV = "2.2.2"
 
   // Parent: AWS SDK (awsSdkV). The AWS SDK is often slow to update its dependencies, and CVE reports for netty have
   // been frequent. So although this netty override is currently unnecessary, we'll keep it commented-out in the code.
 //  val nettyOverrideV = "4.1.135.Final"
 
   val jvmDependencyOverrides: Seq[ModuleID] = Seq(
-    "com.fasterxml.jackson.core" % "jackson-databind" % jacksonOverride,
+    "com.fasterxml.jackson.core" % "jackson-databind" % jacksonOverrideV,
+    // Overriding only wire-compiler and wire-schema should be sufficient to transitively override
+    // the rest of the wire dependencies, but wire-runtime and wire-runtime-jvm are the specific
+    // projects with CVEs, so we'll list them too just to be explicit.
+    "com.squareup.wire" % "wire-compiler" % wireOverrideV,
+    "com.squareup.wire" % "wire-schema" % wireOverrideV,
+    "com.squareup.wire" % "wire-runtime" % wireOverrideV,
+    "com.squareup.wire" % "wire-runtime-jvm" % wireOverrideV,
+    "com.squareup.okhttp3" % "okhttp" % okhttpOverrideV,
+    "io.opentelemetry" % "opentelemetry-api" % opentelemetryOverrideV,
+    "org.hdrhistogram" % "HdrHistogram" % hdrhistographOverrideV,
 //    "io.netty" % "netty-handler" % nettyOverrideV,
 //    "io.netty" % "netty-codec-http" % nettyOverrideV,
 //    "io.netty" % "netty-codec-http2" % nettyOverrideV,

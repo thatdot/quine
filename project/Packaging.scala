@@ -31,8 +31,10 @@ object Packaging extends AutoPlugin {
     // libraries are only relevant for Kotlin Native targets, not JVM.
     case PathList("commonMain", "default", "manifest") => MergeStrategy.discard
     case PathList("nativeMain", "default", "manifest") => MergeStrategy.discard
+    case PathList("nonJvmMain", "default", "manifest") => MergeStrategy.discard
     case PathList("commonMain", "default", "linkdata", "module") => MergeStrategy.discard
     case PathList("nativeMain", "default", "linkdata", "module") => MergeStrategy.discard
+    case PathList("nonJvmMain", "default", "linkdata", "module") => MergeStrategy.discard
     case PathList("META-INF", "kotlin-project-structure-metadata.json") => MergeStrategy.discard
     case PathList("META-INF", "kotlinx-serialization-core.kotlin_module") => MergeStrategy.first
     case PathList("META-INF", "okio-fakefilesystem.kotlin_module") => MergeStrategy.first
