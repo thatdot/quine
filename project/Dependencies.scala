@@ -1,4 +1,6 @@
 import sbt._
+import scalajsbundler.util.JSON
+import scalajsbundler.util.JSON.{obj, str}
 
 object Dependencies {
   // On update, check whether opentelemetryOverrideV is removable
@@ -103,7 +105,7 @@ object Dependencies {
   // On update, check whether com.datastax.oss exclusion in quine-cassandra-persistor is removable
   val sigv4AuthCassandraPluginV = "4.0.9"
   // On update, check whether any NPM Override Versions (below) are removable
-  val stoplightElementsV = "9.0.1"
+  val stoplightElementsV = "9.0.24"
   val sugarV = "2.0.6"
   val tapirV = "1.13.30"
   val ujsonCirceV = "3.3.1"
@@ -184,18 +186,37 @@ object Dependencies {
   // === NPM Override Versions ===
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
-  // Parents: @stoplight/elements (stoplightElementsV), webpack (scalajs-bundler)
-  val lodashV = "4.18.1" // CVE-2025-13465 (GHSA-xxjr-mmjv-4gpg), CVE-2026-4800
+  /** Parent: minimatch [[minimatchV]] */
+  val braceExpansionV = "5.0.8" // CVE-2026-14257
 
-  // Parent: @stoplight/elements (stoplightElementsV) via react-router-dom
-  val reactRouterV = "6.30.4" // CVE-2026-40181
+  /** Parent: monaco-editor [[monacoEditorV]] */
+  val dompurifyV = "3.4.13" // CVE-2026-65901
 
-  // Parents: @stoplight/elements (stoplightElementsV), glob.
+  /** Parent: @stoplight/elements [[stoplightElementsV]] via react-use */
+  val jsCookieV = "3.0.8" // CVE-2026-46625 (GHSA-qjx8-664m-686j)
+
+  /** Parents: [[stoplightElementsV]], [[webpackV]] */
+  val lodashV = "4.18.1"
+
+  /** Parents: @stoplight/elements (stoplightElementsV), glob. */
   val minimatchV = "5.1.9" // CVE-2026-27903 & CVE-2026-27904
 
-  // Parent: @stoplight/elements (stoplightElementsV) via @stoplight/yaml and openapi3-ts
+  /** Parent: @stoplight/elements [[stoplightElementsV]] */
+  val reactRouterDomV = "7.13.0" // CVE-2026-53668
+
+  /** Parent: @stoplight/elements [[stoplightElementsV]] via @stoplight/yaml and openapi3-ts */
   val yamlV = "1.10.3" // CVE-2026-33532 (GHSA-48c2-rrv3-qjmp)
 
-  // Parent: @stoplight/elements (stoplightElementsV) via react-use
-  val jsCookieV = "3.0.8" // CVE-2026-46625 (GHSA-qjx8-664m-686j)
+  // The yarn `resolutions` object forcing the patched versions above, shared by every browser
+  // project's `Compile / additionalNpmConfig`. (Not scalajs-bundler's `npmResolutions` key, which
+  // settles conflicting npmDependencies declarations rather than overriding transitive versions.)
+  val yarnResolutions: JSON = obj(
+    "brace-expansion" -> str(braceExpansionV),
+    "dompurify" -> str(dompurifyV),
+    "js-cookie" -> str(jsCookieV),
+    "lodash" -> str(lodashV),
+    "minimatch" -> str(minimatchV),
+    "react-router-dom" -> str(reactRouterDomV),
+    "yaml" -> str(yamlV),
+  )
 }

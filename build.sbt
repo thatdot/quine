@@ -411,16 +411,11 @@ lazy val `quine-browser`: Project = project
       // zod: runtime dependency of the in-tree query editor package — see Dependencies.scala.
       "zod" -> zodV,
     ),
-    // Force patched dependency versions via yarn resolutions (see NPM Override Versions in Dependencies.scala)
     Compile / additionalNpmConfig := Map(
-      "resolutions" -> obj(
-        "lodash" -> str(lodashV),
-        "react-router" -> str(reactRouterV),
-        "react-router-dom" -> str(reactRouterV),
-        "minimatch" -> str(minimatchV),
-        "yaml" -> str(yamlV),
-        "js-cookie" -> str(jsCookieV),
-      ),
+      "resolutions" -> yarnResolutions,
+      // Newer versions of @stoplight/elements depend on @scarf/scarf which reports analytics
+      // during `yarn install`. This line opts-out of this reporting.
+      "scarfSettings" -> obj("enabled" -> bool(false)),
     ),
     webpack / version := webpackV,
     webpackNodeArgs := nodeLegacySslIfAvailable,
