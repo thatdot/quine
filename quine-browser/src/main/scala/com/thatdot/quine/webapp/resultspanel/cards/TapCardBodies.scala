@@ -5,7 +5,7 @@ import io.circe.{Json, Printer}
 
 import com.thatdot.quine.webapp.Styles
 import com.thatdot.quine.webapp.resultspanel.streaming.StreamingView
-import com.thatdot.quine.webapp.resultspanel.{ResultsData, ResultsView, TapEntry}
+import com.thatdot.quine.webapp.resultspanel.{ResultsData, ResultsView, TapEntry, ViewerCommand}
 
 /** Card body for the tap-table kind. Kept thin: tap-table reuses the existing
   * [[StreamingView]] wholesale (design doc §3: "StreamingView for live tap tables").
@@ -23,7 +23,7 @@ object TapCardBodies {
     * is tap-only: adhoc queries return a complete result set, so [[AdhocCardBody]] renders
     * it in full.
     */
-  def tapTable(card: CardState, entry: TapEntry): HtmlElement = {
+  def tapTable(card: CardState, entry: TapEntry, vd: Observer[ViewerCommand]): HtmlElement = {
     val cap: Signal[Option[Int]] = card.mode match {
       case SampleMode.Live => Signal.fromValue(None)
       case SampleMode.Sampled => card.viewer.sampleSize.signal.map(Some(_))
@@ -37,7 +37,15 @@ object TapCardBodies {
       // The header's Table·JSON toggle applies here just as it does to adhoc cards —
       // per-card state (`ViewerState.view`), so flipping one card leaves the others alone.
       child <-- card.viewer.view.signal.map {
-        case ResultsView.Table => StreamingView.tapBody(entry, maxRows = cap, filterNeedle = needle)
+        case ResultsView.Table =>
+          StreamingView.tapBody(
+            entry,
+            maxRows = cap,
+            filterNeedle = needle,
+            colWidths = card.viewer.colWidths.signal,
+            selectedRow = card.viewer.selectedRow.signal,
+            vd = vd,
+          )
         case ResultsView.Json => jsonBody(entry, cap, needle)
       },
     )

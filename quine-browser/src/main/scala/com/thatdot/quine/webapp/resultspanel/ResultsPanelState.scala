@@ -47,7 +47,7 @@ object ViewerCommand {
   case object ClearSearch extends ViewerCommand
   final case class ToggleSort(col: Int) extends ViewerCommand
   final case class SetColWidths(widths: Vector[Double]) extends ViewerCommand
-  final case class SelectRow(values: Seq[Json]) extends ViewerCommand
+  final case class SelectRow(fields: Seq[(String, Json)]) extends ViewerCommand
   case object CloseRow extends ViewerCommand
   case object ToggleExport extends ViewerCommand
   case object CloseExport extends ViewerCommand

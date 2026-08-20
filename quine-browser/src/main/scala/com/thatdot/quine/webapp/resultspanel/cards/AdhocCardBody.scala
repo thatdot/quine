@@ -53,7 +53,10 @@ object AdhocCardBody {
                     }
                   },
               ),
-              RowDrawer(result.columns, reads.selectedRow, vd),
+              child <-- reads.view.distinct.map {
+                case ResultsView.Table => RowDrawer(reads.selectedRow, vd)
+                case ResultsView.Json => emptyNode
+              },
             )
           case ResultOutcome.TextResults(values) =>
             div(cls := Styles.resultsBody, pre(cls := Styles.resultsJson, textJson(values)))

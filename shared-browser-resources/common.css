@@ -2944,6 +2944,7 @@ table.results-grid {
   width: 100%;
   border-collapse: collapse;
   font-family: var(--thatdot-font-mono);
+  --results-cell-pad-x: 16px;
 }
 /* Once a column has been resized, widths are explicit and the header governs the
    column width (not content), so drop the auto-fit cap on cells. */
@@ -2971,7 +2972,7 @@ table.results-grid thead th {
   top: 0;
   z-index: 1;
   text-align: left;
-  padding: 9px 16px;
+  padding: 9px var(--results-cell-pad-x);
   font-family: var(--cui-font-sans-serif);
   font-size: 11px;
   font-weight: 600;
@@ -2983,22 +2984,39 @@ table.results-grid thead th {
   white-space: nowrap;
 }
 table.results-grid tbody td {
-  padding: 9px 16px;
+  position: relative;
+  padding: 9px var(--results-cell-pad-x);
   font-size: 12.5px;
   color: var(--thatdot-dark-blue);
   border-bottom: 1px solid rgba(10, 41, 91, 0.07);
   vertical-align: top;
   max-width: 320px;
 }
+/* Cells in the results panel act like stacked strips of paper: each one lies over the
+   cell to its left and casts a shadow back onto it. */
+table.results-grid tbody td::before,
+table.results-grid thead th::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 100%;
+  width: 8px;
+  pointer-events: none;
+  background: linear-gradient(to left, rgba(10, 41, 91, 0.07), transparent);
+}
+table.results-grid tbody td:first-child::before,
+table.results-grid thead th:first-child::before {
+  content: none;
+}
 table.results-grid tbody tr:hover {
   background: rgba(22, 88, 183, 0.08);
   cursor: pointer;
 }
-.cell-truncate {
+.cell-clip {
   display: inline-block;
-  max-width: 100%;
+  max-width: calc(100% + var(--results-cell-pad-x, 0px));
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
 }
@@ -3024,7 +3042,7 @@ table.results-grid tbody tr:hover {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  max-width: 100%;
+  max-width: calc(100% + var(--results-cell-pad-x, 0px));
   overflow: hidden;
 }
 .cell-label-chip,
@@ -3048,8 +3066,6 @@ table.results-grid tbody tr:hover {
 .cell-node-props {
   flex: 0 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   color: rgba(10, 41, 91, 0.7);
 }
@@ -4316,6 +4332,14 @@ body.panel-dragging * {
   border-radius: 16px;
   box-shadow: 0 24px 60px -20px rgba(10, 41, 91, 0.45);
   overflow: hidden;
+  transform-origin: 100% 100%;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.2s ease;
+}
+
+.card-popup.is-collapsed {
+  transform: scale(0.85);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .card-popup-grab-rail {

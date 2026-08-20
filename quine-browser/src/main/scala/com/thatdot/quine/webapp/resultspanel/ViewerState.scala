@@ -12,7 +12,7 @@ import io.circe.Json
   */
 final case class ViewerState(
   view: Var[ResultsView],
-  selectedRow: Var[Option[Seq[Json]]],
+  selectedRow: Var[Option[Seq[(String, Json)]]],
   sortCol: Var[Option[Int]],
   sortDir: Var[SortDir],
   search: Var[String],
@@ -87,7 +87,7 @@ final case class ViewerReads(
   sortCol: Signal[Option[Int]],
   sortDir: Signal[SortDir],
   colWidths: Signal[Vector[Double]],
-  selectedRow: Signal[Option[Seq[Json]]],
+  selectedRow: Signal[Option[Seq[(String, Json)]]],
 )
 object ViewerReads {
   def of(s: ViewerState): ViewerReads =

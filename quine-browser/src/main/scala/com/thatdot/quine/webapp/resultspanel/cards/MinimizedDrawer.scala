@@ -30,12 +30,16 @@ object MinimizedDrawer {
   /** @param hasCards whether any card exists at all (expanded or minimized) — distinct from
     *   `minimized` being empty, which also happens when the sole card is currently expanded.
     *   No cards at all renders nothing; any cards keep the drawer shell mounted.
+    * @param popupOpen whether the expanded-card popup is showing. The popup sits at
+    *   `bottom: 24px` and the drawer at `bottom: 16px`, so the drawer's corner peeks out
+    *   from under it — hide the drawer entirely for as long as the popup covers the canvas.
     */
   def apply(
     minimized: Signal[Vector[CardState]],
     search: Signal[String],
     dispatch: Observer[CardCommand],
     hasCards: Signal[Boolean],
+    popupOpen: Signal[Boolean],
   ): HtmlElement = {
     val collapsed = Var(false)
 
@@ -47,6 +51,7 @@ object MinimizedDrawer {
 
     div(
       cls := CardStyles.drawer,
+      display <-- popupOpen.map(if (_) "none" else "flex"),
       // Zero cards at all: render nothing. Any cards existing (even if all are currently
       // expanded, so `minimized` alone is empty) keeps the normal panel shell mounted, just
       // with nothing in `drawerList` to show. The whole panel itself collapses to a small

@@ -122,7 +122,7 @@ object Styles {
   val resultsContentStack = "results-content-stack"
   val resultsBody = "results-body"
   val resultsGrid = "results-grid"
-  val cellTruncate = "cell-truncate"
+  val cellClip = "cell-clip"
   val cellNumber = "cell-number"
   val cellNull = "cell-null"
   val cellChip = "cell-chip"

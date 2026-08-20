@@ -33,6 +33,11 @@ object ResultsLayout {
   /** Smallest width a column can be resized to, in px. */
   val minColumnWidthPx = 60.0
 
+  /** Width given to a column that appears after the user has already set explicit widths,
+    * in px — see [[ColumnResize.padToColumns]].
+    */
+  val defaultColumnWidthPx = 160.0
+
   /** How close to the bottom (px) still counts as "at the bottom" for a live tap's
     * tail-follow auto-scroll.
     */

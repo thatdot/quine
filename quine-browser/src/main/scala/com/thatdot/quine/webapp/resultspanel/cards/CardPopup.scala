@@ -1,5 +1,7 @@
 package com.thatdot.quine.webapp.resultspanel.cards
 
+import scala.scalajs.js
+
 import com.raquo.laminar.api.L._
 import org.scalajs.dom
 
@@ -38,6 +40,13 @@ object CardPopup {
   private val initialHeightPx = 420.0
   private val minHeightPx = 220.0
 
+  /** How long the popup's grow/shrink transition runs. Must match the transition duration on
+    * `.card-popup` in common.css: it is how long the minimized card's content stays mounted
+    * after it stops being the expanded card, so the popup shrinks away *with* its content
+    * rather than blanking first and then shrinking as an empty box.
+    */
+  private val TransitionMs = 200
+
   def apply(
     expanded: Signal[Option[CardState]],
     dispatch: Observer[CardCommand],
@@ -47,12 +56,33 @@ object CardPopup {
     // the frame rebuilds on every CardState emit (entry swap, stop, mode flip), which would
     // reset frame-local state. Keyed by id so switching to another card starts collapsed.
     val queryOpenForVar: Var[Option[CardId]] = Var(None)
+    // What the popup actually renders: `expanded`, but lagging it by `TransitionMs` on the
+    // way out (see above). Expanding is immediate — the new card must be in place before the
+    // popup grows.
+    val shownVar: Var[Option[CardState]] = Var(None)
+    var clearHandle: Option[js.timers.SetTimeoutHandle] = None
 
     div(
       cls := CardStyles.popup,
-      display <-- expanded.map(c => if (c.isDefined) "flex" else "none"),
+      // Driven by `expanded`, not `shownVar`: the shrink has to start the moment the card is
+      // minimized, while the content it shrinks with is still mounted.
+      cls(CardStyles.popupCollapsed) <-- expanded.map(_.isEmpty),
       height <-- heightVar.signal.map(h => s"${h.toInt}px"),
-      child <-- expanded.map {
+      expanded --> { card =>
+        // A card expanded during another's shrink-out cancels that pending clear, which would
+        // otherwise unmount the newly-expanded card mid-animation.
+        clearHandle.foreach(js.timers.clearTimeout)
+        clearHandle = None
+        card match {
+          case some @ Some(_) => shownVar.set(some)
+          case None =>
+            clearHandle = Some(js.timers.setTimeout(TransitionMs.toDouble) {
+              clearHandle = None
+              shownVar.set(None)
+            })
+        }
+      },
+      child <-- shownVar.signal.map {
         case Some(card) => frame(card, heightVar, queryOpenForVar, dispatch)
         case None => emptyNode
       },
@@ -330,7 +360,7 @@ object CardPopup {
     vd: Observer[ViewerCommand],
   ): HtmlElement = card.kind match {
     case CardKind.AdhocCard(_, _, outcomeOpt) => AdhocCardBody(outcomeOpt, reads, vd)
-    case CardKind.TapTableCard(_, entry, _) => TapCardBodies.tapTable(card, entry)
+    case CardKind.TapTableCard(_, entry, _) => TapCardBodies.tapTable(card, entry, vd)
   }
 
   // ── vertical resize (grab rail, reusing DragGesture like ResultsPanel.grabRail) ────

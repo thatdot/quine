@@ -3097,6 +3097,7 @@ object QueryUi {
           cardsStore.drawerSearch,
           cardsStore.dispatch,
           hasCards = cardsStore.cards.map(_.nonEmpty),
+          popupOpen = cardsStore.expandedId.map(_.isDefined),
         ),
         CardPopup(
           cardsStore.expandedCard,

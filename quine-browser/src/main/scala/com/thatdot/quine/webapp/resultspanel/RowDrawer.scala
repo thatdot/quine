@@ -13,7 +13,7 @@ import com.thatdot.quine.webapp.Styles
   */
 object RowDrawer {
 
-  def apply(columns: Seq[String], selected: Signal[Option[Seq[Json]]], vd: Observer[ViewerCommand]): HtmlElement =
+  def apply(selected: Signal[Option[Seq[(String, Json)]]], vd: Observer[ViewerCommand]): HtmlElement =
     div(
       cls := Styles.resultsDrawer,
       cls(Styles.resultsDrawerOpen) <-- selected.map(_.isDefined),
@@ -27,7 +27,7 @@ object RowDrawer {
       div(
         cls := Styles.resultsDrawerBody,
         children <-- selected.map {
-          case Some(row) => columns.zip(row).map { case (col, value) => fieldBlock(col, value) }
+          case Some(row) => row.map { case (col, value) => fieldBlock(col, value) }
           case None => Nil
         },
       ),

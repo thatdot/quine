@@ -119,6 +119,10 @@ final class LiveStream {
 }
 
 object LiveStream {
+
+  /** Roughly, the number of milliseconds to wait between re-renders of the streaming results table */
   private val throttleMs: Double = 100
-  private val maxRows = 5000
+
+  /** The maximum number of result rows that get displayed in the table */
+  private val maxRows = 1000
 }

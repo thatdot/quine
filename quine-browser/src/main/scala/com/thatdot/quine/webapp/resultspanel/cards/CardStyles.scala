@@ -33,6 +33,7 @@ object CardStyles {
 
   // ── Expanded popup (floating over the canvas, not a docked drawer) ────────────────
   val popup = "card-popup"
+  val popupCollapsed = "is-collapsed"
   val popupGrabRail = "card-popup-grab-rail"
 
   val popupHeader = "card-popup-header"

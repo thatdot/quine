@@ -43,11 +43,28 @@ object LandingTooltip {
        |  ${escape(title)}
        |</div>""".stripMargin
 
+  /** Longest cell text that stays on one line. The tooltip is capped at 420px (see `tooltipEl`),
+    * and after its padding and the opposite column roughly this many characters of 14px sans-serif
+    * fit. User-supplied names — an ingest, a standing query — routinely run longer.
+    */
+  private val WrapAt = 38
+
+  /** Escape `s` and break it across lines (marked by ⤦⤥ arrows) when it is too long for its column. */
+  private def wrapAndEscape(s: String): String =
+    if (s.length <= WrapAt) escape(s)
+    else {
+      val numLines = math.ceil(s.length.toDouble / WrapAt).toInt
+      val mark = """<span style="color: #6c7390;">"""
+      s.grouped(math.ceil(s.length.toDouble / numLines).toInt)
+        .map(escape)
+        .mkString(s"$mark⤦</span><br>$mark⤥</span>")
+    }
+
   /** Two-column label/value row for use inside `kvTable`. */
   def kvRow(label: String, value: String, valueColor: Option[String] = None): String = {
     val colorStyle = valueColor.fold("")(c => s"color: $c;")
     s"""<tr>
-       |  <td style="padding: 2px 12px 2px 0; color: #acacc9; white-space: nowrap;">${escape(label)}</td>
+       |  <td style="padding: 2px 12px 2px 0; color: #acacc9; white-space: nowrap;">${wrapAndEscape(label)}</td>
        |  <td style="padding: 2px 0; text-align: right; white-space: nowrap; $colorStyle">${escape(value)}</td>
        |</tr>""".stripMargin
   }
@@ -118,8 +135,9 @@ object LandingTooltip {
       "style",
       "display: none; position: fixed; z-index: 10000; background: #0a295b; " +
       "color: #f4f4f9; border-radius: 6px; padding: 12px 16px; font-size: 14px; " +
-      "font-family: sans-serif; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3); " +
-      "max-width: 420px; min-width: 220px; max-height: 480px; overflow: auto;",
+      "font-family: sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.3); " +
+      "max-width: 420px; min-width: 220px; max-height: 480px; overflow: auto; " +
+      "scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.35) transparent;",
     )
     dom.document.body.appendChild(el)
     el
@@ -134,6 +152,7 @@ object LandingTooltip {
   def showNear(html: String, anchor: dom.DOMRect): Unit = {
     tooltipEl.innerHTML = html
     tooltipEl.style.display = "block"
+    tooltipEl.style.pointerEvents = "auto"
     // Measure after content paint.
     val vw = dom.window.innerWidth
     val vh = dom.window.innerHeight
@@ -164,6 +183,7 @@ object LandingTooltip {
   def showAt(html: String, clientX: Double, clientY: Double): Unit = {
     tooltipEl.innerHTML = html
     tooltipEl.style.display = "block"
+    tooltipEl.style.pointerEvents = "none"
     val vw = dom.window.innerWidth
     val vh = dom.window.innerHeight
     val tw = tooltipEl.getBoundingClientRect().width
@@ -184,12 +204,33 @@ object LandingTooltip {
   }
 
   // Element that owns the currently-shown tooltip. A global `mousemove` listener
-  // hides the tooltip whenever the pointer moves outside of this element. Without
-  // this, overlapping SVG hover zones (especially in the D3 overlays) can swallow
-  // `mouseleave` events and leave tooltips visible when the mouse has already
-  // moved elsewhere.
+  // hides the tooltip whenever the pointer moves outside both this element and the
+  // tooltip itself. Without this, overlapping SVG hover zones (especially in the D3
+  // overlays) can swallow `mouseleave` events and leave tooltips visible when the
+  // mouse has already moved elsewhere.
   private var activeAnchor: dom.Element = null
   private var globalListenerInstalled = false
+
+  /** How far outside an anchor's rect the mouse cursor can be while still being considered "inside"
+    * the anchor. Two pixels is enough to prevent flickering when the cursor is on the edge.
+    */
+  private val AnchorSlop = 2.0
+
+  /** How far outside the tooltip the mouse cursor can be while still being considered "inside"
+    * the tooltip. This leeway makes it easier to grab the scrollbars and also allows the cursor
+    * to cross the small gap between anchor and tooltip without closing the tooltip.
+    */
+  private val TooltipSlop = 12.0
+
+  private def within(r: dom.DOMRect, x: Double, y: Double, slop: Double): Boolean =
+    x >= r.left - slop && x <= r.right + slop && y >= r.top - slop && y <= r.bottom + slop
+
+  /** Whether the pointer is on the anchor, on the tooltip, or in the gap between them — the region
+    * the tooltip has to survive for its scrollbar to be reachable. Call only with a live anchor.
+    */
+  private def overAnchorOrTooltip(x: Double, y: Double): Boolean =
+    within(activeAnchor.getBoundingClientRect(), x, y, AnchorSlop) ||
+    within(tooltipEl.getBoundingClientRect(), x, y, TooltipSlop)
 
   private def ensureGlobalListener(): Unit = {
     if (globalListenerInstalled) return
@@ -197,17 +238,15 @@ object LandingTooltip {
     dom.document.addEventListener(
       "mousemove",
       ((ev: dom.MouseEvent) => {
-        if (activeAnchor != null && tooltipEl.style.display == "block") {
-          val r = activeAnchor.getBoundingClientRect()
-          val x = ev.clientX
-          val y = ev.clientY
-          // Small tolerance so subpixel motion at an edge doesn't flicker.
-          val slop = 2.0
-          val inside = x >= r.left - slop && x <= r.right + slop &&
-            y >= r.top - slop && y <= r.bottom + slop
-          if (!inside) hide()
-        }
+        if (
+          activeAnchor != null && tooltipEl.style.display == "block" &&
+          !overAnchorOrTooltip(ev.clientX, ev.clientY)
+        ) hide()
       }): js.Function1[dom.MouseEvent, Unit],
+    )
+    dom.document.documentElement.addEventListener(
+      "mouseleave",
+      ((_: dom.MouseEvent) => hide()): js.Function1[dom.MouseEvent, Unit],
     )
   }
 
@@ -216,10 +255,14 @@ object LandingTooltip {
     ensureGlobalListener()
   }
 
-  /** Wire `mouseenter`/`mouseleave` on an existing DOM element. `buildHtml` is called
-    * on each hover so the tooltip can reflect up-to-date data.
+  /** Wire `mouseenter` on an existing DOM element. `buildHtml` is called on each hover so the
+    * tooltip can reflect up-to-date data.
+    *
+    * Hiding belongs to the global `mousemove` listener alone. A `mouseleave` here would fire the
+    * moment the pointer crossed off the element and onto the tooltip — i.e. exactly when the user
+    * is reaching for its scrollbar.
     */
-  def attachToElement(el: dom.Element, buildHtml: () => String): Unit = {
+  def attachToElement(el: dom.Element, buildHtml: () => String): Unit =
     el.addEventListener(
       "mouseenter",
       (_: dom.Event) => {
@@ -227,8 +270,6 @@ object LandingTooltip {
         showNear(buildHtml(), el.getBoundingClientRect())
       },
     )
-    el.addEventListener("mouseleave", (_: dom.Event) => hide())
-  }
 
   /** Variant for SVG paths/shapes whose axis-aligned bounding rect is a poor tooltip
     * anchor (e.g. long bezier links that stretch across a card). The tooltip is shown
@@ -273,14 +314,13 @@ object LandingTooltip {
     el.addEventListener("mouseleave", (_: dom.Event) => hide())
   }
 
-  /** Laminar modifier that wires hover tooltip to an element. */
+  /** Laminar modifier that wires hover tooltip to an element. As with [[attachToElement]], there is
+    * no `onMouseLeave` — the global listener owns hiding.
+    */
   def attach[El <: HtmlElement](buildHtml: => String): Mod[El] =
-    List[Mod[El]](
-      onMouseEnter --> { ev: dom.MouseEvent =>
-        val target = ev.currentTarget.asInstanceOf[dom.Element]
-        setActive(target)
-        showNear(buildHtml, target.getBoundingClientRect())
-      },
-      onMouseLeave --> { _: dom.MouseEvent => hide() },
-    )
+    onMouseEnter --> { ev: dom.MouseEvent =>
+      val target = ev.currentTarget.asInstanceOf[dom.Element]
+      setActive(target)
+      showNear(buildHtml, target.getBoundingClientRect())
+    }
 }

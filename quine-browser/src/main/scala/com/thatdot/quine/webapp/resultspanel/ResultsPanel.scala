@@ -86,7 +86,13 @@ object ResultsPanel {
         // Thread the body's left edge to the shown source's kind (same accent as the chip).
         cls <-- store.mainContent.map(SourceFace.mainClass),
         child <-- store.mainContent.map {
-          case Some(Right(tap)) => StreamingView.tapBody(tap)
+          case Some(Right(tap)) =>
+            StreamingView.tapBody(
+              tap,
+              colWidths = store.readsPrimary.colWidths,
+              selectedRow = store.readsPrimary.selectedRow,
+              vd = store.primaryDispatch,
+            )
           case Some(Left(curr)) => bodyFor(curr, store.readsPrimary, store.primaryDispatch)
           case None => emptyNode
         },
@@ -124,7 +130,7 @@ object ResultsPanel {
                 }
               },
           ),
-          RowDrawer(result.columns, reads.selectedRow, vd),
+          RowDrawer(reads.selectedRow, vd),
         )
       case ResultOutcome.TextResults(values) =>
         div(cls := Styles.resultsBody, pre(cls := Styles.resultsJson, textJson(values)))
