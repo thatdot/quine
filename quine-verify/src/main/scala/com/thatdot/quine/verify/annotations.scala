@@ -10,4 +10,4 @@ class VerifySource(protocol: String, reject: String = "") extends scala.annotati
 class VerifyObservedOnly(protocol: String, why: String) extends scala.annotation.StaticAnnotation
 
 /** Marks a definition as deliberately outside the formal model of `protocol`. */
-class VerifyIrrelevant(protocol: String, why: String) extends scala.annotation.StaticAnnotation
+class VerifyIgnore(protocol: String, why: String) extends scala.annotation.StaticAnnotation
