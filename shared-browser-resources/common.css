@@ -1560,7 +1560,42 @@ table.cypher-results td, table.cypher-results th {
 .context-menu-section-body {
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
+  /* The scrollbar is the only "there's more" cue here, deliberately: the browser
+     derives it from real content height, so no layout change to the rows can
+     desync it the way a hand-tuned gradient or height would.
+     scrollbar-gutter reserves the space unconditionally, so the rows don't
+     reflow when filtering the searchable variant pushes the list under the
+     overflow threshold. */
+  scrollbar-gutter: stable;
+}
+/* Styling ::-webkit-scrollbar at all opts this container out of macOS overlay
+   scrollbars, so the gutter and thumb are visible at rest rather than only
+   during a scroll gesture. The track is tinted too, so the gutter reads as a
+   scroll affordance even when the thumb is at an end. */
+.context-menu-section-body::-webkit-scrollbar {
+  width: 8px;
+}
+.context-menu-section-body::-webkit-scrollbar-track {
+  background: rgba(10, 41, 91, 0.06);
+  border-radius: 4px;
+}
+.context-menu-section-body::-webkit-scrollbar-thumb {
+  background: rgba(10, 41, 91, 0.28);
+  border-radius: 4px;
+}
+.context-menu-section-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(10, 41, 91, 0.42);
+}
+/* Firefox has no ::-webkit-scrollbar, so it gets the same two tints through the
+   standard properties. These must stay behind the feature query: Blink drops
+   every ::-webkit-scrollbar rule above the moment scrollbar-width or
+   scrollbar-color is set to anything but auto, which would hand Chrome back the
+   auto-hiding overlay scrollbar this block exists to replace. */
+@supports not selector(::-webkit-scrollbar) {
+  .context-menu-section-body {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(10, 41, 91, 0.28) rgba(10, 41, 91, 0.06);
+  }
 }
 .context-menu-section-body.scrollable {
   max-height: 200px;

@@ -9,16 +9,21 @@ import com.thatdot.quine.webapp.v2api.V2ApiTypes._
 
 /** Landing page component providing an at-a-glance dashboard.
   *
-  * Composes the backpressure diagram, cluster health card (enterprise), host metrics card,
-  * and any extra cards into a responsive grid layout.
+  * Composes the backpressure diagram across the top, then a row sharing any extra cards
+  * (e.g. License Usage) with the host metrics card. That bottom row lays its cards out
+  * side by side, or full width when only one of them is visible.
   *
   * Card visibility is gated by the signed-in user's permissions.
   * `userPermissions = None` disables gating entirely (OSS, where no auth is configured).
   *
-  * `clusterStatusSignal` is optional: OSS deployments should pass `None` so the
-  * Cluster Health card is hidden entirely. Enterprise passes the service's signal.
+  * `clusterStatusSignal` is optional: OSS deployments should pass `None`, which hides the
+  * cluster host count in the toolbar and leaves the backpressure diagram without cluster
+  * context. Enterprise passes the service's signal.
   */
 object LandingPage {
+
+  /** Permission required to read cluster membership (host count badge, backpressure host breakdown). */
+  private val clusterStatusPermissions: Set[String] = Set("ClusterStatusRead")
 
   /** True when no auth is configured (`None` — OSS) or when `perms` covers `needed`. */
   private def hasPermissions(perms: Option[Set[String]], needed: Set[String]): Boolean =
@@ -37,27 +42,19 @@ object LandingPage {
   ): HtmlElement = {
     def allowed(needed: Set[String]): Boolean = hasPermissions(userPermissions, needed)
 
-    val canSeeClusterHealth = clusterStatusSignal.isDefined && allowed(ClusterHealthCard.requiredPermissions)
+    val canSeeClusterStatus = clusterStatusSignal.isDefined && allowed(clusterStatusPermissions)
     val canSeeHostMetrics = allowed(HostMetricsCard.requiredPermissions)
     val canSeeBackpressure = allowed(Set("ApplicationMetricsRead"))
-
-    val row3: Seq[HtmlElement] = (canSeeClusterHealth, canSeeHostMetrics, clusterStatusSignal) match {
-      case (true, true, Some(sig)) =>
-        Seq(
-          div(cls := "col-12 col-md-6 mt-3", ClusterHealthCard(sig)),
-          div(cls := "col-12 col-md-6 mt-3", HostMetricsCard(metricsSignal)),
-        )
-      case (true, false, Some(sig)) =>
-        Seq(div(cls := "col-12 mt-3", ClusterHealthCard(sig)))
-      case (false, true, _) =>
-        Seq(div(cls := "col-12 mt-3", HostMetricsCard(metricsSignal)))
-      case _ =>
-        Seq.empty
-    }
 
     val allowedExtras: Seq[HtmlElement] = extraCards.collect {
       case (needed, card) if allowed(needed) => card
     }
+
+    // Extras and host metrics share the bottom row. A lone card takes the full width rather
+    // than leaving half the row empty; two or more sit side by side and wrap past that.
+    val bottomRow: Seq[HtmlElement] =
+      allowedExtras ++ (if (canSeeHostMetrics) Seq(HostMetricsCard(metricsSignal)) else Seq.empty)
+    val bottomRowColumn = if (bottomRow.size > 1) "col-12 col-md-6 mt-3" else "col-12 mt-3"
 
     div(
       onUnmountCallback(_ => LandingTooltip.hide()),
@@ -88,7 +85,7 @@ object LandingPage {
             }
           else emptyNode,
           // Cluster host count (enterprise only)
-          if (canSeeClusterHealth)
+          if (canSeeClusterStatus)
             child <-- clusterStatusSignal
               .getOrElse(Signal.fromValue(Pot.Empty: Pot[V2ServiceStatus]))
               .map { p =>
@@ -112,22 +109,20 @@ object LandingPage {
                 styleAttr := "background:#f4f5fa;border:1px solid rgba(10,41,91,0.1);border-radius:14px;padding:6px 8px;box-shadow:0 6px 22px rgba(10,41,91,0.06);",
                 // Only pass cluster status to the diagram when the user may read it. The signal can
                 // be populated with a trimmed, member-positions-only status for ingest-capable roles
-                // (to drive the Streams host selector); those roles must not see cluster health here.
+                // (to drive the Streams host selector); those roles must not see cluster detail here.
                 BackpressureDiagram(
                   backpressureService,
-                  if (canSeeClusterHealth) clusterStatusSignal else None,
+                  if (canSeeClusterStatus) clusterStatusSignal else None,
                   showScopePicker = showScopePicker,
                 ),
               ),
             ),
           )
         else emptyNode,
-        // Cluster Health (enterprise only) + Host Metrics
-        if (row3.nonEmpty) div(cls := "row px-3", row3) else emptyNode,
-        // Extra cards (e.g., License Usage for enterprise)
-        allowedExtras.map { card =>
-          div(cls := "row px-3", div(cls := "col-12 col-md-6 mt-3", card))
-        },
+        // Extra cards (e.g., License Usage for enterprise) + Host Metrics
+        if (bottomRow.nonEmpty)
+          div(cls := "row px-3", bottomRow.map(card => div(cls := bottomRowColumn, card)))
+        else emptyNode,
       ),
     )
   }

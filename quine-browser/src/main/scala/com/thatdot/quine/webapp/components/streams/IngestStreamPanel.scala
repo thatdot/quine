@@ -16,12 +16,6 @@ import com.thatdot.quine.webapp.v2api.V2ApiTypes.V2IngestInfo
   */
 object IngestStreamPanel {
 
-  /** Stable row identity: clustered ingests can repeat the same name across member
-    * positions, so the position is folded into the key.
-    */
-  private def rowKey(info: V2IngestInfo): String =
-    info.memberIdx.fold(info.name)(idx => s"${info.name}#$idx")
-
   def apply(
     client: StreamsApiClient,
     ingests: Signal[Pot[Seq[V2IngestInfo]]],
@@ -40,7 +34,9 @@ object IngestStreamPanel {
       emptyMessage = "No ingest streams configured.",
       emptyCta = "Create your first ingest stream",
       canCreate = capabilities.canCreateIngest,
-      entries = ingests.map(_.map(_.toList.map(info => rowKey(info) -> info))),
+      // Collapse the flat per-member list into one entry per ingest name so clustered
+      // ingests aren't shown as a redundant row per member (mirrors the dashboard).
+      entries = ingests.map(_.map(infos => IngestGroup.fromInfos(infos.toList))),
       onRefresh = onRefresh,
       renderCreateForm = (onComplete, onCancel) =>
         CreateIngestForm(
@@ -52,7 +48,7 @@ object IngestStreamPanel {
           onCancel = onCancel,
           editorConfig = editorConfig,
         ),
-      renderTable = { (entriesSignal: Signal[List[(String, V2IngestInfo)]], onAction: () => Unit) =>
+      renderTable = { (entriesSignal: Signal[List[(String, IngestGroup)]], onAction: () => Unit) =>
         val refresh = onAction
         div(
           ErrorAlert(actionState.error.signal),
