@@ -3,7 +3,7 @@ package com.thatdot.quine.app.migrations
 import scala.concurrent.{ExecutionContext, Future}
 
 import com.thatdot.common.logging.Log._
-import com.thatdot.quine.app.migrations.instances.{DefaultNamespaceRename, MultipleValuesRewrite}
+import com.thatdot.quine.app.migrations.instances.{DefaultNamespaceRename, GraphFeedsRename, MultipleValuesRewrite}
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryPattern}
 import com.thatdot.quine.migrations.MigrationError
 import com.thatdot.quine.persistor.cassandra.{CassandraPersistor, StandingQueryStatesDefinition}
@@ -78,6 +78,53 @@ object QuineMigrations {
       ecs: ComputeAndBlockingExecutionContext,
     ): Future[Either[MigrationError, Unit]] = Future.successful(Right(()))
   }
+
+  /** Rename the persisted global metadata key holding the saved graph-feed list from the legacy
+    * `tap_queries` to `graph_feeds`. Applies identically in OSS and Enterprise, so the logic lives here
+    * and the Enterprise applicator delegates to it.
+    */
+  class ApplyGraphFeedsRename(val persistor: PrimePersistor) extends Migration.Apply[GraphFeedsRename.type] {
+    val migration = GraphFeedsRename
+
+    def run()(implicit
+      ecs: ComputeAndBlockingExecutionContext,
+    ): Future[Either[MigrationError, Unit]] =
+      QuineMigrations.renameGraphFeedsKey(persistor)(ecs.nodeDispatcherEC)
+  }
+
+  private[migrations] val OldGraphFeedsKey = "tap_queries"
+  private[migrations] val NewGraphFeedsKey = "graph_feeds"
+
+  /** Move the persisted graph-feed list from the legacy `tap_queries` metadata key to `graph_feeds`.
+    *
+    * The value shape is unchanged, so the stored bytes are moved verbatim. Idempotent: an absent legacy
+    * key is a no-op (nothing to migrate, or already migrated); if the new key already holds a value the
+    * stale legacy key is simply dropped (the newer value wins), which also completes a previously
+    * interrupted rename.
+    */
+  def renameGraphFeedsKey(persistor: PrimePersistor)(implicit
+    ec: ExecutionContext,
+  ): Future[Either[MigrationError, Unit]] =
+    persistor
+      .getMetaData(OldGraphFeedsKey)
+      .flatMap {
+        case None => Future.successful(Right(()))
+        case Some(oldBytes) =>
+          persistor.getMetaData(NewGraphFeedsKey).flatMap {
+            case Some(_) =>
+              // The new key already holds a value, so the rename has effectively happened; drop the
+              // stale legacy key rather than clobbering the (possibly newer) persisted value.
+              persistor.setMetaData(OldGraphFeedsKey, None).map(_ => Right(()))
+            case None =>
+              for {
+                _ <- persistor.setMetaData(NewGraphFeedsKey, Some(oldBytes))
+                _ <- persistor.setMetaData(OldGraphFeedsKey, None)
+              } yield Right(())
+          }
+      }
+      .recover { case err: Throwable =>
+        Left(new MigrationError.PersistorError(err))
+      }
 
   object ApplyMultipleValuesRewrite {
 

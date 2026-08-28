@@ -30,7 +30,7 @@ import com.thatdot.quine.app.config.{
   UseMtls,
   WebServerBindConfig,
 }
-import com.thatdot.quine.app.migrations.instances.{DefaultNamespaceRename, MultipleValuesRewrite}
+import com.thatdot.quine.app.migrations.instances.{DefaultNamespaceRename, GraphFeedsRename, MultipleValuesRewrite}
 import com.thatdot.quine.app.migrations.{Migration, QuineMigrations}
 import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
 import com.thatdot.quine.app.routes.{HealthAppRoutes, QuineAppRoutes}
@@ -239,6 +239,8 @@ object Main extends App with LazySafeLogging {
             new QuineMigrations.ApplyMultipleValuesRewrite(graph.namespacePersistor, graph.getNamespaces.toSet)
           case DefaultNamespaceRename =>
             new QuineMigrations.ApplyDefaultNamespaceRename(graph.namespacePersistor)
+          case GraphFeedsRename =>
+            new QuineMigrations.ApplyGraphFeedsRename(graph.namespacePersistor)
           case other =>
             throw new IllegalStateException(s"No OSS migration applicator for: $other")
         }
