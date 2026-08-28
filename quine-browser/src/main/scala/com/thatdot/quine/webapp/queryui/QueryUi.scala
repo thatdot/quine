@@ -17,6 +17,7 @@ import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.api.v2.QueryWebSocketProtocol.QueryInterpreter
 import com.thatdot.quine.Util.escapeHtml
+import com.thatdot.quine.openapi.ParsedSpec
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
 import com.thatdot.quine.v2api.routes.{V2QuerySort, V2QuickQuery, V2UiNodeQuickQuery}
@@ -38,6 +39,7 @@ import com.thatdot.quine.webapp.components.{
   VisNetwork,
 }
 import com.thatdot.quine.webapp.dataservice.{
+  BackgroundQueryService,
   DataService,
   QueryUiConfigService,
   SaveFailed,
@@ -46,6 +48,7 @@ import com.thatdot.quine.webapp.dataservice.{
   WiretapHandler,
   WiretapOwner,
 }
+import com.thatdot.quine.webapp.openapi.{ApiSpecCache, FormUiHints}
 import com.thatdot.quine.webapp.resultspanel.cards.{
   CardDefaults,
   CardId,
@@ -70,7 +73,7 @@ import com.thatdot.quine.webapp.resultspanel.{
   TapOutput,
   TapTarget,
 }
-import com.thatdot.quine.webapp.util.Pot
+import com.thatdot.quine.webapp.util.{Pot, SignalSample}
 import com.thatdot.quine.webapp.v2api.{QuickQueryConversions, V2ApiTypes}
 import com.thatdot.quine.webapp.{History, QueryUiOptions, Styles}
 import com.thatdot.{visnetwork => vis}
@@ -99,6 +102,17 @@ object QueryUi {
     refreshSignal: Option[EventStream[Unit]] = None,
     queryBarTrailing: Option[HtmlElement] = None,
     invalidatedNamespaces: Option[EventStream[NamespaceParameter]] = None,
+    /** Where the V2 OpenAPI document lives, when this host serves one.
+      *
+      * Fetched lazily, only when the run-in-background dialog is first opened, and shared with
+      * the Streams page through `ApiSpecCache` — the Explorer never pays for it otherwise.
+      *
+      * `None` means this host has no V2 API document (Novelty), and with it no background
+      * queries: the dialog's form is generated from that document, so without one there is
+      * nothing to offer. The whole background-query surface — menu action and executions
+      * section alike — is hidden rather than left half-present.
+      */
+    documentationV2Url: Option[String] = None,
   )
 
   case class State(
@@ -209,11 +223,15 @@ object QueryUi {
     // so a later catalog edit doesn't retroactively change an already-open card; a card that
     // opened or restored without one (catalog still loading, pre-capture snapshot) is
     // backfilled on its next restart via the same call.
-    def resolveTapCardQuery(target: TapTarget): Option[TapCardQuery] = {
-      val catalogObs = tapCatalogSignal.observe(unsafeWindowOwner)
-      val catalogNow = catalogObs.now().toOption.getOrElse(Vector.empty)
-      catalogObs.killOriginalSubscription()
-      TapCardQuery.resolve(catalogNow, target)
+    def resolveTapCardQuery(target: TapTarget): Option[TapCardQuery] = target match {
+      case _: TapTarget.StandingQuery =>
+        val catalogNow = SignalSample.now(tapCatalogSignal).toOption.getOrElse(Vector.empty)
+        TapCardQuery.resolve(catalogNow, target)
+      // A background query isn't in the standing-query catalog; its text comes off the
+      // execution-record feed instead, read the same one-shot way.
+      case TapTarget.BackgroundQuery(executionId, _) =>
+        val runsNow = SignalSample.now(props.dataService.backgroundQueriesSignal).toOption.getOrElse(Seq.empty)
+        runsNow.find(_.id == executionId).map(run => TapCardQuery("Background query", run.query))
     }
     // Taps open under the explorer's own owner; the facade scopes the panel's source list to it.
     val tapSubscriptions = new PanelTapSubscriptions(props.dataService, WiretapOwner("explorer"))
@@ -268,9 +286,9 @@ object QueryUi {
       liveContent = resultsVar.signal,
       onEditQuery = Observer[String](q => stateVar.update(_.copy(queryBarColor = None, query = q))),
       onReRun = (query, language) => submitQueryRef(query, language),
-      onCloseTap = target => tapSubscriptions.close(target.key),
+      onCloseTap = target => tapSubscriptions.close(target),
       // Stop = the store froze the card's buffer; free the tap subscription server-side.
-      onStopTap = target => tapSubscriptions.close(target.key),
+      onStopTap = target => tapSubscriptions.close(target),
       // Restart = reopen the tap; the swap happens in resolvePendingTabularOpens. On
       // failure (timeout below, or an errored source in the binder) the card just stays
       // stopped — honest state.
@@ -293,15 +311,61 @@ object QueryUi {
         budget = () => cardsStore.sampleBudgetFor(target),
         onBudgetFilled = () => {
           entry.ended.set(true)
-          tapSubscriptions.close(target.key)
+          tapSubscriptions.close(target)
         },
       )
+      target match {
+        // A background query's stream ends on its own — the run finishes and the server sends a
+        // completion frame. Every other way a tap ends is something the client did (budget
+        // filled, user Stop, card closed), which is why nothing else mirrors the source's
+        // status into `entry.ended`. Without this the status dot would correctly go amber
+        // (`TapEntry.status` folds `source.status`) while `CardsStore.goLive` and
+        // `FetchMoreSamples`, which read `entry.ended`, still thought the stream was running.
+        //
+        // Held on `unsafeWindowOwner`: one small closure per background-query card opened this
+        // session, which is bounded by user action and released with the page.
+        case _: TapTarget.BackgroundQuery =>
+          src.status.foreach {
+            case SourceStatus.Ended | SourceStatus.Error(_) =>
+              if (!entry.ended.now()) {
+                stream.freeze()
+                entry.ended.set(true)
+              }
+            case _ => ()
+          }(unsafeWindowOwner)
+        case _: TapTarget.StandingQuery => ()
+      }
       entry
     }
 
     // ── Unified tap modal (exploration UI redesign) ─────────────────────────────────
     val tapModalOpenVar: Var[Boolean] = Var(false)
     def openTapModal(): Unit = tapModalOpenVar.set(true)
+
+    // ── Run-in-background dialog ────────────────────────────────────────────────────
+    val backgroundRunOpenVar: Var[Boolean] = Var(false)
+    val backgroundRunSubmittingVar: Var[Boolean] = Var(false)
+    val backgroundRunErrorVar: Var[Option[String]] = Var(None)
+    // The dialog's form is generated from the V2 OpenAPI document, which is large and which the
+    // Explorer needs for nothing else — so it is fetched on first open rather than at page load,
+    // and through the shared cache, so a user who has already visited the Streams page pays
+    // nothing at all.
+    val backgroundRunSpecVar: Var[Pot[ParsedSpec]] = Var(Pot.Empty)
+    def openBackgroundRunModal(): Unit = {
+      backgroundRunErrorVar.set(None)
+      props.documentationV2Url.foreach { specUrl =>
+        // Only on a cold or previously-failed load: a spec already in hand (or in flight) is
+        // reused, and a retry after a failure is exactly what should re-request.
+        if (backgroundRunSpecVar.now() == Pot.Empty || backgroundRunSpecVar.now().isInstanceOf[Pot.Failed]) {
+          backgroundRunSpecVar.set(Pot.Pending)
+          ApiSpecCache.load(specUrl, FormUiHints.source).foreach {
+            case Right(parsed) => backgroundRunSpecVar.set(Pot.Ready(parsed))
+            case Left(message) => backgroundRunSpecVar.set(Pot.Failed(message)): Unit
+          }
+        }
+      }
+      backgroundRunOpenVar.set(true)
+    }
 
     // Tabular-destination opens (design doc §2 step 2 "Results card"): open the tap via
     // PanelTapSubscriptions, then once its LiveSource appears, spawn a tap-table card for it.
@@ -321,20 +385,16 @@ object QueryUi {
         srcs.foreach { src =>
           src.tapTarget.foreach { target =>
             if (pendingRestarts.contains(target.key) || pendingOpens.contains(target.key)) {
-              // One-shot read of the producer's current status (observe + kill — a Signal
-              // has no ownerless `now`): a source that arrives already errored must not
-              // become a card the user never asked to see fail.
-              val statusObs = src.status.observe(unsafeWindowOwner)
-              val statusNow = statusObs.now()
-              statusObs.killOriginalSubscription()
-              statusNow match {
+              // One-shot read of the producer's current status: a source that arrives already
+              // errored must not become a card the user never asked to see fail.
+              SignalSample.now(src.status) match {
                 case SourceStatus.Error(message) =>
                   // Failed open/restart: drop the pending key (a dangling key would spawn
                   // a surprise card from a later source on the same target), free the tap,
                   // and surface the failure. A restarting card just stays stopped.
                   pendingTabularRestartsVar.update(_ - target.key)
                   pendingTabularOpensVar.update(_ - target.key)
-                  tapSubscriptions.close(target.key)
+                  tapSubscriptions.close(target)
                   toastVar.set(
                     Some(ToastMessage(s"Could not open tap on ${target.label}: $message", ToastVariant.Error)),
                   )
@@ -344,7 +404,7 @@ object QueryUi {
                   if (!installed) {
                     // Card closed while the reopen was in flight: free the reopened tap + stream.
                     entry.stream.freeze()
-                    tapSubscriptions.close(target.key)
+                    tapSubscriptions.close(target)
                   }
                   pendingTabularRestartsVar.update(_ - target.key)
                 case _ =>
@@ -384,9 +444,53 @@ object QueryUi {
       case _: CardKind.AdhocCard => None
     }
 
-    // Currently-tapped keys — drives the pipeline tree's ✓ badge.
+    // Currently-tapped keys — drives the pipeline tree's ✓ badge and the query menu's
+    // "viewing" pill.
     val tappedKeys: Signal[Set[String]] =
       cardsStore.cards.map(_.flatMap(c => cardTapTarget(c.kind).map(_.key)).toSet)
+
+    // ── Background queries (query bar) ──────────────────────────────────────────────
+    // The query bar only starts background queries; the Streams page owns the list of runs and
+    // watching/cancelling them. Whether the "Run in background" menu row is offered follows the
+    // V2 API document: the run dialog is generated from it, so a host without one can't start a
+    // run and shouldn't advertise the row.
+
+    /** Dispatch the run the dialog assembled, then immediately watch it.
+      *
+      * The tap is opened as soon as the id comes back rather than on the next poll: the server
+      * buffers the head of the result stream for a late subscriber, and connecting now is what
+      * puts that buffer to use — a fast query can otherwise be finished before the first poll
+      * would even have listed it.
+      */
+    def runInBackground(body: Json): Unit = {
+      backgroundRunSubmittingVar.set(true)
+      backgroundRunErrorVar.set(None)
+      props.dataService.backgroundQueryDispatch.onNext(
+        BackgroundQueryService.RunBackgroundQuery(
+          body,
+          Observer[BackgroundQueryService.RunResult] {
+            case BackgroundQueryService.RunStarted(executionId) =>
+              backgroundRunSubmittingVar.set(false)
+              backgroundRunOpenVar.set(false)
+              val label = body.hcursor
+                .downField("name")
+                .as[String]
+                .toOption
+                .filter(_.trim.nonEmpty)
+                .getOrElse(
+                  body.hcursor.downField("query").as[String].getOrElse("").trim.replaceAll("\\s+", " "),
+                )
+              toastVar.set(Some(ToastMessage("Background query started", ToastVariant.Success)))
+              openTabularTap(TapTarget.BackgroundQuery(executionId, label))
+            case BackgroundQueryService.RunFailed(message) =>
+              backgroundRunSubmittingVar.set(false)
+              // Kept in the dialog rather than raised as a toast: the user's inputs are still on
+              // screen and a rejection is almost always something they can fix and retry.
+              backgroundRunErrorVar.set(Some(message))
+          },
+        ),
+      )
+    }
 
     val editorConfig = EmbeddedEditorConfig(props.qpEnabled, props.routes.baseUrlOpt)
 
@@ -648,7 +752,9 @@ object QueryUi {
           resultsEntries = Vector.empty,
           resultsCurrentIdx = -1,
           resultsCollapsed = resultsCollapsedVar.now(),
-          cards = cardsStore.currentCards.map(CardSnapshot.fromState),
+          // `flatMap`: cards that must not outlive the session project to `None` (a
+          // background-query tap card — its server-side relay is gone by the next load).
+          cards = cardsStore.currentCards.flatMap(CardSnapshot.fromState),
           expandedCardId = cardsStore.currentExpandedId.map(_.value),
         )
       }
@@ -3016,6 +3122,11 @@ object QueryUi {
           ),
           onBookmark = () => toggleBookmarkDialog(),
           onOpenTapModal = () => openTapModal(),
+          onRunInBackground = () => openBackgroundRunModal(),
+          // A host with no V2 API document can't start a background run (the dialog is generated
+          // from it), so the "Run in background" row is offered only when one is present.
+          backgroundQueriesEnabled = props.documentationV2Url.nonEmpty,
+          permissions = props.permissions,
         )
       } else emptyNode,
       // Canvas region: everything below the TopBar (VisNetwork plus every overlay anchored to
@@ -3145,6 +3256,18 @@ object QueryUi {
         onOpenTabular = (target: TapTarget) => openTabularTap(target),
         onFocusExisting = (target: TapTarget) => cardsStore.focusTarget(target),
       ),
+      // Run-in-background dialog (query bar → ⌄ → "Run in background"). Same viewport-level
+      // fixed overlay as the tap modal above, for the same reason.
+      BackgroundRunModal(
+        openSignal = backgroundRunOpenVar.signal,
+        setOpen = backgroundRunOpenVar.writer,
+        query = stateVar.signal.map(_.query),
+        spec = backgroundRunSpecVar.signal,
+        editorConfig = editorConfig,
+        onSubmit = body => runInBackground(body),
+        submitting = backgroundRunSubmittingVar.signal,
+        error = backgroundRunErrorVar.signal,
+      ),
       // Explorer Settings modal (junk drawer → Configure → "Explorer settings…"): the
       // tap-query / sample-query / quick-query / node-appearance catalogs, overlaying the
       // explorer instead of navigating to the old dedicated settings page. Same
@@ -3182,6 +3305,7 @@ object QueryUi {
     refreshSignal: Option[EventStream[Unit]] = None,
     queryBarTrailing: Option[HtmlElement] = None,
     invalidatedNamespaces: Option[EventStream[NamespaceParameter]] = None,
+    documentationV2Url: Option[String] = None,
   ): HtmlElement = {
     val nodeSet = options.visNodeSet.getOrElse(new vis.DataSet(js.Array[vis.Node]()))
     val edgeSet = options.visEdgeSet.getOrElse(new vis.DataSet(js.Array[vis.Edge]()))
@@ -3216,6 +3340,7 @@ object QueryUi {
         refreshSignal = refreshSignal,
         queryBarTrailing = queryBarTrailing,
         invalidatedNamespaces = invalidatedNamespaces,
+        documentationV2Url = documentationV2Url,
       ),
     )
   }

@@ -23,7 +23,21 @@ object TopBar {
     bookmarkDialog: HtmlElement,
     onBookmark: () => Unit,
     onOpenTapModal: () => Unit,
-  ): HtmlElement =
+    onRunInBackground: () => Unit = () => (),
+    // Whether this host offers background queries at all (drives whether the "Run in background"
+    // menu row is offered, subject to write permission).
+    backgroundQueriesEnabled: Boolean = false,
+    // The signed-in user's permission set (`None` when auth is off — everything is allowed).
+    // Gates the background-query write action below.
+    permissions: Option[Set[String]] = None,
+  ): HtmlElement = {
+    // Starting a background query is `GraphWrite` server-side (a background query is a Cypher
+    // query, which may mutate) — a stricter gate than reading the graph.
+    val canWrite = permissions match {
+      case Some(perms) => Set("GraphWrite").subsetOf(perms)
+      case None => true
+    }
+
     div(
       cls := Styles.navBar,
       MonacoQueryInput(
@@ -34,12 +48,15 @@ object TopBar {
         sampleQueries = sampleQueries,
         submitButton = submitButton,
         cancelButton = cancelButton,
+        canWriteBackgroundQueries = canWrite,
         useV2Api = useV2Api,
         qpEnabled = qpEnabled,
         serverUrl = serverUrl,
         bookmarkDialog = bookmarkDialog,
         onBookmark = onBookmark,
         onOpenTapModal = onOpenTapModal,
+        onRunInBackground = onRunInBackground,
+        backgroundQueriesEnabled = backgroundQueriesEnabled,
       ),
       navButtons,
       // Node/edge counters no longer live here (design doc §5 / Lane D): they now render as the
@@ -57,5 +74,6 @@ object TopBar {
         }
         .getOrElse(emptyNode),
     )
+  }
 
 }

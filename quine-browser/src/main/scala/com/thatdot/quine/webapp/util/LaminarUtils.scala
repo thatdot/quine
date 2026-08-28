@@ -30,6 +30,29 @@ object PollingStream {
       .flatMapSwitch(_ => EventStream.fromFuture(fetch))
 }
 
+/** Reading a `Signal`'s current value from imperative code.
+  *
+  * Airstream has no ownerless `now` on `Signal` — a value only exists while something is
+  * observing — so the current value is obtained by subscribing, reading, and unsubscribing
+  * again. Doing that inline is three lines and one easy mistake: skip the kill and the
+  * subscription outlives the call, leaking for the lifetime of the owner it was taken on.
+  */
+object SignalSample {
+
+  /** This signal's current value, with the temporary subscription released before returning.
+    *
+    * Take this only from an event handler or another imperative entry point. In reactive code
+    * the value is already available — `withCurrentValueOf`, `combineWith`, or `sample` express
+    * the dependency instead of stepping outside it, and unlike this they re-evaluate when it
+    * changes.
+    */
+  def now[A](signal: Signal[A]): A = {
+    val observed = signal.observe(unsafeWindowOwner)
+    try observed.now()
+    finally observed.killOriginalSubscription()
+  }
+}
+
 /** Laminar-native local storage integration.
   *
   * Creates reactive `Var`s backed by `window.localStorage`, with automatic

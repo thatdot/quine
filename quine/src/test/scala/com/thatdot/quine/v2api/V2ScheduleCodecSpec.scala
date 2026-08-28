@@ -13,10 +13,10 @@ import com.thatdot.quine.app.v2api.endpoints.Schedule
 class V2ScheduleCodecSpec extends AnyFunSpec with Matchers {
 
   private val samples: Seq[Schedule] = Seq(
-    Schedule.Hourly(minute = 15),
+    Schedule.Hourly(minute = 15, timezone = "UTC"),
     Schedule.Daily(LocalTime.of(9, 30), timezone = "America/New_York"),
-    Schedule.Daily(LocalTime.of(9, 30, 15)), // to the second
-    Schedule.Weekly(DayOfWeek.WEDNESDAY, LocalTime.of(6, 0)),
+    Schedule.Daily(LocalTime.of(9, 30, 15), timezone = "UTC"), // to the second
+    Schedule.Weekly(DayOfWeek.WEDNESDAY, LocalTime.of(6, 0), timezone = "UTC"),
     Schedule.Monthly(dayOfMonth = 1, LocalTime.MIDNIGHT, timezone = "Europe/London"),
     Schedule.Interval(90.seconds, startAt = None),
     Schedule.Interval(1.hour + 30.minutes, startAt = Some(Instant.parse("2021-01-01T00:00:00Z"))),
@@ -30,7 +30,7 @@ class V2ScheduleCodecSpec extends AnyFunSpec with Matchers {
     }
 
     it("uses a \"type\" discriminator naming the variant") {
-      (Schedule.Hourly(0): Schedule).asJson.hcursor.get[String]("type") shouldBe Right("Hourly")
+      (Schedule.Hourly(0, timezone = "UTC"): Schedule).asJson.hcursor.get[String]("type") shouldBe Right("Hourly")
       (Schedule.Interval(90.seconds, None): Schedule).asJson.hcursor.get[String]("type") shouldBe Right("Interval")
     }
 
@@ -41,13 +41,15 @@ class V2ScheduleCodecSpec extends AnyFunSpec with Matchers {
     }
 
     it("encodes the day of week as a screaming-snake string") {
-      (Schedule.Weekly(DayOfWeek.MONDAY, LocalTime.of(9, 0)): Schedule).asJson.hcursor
+      (Schedule.Weekly(DayOfWeek.MONDAY, LocalTime.of(9, 0), timezone = "UTC"): Schedule).asJson.hcursor
         .get[String]("dayOfWeek") shouldBe Right("MONDAY")
     }
 
     it("encodes the time of day as an ISO \"HH:mm\" string") {
-      (Schedule.Daily(LocalTime.of(9, 30)): Schedule).asJson.hcursor.get[String]("at") shouldBe Right("09:30")
-      (Schedule.Daily(LocalTime.of(9, 30, 15)): Schedule).asJson.hcursor.get[String]("at") shouldBe Right("09:30:15")
+      (Schedule.Daily(LocalTime.of(9, 30), timezone = "UTC"): Schedule).asJson.hcursor
+        .get[String]("at") shouldBe Right("09:30")
+      (Schedule.Daily(LocalTime.of(9, 30, 15), timezone = "UTC"): Schedule).asJson.hcursor
+        .get[String]("at") shouldBe Right("09:30:15")
     }
   }
 }

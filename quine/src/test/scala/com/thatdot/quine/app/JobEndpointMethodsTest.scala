@@ -136,7 +136,10 @@ class JobEndpointMethodsTest extends AnyFunSuite with BeforeAndAfterAll with Eve
       Await.result(
         apiMethods.createJob(
           CreateJobRequest(
-            schedule = Schedule.Daily(java.time.LocalTime.of(3, 0)), // 03:00 daily, so it won't fire during the test
+            schedule = Schedule.Daily(
+              java.time.LocalTime.of(3, 0),
+              timezone = "UTC",
+            ), // 03:00 daily, so it won't fire during the test
             action = Action.BackgroundQuery(query = query, destinations = drop),
             name = "dup job",
             updateIfExists = updateIfExists,
@@ -262,7 +265,7 @@ class JobEndpointMethodsTest extends AnyFunSuite with BeforeAndAfterAll with Eve
         .result(
           apiMethods.createJob(
             CreateJobRequest(
-              Schedule.Hourly(minute = 0),
+              Schedule.Hourly(minute = 0, timezone = "UTC"),
               Action.BackgroundQuery(Some(noSuchGraph.name), "RETURN 1", destinations = drop),
               name = "unknown-graph job",
             ),
@@ -282,7 +285,7 @@ class JobEndpointMethodsTest extends AnyFunSuite with BeforeAndAfterAll with Eve
         .result(
           apiMethods.createJob(
             CreateJobRequest(
-              Schedule.Hourly(minute = 0),
+              Schedule.Hourly(minute = 0, timezone = "UTC"),
               Action.BackgroundQuery(Some(namespace), "RETURN 1", destinations = drop),
               name = "malformed-namespace job",
             ),
@@ -305,7 +308,7 @@ class JobEndpointMethodsTest extends AnyFunSuite with BeforeAndAfterAll with Eve
         .result(
           apiMethods.createJob(
             CreateJobRequest(
-              Schedule.Hourly(minute = 99), // minute out of range
+              Schedule.Hourly(minute = 99, timezone = "UTC"), // minute out of range
               Action.BackgroundQuery(query = "RETURN 1", destinations = drop),
               name = "bad-schedule job",
             ),
@@ -335,7 +338,10 @@ class JobEndpointMethodsTest extends AnyFunSuite with BeforeAndAfterAll with Eve
       Await.result(
         apiMethods.createJob(
           CreateJobRequest(
-            Schedule.Daily(java.time.LocalTime.of(3, 0)), // 03:00 daily, so it won't fire during the test
+            Schedule.Daily(
+              java.time.LocalTime.of(3, 0),
+              timezone = "UTC",
+            ), // 03:00 daily, so it won't fire during the test
             Action.BackgroundQuery(query = "RETURN 1", destinations = drop),
             name = name,
           ),
@@ -378,7 +384,7 @@ class JobEndpointMethodsTest extends AnyFunSuite with BeforeAndAfterAll with Eve
         .result(
           apiMethods.createJob(
             CreateJobRequest(
-              Schedule.Daily(java.time.LocalTime.of(3, 0)),
+              Schedule.Daily(java.time.LocalTime.of(3, 0), timezone = "UTC"),
               Action.BackgroundQuery(query = "MATCH (n RETURN n", destinations = drop),
               name = "bad-query job",
             ),

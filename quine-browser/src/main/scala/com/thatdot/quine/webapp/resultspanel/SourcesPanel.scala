@@ -25,7 +25,8 @@ object SourcesPanel {
   ): HtmlElement = {
     val keptOnly = Var(false) // the Query results All / Kept filter (picker-local)
     // Already-watching set: the panel's own target keys for the live taps, so a chosen tap
-    // point is "open" when `TapTarget(sq, point).key` is among them (never the producer's id).
+    // point is "open" when `TapTarget.StandingQuery(sq, point).key` is among them (never the
+    // producer's id).
     val watching: Signal[Set[String]] = taps.entries.map(_.flatMap(_.target.map(_.key)).toSet)
     // The history entry currently on display — only when no tap is selected (a selected tap shows
     // instead). Lets the picker mark "you're viewing this" on the matching row, tying selection to

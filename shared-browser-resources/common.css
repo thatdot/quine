@@ -4041,6 +4041,13 @@ body.panel-dragging * {
   font-weight: 700;
 }
 
+/* Background-query tap glyph. Same slot as `.mini-card-kind-fx`, but a pictograph rather
+   than a mono letterform, so it takes the emoji-capable stack and no bold. */
+.mini-card-kind-bg {
+  font-size: 12px;
+  line-height: 1;
+}
+
 .mini-card-body {
   flex: 1 1 auto;
   min-width: 0;
@@ -4670,7 +4677,9 @@ body.panel-dragging * {
   right: 0;
   z-index: 60;
   margin-top: 4px;
-  min-width: 260px;
+  /* Wide enough for a background-query row (status · title · count · age · actions) without
+     wrapping; the action items above it are comfortably narrower. */
+  min-width: 380px;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 6px;
@@ -4717,6 +4726,19 @@ body.panel-dragging * {
   color: #999;
   font-size: 11px;
   margin-left: 12px;
+}
+
+.query-menu-item.is-disabled {
+  color: #aaa;
+  cursor: default;
+}
+
+.query-menu-item.is-disabled:hover {
+  background: transparent;
+}
+
+.query-menu-item.is-disabled .query-menu-item-icon {
+  color: #bbb;
 }
 
 /* Unified tap modal (design doc §2).
@@ -4824,6 +4846,60 @@ body.panel-dragging * {
  * tap-modal shell above; the catalog cards want more room than the tap flow does. */
 .explorer-settings-dialog {
   width: min(980px, calc(100vw - 48px));
+}
+
+/* Run-in-background dialog (query bar → ⌄ → "Run in background"): shares the tap-modal shell
+ * above. Sized for the schema-rendered destination editor, which nests discriminated-union
+ * sub-forms (Kafka, Kinesis, …) the way the Streams create forms do. */
+.background-run-dialog {
+  width: min(760px, calc(100vw - 48px));
+}
+
+.background-run-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.background-run-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.background-run-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Read-only echo of what will run. Capped and scrollable so a long multi-line query can't push
+   the submit buttons off screen. */
+.background-run-query-preview {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 140px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.background-run-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Explains a disabled Run button; sits left of the buttons and takes the slack. */
+.background-run-footer-hint {
+  flex: 1 1 auto;
+  font-size: 11px;
+  color: #888;
 }
 
 /* ── Inspect Standing Queries (Step 1): SQ picker rail + stage diagram ─────── */

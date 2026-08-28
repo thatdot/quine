@@ -79,9 +79,9 @@ object GraphFeedEditor {
     * name means the stream after that output's enrichment — or after its transformation only,
     * when the `preEnrichment` flag is set.
     */
-  private def initialTarget(value: Option[V2GraphFeed]): Option[TapTarget] =
+  private def initialTarget(value: Option[V2GraphFeed]): Option[TapTarget.StandingQuery] =
     value.map { m =>
-      TapTarget(
+      TapTarget.StandingQuery(
         m.standingQueryName,
         m.outputName.fold[TapPoint](TapPoint.Raw) { out =>
           if (m.preEnrichment) TapPoint.PreEnrichment(out) else TapPoint.PostEnrichment(out)
@@ -90,7 +90,7 @@ object GraphFeedEditor {
     }
 
   /** The wire `(outputName, preEnrichment)` pair for a picked point. */
-  private def wireSource(target: TapTarget): (Option[String], Boolean) = target.tapPoint match {
+  private def wireSource(target: TapTarget.StandingQuery): (Option[String], Boolean) = target.tapPoint match {
     case TapPoint.Raw => (None, false)
     case TapPoint.PostEnrichment(out) => (Some(out), false)
     case TapPoint.PreEnrichment(out) => (Some(out), true)
@@ -151,7 +151,10 @@ object GraphFeedEditor {
     val nameVar = Var(initialName)
     val descriptionVar = Var(initialDescription)
     val queryVar = Var(initialQuery)
-    val selectionVar: Var[Option[TapTarget]] = Var(initialTarget(initialValue))
+    // Narrowed to the standing-query variant: a graph feed always draws from a standing
+    // query's pipeline, never from a background-query execution (which is finite and
+    // single-shot, so there'd be nothing left to feed the graph on the next page load).
+    val selectionVar: Var[Option[TapTarget.StandingQuery]] = Var(initialTarget(initialValue))
 
     val initialRows: Vector[EdgeRow] = initialEdges.zipWithIndex.map { case (e, i) =>
       EdgeRow(i, e.fromNode, e.toNode, e.label, normalizeDirection(e.direction))
@@ -178,15 +181,15 @@ object GraphFeedEditor {
     // delivers the raw match stream unchanged), but a previously saved selection stays
     // offered while editing, even if its output has since lost the step that defined it,
     // so opening an old definition doesn't silently blank its source.
-    val savedSelection: Option[TapTarget] = initialTarget(initialValue)
+    val savedSelection: Option[TapTarget.StandingQuery] = initialTarget(initialValue)
     val catalog: Signal[Pot[Vector[TapCatalogEntry]]] = standingQueries.map { sqs =>
       Pot.Ready(
         sqs.toVector.map { sq =>
           val pinnedPost: Option[String] = savedSelection.collect {
-            case TapTarget(sqName, TapPoint.PostEnrichment(out)) if sqName == sq.name => out
+            case TapTarget.StandingQuery(sqName, TapPoint.PostEnrichment(out)) if sqName == sq.name => out
           }
           val pinnedPre: Option[String] = savedSelection.collect {
-            case TapTarget(sqName, TapPoint.PreEnrichment(out)) if sqName == sq.name => out
+            case TapTarget.StandingQuery(sqName, TapPoint.PreEnrichment(out)) if sqName == sq.name => out
           }
           TapCatalogEntry(
             sq.name,
@@ -229,7 +232,7 @@ object GraphFeedEditor {
     // every keystroke), and the query text survives the remount via the `currentValue` binder.
     val exampleQuerySignal: Signal[String] =
       selectionVar.signal.map {
-        case Some(TapTarget(_, TapPoint.PostEnrichment(_) | TapPoint.PreEnrichment(_))) =>
+        case Some(TapTarget.StandingQuery(_, TapPoint.PostEnrichment(_) | TapPoint.PreEnrichment(_))) =>
           "MATCH (n) WHERE id(n) = $id RETURN n"
         case _ => "MATCH (n) WHERE id(n) = $data.id RETURN n"
       }.distinct
@@ -437,9 +440,9 @@ object GraphFeedEditor {
           "A standing query result is accessed via Cypher parameters, and the tap point selected ",
           "above determines which parameters are available. ",
           children <-- selectionVar.signal.map {
-            case Some(TapTarget(_, TapPoint.Raw)) => List(rawParamsHelp)
-            case Some(TapTarget(_, TapPoint.PreEnrichment(_))) => List(transformedParamsHelp)
-            case Some(TapTarget(_, TapPoint.PostEnrichment(_))) => List(enrichedParamsHelp)
+            case Some(TapTarget.StandingQuery(_, TapPoint.Raw)) => List(rawParamsHelp)
+            case Some(TapTarget.StandingQuery(_, TapPoint.PreEnrichment(_))) => List(transformedParamsHelp)
+            case Some(TapTarget.StandingQuery(_, TapPoint.PostEnrichment(_))) => List(enrichedParamsHelp)
             case None => List(rawParamsHelp, transformedParamsHelp, enrichedParamsHelp)
           },
         ),

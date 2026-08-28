@@ -174,16 +174,24 @@ object CardSnapshot {
   }
 
   /** The [[TapTarget]] a tap-kind snapshot points at; `None` for adhoc snapshots or an
-    * undecodable tap point.
+    * undecodable tap point. Only standing-query taps are ever persisted (see [[fromState]]).
     */
   def tapTargetOf(snap: CardSnapshot): Option[TapTarget] =
     if (snap.kind == KindTapTable)
-      decodeTapPoint(snap.tapPoint).map(TapTarget(snap.sqName, _))
+      decodeTapPoint(snap.tapPoint).map(TapTarget.StandingQuery(snap.sqName, _))
     else None
 
   // ── projection to/from the live card model ──────────────────────────────────────
 
-  def fromState(c: CardState): CardSnapshot = {
+  /** Project a live card to its persisted form, or `None` for a card that must not outlive the
+    * session.
+    *
+    * A background-query tap card is always `None`: the server's relay is torn down once the run
+    * terminates (plus a short grace window) and the row buffer is not persisted, so a restored
+    * one could only ever be an empty frozen placeholder — strictly worse than the card simply
+    * being gone. Standing-query taps do restore, because their source is still producing.
+    */
+  def fromState(c: CardState): Option[CardSnapshot] = {
     val base = CardSnapshot(
       id = c.id.value,
       kind = "",
@@ -204,21 +212,26 @@ object CardSnapshot {
     )
     c.kind match {
       case CardKind.AdhocCard(query, language, outcome) =>
-        base.copy(
-          kind = KindAdhoc,
-          query = query,
-          language = encodeLanguage(language),
-          outcome = outcome.map(content => encodeOutcome(content.outcome)),
+        Some(
+          base.copy(
+            kind = KindAdhoc,
+            query = query,
+            language = encodeLanguage(language),
+            outcome = outcome.map(content => encodeOutcome(content.outcome)),
+          ),
         )
-      case CardKind.TapTableCard(target, _, query) =>
-        base.copy(
-          kind = KindTapTable,
-          sqName = target.sqName,
-          tapPoint = encodeTapPoint(target.tapPoint),
-          graphFeedLabel = query.map(_.label),
-          graphFeedText = query.map(_.query),
-          graphFeedNote = query.flatMap(_.note),
+      case CardKind.TapTableCard(TapTarget.StandingQuery(sqName, tapPoint), _, query) =>
+        Some(
+          base.copy(
+            kind = KindTapTable,
+            sqName = sqName,
+            tapPoint = encodeTapPoint(tapPoint),
+            graphFeedLabel = query.map(_.label),
+            graphFeedText = query.map(_.query),
+            graphFeedNote = query.flatMap(_.note),
+          ),
         )
+      case CardKind.TapTableCard(_: TapTarget.BackgroundQuery, _, _) => None
     }
   }
 

@@ -3,7 +3,7 @@ package com.thatdot.quine.webapp.resultspanel.cards
 import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.webapp.Styles
-import com.thatdot.quine.webapp.resultspanel.{ResultOutcome, ResultsIcons, SourceStatus, TapPoint}
+import com.thatdot.quine.webapp.resultspanel.{ResultOutcome, ResultsIcons, SourceStatus, TapPoint, TapTarget}
 
 /** Bottom-right floating vertical stack of minimized cards over the canvas (design doc §3
   * "Minimized cards — right-edge drawer"). Host-agnostic: takes the signals/observer it
@@ -88,7 +88,7 @@ object MinimizedDrawer {
   private def matches(card: CardState, needle: String): Boolean = {
     val query = card.kind match {
       case CardKind.AdhocCard(queryText, _, _) => queryText
-      case CardKind.TapTableCard(target, _, _) => target.sqName
+      case CardKind.TapTableCard(target, _, _) => target.label
     }
     card.title.toLowerCase.contains(needle) || query.toLowerCase.contains(needle)
   }
@@ -130,20 +130,24 @@ object MinimizedDrawer {
     case _: CardKind.TapTableCard => if (tapErrored) Styles.kindError else Styles.kindTap
   }
 
-  /** The leading kind glyph for a row: a query card reads as a run (terminal glyph); a tap
-    * card reads as which pipeline stage it's watching — Standing Query Results (broadcast), a
-    * transformation step (ƒ), or the post-enrichment stage (the enrichment's graph glyph) —
-    * echoing the same glyph language as the tap-point selector (see
-    * [[com.thatdot.quine.webapp.resultspanel.tapmodal.SqPipelineTree]]).
+  /** The leading kind glyph for a row: a query card reads as a run (terminal glyph); a
+    * standing-query tap card reads as which pipeline stage it's watching — Standing Query
+    * Results (broadcast), a transformation step (ƒ), or the post-enrichment stage (the
+    * enrichment's graph glyph) — echoing the same glyph language as the tap-point selector (see
+    * [[com.thatdot.quine.webapp.resultspanel.tapmodal.SqPipelineTree]]). A background-query
+    * card reads as a run that is still arriving: the query glyph over the clock accent.
     */
   private def kindIcon(kind: CardKind): HtmlElement = kind match {
     case _: CardKind.AdhocCard => span(cls := Styles.sourceKindIcon, ResultsIcons.query)
     case CardKind.TapTableCard(target, _, _) =>
-      target.tapPoint match {
-        case TapPoint.Raw => span(cls := Styles.sourceKindIcon, ResultsIcons.tap)
-        case _: TapPoint.PreEnrichment =>
+      target match {
+        case TapTarget.StandingQuery(_, TapPoint.Raw) => span(cls := Styles.sourceKindIcon, ResultsIcons.tap)
+        case TapTarget.StandingQuery(_, _: TapPoint.PreEnrichment) =>
           span(cls := Styles.sourceKindIcon, span(cls := CardStyles.miniCardKindFx, "ƒ"))
-        case _: TapPoint.PostEnrichment => span(cls := Styles.sourceKindIcon, ResultsIcons.cypher)
+        case TapTarget.StandingQuery(_, _: TapPoint.PostEnrichment) =>
+          span(cls := Styles.sourceKindIcon, ResultsIcons.cypher)
+        case _: TapTarget.BackgroundQuery =>
+          span(cls := Styles.sourceKindIcon, span(cls := CardStyles.miniCardKindBg, "⏱"))
       }
   }
 

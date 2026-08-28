@@ -50,7 +50,8 @@ object Schedule {
   final private val TimezoneDescription =
     "IANA timezone id (e.g. \"America/New_York\"), matched case-sensitively. Fixed-offset ids " +
     "(\"UTC\", \"-05:00\", \"Etc/GMT+5\") never observe daylight saving time; named regional zones do, " +
-    "and their transitions can skip or repeat a fire — see the create-job description. Defaults to UTC."
+    "and their transitions can skip or repeat a fire — see the create-job description. Required: every " +
+    "wall-clock schedule must name the zone its time of day is measured in."
 
   @title("Hourly")
   @description(
@@ -60,7 +61,7 @@ object Schedule {
   )
   final case class Hourly(
     @description("Minute of the hour (0–59).") minute: Int,
-    @description(TimezoneDescription) timezone: String = "UTC",
+    @description(TimezoneDescription) timezone: String,
   ) extends Schedule
 
   @title("Daily")
@@ -71,7 +72,7 @@ object Schedule {
   )
   final case class Daily(
     @description("Time of day, \"HH:mm\" or \"HH:mm:ss\" (e.g. \"09:30\").") at: LocalTime,
-    @description(TimezoneDescription) timezone: String = "UTC",
+    @description(TimezoneDescription) timezone: String,
   ) extends Schedule
 
   @title("Weekly")
@@ -83,7 +84,7 @@ object Schedule {
   final case class Weekly(
     @description("Day of the week (MONDAY…SUNDAY).") dayOfWeek: DayOfWeek,
     @description("Time of day, \"HH:mm\" or \"HH:mm:ss\" (e.g. \"09:30\").") at: LocalTime,
-    @description(TimezoneDescription) timezone: String = "UTC",
+    @description(TimezoneDescription) timezone: String,
   ) extends Schedule
 
   @title("Monthly")
@@ -95,7 +96,7 @@ object Schedule {
   final case class Monthly(
     @description("Day of the month (1–31).") dayOfMonth: Int,
     @description("Time of day, \"HH:mm\" or \"HH:mm:ss\" (e.g. \"09:30\").") at: LocalTime,
-    @description(TimezoneDescription) timezone: String = "UTC",
+    @description(TimezoneDescription) timezone: String,
   ) extends Schedule
 
   @title("Interval")

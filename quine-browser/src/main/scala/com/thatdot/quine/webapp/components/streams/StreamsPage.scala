@@ -3,15 +3,22 @@ package com.thatdot.quine.webapp.components.streams
 import scala.concurrent.Future
 
 import com.raquo.laminar.api.L._
-import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
-import com.thatdot.quine.openapi.{OpenApiParser, ParsedSpec, UiHintsSource}
+import com.thatdot.quine.openapi.ParsedSpec
 import com.thatdot.quine.routes.exts.NamespaceParameter
-import com.thatdot.quine.webapp.dataservice.{DataService, IngestStreamService, NamespaceService, StandingQueryService}
+import com.thatdot.quine.webapp.QuineUiOptions
+import com.thatdot.quine.webapp.dataservice.{
+  BackgroundQueryService,
+  DataService,
+  IngestStreamService,
+  JobService,
+  NamespaceService,
+  StandingQueryService,
+}
+import com.thatdot.quine.webapp.openapi.{ApiSpecCache, FormUiHints}
 import com.thatdot.quine.webapp.queryui.GraphSelector
 import com.thatdot.quine.webapp.util.Pot
-import com.thatdot.quine.webapp.{AuthEvents, QuineUiOptions}
 
 /** Top-level page component for the Streams UI.
   * Fetches the V2 OpenAPI spec, then renders the ingest + standing query panels.
@@ -31,6 +38,12 @@ object StreamsPage {
     showNamespaceSelector: Boolean = false,
   ): HtmlElement = {
     val specState = Var[Pot[ParsedSpec]](Pot.Empty)
+
+    def cancelRun(id: String): Unit =
+      dataService.backgroundQueryDispatch.onNext(BackgroundQueryService.CancelBackgroundQuery(id))
+
+    def deleteRun(id: String): Unit =
+      dataService.backgroundQueryDispatch.onNext(BackgroundQueryService.DeleteBackgroundQuery(id))
 
     val specUrl = options.documentationV2Url
     val serverUrl = options.serverUrl.getOrElse("")
@@ -89,11 +102,11 @@ object StreamsPage {
           div(cls := "alert alert-danger", msg)
 
         case Pot.Ready(spec) =>
-          // The client is rebuilt per selected graph so mutations target the same
-          // namespace the shared list feeds are scoped to. `.distinct` guards against
-          // a namespace-list refresh re-emitting the same selection and remounting both
-          // panels (which would wipe in-progress form state).
           div(
+            // The client is rebuilt per selected graph so mutations target the same
+            // namespace the shared list feeds are scoped to. `.distinct` guards against
+            // a namespace-list refresh re-emitting the same selection and remounting both
+            // panels (which would wipe in-progress form state).
             child <-- dataService.currentNamespaceSignal.distinct.map { ns =>
               val client = StreamsApiClient(spec, serverUrl, ns.namespaceId)
               div(
@@ -115,8 +128,44 @@ object StreamsPage {
                   editorConfig = editorConfig,
                   capabilities = capabilities,
                 ),
+                div(cls := "mt-4"),
+                // Graph-scoped like the two panels above it: executions belong to the graph
+                // their query ran against.
+                BackgroundQueryPanel(
+                  client = client,
+                  runs = dataService.backgroundQueriesSignal,
+                  namespace = dataService.currentNamespaceSignal.map(_.namespaceId),
+                  onRefresh =
+                    () => dataService.backgroundQueryDispatch.onNext(BackgroundQueryService.RefreshBackgroundQueries),
+                  onCancel = cancelRun,
+                  onDelete = deleteRun,
+                  wiretap = dataService,
+                  editorConfig = editorConfig,
+                  capabilities = capabilities,
+                ),
               )
             },
+            div(cls := "mt-4"),
+            // Deliberately outside the per-namespace `child <--` above: scheduled jobs are
+            // cluster-wide, so switching graphs changes nothing here — and remounting the panel
+            // on a switch would discard a half-filled create form for no reason. Its client is
+            // built once, with the default graph, which the job endpoints ignore anyway (they
+            // carry no graphName path parameter).
+            JobsPanel(
+              client = StreamsApiClient(spec, serverUrl),
+              jobs = dataService.jobsSignal,
+              // Passed as a Signal rather than mounting inside the per-namespace block above:
+              // the create form needs the current selection, but remounting the panel on every
+              // graph switch would discard a half-filled form for a list that never changes.
+              namespace = dataService.currentNamespaceSignal.map(_.namespaceId),
+              runs = dataService.backgroundQueriesSignal,
+              onRefresh = () => dataService.jobDispatch.onNext(JobService.RefreshJobs),
+              onCancelRun = cancelRun,
+              onDeleteRun = deleteRun,
+              wiretap = dataService,
+              editorConfig = editorConfig,
+              capabilities = capabilities,
+            ),
           )
 
         case _ => emptyNode
@@ -124,28 +173,8 @@ object StreamsPage {
     )
   }
 
+  // Fetching and hint-attaching moved to `ApiSpecCache`, so this page and the query bar's
+  // run-in-background dialog share one request for a document neither of them changes.
   private def fetchAndParse(url: String): Future[Either[String, ParsedSpec]] =
-    (for {
-      response <- dom.fetch(url).toFuture
-      text <- response.text().toFuture
-    } yield
-      if (response.status == 401) {
-        AuthEvents.unauthorized.emit(())
-        Left(s"HTTP ${response.status}")
-      } else if (response.ok) OpenApiParser.parse(text).map(attachUiHints)
-      else Left(s"HTTP ${response.status}")).recover { case ex: Throwable =>
-      dom.console.error("Failed to load API specification:", ex.getMessage)
-      Left("Could not connect to the server.")
-    }
-
-  /** Attach the Streams UI overlay to the parsed spec and report any
-    * drift (hints referring to schemas/fields not present in the spec) as a
-    * console warning. The attached hints drive field ordering, promotion, and
-    * hiding inside [[SchemaFormRenderer]].
-    */
-  private def attachUiHints(spec: ParsedSpec): ParsedSpec = {
-    val source = StreamsUiHints.source
-    UiHintsSource.checkDrift(source, spec.schemas, org.scalajs.dom.console.warn(_))
-    spec.copy(hints = source)
-  }
+    ApiSpecCache.load(url, FormUiHints.source)
 }

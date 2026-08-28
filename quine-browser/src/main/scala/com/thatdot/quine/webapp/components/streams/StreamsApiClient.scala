@@ -22,6 +22,8 @@ trait StreamsApiClient {
   def ingestCreateSchema: Option[SchemaNode]
   def sqCreateSchema: Option[SchemaNode]
   def outputCreateSchema: Option[SchemaNode]
+  def jobCreateSchema: Option[SchemaNode]
+  def backgroundQueryCreateSchema: Option[SchemaNode]
 
   // Ingest operations (reads live on the DataService; only mutations go through here)
   def createIngest(body: Json, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]]
@@ -34,6 +36,18 @@ trait StreamsApiClient {
   def deleteStandingQuery(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def addOutput(sqName: String, body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def removeOutput(sqName: String, outputName: String)(implicit ec: ExecutionContext): Future[Either[String, Json]]
+
+  // Scheduled job operations. Cluster-wide, so unlike everything above they are not scoped to
+  // this client's graph — the target graph is part of a job's action, chosen in the create form.
+  // (Reads live on the DataService; only mutations go through here. There is no update: the API
+  // does not report a job's action, so its definition cannot be read back to prefill an editor.)
+  def createJob(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]]
+  def deleteJob(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]]
+
+  /** Start a one-off background query in this client's graph. Cancelling one goes through the
+    * DataService instead — that path is shared with the query bar.
+    */
+  def runBackgroundQuery(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]]
 }
 
 object StreamsApiClient {
@@ -58,6 +72,8 @@ object StreamsApiClient {
 
     def ingestCreateSchema: Option[SchemaNode] = registry.requestSchema(StreamOp.CreateIngest)
     def sqCreateSchema: Option[SchemaNode] = registry.requestSchema(StreamOp.CreateStandingQuery)
+    def jobCreateSchema: Option[SchemaNode] = registry.requestSchema(StreamOp.CreateJob)
+    def backgroundQueryCreateSchema: Option[SchemaNode] = registry.requestSchema(StreamOp.RunBackgroundQuery)
     def outputCreateSchema: Option[SchemaNode] =
       registry
         .findEndpoint(StreamOp.AddSQOutput)
@@ -106,6 +122,21 @@ object StreamsApiClient {
 
     def removeOutput(sqName: String, outputName: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.executeAction(StreamOp.RemoveSQOutput, Seq(sqName, outputName), defaultPathParams)
+
+    // `Map.empty`, not `defaultPathParams`: the job endpoints have no `graphName` path parameter
+    // to fill. (Passing it would in fact be harmless — substitution just wouldn't find the
+    // placeholder — but supplying a graph to a cluster-wide call would misstate the intent.)
+    def createJob(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
+      registry.findEndpoint(StreamOp.CreateJob) match {
+        case Some(ep) => HttpClient.call(ep, pathParams = Map.empty, body = Some(body), baseUrl = baseUrl)
+        case None => Future.successful(Left("Create job endpoint not found in API spec."))
+      }
+
+    def deleteJob(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
+      registry.executeAction(StreamOp.DeleteJob, name, Map.empty, Map.empty)
+
+    def runBackgroundQuery(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
+      callWithBody(StreamOp.RunBackgroundQuery, body)
 
     private def callWithBody(
       op: StreamOp,

@@ -16,8 +16,14 @@ trait TapSubscriptions {
   /** Open (subscribe to) a tap on `target` under `key`; idempotent per key. */
   def open(key: String, target: TapTarget): Unit
 
-  /** Close (unsubscribe) the tap held under `key`; idempotent. */
-  def close(key: String): Unit
+  /** Close (unsubscribe) the tap on `target`; idempotent.
+    *
+    * Takes the target rather than its `key` because different [[TapTarget]] variants are
+    * served by different transports, and the implementation must dispatch on the variant —
+    * recovering it by parsing the key would put a format dependency back in the seam this
+    * type exists to remove.
+    */
+  def close(target: TapTarget): Unit
 
   /** The current set of viewable tap sources. */
   def sources: Signal[Vector[LiveSource]]
@@ -28,7 +34,7 @@ object TapSubscriptions {
   /** No subscription backend (no store mounted): open/close are no-ops, sources are empty. */
   val empty: TapSubscriptions = new TapSubscriptions {
     def open(key: String, target: TapTarget): Unit = ()
-    def close(key: String): Unit = ()
+    def close(target: TapTarget): Unit = ()
     val sources: Signal[Vector[LiveSource]] = Signal.fromValue(Vector.empty)
   }
 }

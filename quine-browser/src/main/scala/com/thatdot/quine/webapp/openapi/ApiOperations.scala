@@ -23,6 +23,11 @@ object StreamOp {
   case object GetStandingQuery extends StreamOp
   case object AddSQOutput extends StreamOp
   case object RemoveSQOutput extends StreamOp
+
+  case object CreateJob extends StreamOp
+  case object DeleteJob extends StreamOp
+
+  case object RunBackgroundQuery extends StreamOp
 }
 
 /** Discovers and maps logical [[StreamOp]] operations to concrete [[ApiEndpoint]] definitions
@@ -42,6 +47,15 @@ class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
   private val v2SqNamed = (graphScope + """/standingQueries/\{[^}]+\}$""").r
   private val v2SqOutputBase = (graphScope + """/standingQueries/\{[^}]+\}/outputs/?$""").r
   private val v2SqOutputNamed = (graphScope + """/standingQueries/\{[^}]+\}/outputs/\{[^}]+\}$""").r
+
+  // Scheduled jobs are cluster-wide, so — alone among the operations here — their paths carry
+  // no `/graph/{graphName}` scope: a job's target graph lives in its action, not its URL.
+  private val v2JobBase = """/api/v2/system/jobs/?$""".r
+  private val v2JobNamed = """/api/v2/system/jobs/\{[^}]+\}$""".r
+
+  // Anchored so it can't also match the per-execution paths that hang off it — notably the
+  // `{id}:cancel` custom verb, which is a POST on the same prefix.
+  private val v2BackgroundQueryBase = (graphScope + """/backgroundQueries/?$""").r
 
   private def matches(path: String, pattern: scala.util.matching.Regex): Boolean =
     pattern.findFirstIn(path).isDefined
@@ -112,6 +126,14 @@ class ApiOperationRegistry(spec: ParsedSpec, baseUrl: String) {
         m == "POST" && (matches(p, v2SqOutputBase) || matches(p, v2SqOutputNamed))
       case StreamOp.RemoveSQOutput =>
         m == "DELETE" && matches(p, v2SqOutputNamed)
+
+      case StreamOp.CreateJob =>
+        m == "POST" && matches(p, v2JobBase)
+      case StreamOp.DeleteJob =>
+        m == "DELETE" && matches(p, v2JobNamed)
+
+      case StreamOp.RunBackgroundQuery =>
+        m == "POST" && matches(p, v2BackgroundQueryBase)
     }
   }
 }

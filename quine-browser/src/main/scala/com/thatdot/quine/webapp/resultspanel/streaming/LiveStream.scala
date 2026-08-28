@@ -33,6 +33,7 @@ final class LiveStream {
   private var interval: Option[SetIntervalHandle] = None
   private val streamOwner = new KillableOwner
   private var started = false
+  private var frozen = false
   private var budgetOf: () => Option[Int] = () => None
   private var onFilled: () => Unit = () => ()
 
@@ -101,8 +102,20 @@ final class LiveStream {
 
   /** Stop consuming and detach from the producer's stream, leaving the buffer frozen as a
     * snapshot. The producer's tap is stopped separately, via `LiveSource.stop`.
+    *
+    * Flushes first. Frames land in `pending` and only become visible rows on the throttle
+    * tick, so tearing the interval down without draining would discard everything received
+    * since the last one. That window is invisible for a source that trickles, and total for
+    * one that arrives in a single burst and ends — a background query sends its rows and its
+    * completion frame together, so without this the whole result set is dropped and the card
+    * renders empty.
+    *
+    * Idempotent: the drain can re-enter through `appendRows` when the flushed batch fills the
+    * budget, and a card can be frozen from more than one path (stop, close, namespace switch).
     */
-  def freeze(): Unit = {
+  def freeze(): Unit = if (!frozen) {
+    frozen = true
+    tick()
     interval.foreach(clearInterval)
     interval = None
     streamOwner.killAll()

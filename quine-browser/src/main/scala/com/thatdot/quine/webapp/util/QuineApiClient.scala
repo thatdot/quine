@@ -4,7 +4,7 @@ import scala.concurrent.Future
 
 import com.raquo.laminar.api.L._
 import io.circe.syntax._
-import io.circe.{Decoder, Encoder}
+import io.circe.{Decoder, Encoder, Json}
 import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
@@ -19,8 +19,8 @@ import com.thatdot.quine.routes.{
   UiNodeQuickQuery,
 }
 import com.thatdot.quine.webapp.AuthEvents
-import com.thatdot.quine.webapp.v2api.QuickQueryConversions
 import com.thatdot.quine.webapp.v2api.V2ApiTypes._
+import com.thatdot.quine.webapp.v2api.{QuickQueryConversions, V2Paths}
 
 /** Lightweight V2 API fetch-and-poll utilities shared across components.
   *
@@ -40,6 +40,11 @@ object QuineApiClient {
     * Mutations refetch immediately via the DataService `Refresh*` commands regardless.
     */
   val StreamsPollIntervalMs: Int = 10000
+
+  /** Faster cadence for the background-query execution feed: the query bar's popover shows
+    * in-flight runs, and a user who just started one expects it to appear promptly.
+    */
+  val BackgroundQueryPollIntervalMs: Int = 3000
 
   /** A polled feed: successful values and failure messages on separate streams. */
   final case class Feed[A](values: EventStream[A], errors: EventStream[String]) {
@@ -153,6 +158,87 @@ object QuineApiClient {
     requestV2(path, routes, init).map(_ => ())
   }
 
+  /** POST a JSON body to a V2 API endpoint and decode the response. */
+  def postV2[A: Encoder, B: Decoder](path: String, payload: A, routes: ClientRoutes): Future[B] =
+    sendJson(dom.HttpMethod.POST, path, Some(payload.asJson.noSpaces), routes).flatMap(decodeBody[B])
+
+  /** POST with no request body, for the AIP-136 custom verbs (`…:cancel`) whose whole input is
+    * the URL.
+    */
+  def postV2NoBody[B: Decoder](path: String, routes: ClientRoutes): Future[B] =
+    sendJson(dom.HttpMethod.POST, path, None, routes).flatMap(decodeBody[B])
+
+  /** DELETE a V2 resource. Completes on any 2xx; the response body is discarded (the V2
+    * DELETEs we target echo back the deleted resource, which no caller needs).
+    */
+  def deleteV2(path: String, routes: ClientRoutes): Future[Unit] =
+    sendJson(dom.HttpMethod.DELETE, path, None, routes).map(_ => ())
+
+  /** Shared JSON-request plumbing for the body-carrying verbs.
+    *
+    * The two `RequestInit`s are built separately, each with nothing but direct field
+    * assignments, rather than one built conditionally. Inside `new dom.RequestInit { … }` the
+    * enclosing scope's names are shadowed by the trait's own members — a `payload` referenced
+    * there would silently resolve to `RequestInit.body`, not to anything here — and Scala.js
+    * lowers the block to an object literal, so only plain assignments belong in it. Both
+    * failures are silent at compile time and produce a request with no body.
+    */
+  private def sendJson(
+    httpMethod: dom.HttpMethod,
+    path: String,
+    payload: Option[String],
+    routes: ClientRoutes,
+  ): Future[dom.Response] = {
+    val reqHeaders = new dom.Headers()
+    jsonHeaders(hasBody = payload.isDefined).foreach { case (name, value) => reqHeaders.set(name, value) }
+    requestV2(path, routes, jsonRequestInit(httpMethod, payload, reqHeaders))
+  }
+
+  /** Headers for a JSON request. `Accept` always, so a failure comes back as the AIP-193 error
+    * envelope [[failWithServerMessage]] reads rather than as an HTML error page; `Content-Type`
+    * only when there is a body to describe.
+    */
+  private[util] def jsonHeaders(hasBody: Boolean): Seq[(String, String)] =
+    Seq("Accept" -> "application/json") ++ Option.when(hasBody)("Content-Type" -> "application/json")
+
+  /** Build the `RequestInit` for [[sendJson]].
+    *
+    * Split out (and taking already-built headers, so it needs no DOM globals) purely so it can
+    * be asserted on — see `QuineApiClientRequestInitTest`. The failure mode here is invisible: a
+    * body that never gets attached compiles fine and surfaces only as the server rejecting an
+    * empty payload.
+    */
+  private[util] def jsonRequestInit(
+    httpMethod: dom.HttpMethod,
+    payload: Option[String],
+    reqHeaders: dom.HeadersInit,
+  ): dom.RequestInit =
+    // Two literals with nothing but direct assignments, rather than one built conditionally.
+    // Inside `new dom.RequestInit { … }` the trait's own members shadow the enclosing scope — a
+    // `payload` mentioned there resolves to `RequestInit.body`, not to the parameter — and
+    // Scala.js lowers the block to an object literal, so only plain assignments belong in it.
+    payload match {
+      case Some(json) =>
+        new dom.RequestInit {
+          this.method = httpMethod
+          this.headers = reqHeaders
+          this.body = json
+        }
+      case None =>
+        new dom.RequestInit {
+          this.method = httpMethod
+          this.headers = reqHeaders
+        }
+    }
+
+  private def decodeBody[B: Decoder](response: dom.Response): Future[B] =
+    response.text().toFuture.flatMap { body =>
+      io.circe.parser.decode[B](body) match {
+        case Right(value) => Future.successful(value)
+        case Left(_) => Future.failed(new RuntimeException("Unexpected response from server"))
+      }
+    }
+
   /** Polled feed of standing queries for the given graph namespace. */
   def standingQueries(graphName: String, routes: ClientRoutes): Feed[Seq[V2StandingQueryInfo]] =
     poll(
@@ -170,6 +256,40 @@ object QuineApiClient {
       fetchV2[V2Page[V2IngestInfo]](s"api/v2/graph/$graphName/ingests", routes).map(_.items),
       StreamsPollIntervalMs,
     )
+
+  /** Polled feed of background-query executions for the given graph namespace.
+    *
+    * Note the bare array: unlike the standing-query and ingest lists, this endpoint does not
+    * wrap its results in the AIP-158 `V2Page` envelope.
+    */
+  def backgroundQueries(graphName: String, routes: ClientRoutes): Feed[Seq[V2BackgroundQueryStatus]] =
+    poll(
+      fetchV2[Seq[V2BackgroundQueryStatus]](V2Paths.backgroundQueries(graphName), routes),
+      BackgroundQueryPollIntervalMs,
+    )
+
+  /** Start a background query in `graphName`, returning the new execution's id. `body` is the
+    * assembled `BackgroundQueryDef` — note the server decodes it strictly, so an unknown key
+    * is a 400 rather than an ignored field.
+    */
+  def runBackgroundQuery(graphName: String, body: Json, routes: ClientRoutes): Future[V2BackgroundQueryCreated] =
+    postV2[Json, V2BackgroundQueryCreated](V2Paths.backgroundQueries(graphName), body, routes)
+
+  /** Ask the cluster to cancel an execution. The returned record is read at request time, so it
+    * may still say `started` — the transition lands on a later poll.
+    */
+  def cancelBackgroundQuery(graphName: String, id: String, routes: ClientRoutes): Future[V2BackgroundQueryStatus] =
+    postV2NoBody[V2BackgroundQueryStatus](V2Paths.cancelBackgroundQuery(graphName, id), routes)
+
+  /** Delete an execution's status record. If it is still running the server cancels it first,
+    * then drops the record. The response body (the record as it was) is ignored.
+    */
+  def deleteBackgroundQuery(graphName: String, id: String, routes: ClientRoutes): Future[Unit] =
+    deleteV2(V2Paths.backgroundQuery(graphName, id), routes)
+
+  /** Polled feed of scheduled jobs. Cluster-wide, not per-graph, and a bare array. */
+  def jobs(routes: ClientRoutes): Feed[Seq[V2JobStatus]] =
+    poll(fetchV2[Seq[V2JobStatus]](V2Paths.jobs, routes), StreamsPollIntervalMs)
 
   /** Polled feed of cluster status. Fetch failures (including the endpoint being absent,
     * e.g. single-node OSS) flow to the errors stream.

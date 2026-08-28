@@ -13,6 +13,11 @@ final case class StreamsCapabilities(
   canCreateStandingQuery: Boolean,
   canWriteStandingQueryOutputs: Boolean,
   canDeleteStandingQuery: Boolean,
+  canCreateJob: Boolean,
+  canDeleteJob: Boolean,
+  canRunBackgroundQuery: Boolean,
+  canCancelBackgroundQuery: Boolean,
+  canDeleteBackgroundQuery: Boolean,
 )
 
 object StreamsCapabilities {
@@ -23,5 +28,10 @@ object StreamsCapabilities {
     canCreateStandingQuery = true,
     canWriteStandingQueryOutputs = true,
     canDeleteStandingQuery = true,
+    canCreateJob = true,
+    canDeleteJob = true,
+    canRunBackgroundQuery = true,
+    canCancelBackgroundQuery = true,
+    canDeleteBackgroundQuery = true,
   )
 }

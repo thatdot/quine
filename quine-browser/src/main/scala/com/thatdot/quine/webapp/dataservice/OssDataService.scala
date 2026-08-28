@@ -23,9 +23,11 @@ import com.thatdot.quine.routes.{
 }
 import com.thatdot.quine.webapp.util.{Pot, QuineApiClient}
 import com.thatdot.quine.webapp.v2api.V2ApiTypes.{
+  V2BackgroundQueryStatus,
   V2BackpressureSnapshot,
   V2GraphFeed,
   V2IngestInfo,
+  V2JobStatus,
   V2ServiceStatus,
   V2StandingQueryInfo,
 }
@@ -47,6 +49,8 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
   private val quickQueriesRefresh = new EventBus[Unit]
   private val nodeAppearancesRefresh = new EventBus[Unit]
   private val graphFeedsRefresh = new EventBus[Unit]
+  private val backgroundQueriesRefresh = new EventBus[Unit]
+  private val jobsRefresh = new EventBus[Unit]
 
   /** Mirror of the validated current namespace, for imperative reads (mutations act on the
     * graph the user is viewing). Lazily bootstrapped with an owned observer, same as the
@@ -112,6 +116,54 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
 
   lazy val ingestStreamDispatch: Observer[IngestStreamService.Command] = Observer {
     case IngestStreamService.RefreshIngestStreams => ingestStreamsRefresh.emit(())
+  }
+
+  /** Whether the signed-in user may read background-query execution records (`GraphRead`). When
+    * false the feed stays empty so roles lacking the permission never 401 against the endpoint.
+    * OSS has no auth, so it is always readable; [[EnterpriseDataService]] overrides this.
+    */
+  protected def canReadBackgroundQueries: Boolean = true
+
+  /** Whether the signed-in user may read the scheduled-job list (`GraphRead`); see
+    * [[canReadBackgroundQueries]].
+    */
+  protected def canReadJobs: Boolean = true
+
+  lazy val backgroundQueryDispatch: Observer[BackgroundQueryService.Command] = Observer {
+    case BackgroundQueryService.RefreshBackgroundQueries => backgroundQueriesRefresh.emit(())
+
+    case BackgroundQueryService.RunBackgroundQuery(body, replyTo) =>
+      // Not `completeSave`: success carries the new execution id, which the caller needs in
+      // order to open a tap on the run it just started.
+      QuineApiClient
+        .runBackgroundQuery(currentNamespaceMirror.now().namespaceId, body, clientRoutes)
+        .onComplete {
+          case Success(created) =>
+            backgroundQueriesRefresh.emit(())
+            replyTo.onNext(BackgroundQueryService.RunStarted(created.id))
+          case Failure(err) =>
+            replyTo.onNext(
+              BackgroundQueryService.RunFailed(Option(err.getMessage).filter(_.nonEmpty).getOrElse("request failed")),
+            )
+        }
+
+    case BackgroundQueryService.CancelBackgroundQuery(id, replyTo) =>
+      completeSave(
+        QuineApiClient.cancelBackgroundQuery(currentNamespaceMirror.now().namespaceId, id, clientRoutes).map(_ => ()),
+        backgroundQueriesRefresh,
+        replyTo,
+      )
+
+    case BackgroundQueryService.DeleteBackgroundQuery(id, replyTo) =>
+      completeSave(
+        QuineApiClient.deleteBackgroundQuery(currentNamespaceMirror.now().namespaceId, id, clientRoutes),
+        backgroundQueriesRefresh,
+        replyTo,
+      )
+  }
+
+  lazy val jobDispatch: Observer[JobService.Command] = Observer { case JobService.RefreshJobs =>
+    jobsRefresh.emit(())
   }
 
   lazy val queryUiConfigDispatch: Observer[QueryUiConfigService.Command] = Observer {
@@ -394,6 +446,10 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     private val owner = new ManualOwner
 
     val storeVar: Var[Option[WiretapStore]] = Var(None)
+    // Renewed on the same namespace binder as `storeVar` below: a background query belongs to
+    // the graph it ran in, so switching graphs closes its taps along with the standing-query
+    // ones.
+    val bqStoreVar: Var[Option[BackgroundQueryTapStore]] = Var(None)
     val enabledGraphFeedsVar: Var[Map[String, V2GraphFeed]] = Var(Map.empty)
 
     // "Enable locally" opt-ins for the current namespace: tap-query names only. Every
@@ -408,9 +464,11 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
     // opt-ins; reconcile opens their taps once the server list arrives.
     currentNamespaceSignal.foreach { ns =>
       storeVar.now().foreach(_.closeAll())
+      bqStoreVar.now().foreach(_.closeAll())
       enabledGraphFeedsVar.set(Map.empty)
       currentNs = ns.namespaceId
       storeVar.set(Some(new WiretapStore(ns.namespaceId, clientRoutes)))
+      bqStoreVar.set(Some(new BackgroundQueryTapStore(ns.namespaceId, clientRoutes)))
       enabledIntentVar.set(EnabledTapsStorage.load(ns.namespaceId))
     }(owner)
 
@@ -530,6 +588,10 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
       wiretapRuntime.enable(graphFeed)
     case WiretapService.DisableGraphFeed(name) =>
       wiretapRuntime.disable(name)
+    case WiretapService.OpenBackgroundQueryTap(subscriber, executionId, displayName) =>
+      wiretapRuntime.bqStoreVar.now().foreach(_.open(subscriber, executionId, displayName))
+    case WiretapService.CloseBackgroundQueryTap(subscriber, executionId) =>
+      wiretapRuntime.bqStoreVar.now().foreach(_.close(subscriber, executionId))
   }
 
   lazy val wiretapsSignal: Signal[Map[WiretapOwner, List[WiretapHandler]]] =
@@ -541,11 +603,37 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
   lazy val enabledGraphFeedsSignal: Signal[Map[String, V2GraphFeed]] =
     wiretapRuntime.enabledGraphFeedsVar.signal
 
+  lazy val backgroundQueryTapsSignal: Signal[Map[String, BackgroundQueryTapHandler]] =
+    wiretapRuntime.bqStoreVar.signal.flatMapSwitch {
+      case Some(store) => store.active
+      case None => Val(Map.empty[String, BackgroundQueryTapHandler])
+    }
+
   lazy val ingestStreamsSignal: Signal[Pot[Seq[V2IngestInfo]]] =
     currentNamespaceSignal.flatMapSwitch { ns =>
       ingestStreamsRefresh.events
         .startWith(())
         .flatMapSwitch(_ => QuineApiClient.ingestStreams(ns.namespaceId, clientRoutes).potSignal)
     }.distinct
+
+  lazy val backgroundQueriesSignal: Signal[Pot[Seq[V2BackgroundQueryStatus]]] =
+    if (!canReadBackgroundQueries) Val(Pot.Empty)
+    else
+      currentNamespaceSignal.flatMapSwitch { ns =>
+        backgroundQueriesRefresh.events
+          .startWith(())
+          .flatMapSwitch(_ => QuineApiClient.backgroundQueries(ns.namespaceId, clientRoutes).potSignal)
+      }.distinct
+
+  // No `currentNamespaceSignal.flatMapSwitch` wrapper, unlike every sibling list feed above:
+  // scheduled jobs are cluster-wide (a job's target graph lives in its action, not its URL), so
+  // the list is the same whichever graph the user happens to be viewing.
+  lazy val jobsSignal: Signal[Pot[Seq[V2JobStatus]]] =
+    if (!canReadJobs) Val(Pot.Empty)
+    else
+      jobsRefresh.events
+        .startWith(())
+        .flatMapSwitch(_ => QuineApiClient.jobs(clientRoutes).potSignal)
+        .distinct
 
 }

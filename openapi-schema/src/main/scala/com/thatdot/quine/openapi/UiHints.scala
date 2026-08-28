@@ -25,6 +25,15 @@ final case class UiHints(
   // "Enrichment Query" even though the shared `CypherQuery` schema (also used
   // as a destination type) keeps its generic title "Run Cypher Query".
   labels: Map[String, String] = Map.empty,
+  // Form-only help text per property, overriding the schema's `description`.
+  // Deliberately decoupled from the schema: the API reference often needs more
+  // detail than fits comfortably under a form field, so the two diverge — the
+  // spec keeps the thorough description, the form shows this shorter one.
+  descriptions: Map[String, String] = Map.empty,
+  // Form-only placeholder (greyed sample) text per property, e.g. `168h` for a
+  // duration field. Lives in the overlay rather than the schema so the form's hint
+  // is independent of the API reference.
+  placeholders: Map[String, String] = Map.empty,
 )
 
 object UiHints {
@@ -75,6 +84,8 @@ object UiHintsSource {
         promote = c.downField("promote").as[List[String]].getOrElse(Nil).toSet,
         hide = c.downField("hide").as[List[String]].getOrElse(Nil).toSet,
         labels = c.downField("labels").as[Map[String, String]].getOrElse(Map.empty),
+        descriptions = c.downField("descriptions").as[Map[String, String]].getOrElse(Map.empty),
+        placeholders = c.downField("placeholders").as[Map[String, String]].getOrElse(Map.empty),
       ),
     )
   }
@@ -93,7 +104,8 @@ object UiHintsSource {
           warn(s"UI hints: schema '$schemaName' does not exist in the spec.")
         case Some(schema) =>
           val specFields = schema.properties.map(_.keySet).getOrElse(Set.empty)
-          val referenced = hints.order.toSet ++ hints.promote ++ hints.hide ++ hints.labels.keySet
+          val referenced = hints.order.toSet ++ hints.promote ++ hints.hide ++
+            hints.labels.keySet ++ hints.descriptions.keySet ++ hints.placeholders.keySet
           val unknown = referenced -- specFields
           if (unknown.nonEmpty)
             warn(

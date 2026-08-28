@@ -14,6 +14,8 @@ trait DataService
     with BackpressureService
     with StandingQueryService
     with IngestStreamService
+    with BackgroundQueryService
+    with JobService
     with QueryUiConfigService
     with GraphFeedService
     with WiretapService

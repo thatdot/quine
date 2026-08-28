@@ -128,11 +128,7 @@ final class WiretapStore(graphName: String, routes: ClientRoutes) {
   }
   private val connections: mutable.Map[String, Connection] = mutable.Map.empty
 
-  private def wsBase: String =
-    routes.baseUrlOpt
-      .filter(_.nonEmpty)
-      .getOrElse(dom.window.location.origin)
-      .replaceFirst("^http", "ws")
+  private def wsBase: String = WebSocketBase.of(routes)
 
   private def rawTapUrl(sqName: String): String =
     s"$wsBase/api/v2/graph/$graphName/standingQueries/$sqName:tap"

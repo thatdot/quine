@@ -14,6 +14,7 @@ import com.thatdot.quine.webapp.resultspanel.{
   ResultsIcons,
   SourceStatus,
   TapEntry,
+  TapTarget,
   ViewerCommand,
   ViewerControls,
   ViewerReads,
@@ -164,8 +165,8 @@ object CardPopup {
         card.kind match {
           case _: CardKind.AdhocCard =>
             Seq[Modifier[HtmlElement]](editButton(card, cd), reRunButton(card, cd))
-          case CardKind.TapTableCard(_, entry, _) =>
-            Seq[Modifier[HtmlElement]](streamActions(card, entry, cd))
+          case CardKind.TapTableCard(target, entry, _) =>
+            Seq[Modifier[HtmlElement]](streamActions(card, target, entry, cd))
         },
         exportMenu(card, reads, vd),
         button(
@@ -284,7 +285,12 @@ object CardPopup {
     * gray. The streaming/paused state itself is worn by the status dot ([[tapStatus]]),
     * not the buttons.
     */
-  private def streamActions(card: CardState, entry: TapEntry, cd: Observer[CardCommand]): Modifier[HtmlElement] = {
+  private def streamActions(
+    card: CardState,
+    target: TapTarget,
+    entry: TapEntry,
+    cd: Observer[CardCommand],
+  ): Modifier[HtmlElement] = {
     val paused: Signal[Boolean] = entry.status.map {
       case SourceStatus.Ended => true
       case _ => false
@@ -293,30 +299,51 @@ object CardPopup {
       case SourceStatus.Error(_) => true
       case _ => false
     }
-    val canFetch: Signal[Boolean] = paused.combineWith(errored).map { case (p, e) => p && !e }
+    // A background query cannot be reopened once ended (its server-side relay is gone), so its
+    // card gets a reduced control set rather than permanently grey buttons: the sampled-batch
+    // controls never render (fetch-more only ever enables from a paused, reopenable stream),
+    // and the Stop toggle renders while the run is live, then hides when it finishes or errors
+    // — the status dot already wears the ended state. Standing-query taps (`resumable`) keep
+    // the full disabled-while-paused treatment, since their controls do re-enable.
+    // `CardsStore` is what actually enforces non-reopenability; this only keeps the controls
+    // honest.
+    val reopenable: Boolean = target.resumable
+    val finished: Signal[Boolean] =
+      paused.combineWith(errored).map { case (p, e) => (p || e) && !reopenable }
+    val canFetch: Signal[Boolean] =
+      paused.combineWith(errored).map { case (p, e) => p && !e && reopenable }
     Seq[Modifier[HtmlElement]](
-      button(
-        tpe := "button",
-        cls := CardStyles.popupMoreButton,
-        disabled <-- canFetch.map(!_),
-        title := "Fetch another sampled batch (available while paused)",
-        child.text <-- card.viewer.sampleBatch.signal.map(b => s"Get $b more"),
-        onClick --> (_ => cd.onNext(CardCommand.FetchMoreSamples(card.id))),
-      ),
-      input(
-        tpe := "number",
-        cls := CardStyles.popupBatchInput,
-        minAttr := "1",
-        title := "Batch size for the next fetch",
-        disabled <-- canFetch.map(!_),
-        value <-- card.viewer.sampleBatch.signal.map(_.toString),
-        onChange.mapToValue --> { text =>
-          text.toIntOption.foreach(n => cd.onNext(CardCommand.SetSampleSize(card.id, n)))
-        },
-      ),
+      // The sampled-batch controls exist only for a resumable tap: fetch-more enables while
+      // paused and reopens the stream, which a background query can never do — so for one they
+      // would be born grey and die grey. Not rendered at all rather than hidden reactively,
+      // since `resumable` is fixed for the card's lifetime.
+      if (reopenable)
+        button(
+          tpe := "button",
+          cls := CardStyles.popupMoreButton,
+          disabled <-- canFetch.map(!_),
+          title := "Fetch another sampled batch (available while paused)",
+          child.text <-- card.viewer.sampleBatch.signal.map(b => s"Get $b more"),
+          onClick --> (_ => cd.onNext(CardCommand.FetchMoreSamples(card.id))),
+        )
+      else emptyNode,
+      if (reopenable)
+        input(
+          tpe := "number",
+          cls := CardStyles.popupBatchInput,
+          minAttr := "1",
+          title := "Batch size for the next fetch",
+          disabled <-- canFetch.map(!_),
+          value <-- card.viewer.sampleBatch.signal.map(_.toString),
+          onChange.mapToValue --> { text =>
+            text.toIntOption.foreach(n => cd.onNext(CardCommand.SetSampleSize(card.id, n)))
+          },
+        )
+      else emptyNode,
       button(
         tpe := "button",
         cls := CardStyles.popupLiveButton,
+        display <-- finished.map(if (_) "none" else ""),
         disabled <-- errored,
         // One toggle for the stream lifecycle: paused → resume unbounded, streaming
         // (sampled fill or live follow) → stop. Both labels stay mounted in the same

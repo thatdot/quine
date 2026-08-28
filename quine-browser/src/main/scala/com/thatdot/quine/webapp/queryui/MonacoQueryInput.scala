@@ -36,12 +36,21 @@ object MonacoQueryInput {
     sampleQueries: Signal[Seq[SampleQuery]],
     submitButton: UiQueryType => Unit,
     cancelButton: () => Unit,
+    /** Whether the user may start background queries (`GraphWrite`). A background query runs
+      * arbitrary Cypher, so the server requires write — a stricter gate than reading the graph.
+      */
+    canWriteBackgroundQueries: Boolean = true,
+    /** Whether this host offers background queries at all. When false the "Run in background"
+      * menu row is hidden entirely (as it is for a read-only role) rather than shown disabled.
+      */
+    backgroundQueriesEnabled: Boolean = false,
     useV2Api: Boolean,
     qpEnabled: Boolean,
     serverUrl: Option[String],
     bookmarkDialog: HtmlElement,
     onBookmark: () => Unit,
     onOpenTapModal: () => Unit,
+    onRunInBackground: () => Unit = () => (),
   ): HtmlElement = {
     // Mutable mirrors of reactive state needed inside the editor's JS callbacks (Signals expose
     // no current-value accessor). They are kept in sync by binders on the root element below.
@@ -205,6 +214,15 @@ object MonacoQueryInput {
         onMultiline = () => editorHandle.foreach(_.startMultilineEdit()),
         onBookmark = onBookmark,
         onOpenTapModal = onOpenTapModal,
+        onRunInBackground = onRunInBackground,
+        // Shown only where the host offers background queries and the user may write (starting a
+        // background run is `GraphWrite`). Hidden entirely — not merely greyed — for a read-only
+        // role or a host without the surface, so the menu never advertises a permanently dead row.
+        showRunInBackground = Signal.fromValue(backgroundQueriesEnabled && canWriteBackgroundQueries),
+        // A background run just needs something to run. Unlike `runBlocked` it ignores
+        // diagnostics: the server compiles the query when it accepts the request, so a stale
+        // marker shouldn't stop the dialog from even opening.
+        runInBackgroundDisabled = query.map(_.trim.isEmpty),
       )
 
     // The element the editor is mounted into. The package drives its height (auto-grow with

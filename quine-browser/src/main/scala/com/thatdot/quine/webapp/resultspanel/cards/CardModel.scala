@@ -111,9 +111,15 @@ object TapCardQuery {
       sq.outputs.find(_.name == out).flatMap(_.enrichmentQuery).map(TapCardQuery(labelFor(tapPoint), _))
   }
 
-  /** [[forPoint]], looked up through a catalog by target. */
-  def resolve(catalog: Vector[TapCatalogEntry], target: TapTarget): Option[TapCardQuery] =
-    catalog.find(_.sqName == target.sqName).flatMap(forPoint(_, target.tapPoint))
+  /** [[forPoint]], looked up through a catalog by target. A background query's text is not in
+    * the standing-query catalog — the host resolves it from the execution-record feed instead
+    * (see `QueryUi.resolveTapCardQuery`).
+    */
+  def resolve(catalog: Vector[TapCatalogEntry], target: TapTarget): Option[TapCardQuery] = target match {
+    case TapTarget.StandingQuery(sqName, tapPoint) =>
+      catalog.find(_.sqName == sqName).flatMap(forPoint(_, tapPoint))
+    case _: TapTarget.BackgroundQuery => None
+  }
 
   /** What each tap point observes — the hover tooltip shared by the tap pickers
     * ([[com.thatdot.quine.webapp.resultspanel.AddTapChooser]], the pipeline tree). When the
@@ -246,7 +252,12 @@ object CardState {
       kind = kind,
       title = titleFor(kind),
       createdAt = createdAt,
-      mode = SampleMode.Sampled, // taps open showing only the first sample budget; `Go live` lifts the cap
+      // A resumable tap opens showing only the first sample budget — it would otherwise stream
+      // forever — and `Go live` lifts the cap. A non-resumable one (a background query) opens
+      // live instead: it is a single finite run, so a budget wouldn't defer the rest of the
+      // results, it would discard them, and the fetch-more that normally recovers them can't
+      // reopen the stream. The stream's own row cap still bounds it.
+      mode = if (target.resumable) SampleMode.Sampled else SampleMode.Live,
       stopped = false,
       editAssociated = false,
       viewer = ViewerState.initial,

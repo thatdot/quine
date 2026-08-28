@@ -61,8 +61,8 @@ object SqPipelineTree {
   def apply(
     catalog: Signal[Pot[Vector[TapCatalogEntry]]],
     tappedKeys: Signal[Set[String]],
-    onPickNew: TapTarget => Unit,
-    onFocusExisting: TapTarget => Unit,
+    onPickNew: TapTarget.StandingQuery => Unit,
+    onFocusExisting: TapTarget.StandingQuery => Unit,
     variant: Variant = Variant.Inspect,
     initialSqName: Option[String] = None,
   ): HtmlElement = {
@@ -206,8 +206,8 @@ object SqPipelineTree {
   private def diagramPanel(
     sq: TapCatalogEntry,
     tapped: Signal[Set[String]],
-    onPickNew: TapTarget => Unit,
-    onFocusExisting: TapTarget => Unit,
+    onPickNew: TapTarget.StandingQuery => Unit,
+    onFocusExisting: TapTarget.StandingQuery => Unit,
     variant: Variant,
   ): HtmlElement = {
     // The Raw caption names what it precedes, most specific description first.
@@ -302,8 +302,8 @@ object SqPipelineTree {
     out: TapOutput,
     patternQuery: Option[String],
     tapped: Signal[Set[String]],
-    onPickNew: TapTarget => Unit,
-    onFocusExisting: TapTarget => Unit,
+    onPickNew: TapTarget.StandingQuery => Unit,
+    onFocusExisting: TapTarget.StandingQuery => Unit,
     variant: Variant,
   ): HtmlElement =
     div(
@@ -326,8 +326,8 @@ object SqPipelineTree {
     out: TapOutput,
     patternQuery: Option[String],
     tapped: Signal[Set[String]],
-    onPickNew: TapTarget => Unit,
-    onFocusExisting: TapTarget => Unit,
+    onPickNew: TapTarget.StandingQuery => Unit,
+    onFocusExisting: TapTarget.StandingQuery => Unit,
     inBranch: Boolean,
     variant: Variant,
   ): List[Modifier[HtmlElement]] = {
@@ -404,11 +404,11 @@ object SqPipelineTree {
     caption: String,
     queryText: Option[String],
     tapped: Signal[Set[String]],
-    onPickNew: TapTarget => Unit,
-    onFocusExisting: TapTarget => Unit,
+    onPickNew: TapTarget.StandingQuery => Unit,
+    onFocusExisting: TapTarget.StandingQuery => Unit,
     variant: Variant,
   ): HtmlElement = {
-    val target = TapTarget(sqName, tapPoint)
+    val target = TapTarget.StandingQuery(sqName, tapPoint)
     val isTapped: Signal[Boolean] = tapped.map(_.contains(target.key)).distinct
     val (chipText, tappedTooltipSuffix) = variant match {
       case Variant.Inspect => ("viewing", "Already inspected, click to focus its card.")

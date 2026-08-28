@@ -179,7 +179,7 @@ object AddTapChooser {
     watch: Set[String],
     sd: Observer[ResultsCommand],
   ): HtmlElement = {
-    val target = TapTarget(sqName, tapPoint)
+    val target = TapTarget.StandingQuery(sqName, tapPoint)
     // Tooltip: what the point observes plus (when known) the query that produced the data —
     // shared with the pipeline tree via TapCardQuery.hoverDesc.
     if (watch.contains(target.key))

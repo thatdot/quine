@@ -564,4 +564,134 @@ object V2ApiTypes {
         cluster <- c.downField("cluster").as[V2ClusterOperationStatus]
       } yield V2ServiceStatus(fullyUp, cluster)
   }
+
+  /** Mirrors `V2BackgroundQueryEndpointEntities.BackgroundQueryStatus` — one background-query
+    * execution's record. Result rows are streamed to the run's destinations and to its `:tap`
+    * WebSocket; they never appear here.
+    *
+    * `expiresAt` stays the raw RFC-3339 string these mirrors carry no `java.time` types, and
+    * `js.Date` parses it for display.
+    *
+    * @see [[public/quine/src/main/scala/com/thatdot/quine/app/v2api/endpoints/V2BackgroundQueryEndpoints.scala]]
+    */
+  final case class V2BackgroundQueryStatus(
+    id: String,
+    /** Name of the scheduled job that dispatched this execution; absent for a run-now. */
+    jobName: Option[String],
+    name: Option[String],
+    query: String,
+    /** One of `started`, `completed`, `failed`, `cancelled`. */
+    status: String,
+    hostId: String,
+    totalRowCount: Option[Long],
+    columns: Option[Seq[String]],
+    error: Option[String],
+    expiresAt: String,
+  ) {
+
+    /** Whether the execution is still in flight — the one status that is not terminal. */
+    def isRunning: Boolean = status == V2BackgroundQueryStatus.StatusStarted
+
+    /** The run's name if it has one, else its query text — what the UI labels it with. */
+    def displayName: String = name.filter(_.trim.nonEmpty).getOrElse(query.trim.replaceAll("\\s+", " "))
+  }
+  object V2BackgroundQueryStatus {
+    val StatusStarted = "started"
+    val StatusCompleted = "completed"
+    val StatusFailed = "failed"
+    val StatusCancelled = "cancelled"
+
+    implicit val decoder: Decoder[V2BackgroundQueryStatus] = (c: HCursor) =>
+      for {
+        id <- c.downField("id").as[String]
+        jobName <- c.downField("jobName").as[Option[String]]
+        name <- c.downField("name").as[Option[String]]
+        query <- c.downField("query").as[String]
+        status <- c.downField("status").as[String]
+        hostId <- c.downField("hostId").as[String]
+        totalRowCount <- c.downField("totalRowCount").as[Option[Long]]
+        columns <- c.downField("columns").as[Option[Seq[String]]]
+        error <- c.downField("error").as[Option[String]]
+        expiresAt <- c.downField("expiresAt").as[String]
+      } yield V2BackgroundQueryStatus(
+        id,
+        jobName,
+        name,
+        query,
+        status,
+        hostId,
+        totalRowCount,
+        columns,
+        error,
+        expiresAt,
+      )
+  }
+
+  /** Mirrors `V2BackgroundQueryEndpointEntities.BackgroundQueryCreated` — the 201 body of a
+    * run request, carrying the execution id to tap and poll.
+    */
+  final case class V2BackgroundQueryCreated(id: String)
+  object V2BackgroundQueryCreated {
+    implicit val decoder: Decoder[V2BackgroundQueryCreated] =
+      (c: HCursor) => c.downField("id").as[String].map(V2BackgroundQueryCreated(_))
+  }
+
+  /** Mirrors `V2JobEndpointEntities.JobStatus` — a scheduled job's point-in-time state.
+    *
+    * `schedule` is kept as raw `Json`: it is a five-variant discriminated union server-side, and
+    * the UI only renders a one-line summary of it (see [[scheduleSummary]]), so mirroring the
+    * whole union would be cost with no consumer.
+    *
+    * Note there is no `action` field on the wire, so a job's query, destinations, and **target
+    * graph** are not reported — which is why the jobs table has no graph column and no edit
+    * action.
+    *
+    * @see [[public/quine/src/main/scala/com/thatdot/quine/app/v2api/endpoints/V2JobEndpoints.scala]]
+    */
+  final case class V2JobStatus(
+    name: String,
+    /** Kind of work the job dispatches, e.g. `background-query`. */
+    jobType: String,
+    schedule: Json,
+    nextFireAt: Option[String],
+    lastFireAt: Option[String],
+    running: Boolean,
+  ) {
+
+    /** A one-line rendering of [[schedule]], e.g. `Daily at 02:00 (UTC)` or `Every 30s`.
+      * Falls back to the bare discriminator for a variant added server-side after this was
+      * written, so a new schedule kind reads as unfamiliar rather than blank.
+      */
+    def scheduleSummary: String = {
+      val cur = schedule.hcursor
+      def str(field: String): Option[String] = cur.downField(field).as[String].toOption
+      val zone = str("timezone").getOrElse("UTC")
+      str("type") match {
+        case Some("Hourly") =>
+          val minute = cur.downField("minute").as[Int].toOption.getOrElse(0)
+          f"Hourly at :$minute%02d ($zone)"
+        case Some("Daily") => s"Daily at ${str("at").getOrElse("?")} ($zone)"
+        case Some("Weekly") =>
+          val day = str("dayOfWeek").getOrElse("?").toLowerCase.capitalize
+          s"Weekly on $day at ${str("at").getOrElse("?")} ($zone)"
+        case Some("Monthly") =>
+          val day = cur.downField("dayOfMonth").as[Int].toOption.map(_.toString).getOrElse("?")
+          s"Monthly on day $day at ${str("at").getOrElse("?")} ($zone)"
+        case Some("Interval") => s"Every ${str("every").getOrElse("?")}"
+        case Some(other) => other
+        case None => "Unknown schedule"
+      }
+    }
+  }
+  object V2JobStatus {
+    implicit val decoder: Decoder[V2JobStatus] = (c: HCursor) =>
+      for {
+        name <- c.downField("name").as[String]
+        jobType <- c.downField("jobType").as[String]
+        schedule <- c.downField("schedule").as[Option[Json]].map(_.getOrElse(Json.obj()))
+        nextFireAt <- c.downField("nextFireAt").as[Option[String]]
+        lastFireAt <- c.downField("lastFireAt").as[Option[String]]
+        running <- c.downField("running").as[Option[Boolean]].map(_.getOrElse(false))
+      } yield V2JobStatus(name, jobType, schedule, nextFireAt, lastFireAt, running)
+  }
 }

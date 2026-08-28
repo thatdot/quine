@@ -186,11 +186,18 @@ final class CardsStore(
 
   /** Auto-stop is only meaningful for tap-table cards — the one kind with a live stream
     * to free. Adhoc cards have nothing running (and no Restart control to clear the flag).
+    *
+    * A non-resumable tap is exempt: auto-stop trades "stop consuming a stream you aren't
+    * looking at" against "you can always restart it", and for a background query the second
+    * half is false. Stopping one on minimize would end the run's capture for good, so a
+    * minimized background-query card keeps filling — bounded anyway, since the run terminates
+    * on its own and the stream caps its buffer. An explicit [[CardCommand.Stop]] still stops
+    * it: that is the user choosing to.
     */
   private def autoStopIfTapTable(id: CardId): Unit =
     findNow(id).foreach { card =>
       card.kind match {
-        case _: CardKind.TapTableCard if !card.stopped => stopCard(id)
+        case CardKind.TapTableCard(target, _, _) if !card.stopped && target.resumable => stopCard(id)
         case _ => ()
       }
     }
@@ -238,12 +245,15 @@ final class CardsStore(
   private def goLive(id: CardId): Unit =
     findNow(id).foreach { card =>
       card.kind match {
-        case CardKind.TapTableCard(target, entry, _) =>
+        // An ended tap that cannot be reopened has nothing to go live *to*, so this is a full
+        // no-op rather than a mode flip the stream could never honor.
+        case CardKind.TapTableCard(target, entry, _) if !entry.ended.now() || target.resumable =>
           // Mode first: a frozen tap (filled budget or user Stop alike) reopens through the
           // continuation protocol, and the fresh session's budget thunk must already read
           // Live (unbounded) when it connects. `replaceTapTableEntry` clears `stopped`.
           updateCard(id)(_.copy(mode = SampleMode.Live))
           if (entry.ended.now()) reopenContinuing(target)
+        case _: CardKind.TapTableCard => ()
         // Adhoc cards never get a live button (design §3) — a full no-op preserves the
         // "adhoc never live" invariant even for a stray GoLive command.
         case _: CardKind.AdhocCard => ()
@@ -255,10 +265,11 @@ final class CardsStore(
     * put and the new session appends after them — unlike a session-restore reconnect, which
     * starts an empty buffer.
     */
-  private def reopenContinuing(target: TapTarget): Unit = {
-    continuationKeys += target.key
-    onRestartTap(target)
-  }
+  private def reopenContinuing(target: TapTarget): Unit =
+    if (target.resumable) {
+      continuationKeys += target.key
+      onRestartTap(target)
+    }
 
   private def reRun(id: CardId): Unit =
     findNow(id).foreach(_.kind match {
@@ -306,11 +317,15 @@ final class CardsStore(
         c.kind match {
           case CardKind.TapTableCard(target, entry, _) =>
             val batch = c.viewer.sampleBatch.now()
-            if (entry.ended.now()) {
+            if (!entry.ended.now()) c.viewer.sampleSize.update(_ + batch)
+            else if (target.resumable) {
               c.viewer.sampleSize.set(entry.stream.rows.now().size + batch)
               updateCard(id)(_.copy(mode = SampleMode.Sampled))
               reopenContinuing(target)
-            } else c.viewer.sampleSize.update(_ + batch)
+            }
+          // else: an ended, non-reopenable tap (a finished background query) has no more rows
+          // to fetch. Growing the budget against its frozen buffer would leave the card
+          // claiming to be waiting on results that can never arrive.
           case _: CardKind.AdhocCard => ()
         }
       }

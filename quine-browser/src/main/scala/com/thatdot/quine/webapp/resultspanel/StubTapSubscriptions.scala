@@ -12,14 +12,16 @@ import com.thatdot.quine.webapp.resultspanel.streaming.StubLiveSource
 final class StubTapSubscriptions extends TapSubscriptions {
   private val opened: Var[Map[String, LiveSource]] = Var(Map.empty)
 
+  // Keyed by `target.key`, not the caller's `key`, so `close` (which takes the target) always
+  // finds what `open` stored. Every real caller passes `target.key` as the key anyway.
   def open(key: String, target: TapTarget): Unit =
-    if (!opened.now().contains(key))
-      opened.update(_ + (key -> StubLiveSource(target.key, target.label, Some(target))))
+    if (!opened.now().contains(target.key))
+      opened.update(_ + (target.key -> StubLiveSource(target.key, target.label, Some(target))))
 
   // As the producer, the stub stops its own source's emission when its subscription closes.
-  def close(key: String): Unit = {
-    opened.now().get(key).foreach(_.stop())
-    opened.update(_ - key)
+  def close(target: TapTarget): Unit = {
+    opened.now().get(target.key).foreach(_.stop())
+    opened.update(_ - target.key)
   }
 
   val sources: Signal[Vector[LiveSource]] =

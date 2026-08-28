@@ -23,6 +23,7 @@ object CardStyles {
   val miniCardStatusLive = "is-live"
   val miniCardClose = "mini-card-close"
   val miniCardKindFx = "mini-card-kind-fx" // the ƒ glyph for a transformation tap point
+  val miniCardKindBg = "mini-card-kind-bg" // the ⏱ glyph for a background-query tap
 
   // Search + collapse
   val drawerSearchWrap = "cards-drawer-search-wrap"

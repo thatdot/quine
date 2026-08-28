@@ -59,14 +59,14 @@ final class TapsState(val subscriptions: TapSubscriptions) {
 
   /** Unsubscribe the panel's tap on the entry identified by `id` (a `LiveSource.id`). */
   def closeTap(id: String): Unit =
-    entryFor(id).flatMap(_.target).foreach(t => subscriptions.close(t.key))
+    entryFor(id).flatMap(_.target).foreach(t => subscriptions.close(t))
 
   /** Stop the tap `id`: free it server-side (close the panel's subscription, which lets the
     * producer drop the source) and freeze our buffer to a static snapshot that stays selectable.
     */
   def stop(id: String): Unit =
     entryFor(id).foreach { e =>
-      e.target.foreach(t => subscriptions.close(t.key))
+      e.target.foreach(t => subscriptions.close(t))
       e.stream.freeze()
       e.ended.set(true)
     }
@@ -82,7 +82,7 @@ final class TapsState(val subscriptions: TapSubscriptions) {
     */
   def remove(id: String): Unit = {
     entryFor(id).foreach { e =>
-      e.target.foreach(t => subscriptions.close(t.key))
+      e.target.foreach(t => subscriptions.close(t))
       e.stream.freeze()
     }
     entries.update(_.filterNot(_.id == id))

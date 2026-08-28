@@ -36,6 +36,18 @@ trait WiretapService {
     * names present in both are dispatched.
     */
   def enabledGraphFeedsSignal: Signal[Map[String, V2GraphFeed]]
+
+  /** Open background-query result taps, keyed by execution id.
+    *
+    * Unlike [[wiretapsSignal]] these are not grouped by owner. Several surfaces can watch one
+    * execution at once — an Explorer result card and the Streams page's inspection typically do
+    * — and rather than scoping the map per owner the store refcounts subscribers behind it, so
+    * the socket survives until the last of them closes (see [[OpenBackgroundQueryTap]]).
+    *
+    * The consequence for a consumer is that this map shows every open background-query tap, not
+    * just the ones that consumer opened.
+    */
+  def backgroundQueryTapsSignal: Signal[Map[String, BackgroundQueryTapHandler]]
 }
 
 object WiretapService {
@@ -69,6 +81,28 @@ object WiretapService {
     */
   final case class EnableGraphFeed(graphFeed: V2GraphFeed) extends Command
 
-  /** Disable a locally-enabled tap query: closes its tap and forgets the intent. */
+  /** Disable a locally-enabled graph feed: closes its tap and forgets the intent. */
   final case class DisableGraphFeed(name: String) extends Command
+
+  /** Open a tap on a background-query execution's result stream; no-op if `subscriber` already
+    * has one.
+    *
+    * @param subscriber the surface watching — an Explorer result card and the Streams page's
+    *                   viewer can watch the same run at once, and the underlying socket is
+    *                   released only when the last of them closes
+    * @param displayName what to label the stream with — the run's name, else its query text
+    */
+  final case class OpenBackgroundQueryTap(subscriber: String, executionId: String, displayName: String) extends Command
+
+  /** Release `subscriber`'s background-query tap; no-op if it holds none. Note this only stops
+    * *watching*: the run itself keeps going (cancel it via
+    * [[BackgroundQueryService.CancelBackgroundQuery]]), and once it has finished the tap cannot
+    * be reopened.
+    */
+  final case class CloseBackgroundQueryTap(subscriber: String, executionId: String) extends Command
+
+  /** Subscriber name for the Streams page's results viewer. The Explorer's cards use their
+    * [[WiretapOwner]]'s name, so the two never collide.
+    */
+  val StreamsPageSubscriber: String = "streamsPage"
 }

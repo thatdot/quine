@@ -10,4 +10,30 @@ object V2Paths {
     * to suffix onto a WebSocket origin.
     */
   def standingQueries(graph: String): String = s"api/v2/graph/$graph/standingQueries"
+
+  /** The background-query executions collection for `graph`. */
+  def backgroundQueries(graph: String): String = s"api/v2/graph/$graph/backgroundQueries"
+
+  /** One background-query execution's record. */
+  def backgroundQuery(graph: String, executionId: String): String =
+    s"${backgroundQueries(graph)}/$executionId"
+
+  /** Cancel one background-query execution (AIP-136 custom verb). */
+  def cancelBackgroundQuery(graph: String, executionId: String): String =
+    s"${backgroundQuery(graph, executionId)}:cancel"
+
+  /** The result-stream WebSocket for one background-query execution.
+    *
+    * Hand-built rather than discovered from the OpenAPI spec: the `:tap` endpoints are added
+    * to the served routes only and never to `V2ApiInfo.endpointSequences`, so they do not
+    * appear in the published document. Same reason the standing-query tap URLs are built by
+    * hand in `dataservice.WiretapStore`.
+    */
+  def backgroundQueryTap(graph: String, executionId: String): String =
+    s"${backgroundQuery(graph, executionId)}:tap"
+
+  /** Scheduled jobs. Cluster-wide, not graph-scoped: the target graph lives in a job's action,
+    * not in its URL (`V2JobEndpoints` builds these with `rawEndpoint`, not `graphScopedEndpoint`).
+    */
+  val jobs: String = "api/v2/system/jobs"
 }

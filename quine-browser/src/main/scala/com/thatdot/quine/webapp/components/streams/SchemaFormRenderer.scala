@@ -49,6 +49,11 @@ object SchemaFormRenderer {
     // UI hints (`labels` map). Takes precedence over the node's own title and the
     // humanized property name wherever a label is emitted.
     labelOverride: Option[String] = None,
+    // Form-only help-text and placeholder overrides, supplied by the parent object's
+    // UI hints (`descriptions` / `placeholders` maps). Take precedence over the node's
+    // own `description` on primitive fields (see [[renderString]]).
+    descriptionOverride: Option[String] = None,
+    placeholderOverride: Option[String] = None,
   ): HtmlElement =
     if (depth >= MaxRenderDepth)
       div(cls := "form-text text-body-secondary", "(nested schema limit reached)")
@@ -74,6 +79,8 @@ object SchemaFormRenderer {
         isRequired,
         resolved.schemaName,
         labelOverride,
+        descriptionOverride,
+        placeholderOverride,
       )
     }
 
@@ -87,6 +94,8 @@ object SchemaFormRenderer {
     isRequired: Boolean,
     schemaName: Option[String],
     labelOverride: Option[String],
+    descriptionOverride: Option[String],
+    placeholderOverride: Option[String],
   ): HtmlElement = {
     def obj =
       if (node.properties.forall(_.isEmpty)) div() // no fields to render
@@ -104,11 +113,21 @@ object SchemaFormRenderer {
               case Some("object") => obj
               case Some("array") => renderArray(node, spec, path, stateVar, editorConfig, depth)
               case Some("string") if node.`enum`.exists(_.nonEmpty) => renderEnum(node, path, stateVar, isRequired)
-              case Some("string") => renderString(node, path, stateVar, editorConfig, isRequired)
+              case Some("string") =>
+                renderString(node, path, stateVar, editorConfig, isRequired, descriptionOverride, placeholderOverride)
               case Some("integer") | Some("number") => renderNumber(node, path, stateVar, isRequired)
               case Some("boolean") => renderBoolean(node, path, stateVar, isRequired)
               case _ if node.properties.exists(_.nonEmpty) => obj
-              case _ => renderString(node, path, stateVar, editorConfig, isRequired) // fallback
+              case _ =>
+                renderString(
+                  node,
+                  path,
+                  stateVar,
+                  editorConfig,
+                  isRequired,
+                  descriptionOverride,
+                  placeholderOverride,
+                ) // fallback
             }
         }
     }
@@ -201,12 +220,22 @@ object SchemaFormRenderer {
     stateVar: Var[Json],
     editorConfig: EmbeddedEditorConfig,
     isRequired: Boolean,
+    descriptionOverride: Option[String] = None,
+    placeholderOverride: Option[String] = None,
   ): HtmlElement = {
     val currentValue = stateVar.signal.map(json => SchemaFormState.getAt(json, path).flatMap(_.asString).getOrElse(""))
     val defaultValue = node.default.flatMap(_.asString).getOrElse("")
     val isQuery = isQueryField(node, path)
-    val inlineDesc = if (isQuery) None else placeholderDesc(node)
-    val showFormText = !isQuery && inlineDesc.isEmpty
+    // The help text is the overlay's `descriptions` override when present, else the schema's own
+    // `description` — letting the form show a terser line than the (thorough) API reference.
+    val effectiveDesc = descriptionOverride.orElse(node.description)
+    // Placeholder priority: an overlay `placeholders` override wins, else a short-enough description.
+    // When the override fills the placeholder, the description drops to a help line below — so a
+    // field can show both a sample value and its explanation.
+    val descHint = if (isQuery) None else effectiveDesc.filter(_.length <= MaxPlaceholderLen)
+    val explicitHint = if (isQuery) None else placeholderOverride
+    val inlineDesc = explicitHint.orElse(descHint)
+    val showFormText = !isQuery && (explicitHint.isDefined || descHint.isEmpty)
 
     // Eagerly initialize default value at construction time (not onMount)
     if (defaultValue.nonEmpty) {
@@ -232,7 +261,7 @@ object SchemaFormRenderer {
               },
             ),
           ),
-          if (showFormText) renderDescription(node) else emptyMod,
+          if (showFormText) renderDescriptionText(effectiveDesc) else emptyMod,
         ),
     )
   }
@@ -494,7 +523,7 @@ object SchemaFormRenderer {
   private def renderFieldList(
     fields: List[(String, SchemaNode)],
     requiredFields: Set[String],
-    labels: Map[String, String],
+    hints: UiHints,
     spec: ParsedSpec,
     path: List[String],
     stateVar: Var[Json],
@@ -515,7 +544,9 @@ object SchemaFormRenderer {
             editorConfig,
             depth + 1,
             requiredFields.contains(propName),
-            labels.get(propName),
+            hints.labels.get(propName),
+            hints.descriptions.get(propName),
+            hints.placeholders.get(propName),
           ),
         )
       },
@@ -556,12 +587,12 @@ object SchemaFormRenderer {
 
     if (optional.isEmpty)
       // All fields are required — render flat
-      renderFieldList(primary, requiredFields, hints.labels, spec, path, stateVar, editorConfig, depth)
+      renderFieldList(primary, requiredFields, hints, spec, path, stateVar, editorConfig, depth)
     else {
       // Some or all fields are optional — collapse them into "More Options"
       val advancedExpanded = Var(false)
       div(
-        renderFieldList(primary, requiredFields, hints.labels, spec, path, stateVar, editorConfig, depth),
+        renderFieldList(primary, requiredFields, hints, spec, path, stateVar, editorConfig, depth),
         div(
           cls := "mt-3 pt-2 border-top",
           div(
@@ -573,7 +604,7 @@ object SchemaFormRenderer {
           ),
           div(
             display <-- advancedExpanded.signal.map(if (_) "block" else "none"),
-            renderFieldList(optional, requiredFields, hints.labels, spec, path, stateVar, editorConfig, depth),
+            renderFieldList(optional, requiredFields, hints, spec, path, stateVar, editorConfig, depth),
           ),
         ),
       )
@@ -919,7 +950,10 @@ object SchemaFormRenderer {
   }
 
   private def renderDescription(node: SchemaNode): Modifier[HtmlElement] =
-    node.description.filter(_.nonEmpty) match {
+    renderDescriptionText(node.description)
+
+  private def renderDescriptionText(description: Option[String]): Modifier[HtmlElement] =
+    description.filter(_.nonEmpty) match {
       case None => emptyMod
       case Some(desc) =>
         // Only the lede is shown. The remainder from `splitDescription` is dropped on

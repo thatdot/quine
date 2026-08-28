@@ -15,8 +15,10 @@ import com.thatdot.quine.webapp.Styles
   * Observers). This component owns only the popover's own open/closed Var and its outside-click
   * / Escape dismissal — no application state, no store access.
   *
-  * Menu contents (design doc §1):
+  * Menu contents, in render order — the two ways of running the buffer lead, then the editing
+  * and inspection actions:
   *   - "Run as text query" — one-shot force-table run (today's Shift+Click path).
+  *   - "Run in background" — one-shot; opens the host's run-in-background dialog.
   *   - "Multi-line editing" — one-shot: the host focuses the editor and enters multi-line mode
   *     exactly as Shift+Enter would; the row exists so the keyboard affordance is discoverable.
   *   - "Bookmark this query" — one-shot; the host wires this to the existing
@@ -36,6 +38,10 @@ object QueryMenuButton {
     * @param onMultiline "Multi-line editing" one-shot action (the Shift+Enter path).
     * @param onBookmark "Bookmark this query" one-shot action.
     * @param onOpenTapModal "Standing query results…" one-shot action.
+    * @param onRunInBackground "Run in background" one-shot action; opens the host's dialog.
+    * @param showRunInBackground whether to show the "Run in background" row at all (hidden on
+    *                           hosts that don't offer background queries, or for a read-only role).
+    * @param runInBackgroundDisabled greys that row (empty buffer).
     */
   def apply(
     label: String,
@@ -46,6 +52,9 @@ object QueryMenuButton {
     onMultiline: () => Unit,
     onBookmark: () => Unit,
     onOpenTapModal: () => Unit,
+    onRunInBackground: () => Unit = () => (),
+    showRunInBackground: Signal[Boolean] = Signal.fromValue(false),
+    runInBackgroundDisabled: Signal[Boolean] = Signal.fromValue(false),
   ): HtmlElement = {
     val menuOpenVar: Var[Boolean] = Var(false)
     var rootEl: Option[dom.html.Element] = None
@@ -110,6 +119,11 @@ object QueryMenuButton {
           case true =>
             Seq(
               runAsTextItem { () => closeMenu(); onRunAsText() },
+              // Directly under "Run as text query": both are ways of running the buffer, so
+              // they read as a pair rather than being separated by the editing actions.
+              runInBackgroundItem(showRunInBackground, runInBackgroundDisabled) { () =>
+                closeMenu(); onRunInBackground()
+              },
               multilineItem { () => closeMenu(); onMultiline() },
               bookmarkItem { () => closeMenu(); onBookmark() },
               tapModalItem { () => closeMenu(); onOpenTapModal() },
@@ -152,6 +166,21 @@ object QueryMenuButton {
       span(cls := QueryMenuStyles.menuItemIcon, i(cls := "ion-radio-waves")),
       span(cls := QueryMenuStyles.menuItemLabel, "Standing Query Results Inspection"),
     )
+
+  private def runInBackgroundItem(
+    show: Signal[Boolean],
+    disabled: Signal[Boolean],
+  )(onClick0: () => Unit): HtmlElement =
+    div(
+      cls := QueryMenuStyles.menuItem,
+      display <-- show.map(if (_) "" else "none"),
+      cls(QueryMenuStyles.menuItemDisabled) <-- disabled,
+      // Sampled rather than read at build time: the buffer empties and fills while the popover
+      // is open, and a stale enabled state would dispatch a run of nothing.
+      onClick.compose(_.sample(disabled)) --> { isDisabled => if (!isDisabled) onClick0() },
+      span(cls := QueryMenuStyles.menuItemIcon, i(cls := "ion-clock")),
+      span(cls := QueryMenuStyles.menuItemLabel, "Run in background"),
+    )
 }
 
 /** CSS class names for [[QueryMenuButton]]. Rules live in the app's `index.css`; see
@@ -167,6 +196,7 @@ object QueryMenuStyles {
   val menu = "query-menu"
   val menuOpen = "open"
   val menuItem = "query-menu-item"
+  val menuItemDisabled = "is-disabled"
   val menuItemIcon = "query-menu-item-icon"
   val menuItemLabel = "query-menu-item-label"
   val menuItemHint = "query-menu-item-hint"
