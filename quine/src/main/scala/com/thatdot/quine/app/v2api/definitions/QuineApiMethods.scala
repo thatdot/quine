@@ -404,6 +404,7 @@ trait QuineApiMethods
     extends ApplicationApiMethods
     with V1AlgorithmMethods
     with CypherApiMethods
+    with JobApiMethods
     with DebugApiMethods
     with AlgorithmApiMethods {
 

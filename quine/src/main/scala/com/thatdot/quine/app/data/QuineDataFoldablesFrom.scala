@@ -48,8 +48,33 @@ object QuineDataFoldablesFrom {
           case Expr.DateTime(zonedDateTime) => folder.zonedDateTime(zonedDateTime)
           case Expr.Duration(duration) => folder.duration(duration)
         }
-      case other @ (Expr.Node(_, _, _) | Expr.Relationship(_, _, _, _) | Expr.Path(_, _)) =>
-        throw new Exception(s"Fold conversion not supported for $other")
+      // Nodes, relationships, and paths fold to the same JSON-object shape the text `/cypher` API
+      // publishes via `cypher.Expr.toJson` — a node as `{id, labels, properties}`, a relationship as
+      // `{start, end, name, properties}`, a path as the flattened alternating list of its elements.
+      // Ids fold through `folder.id`, matching how a bare `Expr.Bytes(_, true)` id renders above so a
+      // node's id is encoded identically to a standalone id value in the same output.
+      case Expr.Node(id, labels, properties) =>
+        val builder = folder.mapBuilder()
+        builder.add("id", folder.id(id.array))
+        val labelsBuilder = folder.vectorBuilder()
+        labels.foreach(l => labelsBuilder.add(folder.string(l.name)))
+        builder.add("labels", labelsBuilder.finish())
+        builder.add("properties", foldProperties(properties, folder))
+        builder.finish()
+      case Expr.Relationship(start, name, properties, end) =>
+        val builder = folder.mapBuilder()
+        builder.add("start", folder.id(start.array))
+        builder.add("end", folder.id(end.array))
+        builder.add("name", folder.string(name.name))
+        builder.add("properties", foldProperties(properties, folder))
+        builder.finish()
+      case path: Expr.Path => fold(path.toList, folder)
+    }
+
+    private def foldProperties[B](properties: Map[Symbol, cypher.Value], folder: DataFolderTo[B]): B = {
+      val builder = folder.mapBuilder()
+      properties.foreach { case (k, v) => builder.add(k.name, fold(v, folder)) }
+      builder.finish()
     }
   }
 

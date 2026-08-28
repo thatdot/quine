@@ -26,10 +26,18 @@ import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, Cy
 import com.thatdot.quine.app.model.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
 import com.thatdot.quine.app.model.ingest2.{V1ToV2, V2IngestEntities}
+import com.thatdot.quine.app.model.jobs.{
+  BackgroundQueryRunner,
+  BackgroundQueryStatusRegistry,
+  JobHost,
+  JobScheduler,
+  JobService,
+  JobWork,
+}
 import com.thatdot.quine.app.model.outputs2.query.standing.{TapBus, TapContext}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
-import com.thatdot.quine.app.v2api.converters.ApiToStanding
+import com.thatdot.quine.app.v2api.converters.{Api2ToOutputs2, ApiToStanding}
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.GraphFeed
 import com.thatdot.quine.app.v2api.definitions.query.{standing => V2ApiStanding}
 import com.thatdot.quine.compiler.cypher
@@ -80,6 +88,7 @@ final class QuineApp(
     with StandingQueryStoreV1
     with StandingQueryInterfaceV2
     with IngestStreamState
+    with JobHost
     with V1.QueryUiConfigurationSchemas
     with V1.StandingQuerySchemas
     with V1.IngestSchemas
@@ -96,6 +105,37 @@ final class QuineApp(
   // Publish raw standing query results to the tap bus from the once-per-result observer upstream
   // of each SQ's broadcast hub, see TapBus.rawResultObserver.
   graph.setStandingQueryRawResultObserver(TapBus.rawResultObserver(tapBus, idProvider))
+
+  /** Registry of background-query execution status records. Single-host: "local" is always present,
+    * so the manager sweep never fires and cleanup is the runner's owner sweep.
+    */
+  val backgroundQueryRegistry: BackgroundQueryStatusRegistry =
+    new BackgroundQueryStatusRegistry(graph, hostPresent = _ == "local")
+
+  /** Runs background-query executions locally. The converter lambda captures `this` and is evaluated
+    * per-execution, after all fields (notably `protobufSchemaCache`/`kafkaExtensions`) initialize.
+    */
+  val backgroundQueryRunner: BackgroundQueryRunner =
+    new BackgroundQueryRunner(
+      graph,
+      "local",
+      backgroundQueryRegistry,
+      tapBus,
+      steps => Api2ToOutputs2.apply(steps)(graph, protobufSchemaCache, kafkaExtensions),
+    )
+
+  /** Single-host scheduler for jobs; doubles as the [[JobService]]. Started in [[loadAppData]]. */
+  val jobScheduler: JobScheduler =
+    new JobScheduler(graph, JobWork.executorFor(backgroundQueryRunner), backgroundQueryRegistry)
+
+  /** How the API creates/inspects scheduled jobs on this single host. */
+  val jobService: JobService = jobScheduler
+
+  /** Cancel an in-flight background-query execution running on this (the only) host, if present. */
+  def cancelBackgroundQuery(executionId: UUID): Future[Unit] = {
+    val _ = backgroundQueryRunner.cancel(executionId)
+    Future.unit
+  }
 
   /** == Local state ==
     * Notes on synchronization:
@@ -1366,6 +1406,7 @@ final class QuineApp(
         implicitly,
       )
     }
+    val jobSchedulerFut = jobScheduler.start()
     for {
       sq <- sampleQueriesFut
       qq <- quickQueriesFut
@@ -1375,6 +1416,7 @@ final class QuineApp(
       so2 <- standingQueryOutput2Fut
       is <- ingestStreamFut
       is2 <- v2IngestStreamFut
+      _ <- jobSchedulerFut
     } yield {
       sampleQueries = sq
       quickQueries = qq

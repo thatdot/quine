@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.v2api.definitions
 
-import sttp.apispec.openapi.{OpenAPI, Operation, Parameter, PathItem, Reference}
+import sttp.apispec.openapi.{OpenAPI, Operation, Parameter, PathItem, Reference, Response, Responses}
 import sttp.apispec.{ExampleMultipleValue, ExampleSingleValue, ExampleValue}
 import sttp.tapir.{Codec, CodecFormat, DecodeResult, EndpointInput, path}
 
@@ -58,6 +58,8 @@ object CustomMethod {
     * For each path containing `{paramName__colonVerb__verb}`:
     *   - Replace the placeholder with `{paramName}:verb`
     *   - Rename the corresponding path parameter on each operation back to `paramName`
+    *   - Strip the synthetic name out of any auto-generated response descriptions that
+    *     embed it (e.g. tapir's `Invalid value for: path parameter <name>` text)
     *
     * Multiple `:verb` endpoints sharing a base path arrive here with distinct templates
     * because the synthetic parameter name embeds the verb; after rewrite, each ends up
@@ -110,7 +112,11 @@ object CustomMethod {
 
   /** Rename path parameters in the given PathItem and any operations it carries. */
   private def renameParametersInPathItem(item: PathItem, renames: Map[String, String]): PathItem = {
-    val updateOp: Operation => Operation = op => op.copy(parameters = op.parameters.map(renameParam(_, renames)))
+    val updateOp: Operation => Operation = op =>
+      op.copy(
+        parameters = op.parameters.map(renameParam(_, renames)),
+        responses = scrubMarkerFromResponses(op.responses, renames),
+      )
     item.copy(
       parameters = item.parameters.map(renameParam(_, renames)),
       get = item.get.map(updateOp),
@@ -123,6 +129,21 @@ object CustomMethod {
       trace = item.trace.map(updateOp),
     )
   }
+
+  /** Tapir auto-generates decode-failure response descriptions that embed the raw
+    * path-parameter name — e.g. `Invalid value for: path parameter id__colonVerb__cancel`.
+    * Renaming the parameter alone leaves the marker in that prose, so replace each synthetic
+    * name with its restored base name wherever it appears in a response description.
+    */
+  private def scrubMarkerFromResponses(responses: Responses, renames: Map[String, String]): Responses =
+    responses.copy(responses = responses.responses.map { case (key, refOrResponse) =>
+      key -> refOrResponse.map(scrubMarkerFromResponse(_, renames))
+    })
+
+  private def scrubMarkerFromResponse(response: Response, renames: Map[String, String]): Response =
+    response.copy(description = renames.foldLeft(response.description) { case (desc, (synthetic, paramName)) =>
+      desc.replace(synthetic, paramName)
+    })
 
   private def renameParam(
     p: Either[Reference, Parameter],

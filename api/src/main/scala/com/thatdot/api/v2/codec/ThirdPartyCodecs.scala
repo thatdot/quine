@@ -1,7 +1,7 @@
 package com.thatdot.api.v2.codec
 
 import java.nio.charset.Charset
-import java.time.Instant
+import java.time.{Instant, LocalTime}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
@@ -27,6 +27,10 @@ object ThirdPartyCodecs {
 
     implicit val instantEncoder: Encoder[Instant] = Encoder.encodeString.contramap(_.toString)
     implicit val instantDecoder: Decoder[Instant] = Decoder.decodeString.emapTry(s => Try(Instant.parse(s)))
+
+    // ISO-8601 local time of day: "HH:mm" or "HH:mm:ss" (RFC-3339 partial-time), no offset.
+    implicit val localTimeEncoder: Encoder[LocalTime] = Encoder.encodeString.contramap(_.toString)
+    implicit val localTimeDecoder: Decoder[LocalTime] = Decoder.decodeString.emapTry(s => Try(LocalTime.parse(s)))
   }
 
   /** Circe codecs for Scala stdlib types */

@@ -39,6 +39,7 @@ lazy val `quine-core`: Project = project
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.circe" %% "circe-parser" % circeV,
+      "com.cronutils" % "cron-utils" % cronUtilsV,
       "org.msgpack" % "msgpack-core" % msgPackV,
       "org.apache.commons" % "commons-text" % commonsTextV,
       "com.github.blemale" %% "scaffeine" % scaffeineV,

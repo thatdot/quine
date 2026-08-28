@@ -5,6 +5,7 @@ import org.apache.pekko.util.Timeout
 import com.thatdot.common.logging.Log._
 import com.thatdot.quine.app.QuineApp
 import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
+import com.thatdot.quine.app.model.jobs.JobHost
 import com.thatdot.quine.app.model.outputs2.query.standing.TapBus
 import com.thatdot.quine.app.v2api.definitions.{ProductVersion, QuineApiMethods}
 import com.thatdot.quine.graph.GraphService
@@ -22,4 +23,6 @@ class OssApiMethods(
 
   override def emptyConfigExample: BaseConfig = QuineConfig()
   override def productVersion: ProductVersion = ProductVersion.Oss
+
+  override protected def jobHost: JobHost = app
 }

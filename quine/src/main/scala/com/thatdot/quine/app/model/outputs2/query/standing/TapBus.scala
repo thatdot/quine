@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.model.outputs2.query.standing
 
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
 import scala.collection.concurrent.TrieMap
@@ -7,7 +8,7 @@ import scala.collection.concurrent.TrieMap
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.stream.scaladsl.{BroadcastHub, Keep, Source}
-import org.apache.pekko.stream.{Materializer, OverflowStrategy}
+import org.apache.pekko.stream.{CompletionStrategy, Materializer, OverflowStrategy}
 
 import sttp.ws.WebSocketFrame
 
@@ -48,11 +49,26 @@ trait TapBus {
     * the subscriber is the implementation's responsibility.
     */
   def subscriberSource(topic: String)(implicit mat: Materializer): Source[WebSocketFrame, NotUsed]
+
+  /** Complete every subscriber source for `topic`: the producer is done, no more messages will come.
+    * Any already-published messages are delivered first, then the streams complete (so a subscriber
+    * sees the final message the producer published, then the socket closes). Content-agnostic — the
+    * bus does not know or care what the final message was.
+    */
+  def complete(topic: String): Unit
 }
 
 object TapBus {
   def topicForSq(namespaceId: NamespaceId, sqName: String, outputName: String, stage: SqTapStage): String =
     s"sq-tap/${namespaceId.name}/$sqName/$outputName/${stage.key}"
+
+  /** Topic for one background-query execution's results tap. Keyed by execution id — the handle the
+    * run-now endpoint returns and status records carry. The producer (the runner's tap relay) and
+    * the consumer (the background-query tap WebSocket endpoint) MUST both derive the topic through
+    * this function so they cannot silently disagree.
+    */
+  def topicForBackgroundQuery(namespaceId: NamespaceId, executionId: UUID): String =
+    s"bq-tap/${namespaceId.name}/$executionId"
 
   /** Observer for `com.thatdot.quine.graph.StandingQueryOpsGraph.setStandingQueryRawResultObserver`:
     * publishes each raw standing query result to `tapBus`. Registered upstream of each SQ's
@@ -83,12 +99,18 @@ class LocalTapBus extends TapBus {
 
   private val hubs = TrieMap.empty[String, TopicHub]
 
+  // A `Drain` message (sent by `complete`) finishes the source, draining any buffered messages first —
+  // so subscribers see everything published up to that point, then close.
+  private val drainOnComplete: PartialFunction[Any, CompletionStrategy] = { case LocalTapBus.Drain =>
+    CompletionStrategy.draining
+  }
+
   private def hubFor(topic: String)(implicit mat: Materializer): TopicHub =
     hubs.getOrElseUpdate(
       topic, {
         val (ref, broadcast) = Source
           .actorRef[String](
-            completionMatcher = PartialFunction.empty,
+            completionMatcher = drainOnComplete,
             failureMatcher = PartialFunction.empty,
             bufferSize = 256,
             overflowStrategy = OverflowStrategy.dropHead,
@@ -109,6 +131,9 @@ class LocalTapBus extends TapBus {
       hub.ref ! json
     }
 
+  override def complete(topic: String): Unit =
+    hubs.get(topic).foreach(_.ref ! LocalTapBus.Drain)
+
   override def subscriberSource(topic: String)(implicit mat: Materializer): Source[WebSocketFrame, NotUsed] = {
     val hub = hubFor(topic)
     hub.realSubscribers.incrementAndGet()
@@ -125,4 +150,10 @@ class LocalTapBus extends TapBus {
       }
       .map(text => WebSocketFrame.Text(text, finalFragment = true, rsv = None))
   }
+}
+
+object LocalTapBus {
+
+  /** Control message that finishes a topic's actor-ref source (recognized by its `completionMatcher`). */
+  private case object Drain
 }

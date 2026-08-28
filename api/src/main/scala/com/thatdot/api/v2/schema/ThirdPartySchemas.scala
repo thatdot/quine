@@ -1,7 +1,7 @@
 package com.thatdot.api.v2.schema
 
 import java.nio.charset.Charset
-import java.time.Instant
+import java.time.{Instant, LocalTime}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.util.{Failure, Success, Try}
@@ -60,6 +60,17 @@ object ThirdPartySchemas {
     )(_.toString)
 
     implicit lazy val instantSchema: Schema[Instant] = instantCodec.schema
+
+    implicit val localTimeCodec: Codec[String, LocalTime, TextPlain] = Codec.string.mapDecode(s =>
+      Try(LocalTime.parse(s)) match {
+        case Success(time) => DecodeResult.Value(time)
+        case Failure(e) => DecodeResult.Error(s"Invalid time of day: $s", e)
+      },
+    )(_.toString)
+
+    implicit lazy val localTimeSchema: Schema[LocalTime] = localTimeCodec.schema
+      .description("ISO-8601 local time of day, \"HH:mm\" or \"HH:mm:ss\" (e.g. \"09:30\").")
+      .encodedExample("09:30")
   }
 
   /** Schemas for Scala stdlib types */

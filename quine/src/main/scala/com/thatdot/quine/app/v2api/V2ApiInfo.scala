@@ -53,6 +53,8 @@ object V2ApiInfo {
     provider.algorithmEndpoints ++
     provider.standingQueryEndpoints ++
     provider.cypherEndpoints ++
+    provider.backgroundQueryEndpoints ++
+    provider.jobEndpoints ++
     provider.queryWebSocketEndpoints
 }
 
@@ -61,11 +63,14 @@ trait V2OssEndpointProvider
     with V2QuineAdministrationEndpoints
     with V2StandingEndpoints
     with V2CypherEndpoints
+    with V2BackgroundQueryEndpoints
+    with V2JobEndpoints
     with V2AlgorithmEndpoints
     with V2DebugEndpoints
     with V2IngestEndpoints
     with V2QueryWebSocketEndpoints
     with V2StandingTapWebSocketEndpoints
+    with V2BackgroundQueryTapWebSocketEndpoints
     with V2LspWebSocketEndpoints {
   def memberIdxParameter: EndpointInput[Option[Int]]
   def namespaceParameter: EndpointInput[Option[NamespaceParameter]]

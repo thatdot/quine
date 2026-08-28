@@ -29,6 +29,8 @@ final case class RunningCypherQuery(
       columns.map(context.getOrElse(_, Expr.Null))
     }
 
-//  @deprecated("Use `results` instead", "soon!")
-//  def contexts: Source[QueryContext, NotUsed] = resultSource
+  /** Results as [[QueryContext]] rows, preserving column names — for consumers (e.g. streaming output
+    * destinations) that fold rows by name rather than positionally.
+    */
+  def resultsWithContext: Source[QueryContext, NotUsed] = resultSource
 }
