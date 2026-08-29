@@ -222,10 +222,11 @@ object MultipleValuesStandingQueryStateCodec
     import persistence.{MultipleValuesSubscribeAcrossEdgeStandingQueryState => sub}
 
     // Write reference values
-    val size = edgeState.edgeResults.size
+    val entries = edgeState.contributionStore.entries.toIndexedSeq
+    val size = entries.size
     val keyOffsets = new Array[Offset](size)
     val valueOffsets = new Array[Offset](size)
-    for (((halfEdge, maybeResults), i) <- edgeState.edgeResults.zipWithIndex) {
+    for (((halfEdge, maybeResults), i) <- entries.zipWithIndex) {
       keyOffsets(i) = writeHalfEdge2(builder, halfEdge)
       valueOffsets(i) = writeMultipleValuesStandingQueryResults(builder, maybeResults)
     }
@@ -239,6 +240,15 @@ object MultipleValuesStandingQueryStateCodec
     sub.addQueryPartId(builder, queryPartIdOffset)
     sub.addEdgeResultsKeys(builder, edgeResultsKeysOffset)
     sub.addEdgeResultsValues(builder, edgeResultsValuesOffset)
+    // False is the field's default and is elided, so a state holding its rows in the heap writes a blob
+    // byte-identical to one written before this field existed.
+    // Where the rows are, according to either the store now installed or the blob this state came back from. A node
+    // that read the flag and installed no store to act on it would otherwise erase the flag on its first
+    // re-persist, taking with it the one sign that rows exist under this key, and the error that says so.
+    sub.addEdgeResultsExternalized(
+      builder,
+      edgeState.contributionStore.keepsRowsElsewhere || edgeState.edgeResultsExternalized,
+    )
 
     sub.endMultipleValuesSubscribeAcrossEdgeStandingQueryState(builder)
   }
@@ -257,9 +267,12 @@ object MultipleValuesStandingQueryStateCodec
       val halfEdge = readHalfEdge2(edgeResultsKeysVec.get(i))
       val resultValue = edgeResultsValuesVec.get(i)
       val maybeResults = readMultipleValuesStandingQueryResults(resultValue)
-      state.edgeResults += (halfEdge -> maybeResults)
+      state.contributionStore.restore(halfEdge, maybeResults)
       i += 1
     }
+    // When set, the vectors above were deliberately absent: the rows are in the persistor, for whoever wakes this
+    // state to adopt.
+    state.edgeResultsExternalized = edgeState.edgeResultsExternalized
     state
   }
 
@@ -281,8 +294,19 @@ object MultipleValuesStandingQueryStateCodec
     subRec.addHalfEdge(builder, halfEdgeOffset)
     val andThenIdOffset = writeMultipleValuesStandingQueryPartId2(builder, edgeState.andThenId) // struct
     subRec.addAndThenId(builder, andThenIdOffset)
-    subRec.addCurrentlyMatching(builder, edgeState.currentlyMatching)
+    // The field remains in the schema for compatibility, but nothing reads it back (see the reader).
+    subRec.addCurrentlyMatching(builder, false)
     subRec.addCachedResult(builder, maybeResultsOffset)
+    // False is the field's default and is elided, so a state whose subscribers are in the node's subscriber set
+    // writes a blob byte-identical to one written before this field existed.
+    // As above: a flag that is set stays set. Only a node that can reach the rows can decide they are not there.
+    subRec.addSubscribersExternalized(
+      builder,
+      edgeState.subscriberStore.isDefined || edgeState.subscribersExternalized,
+    )
+    edgeState.externalSubscriberForQuery.foreach { forQuery =>
+      subRec.addSubscriberForQuery(builder, writeMultipleValuesStandingQueryPartId2(builder, forQuery)) // struct
+    }
 
     subRec.endMultipleValuesEdgeSubscriptionReciprocalStandingQueryState(builder)
   }
@@ -293,11 +317,15 @@ object MultipleValuesStandingQueryStateCodec
     val sqId = readMultipleValuesStandingQueryPartId2(edgeState.queryPartId)
     val halfEdge = readHalfEdge2(edgeState.halfEdge)
     val andThenId = readMultipleValuesStandingQueryPartId2(edgeState.andThenId)
-    val currentlyMatching = edgeState.currentlyMatching
+    // `currently_matching` is still written (as false) but no longer read: whether a subscriber's edge is present is
+    // asked of the node's edge collection when it matters, not recorded here.
     val cachedResult = readMaybeQueryContexts(edgeState.cachedResultVector)
     val state = cypher.EdgeSubscriptionReciprocalState(sqId, halfEdge, andThenId)
-    state.currentlyMatching = currentlyMatching
     state.cachedResult = cachedResult
+    // When set, the subscribers vector holds only the odd ones out: the rest are recorded in the persistor, for
+    // whoever wakes this state to reach.
+    state.subscribersExternalized = edgeState.subscribersExternalized
+    state.externalSubscriberForQuery = Option(edgeState.subscriberForQuery).map(readMultipleValuesStandingQueryPartId2)
     state
   }
 
@@ -612,6 +640,22 @@ object MultipleValuesStandingQueryStateCodec
     val subscribers = readMultipleValuesStandingQuerySubscribers(stateAndSubs.subscribers)
     subscribers -> state
   }
+
+  /** One edge's contribution to a [[cypher.SubscribeAcrossEdgeState]], for an implementation of
+    * `EdgeContributionStore` that keeps rows outside the heap: the whole group the far side of that edge currently
+    * produces, written and read one edge at a time.
+    */
+  val resultGroupFormat: BinaryFormat[Seq[cypher.QueryContext]] =
+    new PackedFlatBufferBinaryFormat[Seq[cypher.QueryContext]] {
+      def writeToBuffer(builder: FlatBufferBuilder, resultGroup: Seq[cypher.QueryContext]): Offset =
+        writeMultipleValuesStandingQueryResults(builder, Some(resultGroup))
+
+      def readFromBuffer(buffer: ByteBuffer): Seq[cypher.QueryContext] =
+        readMultipleValuesStandingQueryResults(
+          persistence.MultipleValuesStandingQueryResults.getRootAsMultipleValuesStandingQueryResults(buffer),
+        ).getOrElse(Seq.empty)
+    }
+
   val format: BinaryFormat[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)] =
     new PackedFlatBufferBinaryFormat[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)] {
       def writeToBuffer(

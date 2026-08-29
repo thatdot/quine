@@ -8,10 +8,21 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.LabelsState.extractLabels
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
+  MultipleValuesStandingQuerySubscriber,
+  NewMultipleValuesStateResult,
+}
 import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, NodeChangeEvent, PropertyEvent, WatchableEventType}
 import com.thatdot.quine.model
-import com.thatdot.quine.model.{HalfEdge, Properties, PropertyValue, QuineIdProvider, QuineType, QuineValue}
+import com.thatdot.quine.model.{
+  EdgeDirection,
+  HalfEdge,
+  Properties,
+  PropertyValue,
+  QuineIdProvider,
+  QuineType,
+  QuineValue,
+}
 import com.thatdot.quine.util.Log.implicits._
 
 /** The stateful component of a standing query, holding on to the information necessary for:
@@ -61,11 +72,27 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
   protected var _query: StateOf = _ // late-init
   def query: StateOf = _query // readonly access for implementations
 
+  /** The query this state runs, when it is one the graph knows by id.
+    *
+    * Empty for [[EdgeSubscriptionReciprocalState]], which is synthesized by the nodes that subscribe to it rather
+    * than registered, and so inlines what it needs instead of resolving a query.
+    */
+  def resolvedQuery: Option[MultipleValuesStandingQuery] = Option(_query)
+
   /** the ID of the StandingQuery (part) associated with this state */
   def queryPartId: MultipleValuesStandingQueryPartId
 
   /** Non-overlapping group of possible node event categories that this state wants to be notified of */
   def relevantEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType] = Seq.empty
+
+  /** Of those, the categories whose replay of what the node already is tells this state something.
+    *
+    * Replaying the node to a state it has just created is how that state learns the node it was created on, so by
+    * default this is everything the state watches. A state whose reaction to an event depends on something it has
+    * not been told yet learns nothing that way, and naming no categories is what keeps a node from reading every
+    * edge it has in order to hand each one to a method that will do nothing with it.
+    */
+  def initialEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType] = relevantEventTypes(labelsPropertyKey)
 
   /** Called on state creation or deserialization/wakeup, before `onInitialize` or any other external events/results.
     *
@@ -151,6 +178,18 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
     logConfig: LogConfig,
   ): Option[Seq[QueryContext]]
 
+  /** Read the current results owed to one particular subscriber, used when that subscriber first arrives.
+    *
+    * Almost every state owes the same group to all of its subscribers, and so answers with [[readResults]].
+    * [[EdgeSubscriptionReciprocalState]] is the exception: it answers a subscriber only across an edge that exists,
+    * so what it can report is a function of who is asking.
+    */
+  def readResultsFor(
+    subscriber: MultipleValuesStandingQuerySubscriber,
+    effectHandler: MultipleValuesStandingQueryEffects,
+  )(implicit logConfig: LogConfig): Option[Seq[QueryContext]] =
+    readResults(effectHandler.currentProperties, effectHandler.labelsProperty)
+
   def pretty(implicit @unused idProvider: QuineIdProvider): String = this.toString
 }
 
@@ -228,6 +267,107 @@ trait MultipleValuesStandingQueryEffects extends MultipleValuesStandingQueryLook
     *               (may be concatenated, appended, or crossed later with other results)
     */
   def reportUpdatedResults(resultGroup: Seq[QueryContext]): Unit
+
+  /** Report a new or updated result to one subscriber, leaving the others as they are.
+    *
+    * Most states owe the same result group to every subscriber and use [[reportUpdatedResults]]. A state whose answer
+    * depends on who is asking ([[EdgeSubscriptionReciprocalState]], which answers only across edges that exist)
+    * reports per subscriber instead.
+    */
+  def reportUpdatedResultsTo(subscriber: MultipleValuesStandingQuerySubscriber, resultGroup: Seq[QueryContext]): Unit
+
+  /** Report a new or updated result to every subscriber running on the given node. */
+  def reportUpdatedResultsToNode(onNode: QuineId, resultGroup: Seq[QueryContext]): Unit
+
+  /** Report a new or updated result to the given query part running on the given node.
+    *
+    * [[reportUpdatedResultsTo]] and [[reportUpdatedResultsToNode]] address subscribers the node holds in its
+    * subscriber set. A state whose subscribers are recorded somewhere else (an
+    * [[EdgeSubscriptionReciprocalState]] with a [[ReciprocalSubscriberStore]]) has no such entry to address, so it
+    * names a subscriber by what the store records: the node it runs on, and the part it subscribed for.
+    *
+    * This is the one effect that may be invoked off the node's thread. The store answers "which subscribers" as a
+    * stream, sending as it goes, and the node's message processing is paused for the length of it, so nothing the
+    * node might otherwise do can interleave with the sends. The implementation must therefore touch nothing of the
+    * node's own state.
+    */
+  def reportUpdatedResultsToRemotePart(
+    onNode: QuineId,
+    forPart: MultipleValuesStandingQueryPartId,
+    resultGroup: Seq[QueryContext],
+  ): Unit
+
+  /** Report a new or updated result to the node subscribers this node holds in its own subscriber set, asking
+    * `entitled` which of them it is owed to.
+    *
+    * One pass over the subscribers, rather than one report addressed per node, because addressing a node is itself
+    * a pass over them: a node may be on record more than once. `entitled` is asked at most once per subscribing
+    * node however many entries it has, and at most `checkAtMost` times in all, after which every node still to
+    * come is treated as entitled.
+    *
+    * That bound is the point of the parameter. Answering can be a read of the node's edges, taken on the node's
+    * thread, so a state with many subscribers here would hold the node for one round trip each. Where the budget
+    * runs out the question is dropped rather than answered, which is the same trade
+    * [[ReciprocalSubscriberStore.reportToEntitledSubscribers]] makes when it cannot work out who is entitled: a
+    * report to a node that is not costs one message and tells it a level it can only agree with.
+    */
+  def reportUpdatedResultsToEntitledNodes(resultGroup: Seq[QueryContext], checkAtMost: Int)(
+    entitled: QuineId => Boolean,
+  ): Unit
+
+  /** This node's half edges to `other` matching the given constraints (`None` matches anything).
+    *
+    * Answered from the node's edge collection, by index, and it already reflects the events being processed. A state
+    * keyed by edges asks this rather than keeping a set of them: the edges are the record of which edges there are,
+    * and a second copy is a copy that can disagree.
+    *
+    * `None` where the node could not find out. On a node whose edges live in the persistor this is a read, and a
+    * read can fail or time out; there is no answer to fall back on, because both of them are claims. A caller
+    * handed `None` takes the branch that neither writes a row nor withdraws a result: it does not cancel, does not
+    * retract, and reports to a subscriber it cannot rule out rather than withholding from one it cannot confirm.
+    * Every answer here is bounded by the edges to one node, so it is a sequence rather than a lazy iterator: a
+    * lazy one would carry the read, and therefore the failure, back out past whoever asked.
+    */
+  def matchingEdgesTo(
+    edgeName: Option[Symbol],
+    edgeDirection: Option[EdgeDirection],
+    other: QuineId,
+  ): Option[Seq[HalfEdge]]
+}
+
+object MultipleValuesStandingQueryEffects {
+
+  /** One pass over a state's subscribers, handing each entitled node subscriber to `report`.
+    *
+    * `entitled` is asked at most once per subscribing node, however many entries that node has, and at most
+    * `checkAtMost` times in all; every node reached after that is treated as entitled. Past the budget the
+    * question is dropped rather than answered, because the question is an optimization and this is the cheap way
+    * to be wrong: one message carrying a level its receiver already agrees with.
+    *
+    * Here rather than in each effect handler so that the bound has one implementation. A handler decides what
+    * reporting is, and what to do about a standing query that has since been cancelled; how many times the node's
+    * edges get asked is the same question wherever it is answered.
+    */
+  def eachEntitledNodeSubscriber(
+    subscribers: Iterable[MultipleValuesStandingQuerySubscriber],
+    checkAtMost: Int,
+    entitled: QuineId => Boolean,
+  )(report: MultipleValuesStandingQuerySubscriber.NodeSubscriber => Unit): Unit = {
+    val decided = mutable.Map.empty[QuineId, Boolean]
+    subscribers.foreach {
+      case subscriber: MultipleValuesStandingQuerySubscriber.NodeSubscriber =>
+        val onNode = subscriber.subscribingNode
+        val isEntitled = decided.get(onNode) match {
+          case Some(answered) => answered
+          case None =>
+            val answer = decided.size >= checkAtMost || entitled(onNode)
+            decided += (onNode -> answer)
+            answer
+        }
+        if (isEntitled) report(subscriber)
+      case _ => ()
+    }
+  }
 }
 
 /** State needed to process a [[MultipleValuesStandingQuery.UnitSq]]
@@ -881,15 +1021,34 @@ final case class SubscribeAcrossEdgeState(
 
   type StateOf = MultipleValuesStandingQuery.SubscribeAcrossEdge
 
-  /** The results for this query state are cached by the edges along which that result is produced. The value will be
-    * `None` if a subscription has been made but no result received. If the value is `Some`, a response has been
-    * received from the node at `_.other` on the HalfEdge key.
+  /** What each edge along which this query matches currently contributes, and the running total of those
+    * contributions. An edge with no contribution yet is one that has been subscribed to but has not answered.
     *
-    * The keys in this map are always a subset of what's in the node's `EdgeCollection`.
+    * These are meant to be a subset of the node's `EdgeCollection`, and are one for as long as the node is the only
+    * thing writing to both. A wake is where they can part: an edge change is journalled per update while this is
+    * durable in the state's blob, and journal replay puts the edge back without telling any standing query state
+    * (`EdgeProcessor.updateEdgeCollection`). So an edge removed after the last blob write is gone from the
+    * collection and still recorded here.
     *
-    * Persisted.
+    * Persisted. Held here behind a seam because a node whose edges do not fit in memory cannot keep one entry per
+    * edge either: what changes there is where the rows live, not what they mean.
     */
-  val edgeResults: mutable.Map[HalfEdge, Option[Seq[QueryContext]]] = mutable.Map.empty
+  private[this] var contributions: EdgeContributionStore = new HeapEdgeContributionStore
+
+  /** Where this state keeps each edge's contribution. Replacing it is how a node moves those rows out of the heap,
+    * and is only sound while the state holds none of its own: everything this state reports is the total, which the
+    * store derives from the rows it was given.
+    */
+  def contributionStore: EdgeContributionStore = contributions
+  def contributionStore_=(store: EdgeContributionStore): Unit = contributions = store
+
+  /** Whether the blob this state was read from said its per-edge rows are recorded outside it.
+    *
+    * Set by the codec, read at wake. A node that installs a store for them adopts the rows. A node that installs
+    * none has a state whose rows exist and cannot be reached, which deserves an error rather than a silent report
+    * of nothing.
+    */
+  var edgeResultsExternalized: Boolean = false
 
   override def relevantEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType.EdgeChange] =
     Seq(WatchableEventType.EdgeChange(query.edgeName))
@@ -898,40 +1057,70 @@ final case class SubscribeAcrossEdgeState(
     query.edgeName.forall(_ == halfEdge.edgeType) &&
     query.edgeDirection.forall(_ == halfEdge.direction)
 
+  /** The query asked of the node across `halfEdge`. Its identity ignores which node is asking, so subscriptions from
+    * different nodes with the same constraints all land on one state there. It does not ignore the edge's own type
+    * or direction: edges to one node differing in either are asked as different queries, and answered separately.
+    */
+  private[this] def reciprocalQueryFor(
+    halfEdge: HalfEdge,
+    executingNodeId: QuineId,
+  ): MultipleValuesStandingQuery.EdgeSubscriptionReciprocal =
+    MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(
+      halfEdge.reflect(executingNodeId),
+      query.andThen.queryPartId,
+      query.columns,
+    )
+
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     var somethingChanged = false
     events.foreach {
+      // Applying the same `EdgeAdded` twice is a no-op. Not from the event path, which drops an event that would
+      // change nothing and requires a batch to name each edge at most once, but from the description of the node
+      // given at registration, which replays edges already being tracked. What must never happen is the restatement
+      // discarding an answer already received, which is why tracking an edge never clears what it contributed.
       case EdgeAdded(halfEdge) if edgeMatchesPattern(halfEdge) =>
-        // Create a new subscription
-        val freshEdgeQuery = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(
-          halfEdge.reflect(effectHandler.executingNodeId),
-          query.andThen.queryPartId,
-          query.columns,
-        )
-        effectHandler.createSubscription(halfEdge.other, freshEdgeQuery)
+        // Create a new subscription. A restated edge re-sends the same query, and the far node treats the repeat as
+        // the duplicate it is. Two different edges to one node cannot do this: an edge collection is a set, so they
+        // differ in type or direction, and the query each is asked under differs with them.
+        effectHandler.createSubscription(halfEdge.other, reciprocalQueryFor(halfEdge, effectHandler.executingNodeId))
         // Record that the subscription has been made, but no result (from the andThen via the reciprocal) yet.
-        edgeResults += (halfEdge -> None)
-        somethingChanged = true
+        contributions.track(halfEdge)
+        // Only where the rows are in this state's own blob. A store that keeps them elsewhere writes nothing into
+        // the blob and tracks nothing, so there is nothing here for a write to make durable. On the node that
+        // arrangement exists for, an edge event would otherwise rewrite the blob for no reason at all.
+        somethingChanged ||= !contributions.keepsRowsElsewhere
 
-      case EdgeRemoved(halfEdge) if edgeResults.contains(halfEdge) =>
-        val oldResult: Option[Seq[QueryContext]] = edgeResults.remove(halfEdge).get
-        effectHandler.cancelSubscription(halfEdge.other, query.andThen.queryPartId)
+      case EdgeRemoved(halfEdge) if edgeMatchesPattern(halfEdge) =>
+        // Unconditional, because the subscription this cancels served exactly the edge that just went away. It is
+        // named by that edge's own type and direction, and an edge collection is a set, so one half edge is the
+        // most a node can have with those constraints to that node, and it is this one. Asking whether another
+        // remains asks about the half edge just removed from a collection that already reflects the removal, which
+        // has one answer. On a node whose edges are in the persistor it was also a round trip to get it.
+        effectHandler.cancelSubscription(
+          halfEdge.other,
+          reciprocalQueryFor(halfEdge, effectHandler.executingNodeId).queryPartId,
+        )
 
-        if (oldResult.exists(_.nonEmpty)) {
-          // There was (1) a result based on this edge, that (2) had rows we may want to cancel
+        // Whether there is anything to write down cannot wait for the outcome (this is the answer to a question
+        // the node asks as soon as this returns), and the event only reaches here because the edge really went away.
+        // As above, there is nothing to write down at all when the rows are elsewhere.
+        somethingChanged ||= !contributions.keepsRowsElsewhere
 
-          // NB this may not immediately issue a cancellation, if any other edges have not yet reported their results.
-          // However, those edges should eventually report results, at which point this will issue a cancellation (and
-          // any new matches from those edges)
-          readResults(effectHandler.currentProperties, effectHandler.labelsProperty).foreach(
-            effectHandler.reportUpdatedResults,
-          )
+        contributions.retract(halfEdge) { outcome =>
+          if (outcome.totalChanged) {
+            // This edge had contributed rows, which are now withdrawn.
+
+            // NB this may not immediately issue a cancellation, if any other edges have not yet reported their results.
+            // However, those edges should eventually report results, at which point this will issue a cancellation (and
+            // any new matches from those edges)
+            readResults(effectHandler.currentProperties, effectHandler.labelsProperty).foreach(
+              effectHandler.reportUpdatedResults,
+            )
+          }
         }
-
-        somethingChanged = true
 
       case _ => () // Ignore all other events.
     }
@@ -942,69 +1131,139 @@ final case class SubscribeAcrossEdgeState(
     result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
-    // Silently drop the result (with an empty `needsUpdate`) if we aren't expecting a result from `result.other`.
-    // This can happen if the edge is removed (here first) then the other side reports no longer matching the reciprocal
+    // The far node reports once per node rather than once per edge, so this result belongs to every matching edge to
+    // it that the reporting part answers for: the query matches along each edge separately, and so each of them
+    // contributes its own rows.
+    //
+    // Silently drop the result if there is no matching edge to `result.from`. This can happen if the edge is removed
+    // (here first) then the other side reports no longer matching the reciprocal
     // TODO does this race during creation?
-    val needsUpdate: Option[(HalfEdge, Option[Seq[QueryContext]])] =
-      edgeResults.find { case (he, _) =>
-        he.other == result.from && edgeMatchesPattern(he)
-      }
+    //
+    // Dropped too where the node could not find out which edges this result speaks for. What that leaves standing is
+    // whatever those edges last contributed: nothing where none had answered yet, and the superseded group where
+    // one had, which this part goes on reporting. Not merely a gap, then: a stale answer.
+    //
+    // Crediting instead would write a row for an edge that may not exist, and nothing would ever take it back: the
+    // `EdgeRemoved` that clears a row has already passed by the time a result races in behind it. Between two
+    // wrongnesses that both persist, this is the one that ends by itself: the far side sends a level whenever its
+    // own result changes, and the next such change corrects this edge. A row for a departed edge is corrected only
+    // by that edge being added and removed again, which may never happen.
+    val matchingEdges: Seq[HalfEdge] =
+      effectHandler.matchingEdgesTo(query.edgeName, query.edgeDirection, result.from).getOrElse(Seq.empty)
 
-    needsUpdate match {
-      case Some((edge, oldResult)) if !oldResult.contains(result.resultGroup) =>
-        edgeResults += (edge -> Some(result.resultGroup))
-        readResults(effectHandler.currentProperties, effectHandler.labelsProperty).foreach(
-          effectHandler.reportUpdatedResults,
-        )
-        true
-      case Some(_) => false // we found a matching edge, but its result didn't change
-      case _ => false // we found no matching edge
+    // Which of them this result speaks for. A reciprocal is named by the constraints it answers, so where this
+    // query's constraints are concrete (which is every query the compiler emits), every matching edge to one node
+    // is answered by the same part, and this selects all of them. Where a constraint is left open, edges of
+    // different types or directions to one node are answered by *different* parts, and crediting one part's answer
+    // to all of them means a retraction from one wiping what its siblings said.
+    //
+    // So nothing matching credits nothing. A result under an id no matching edge can produce speaks for an edge this
+    // node no longer has, which is the same case as having no matching edge at all.
+    val contributingEdges: Seq[HalfEdge] = matchingEdges.filter { halfEdge =>
+      reciprocalQueryFor(halfEdge, effectHandler.executingNodeId).queryPartId == result.queryPartId
+    }
+
+    if (contributingEdges.isEmpty) false // no matching edge to the node this result came from
+    else {
+      // The report has to be made from inside the outcomes, not after the calls: a store that keeps its rows outside
+      // the heap answers after a round trip, so at the end of this method it has not decided anything yet. Counting
+      // the outcomes down is what keeps that to one report per delivery rather than one per edge: they arrive on
+      // this node's thread, and in the order the calls were made.
+      var awaitingOutcome = contributingEdges.size
+      var totalChanged = false
+      contributingEdges.foreach { halfEdge =>
+        contributions.contribute(halfEdge, result.resultGroup) { outcome =>
+          totalChanged ||= outcome.totalChanged
+          awaitingOutcome -= 1
+          if (awaitingOutcome == 0 && totalChanged)
+            readResults(effectHandler.currentProperties, effectHandler.labelsProperty).foreach(
+              effectHandler.reportUpdatedResults,
+            )
+        }
+      }
+      true
     }
   }
 
   def readResults(localProperties: Properties, labelsKey: Symbol)(implicit
     logConfig: LogConfig,
   ): Option[Seq[QueryContext]] =
-    if (edgeResults.isEmpty) {
+    if (edgeResultsExternalized && !contributions.keepsRowsElsewhere) {
+      // The blob said this part's rows are recorded elsewhere, and no store that can reach them was installed. What
+      // this state holds is not "no matching edges". It is no idea at all, and saying `Some` here would report an
+      // affirmative lack of matches, withdrawing rows that are still perfectly good. Withhold instead.
+      //
+      // One thing ends this, and it is not a far node reporting: a report lands in the heap store this state was
+      // built with, and is read back here, which is still this branch. What ends it is the node installing a
+      // store that does reach them, which adopts the rows and merges whatever the heap collected in the meantime.
+      // Short of that the part stays silent for as long as the state lives, and
+      // only recreating the standing query builds a state that can speak. Say so where an operator will read it,
+      // rather than describing a recovery that does not arrive.
+      //
+      // Adoption is also why the rows are left where they are rather than dropped on finding them unreachable: they
+      // are what every far node last said, and all of it stays true except for edges removed while this state could
+      // not act. Dropping them would trade a bounded wrongness for a total one.
+      None
+    } else if (!contributions.hasTrackedEdges) {
       // There are no matching edges, so there is an affirmative lack of matches
       Some(Nil)
     } else {
-      // If we don't know about _any_ edge, we can't know our results.
-      // This is chosen over the alternative ("universal") semantics because it reduces the number of
-      // intermediate/temporary results, and potentially the number of result invalidations, at the
-      // cost of higher latency in initial matching.
-      lazy val existentialCheck =
-        if (edgeResults.view.values.exists(maybeRows => maybeRows.isEmpty)) None
-        else Some(edgeResults.view.values.flatten.flatten.toSeq)
-
-      // Alternative semantics: If we don't know about some edges, we still know enough about the others to generate
-      // a result.
-      @unused lazy val universalCheck =
-        if (edgeResults.view.values.forall(_.isEmpty)) None
-        else Some(edgeResults.view.values.flatten.flatten.toSeq)
-
-      existentialCheck
+      // Report what is known as soon as any edge has answered, withholding only while *every* edge is
+      // unanswered. Since this state's result group is the concatenation of its edges' rows, an edge's rows
+      // are valid regardless of whether other edges have answered: filling in a later edge only adds rows,
+      // and so never retracts a row reported earlier.
+      //
+      // The alternative (withhold while *any* edge is unanswered) trades fewer intermediate results for
+      // unbounded latency, because the gate re-closes on every newly added matching edge: a node under
+      // continuous edge ingest may never report at all. It also requires tracking one unanswered placeholder
+      // per edge, which a node whose edges live outside the heap cannot afford.
+      if (contributions.answeredEdges == 0) None
+      else Some(EdgeContributionStore.expand(contributions.total))
     }
 
   // the result set of a SubscribeAcrossEdge, when defined, is the concatenation of all the result rows
   // from the all edges that could match the query's edge (because a MVSQ should report a row for each way
-  // by which it matches)
+  // by which it matches), which is what the running total counts
 
   override def pretty(implicit idProvider: QuineIdProvider): String =
-    s"${this.getClass.getSimpleName}($queryPartId, ${edgeResults.map { case (he, v) => he.pretty -> v }})"
+    s"${this.getClass.getSimpleName}($queryPartId, ${contributions.entries.map { case (he, v) => he.pretty -> v }.mkString("{", ", ", "}")})"
 }
 
-/** Validates this concluding half edge side of the edge and propagates results back to the subscribing side when
-  * available and when the edge is matching.
+/** Validates this concluding half edge side of the edge and propagates results back to each subscribing side that
+  * currently has a matching edge.
   *
   * State needed to process a [[MultipleValuesStandingQuery.EdgeSubscriptionReciprocal]]
+  *
+  * One of these serves every node that subscribes with the same edge constraints, rather than one per edge: the
+  * constraints, not any particular edge, are what its identity is made of. So a node with a million edges into it
+  * runs one of these, holds one copy of the `andThen` result, and subscribes to the `andThen` once.
+  *
+  * That subscription is this state's one standing invariant: for as long as the state exists, the `andThen`'s
+  * subscriber set on this same node names this part. The two facts persist together and dissolve together (the
+  * last subscriber's cancel discards the state and cancels the subscription), so a wake decodes the pair intact.
+  * [[onInitialize]] establishes it for a state the behavior creates; the wake-time fold of pre-collapse rows
+  * carries an existing entry over; and `updateMultipleValuesStandingQueriesOnNode` re-checks it on every wake,
+  * establishing it for the one kind of state that can be born without it: one the fold assembled entirely out
+  * of rows that had never subscribed. Everything below assumes the invariant rather than re-checking it: an
+  * [[EdgeAdded]] relays the cached result instead of subscribing, and [[readResultsFor]] answers from the cache,
+  * both sound only because the cache is being kept current by a subscription that always exists.
+  *
+  * Which subscribers are currently entitled to results is not tracked here. It is asked of the node's edge
+  * collection at the moments it matters (when a result arrives, when an edge appears or disappears, and when a
+  * subscriber first arrives), because the edges are the record of it, indexed by the node they lead to. Where the
+  * subscribers themselves are recorded (the node's subscriber set, or [[subscriberStore]]) is a separate question
+  * from everything above, and the two do not interact: the `andThen` link is one entry however many subscribers
+  * there are, and moving subscribers between set and store never touches it.
   *
   * Since reciprocal queries are generated on the fly in [[SubscribeAcrossEdgeState]], they won't
   * show up when you try to look them up by ID globally. This is why this state inlines fields from
   * [[MultipleValuesStandingQuery.EdgeSubscriptionReciprocal]], but only stores an ID for the `andThenId`.
   *
   * @param queryPartId the ID of the edge-subscript-reciprocal query with this State
-  * @param halfEdge the half-edge descriptor to match on replay -- this should match the query's half-edge
+  * @param halfEdge a subscriber's edge as seen from this node. Everything that matters is its type and direction
+  *                 (the constraints a subscriber's edge must match), while `halfEdge.other` merely records which
+  *                 node's subscription created (or, for a state written before identities were shared, once owned)
+  *                 this state. Nothing may read `other`
   * @param andThenId ID of the standing query part following the completion of this cross-edge match
   */
 final case class EdgeSubscriptionReciprocalState(
@@ -1021,13 +1280,39 @@ final case class EdgeSubscriptionReciprocalState(
 
   type StateOf = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal
 
-  /** Boolean to indicate whether there is currently a locally-matching reciprocal half edge. Persisted */
-  var currentlyMatching: Boolean = false
-
   /** Saved state from `andThen` query. Persisted. */
   var cachedResult: Option[Seq[QueryContext]] = None // Result from the `andThen` query cached here.
 
-  /** The subquery to run when the reciprocal edge has been verified. */
+  /** Where this state's subscribers are recorded, when somewhere other than the node's subscriber set.
+    *
+    * A node with too many subscribing neighbours to hold one entry each, in the heap or in this state's blob,
+    * substitutes a store that records them outside both. Absent everywhere else, and then the node's subscriber set
+    * is the record, exactly as before. Installed by the node, never persisted.
+    *
+    * Even when present it is not the whole record: a subscriber the store cannot record stays in the node's set,
+    * and the two hold disjoint subscribers rather than two views of the same ones. Whatever reports to every
+    * subscriber has to go through both. See [[externalSubscriberForQuery]] for which ones the store takes.
+    */
+  var subscriberStore: Option[ReciprocalSubscriberStore] = None
+
+  /** The one query part every subscriber recorded in [[subscriberStore]] subscribes for.
+    *
+    * The store records a subscriber by node alone, so answering one needs the part to address, and there is
+    * exactly one, because every subscription with these edge constraints comes from the same compiled query part. A
+    * subscriber citing a different part (possible only for a hand-built query) stays in the node's subscriber set
+    * instead: correct, merely unshared. Set by the first subscriber the store records. Persisted.
+    */
+  var externalSubscriberForQuery: Option[MultipleValuesStandingQueryPartId] = None
+
+  /** Whether the blob this state was read from said its subscribers are recorded outside it.
+    *
+    * Set by the codec, read at wake. A node that installs a store for them answers its subscribers from it. A node
+    * that installs none has subscribers that exist and cannot be reached, which deserves an error rather than
+    * silence.
+    */
+  var subscribersExternalized: Boolean = false
+
+  /** The subquery whose results are relayed across matching edges. */
   private[this] var andThen: MultipleValuesStandingQuery = _
 
   override def rehydrate(
@@ -1037,36 +1322,59 @@ final case class EdgeSubscriptionReciprocalState(
     // and its `queryPartId` is not in the global registry.
     andThen = effectHandler.lookupQuery(andThenId)
 
+  /** Subscribe to the `andThen` once, for as long as this state exists. Since one state serves all subscribers, it
+    * cannot start and stop with any one subscriber's edge. A node asked about an edge that only exists on the
+    * other side answers that it does not match, without needing to have avoided the question.
+    */
+  override def onInitialize(effectHandler: MultipleValuesInitializationEffects): Unit =
+    effectHandler.createSubscription(effectHandler.executingNodeId, andThen)
+
   override def relevantEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType.EdgeChange] = Seq(
     WatchableEventType.EdgeChange(
       Some(halfEdge.edgeType),
     ),
   )
 
+  /** Nothing: the edges this node already has cannot tell this state anything.
+    *
+    * All this state does with an edge's appearance is relay the `andThen` result it is holding, and a state that has
+    * just been created is holding none: its subscription to the `andThen` is a message it has not sent yet when
+    * the replay runs. So every edge the node already has would be read only to be ignored, which on the node in the
+    * middle of a pattern is a scan of every edge pointing at it for no effect at all. Nothing is lost by not asking:
+    * when the `andThen` does answer, that answer reaches each subscriber by asking the edges then.
+    */
+  override def initialEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType] = Seq.empty
+
+  private[this] def edgeMatchesPattern(edge: HalfEdge): Boolean =
+    edge.edgeType == halfEdge.edgeType && edge.direction == halfEdge.direction
+
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
-    var somethingChanged = false
     events.foreach {
-      case EdgeAdded(newHalfEdge) if halfEdge == newHalfEdge =>
-        currentlyMatching = true
-        effectHandler.createSubscription(effectHandler.executingNodeId, andThen)
-        somethingChanged = true
-        readResults(effectHandler.currentProperties, effectHandler.labelsProperty).foreach(
-          effectHandler.reportUpdatedResults,
-        )
+      case EdgeAdded(newHalfEdge) if edgeMatchesPattern(newHalfEdge) =>
+        // The node across this edge may be a subscriber that was not being answered until now. Reporting to a node
+        // that is not subscribed, or is already being answered, costs a message: results are levels, so a repeat of
+        // one already delivered changes nothing.
+        cachedResult.foreach { result =>
+          effectHandler.reportUpdatedResultsToNode(newHalfEdge.other, result)
+          reportToExternalSubscriberOn(newHalfEdge.other, result, effectHandler)
+        }
 
-      case EdgeRemoved(oldHalfEdge) if halfEdge == oldHalfEdge =>
-        currentlyMatching = false
-        effectHandler.cancelSubscription(effectHandler.executingNodeId, andThenId)
-        effectHandler.reportUpdatedResults(Nil)
-
-        somethingChanged = true
+      case EdgeRemoved(oldHalfEdge) if edgeMatchesPattern(oldHalfEdge) =>
+        // Unconditional, for the reason the guard here used to ask about: this state answers one edge type and
+        // direction, an edge collection is a set, and the event only reaches here because that edge matched. So the
+        // edge that just went away was the only one entitling that node, and the collection the question would have
+        // been put to already reflects its removal. On a supernode the question was a read of the persistor, whose
+        // one answer was "none remains", and whose failure retracted nothing, leaving that node holding a result.
+        effectHandler.reportUpdatedResultsToNode(oldHalfEdge.other, Nil)
+        reportToExternalSubscriberOn(oldHalfEdge.other, Nil, effectHandler)
 
       case _ => // Ignore
     }
-    somethingChanged
+    // Nothing persisted changed: which subscribers are entitled to results is derived from the node's edges.
+    false
   }
 
   override def onNewSubscriptionResult( // Happens when the subscription for the `andThen` returns a result
@@ -1075,18 +1383,86 @@ final case class EdgeSubscriptionReciprocalState(
   )(implicit logConfig: LogConfig): Boolean = {
     val resultIsUpdate = !cachedResult.contains(result.resultGroup)
     cachedResult = Some(result.resultGroup)
-    // only propagate a result across an edge if that edge still exists, but cache the result regardless
-    if (resultIsUpdate && currentlyMatching) effectHandler.reportUpdatedResults(result.resultGroup)
+    // only propagate a result across an edge that exists, but cache the result regardless
+    if (resultIsUpdate) {
+      // Withheld only from a node this one can say it has no edge to. Where it cannot say, the result goes: a
+      // report to a node that is no longer entitled costs one message and changes nothing there, since results
+      // are levels, while withholding leaves a subscriber that *is* entitled holding a stale one. Asked of a
+      // bounded number of them, because on a node whose edges are in the persistor the question is a read.
+      effectHandler.reportUpdatedResultsToEntitledNodes(
+        result.resultGroup,
+        EdgeSubscriptionReciprocalState.entitlementChecksPerReport,
+      ) { subscribingNode =>
+        effectHandler
+          .matchingEdgesTo(Some(halfEdge.edgeType), Some(halfEdge.direction), subscribingNode)
+          .forall(_.nonEmpty)
+      }
+      // The subscribers recorded outside the node's subscriber set hear it from the store, which already knows how
+      // to reach exactly the entitled ones.
+      for {
+        store <- subscriberStore
+        forPart <- externalSubscriberForQuery
+      } store.reportToEntitledSubscribers(
+        effectHandler.reportUpdatedResultsToRemotePart(_, forPart, result.resultGroup),
+      )
+    }
     resultIsUpdate
   }
 
+  /** Report to the given node only if it is a subscriber recorded in [[subscriberStore]]: a point membership
+    * question, answered after a round trip, with the report made from inside the answer. Nothing at all when the
+    * subscribers are not externalized, where [[MultipleValuesStandingQueryEffects.reportUpdatedResultsToNode]]
+    * already reaches everyone.
+    */
+  private[this] def reportToExternalSubscriberOn(
+    node: QuineId,
+    resultGroup: Seq[QueryContext],
+    effectHandler: MultipleValuesStandingQueryEffects,
+  ): Unit =
+    for {
+      store <- subscriberStore
+      forPart <- externalSubscriberForQuery
+    } store.ifSubscribed(node)(() => effectHandler.reportUpdatedResultsToRemotePart(node, forPart, resultGroup))
+
+  /** There is no answer here that is not specific to a subscriber (see [[readResultsFor]]). This state's
+    * subscribers are all remote, so nothing local ever reads its results without saying who is asking.
+    */
   def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
     logConfig: LogConfig,
-  ): Option[Seq[QueryContext]] =
-    if (currentlyMatching && cachedResult.isDefined) cachedResult else None
+  ): Option[Seq[QueryContext]] = None
+
+  override def readResultsFor(
+    subscriber: MultipleValuesStandingQuerySubscriber,
+    effectHandler: MultipleValuesStandingQueryEffects,
+  )(implicit logConfig: LogConfig): Option[Seq[QueryContext]] = subscriber match {
+    // As in `onNewSubscriptionResult`: withheld only from a node this one can say it has no edge to. Where it
+    // cannot say, the subscriber that just asked gets the cached result rather than a silence it has no way to
+    // resolve: it asked because it has just subscribed, and nothing else will prompt this part to answer it.
+    case MultipleValuesStandingQuerySubscriber.NodeSubscriber(subscribingNode, _, _)
+        if effectHandler
+          .matchingEdgesTo(Some(halfEdge.edgeType), Some(halfEdge.direction), subscribingNode)
+          .forall(_.nonEmpty) =>
+      cachedResult
+    case _ => None
+  }
 
   override def pretty(implicit idProvider: QuineIdProvider): String =
-    s"${this.getClass.getSimpleName}($queryPartId, ${halfEdge.pretty}, $currentlyMatching, ${cachedResult.map(_.mkString("[", ",", "]"))}, $andThenId)"
+    s"${this.getClass.getSimpleName}($queryPartId, ${halfEdge.edgeType}/${halfEdge.direction}, ${cachedResult
+      .map(_.mkString("[", ",", "]"))}, $andThenId)"
+}
+
+object EdgeSubscriptionReciprocalState {
+
+  /** How many of this state's own subscribers it will ask the node's edges about before reporting to the rest
+    * without asking.
+    *
+    * Only the subscribers the node holds in its subscriber set are counted here. The ones recorded in a
+    * [[ReciprocalSubscriberStore]] are not asked about one at a time at all: the store answers who is entitled in
+    * one pass over its rows and the node's edges together, which is what it is for. So this bounds the case the
+    * store was not installed for, or could not be installed in, where the number of subscribers can still be
+    * large enough that a read each would hold the node's thread for a very long time.
+    */
+  val entitlementChecksPerReport: Int = 32
 }
 
 /** Filters incoming results (optionally) and transforms each result that passes the filter (optionally).

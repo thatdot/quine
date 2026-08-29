@@ -95,7 +95,10 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
         log.trace(
           safe"Unbecoming on: $qid Remaining size: ${Safe(pendingCallbacks.size)} stashed size: ${Safe(messageBuffer.size)}",
         )
-        context.unbecome()
+        if (isStashing) {
+          isStashing = false
+          context.unbecome()
+        }
         messageBuffer.foreach { e =>
           log.trace(
             log"Unstashing message: ${e.message.toString} on node: $qid stashed size: ${Safe(messageBuffer.size)}",
@@ -107,6 +110,16 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
   }
 
   val messageBuffer: mutable.ArrayBuffer[Envelope] = mutable.ArrayBuffer.empty
+
+  /** Whether the stashing behaviour is currently pushed onto the actor.
+    *
+    * Not the same question as whether any callback is outstanding, which is what it might look like. A callback is
+    * removed from [[pendingCallbacks]] before it is run, so a callback that pauses again (which is ordinary, since
+    * applying one result is exactly when a node discovers the next thing it must wait for) would see an empty queue
+    * and push the behaviour a second time, against the one `unbecome` that ends the episode. The node would then stash
+    * every message it was ever sent again. So what is tracked is the push itself.
+    */
+  private var isStashing: Boolean = false
 
   private val isCalled = new AtomicBoolean()
 
@@ -143,8 +156,9 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
     val pending = Pending(thisFutureId, onComplete)
     enqueueCallback(pending)
 
-    // Temporarily change the actor behavior to only buffer messages
-    if (pendingCallbacks.size == 1) {
+    // Temporarily change the actor behavior to only buffer messages, once per episode of stashing
+    if (!isStashing) {
+      isStashing = true
       log.trace(
         log"Becoming PriorityStashingBehavior on: $qid stashed size: ${Safe(messageBuffer.size)}",
       )

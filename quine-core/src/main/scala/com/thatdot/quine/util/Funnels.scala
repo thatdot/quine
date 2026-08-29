@@ -227,7 +227,13 @@ object Funnels {
         case MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(halfEdge, andThenId, columns) =>
           sink
             .putInt("EdgeSubscriptionReciprocal".hashCode)
-            .put(halfEdge)
+            // Deliberately not `put(halfEdge)`: which node subscribed (`halfEdge.other`) is binding context, not
+            // identity, so one state on this node answers every node subscribing with the same constraints. The
+            // extra tag keeps these ids disjoint from the ids the whole-half-edge funnel used to produce, whatever
+            // bytes a node id might have, which is what lets a reader recognize a state filed under an old id.
+            .putInt("EdgeConstraints".hashCode)
+            .put(halfEdge.direction)
+            .put(halfEdge.edgeType)
             .put(andThenId)
             .put(columns)
         case MultipleValuesStandingQuery.FilterMap(condition, toFilter, dropExisting, toAdd, columns) =>

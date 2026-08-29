@@ -125,6 +125,9 @@ class GraphService(
     10.seconds,
   )
 
+  // Awaited just above, so every persisted standing query is now registered.
+  declareStandingQueriesRestored()
+
   // Provide the [[PersistenceAgent]] with the ready-to-use graph
   namespacePersistor.declareReady(this)
 

@@ -30,6 +30,11 @@ sealed abstract class MultipleValuesStandingQuery extends Product with Serializa
     * @note [[queryPartId]] must be injective (so `q1.queryPartId == q2.queryPartId` implies `q1 == q2` where equality
     *       is structural, not by reference). In order to maximize sharing of standing query state, it is
     *       also desirable that `q1 == q2 implies `q1.queryPartId == q2.queryPartId` whenever possible.
+    *
+    *       [[EdgeSubscriptionReciprocal]] is the one deliberate exception: its id ignores `halfEdge.other`, so two
+    *       reciprocals differing only in which node subscribed share an id, and therefore share a state on the node
+    *       they ask. That is safe only because reciprocals are excluded from the registry ([[indexableSubqueries]])
+    *       and never resolved by id; anything that needs the query a reciprocal state runs must inline it.
     */
   final val queryPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId {
     import Funnels.MultipleValuesFunnels._
@@ -301,12 +306,15 @@ object MultipleValuesStandingQuery {
     val children: Seq[MultipleValuesStandingQuery] = Seq(andThen)
   }
 
-  /** Watch for an edge reciprocal and relay the recursive standing query only if the reciprocal
-    * half edge is present.
+  /** Watch for an edge reciprocal and relay the recursive standing query only across reciprocal
+    * half edges that are present.
     *
     * @note do not generate SQ's with this AST node - it is used internally in the interpreter
-    * @param halfEdge the edge that must be on this node for it to match
-    * @param andThenId ID of the standing query to execute if the half edge is present
+    * @param halfEdge the subscribing node's edge as seen from the node this query is sent to. Only its type and
+    *                 direction take part in the query's identity: `halfEdge.other` says who subscribed, which is
+    *                 binding context rather than identity, so every node subscribing with the same constraints
+    *                 lands on one state
+    * @param andThenId ID of the standing query to execute for edges that are present
     */
   final case class EdgeSubscriptionReciprocal(
     halfEdge: HalfEdge,

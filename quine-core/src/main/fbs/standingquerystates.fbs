@@ -60,6 +60,11 @@ table MultipleValuesSubscribeAcrossEdgeStandingQueryState {
   // Map[c.t.q.model.HalfEdge, Option[Seq[c.t.q.g.cypher.QueryContext]]]
   edge_results_keys: [HalfEdge2];
   edge_results_values: [MultipleValuesStandingQueryResults];
+
+  // Appended field: when set, this part's per-edge rows are recorded outside this blob, and the two vectors above
+  // are deliberately absent. A state holding its rows in the heap never sets it, so its blob is byte-identical to
+  // one written before this field existed.
+  edge_results_externalized: bool;
 }
 
 // See [[com.thatdot.quine.graph.cypher.EdgeSubscriptionReciprocalState]]
@@ -72,6 +77,13 @@ table MultipleValuesEdgeSubscriptionReciprocalStandingQueryState {
   // an extra indirection since there is only one.
   // Should decode to Option[Seq[c.t.q.g.cypher.QueryContext]]
   cached_result: [QueryContext];
+
+  // Appended fields: when `subscribers_externalized` is set, the node subscribers this state answers are recorded
+  // outside this blob (the subscribers vector then holds only the odd ones out), and `subscriber_for_query` is the
+  // one query part those recorded subscribers subscribe for. Both take their defaults on a node holding its
+  // subscribers itself, so its blob is byte-identical to one written before these existed.
+  subscribers_externalized: bool;
+  subscriber_for_query: MultipleValuesStandingQueryPartId2;
 }
 
 // See [[com.thatdot.quine.graph.cypher.FilterMapState]]

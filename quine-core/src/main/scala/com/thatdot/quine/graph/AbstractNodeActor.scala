@@ -370,7 +370,12 @@ abstract private[graph] class AbstractNodeActor(
 
   }
 
-  private[this] def persistSnapshot(): Unit = if (atTime.isEmpty) {
+  /** Write a snapshot now, rather than recording that one is owed.
+    *
+    * Ordinary nodes never need this: everything a snapshot holds either goes through the journal or is written on
+    * update or sleep. A node whose state changes in a way none of those paths can see has to say so itself.
+    */
+  protected[this] def persistSnapshot(): Unit = if (atTime.isEmpty) {
     val occurredAt: EventTime = tickEventSequence()
     val snapshot = toSnapshotBytes(occurredAt)
     metrics.snapshotSize.update(snapshot.length)
@@ -479,6 +484,16 @@ abstract private[graph] class AbstractNodeActor(
 
     }
   }
+
+  /** Record that this node was written to, without claiming its snapshot is now out of date.
+    *
+    * The two come apart whenever a write goes somewhere a snapshot does not reach. Such a write is still a write:
+    * a node in the middle of one should no more be put to sleep than any other. But the snapshot would say nothing
+    * new, so marking it stale only costs a rewrite. An [[com.thatdot.quine.graph.edges.EdgeProcessor]] whose writes
+    * are not carried by the snapshot is expected to call this instead of [[updateLastWriteAfterSnapshot]].
+    */
+  protected[this] def recordWriteOccurred(): Unit =
+    lastWriteMillis = previousMessageMillis()
 
   protected[this] def updateLastWriteAfterSnapshot(): Unit = {
     latestUpdateAfterSnapshot = Some(peekEventSequence())

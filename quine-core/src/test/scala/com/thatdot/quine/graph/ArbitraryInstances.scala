@@ -773,26 +773,27 @@ trait ArbitraryInstances {
       Gen.resultOf[MultipleValuesStandingQueryPartId, MultipleValuesStandingQueryState](
         LocalIdState.apply,
       ),
+      Gen.resultOf[MultipleValuesStandingQueryPartId, MultipleValuesStandingQueryState](
+        LabelsState.apply,
+      ),
       Gen.resultOf[MultipleValuesStandingQueryPartId, Map[
         HalfEdge,
         Option[Seq[QueryContext]],
       ], MultipleValuesStandingQueryState] { (partId, edgeResults) =>
         val state = SubscribeAcrossEdgeState(partId)
-        state.edgeResults ++= edgeResults
+        edgeResults.foreach { case (halfEdge, maybeResults) => state.contributionStore.restore(halfEdge, maybeResults) }
         state
       },
       Gen.resultOf[
         MultipleValuesStandingQueryPartId,
         HalfEdge,
         MultipleValuesStandingQueryPartId,
-        Boolean,
         Option[
           Seq[QueryContext],
         ],
         MultipleValuesStandingQueryState,
-      ] { (partId, halfEdge, andThenId, currentlyMatching, cachedResult) =>
+      ] { (partId, halfEdge, andThenId, cachedResult) =>
         val state = EdgeSubscriptionReciprocalState(partId, halfEdge, andThenId)
-        state.currentlyMatching = currentlyMatching
         state.cachedResult = cachedResult
         state
       },

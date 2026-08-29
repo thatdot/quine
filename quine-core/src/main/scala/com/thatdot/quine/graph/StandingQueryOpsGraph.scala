@@ -50,6 +50,23 @@ trait StandingQueryOpsGraph extends BaseGraph {
     new ConcurrentHashMap[NamespaceId, NamespaceStandingQueries].asScala
   namespaceStandingQueries.put(defaultNamespaceId, new NamespaceStandingQueries(defaultNamespaceId))
 
+  @volatile private var restoredStandingQueries: Boolean = false
+
+  /** Whether every standing query this graph had persisted has been read back and registered.
+    *
+    * Until it has, not finding a query here means nothing: an id absent from the registry may name a query that was
+    * cancelled, or one that has not been read yet, and the two are indistinguishable. Anything that would treat
+    * absence as an answer, rather than waiting or doing nothing, has to ask this first.
+    *
+    * A namespace created after the restore has no persisted queries to read, so this stays true for it. The default
+    * namespace's entry above exists from the moment the graph does, which is why the question cannot be "is there an
+    * entry": there always is, and early on it is empty.
+    */
+  def standingQueriesRestored: Boolean = restoredStandingQueries
+
+  /** Say that the queries above are all of them. Called once, by whatever restored them, as soon as it has. */
+  protected def declareStandingQueriesRestored(): Unit = restoredStandingQueries = true
+
   def addStandingQueryNamespace(namespace: NamespaceId): NamespaceStandingQueries =
     // Uses `getOrElseUpdate` because its value is call-by-name.
     namespaceStandingQueries.getOrElseUpdate(namespace, new NamespaceStandingQueries(namespace))

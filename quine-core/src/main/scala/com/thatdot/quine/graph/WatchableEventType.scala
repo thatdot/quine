@@ -118,32 +118,50 @@ final case class StandingQueryWatchableEventIndex(
     eventType: WatchableEventType,
     properties: Map[Symbol, PropertyValue],
     edges: EdgeCollectionView,
-  ): Seq[NodeChangeEvent] =
+  ): Iterator[NodeChangeEvent] = {
+    registerStandingQuery(subscriber, eventType)
     eventType match {
       case WatchableEventType.PropertyChange(key) =>
-        watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += subscriber
-        properties.get(key).toSeq.map { propVal =>
+        properties.get(key).iterator.map { propVal =>
           PropertySet(key, propVal)
         }
 
       case WatchableEventType.AnyPropertyChange =>
-        watchingForAnyProperty.add(subscriber)
-        properties.map { case (k, v) =>
+        properties.iterator.map { case (k, v) =>
           PropertySet(k, v)
-        }.toSeq
+        }
 
       case WatchableEventType.EdgeChange(Some(key)) =>
-        watchingForEdge.getOrElseUpdate(key, mutable.Set.empty) += subscriber
-        edges.matching(key).toSeq.map { halfEdge =>
+        edges.matching(key).map { halfEdge =>
           EdgeAdded(halfEdge)
         }
 
       case WatchableEventType.EdgeChange(None) =>
-        watchingForAnyEdge.add(subscriber)
-        edges.all.toSeq.map { halfEdge =>
+        edges.all.map { halfEdge =>
           EdgeAdded(halfEdge)
         }
+    }
+  }
 
+  /** Register interest without describing what the node already holds.
+    *
+    * For a subscriber that can learn nothing from the node's current state. Asking for the description and throwing
+    * it away is not the same thing. Producing the iterator is what reads the node's edges, and an edge collection is
+    * free to make that read arbitrarily expensive, so a description that was never going to be used still costs
+    * whatever it costs, on exactly the nodes that can least afford it.
+    */
+  def registerStandingQuery(subscriber: EventSubscriber, eventType: WatchableEventType): Unit =
+    eventType match {
+      case WatchableEventType.PropertyChange(key) =>
+        watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += subscriber
+        ()
+      case WatchableEventType.AnyPropertyChange =>
+        val _ = watchingForAnyProperty.add(subscriber)
+      case WatchableEventType.EdgeChange(Some(key)) =>
+        watchingForEdge.getOrElseUpdate(key, mutable.Set.empty) += subscriber
+        ()
+      case WatchableEventType.EdgeChange(None) =>
+        val _ = watchingForAnyEdge.add(subscriber)
     }
 
   /** Unregister a SQ as being interested in a given event */
@@ -161,7 +179,7 @@ final case class StandingQueryWatchableEventIndex(
       case WatchableEventType.EdgeChange(Some(key)) =>
         for (set <- watchingForEdge.get(key)) {
           set -= handler
-          if (set.isEmpty) watchingForProperty -= key
+          if (set.isEmpty) watchingForEdge -= key
         }
 
       case WatchableEventType.EdgeChange(None) =>
@@ -174,24 +192,27 @@ final case class StandingQueryWatchableEventIndex(
   def standingQueriesWatchingNodeEvent(
     event: NodeChangeEvent,
     removeSubscriberPredicate: EventSubscriber => Boolean,
-  ): Unit = event match {
-    case EdgeAdded(halfEdge) =>
-      watchingForEdge
-        .get(halfEdge.edgeType)
-        .foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
-      watchingForAnyEdge.filter(removeSubscriberPredicate).foreach(watchingForAnyEdge.remove)
-    case EdgeRemoved(halfEdge) =>
-      watchingForEdge
-        .get(halfEdge.edgeType)
-        .foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
-      watchingForAnyEdge.filter(removeSubscriberPredicate).foreach(watchingForAnyEdge.remove)
-    case PropertySet(propKey, _) =>
-      watchingForProperty.get(propKey).foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
-      watchingForAnyProperty.filter(removeSubscriberPredicate).foreach(watchingForAnyProperty.remove)
-    case PropertyRemoved(propKey, _) =>
-      watchingForProperty.get(propKey).foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
-      watchingForAnyProperty.filter(removeSubscriberPredicate).foreach(watchingForAnyProperty.remove)
-    case _ => ()
+  ): Unit = {
+    // NB the copy `filter` makes is what allows the callback to register a subscriber while being offered an event;
+    // these indexes hold one entry per interested query part, not per edge, so the copy is small.
+    def notifyAndPrune(index: mutable.Set[EventSubscriber]): Unit =
+      index.filter(removeSubscriberPredicate).foreach(index.remove)
+
+    event match {
+      case EdgeAdded(halfEdge) =>
+        watchingForEdge.get(halfEdge.edgeType).foreach(notifyAndPrune)
+        notifyAndPrune(watchingForAnyEdge)
+      case EdgeRemoved(halfEdge) =>
+        watchingForEdge.get(halfEdge.edgeType).foreach(notifyAndPrune)
+        notifyAndPrune(watchingForAnyEdge)
+      case PropertySet(propKey, _) =>
+        watchingForProperty.get(propKey).foreach(notifyAndPrune)
+        notifyAndPrune(watchingForAnyProperty)
+      case PropertyRemoved(propKey, _) =>
+        watchingForProperty.get(propKey).foreach(notifyAndPrune)
+        notifyAndPrune(watchingForAnyProperty)
+      case _ => ()
+    }
   }
 }
 object StandingQueryWatchableEventIndex {
