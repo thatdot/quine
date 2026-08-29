@@ -15,7 +15,7 @@ import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
-import com.thatdot.quine.persistor.{PersistenceConfig, PrimePersistor}
+import com.thatdot.quine.persistor.{ConditionalWriteResult, PersistenceConfig, PrimePersistor}
 
 abstract class PrimeCassandraPersistor(
   persistenceConfig: PersistenceConfig,
@@ -63,6 +63,28 @@ abstract class PrimeCassandraPersistor(
 
   protected def internalSetMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] =
     metaData.setMetaData(key, newValue)
+
+  /** Cassandra serializes conditional statements per partition through Paxos, and the metadata
+    * table is partitioned by key, so a compare-and-set on one metadata key is atomic against every
+    * other writer of that key, in any process, on any host. That is what a shared store
+    * owes [[PrimePersistor.internalSetMetaDataIfValue]], and it is why the default read-compare-
+    * write is not used here.
+    *
+    * It assumes no key written this way is ever ALSO written unconditionally: Cassandra only
+    * serializes conditional statements against each other, so a plain INSERT to the same
+    * partition lands without consulting Paxos and voids the exclusion for whoever was
+    * mid-compare-and-set. The keys that depend on this name themselves in
+    * `ClusterInterface.ConditionallyWrittenKeyPrefixes`.
+    *
+    * Implemented once for every Cassandra-family backend, because the statement is the same one
+    * against the same table.
+    */
+  override protected def internalSetMetaDataIfValue(
+    key: String,
+    expected: Option[Array[Byte]],
+    newValue: Option[Array[Byte]],
+  ): Future[ConditionalWriteResult] =
+    metaData.setMetaDataIfValue(key, expected, newValue)
 
   protected def internalPersistDomainGraphNodes(
     domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode],

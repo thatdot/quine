@@ -39,12 +39,32 @@ object LandingPage {
     extraCards: Seq[(Set[String], HtmlElement)] = Seq.empty,
     userPermissions: Option[Set[String]] = None,
     showScopePicker: Boolean = false,
+    // Cluster-wide ingest streams, straight from the coordinator's record store. `None` on OSS
+    // (no such endpoint). A poisoned one is assigned no workers anywhere, so it never appears in
+    // `backpressureService`'s live worker telemetry — this is the only place it can be shown.
+    clusterIngestsSignal: Option[Signal[Pot[Seq[V2ClusterIngestInfo]]]] = None,
   ): HtmlElement = {
     def allowed(needed: Set[String]): Boolean = hasPermissions(userPermissions, needed)
 
     val canSeeClusterStatus = clusterStatusSignal.isDefined && allowed(clusterStatusPermissions)
     val canSeeHostMetrics = allowed(HostMetricsCard.requiredPermissions)
     val canSeeBackpressure = allowed(Set("ApplicationMetricsRead"))
+
+    // Poisoned cluster ingests with no live worker: present in the record list, absent from
+    // `backpressureService`'s telemetry. Keyed on (namespace, name) to line up with `IngestView`,
+    // and to stay correct if a poisoned record ever does have a live entry (it shouldn't, but
+    // this reads as "not shown twice" rather than depending on that holding).
+    val poisonedClusterIngestsSignal: Signal[Seq[V2ClusterIngestInfo]] =
+      clusterIngestsSignal match {
+        case None => Signal.fromValue(Seq.empty[V2ClusterIngestInfo])
+        case Some(sig) =>
+          sig.combineWith(backpressureService.backpressureSnapshotSignal).map { case (recordsPot, livePot) =>
+            val liveKeys = livePot.toOption.map(_.ingests.map(i => i.namespace -> i.name).toSet).getOrElse(Set.empty)
+            recordsPot.toOption
+              .getOrElse(Seq.empty)
+              .filter(i => i.failure.isDefined && !liveKeys.contains(i.namespace -> i.name))
+          }
+      }
 
     val allowedExtras: Seq[HtmlElement] = extraCards.collect {
       case (needed, card) if allowed(needed) => card
@@ -74,14 +94,15 @@ object LandingPage {
           // cluster — ingests unioned (each lives on one host), standing queries merged by name
           // (they run on every host) — so these are plain sizes rather than a dedup at the call site.
           if (canSeeBackpressure)
-            child <-- backpressureService.backpressureSnapshotSignal.map { pot =>
-              val ingestCount = pot.toOption.map(_.ingests.size).getOrElse(0)
-              val sqCount = pot.toOption.map(_.standingQueries.size).getOrElse(0)
-              span(
-                cls := "d-inline-flex align-items-center",
-                summaryBadge(ingestCount, if (ingestCount == 1) "ingest" else "ingests"),
-                summaryBadge(sqCount, if (sqCount == 1) "query" else "queries"),
-              )
+            child <-- backpressureService.backpressureSnapshotSignal.combineWith(poisonedClusterIngestsSignal).map {
+              case (pot, poisoned) =>
+                val ingestCount = pot.toOption.map(_.ingests.size).getOrElse(0) + poisoned.size
+                val sqCount = pot.toOption.map(_.standingQueries.size).getOrElse(0)
+                span(
+                  cls := "d-inline-flex align-items-center",
+                  summaryBadge(ingestCount, if (ingestCount == 1) "ingest" else "ingests"),
+                  summaryBadge(sqCount, if (sqCount == 1) "query" else "queries"),
+                )
             }
           else emptyNode,
           // Cluster host count (enterprise only)
@@ -119,10 +140,42 @@ object LandingPage {
             ),
           )
         else emptyNode,
+        // Poisoned cluster ingests: no live worker to appear in the diagram above, so they get
+        // their own row rather than a slot in it. Renders nothing while the list is empty.
+        if (canSeeBackpressure)
+          div(
+            cls := "row px-3",
+            children <-- poisonedClusterIngestsSignal.map(_.map(failedClusterIngestCard)),
+          )
+        else emptyNode,
         // Extra cards (e.g., License Usage for enterprise) + Host Metrics
         if (bottomRow.nonEmpty)
           div(cls := "row px-3", bottomRow.map(card => div(cls := bottomRowColumn, card)))
         else emptyNode,
+      ),
+    )
+  }
+
+  private def failedClusterIngestCard(ingest: V2ClusterIngestInfo): HtmlElement = {
+    val failureText: String = ingest.failure.getOrElse("Poisoned: no further detail reported.")
+    div(
+      cls := "col-12 mt-3",
+      div(
+        cls := "card h-100",
+        styleAttr := "background:#fff5f5;border:1px solid rgba(220,53,69,0.35);border-radius:14px;padding:14px 16px;",
+        div(
+          cls := "d-flex align-items-center",
+          span(
+            cls := "badge bg-danger me-2",
+            "Failed",
+          ),
+          span(styleAttr := "font-weight:600;", ingest.name),
+          span(styleAttr := "color:#6c757d;margin-left:0.5em;", s"(${ingest.namespace})"),
+        ),
+        div(
+          styleAttr := "color:#6c757d;margin-top:6px;font-size:0.9em;white-space:pre-wrap;",
+          failureText,
+        ),
       ),
     )
   }

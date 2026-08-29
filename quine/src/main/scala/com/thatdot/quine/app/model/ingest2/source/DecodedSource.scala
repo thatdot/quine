@@ -141,6 +141,25 @@ abstract class DecodedSource(val meter: IngestMeter) {
     retrySettings: Option[RecordRetrySettings] = None,
     logRecordError: Boolean = false,
     onStreamErrorHandler: OnStreamErrorHandler = LogStreamError,
+    /** Called as each attempt at this source is materialized, before any record flows through it.
+      *
+      * There is more than one attempt only under [[V2IngestEntities.RetryStreamError]], and a
+      * restart is invisible from downstream: the stream neither ends nor signals, records simply
+      * start arriving again. What that means for a reader depends on the source, and the two cases
+      * are opposites, so a caller has to know which one it has:
+      *
+      *   - A source bounded at build time (a file, an S3 object, the number iterator) RE-READS from
+      *     where it was bounded, so a downstream count of records is counting some of them twice
+      *     and has to be re-based here.
+      *   - A source carrying its own cursor (Kafka's committed offsets, KCL, SQS, a Delta version)
+      *     RESUMES where it left off, and a counter for one of those should be left alone.
+      *
+      * Cluster-ingest slices keep a position, and count only the first kind; see
+      * `SliceCheckpoint.isResumable` for that list and `ClusterIngestSliceState` for the use.
+      * Defaulted to a no-op, so an ingest that keeps no position is unaffected. Runs on the
+      * materializing thread, so it should do little and must not throw.
+      */
+    onAttemptStart: () => Unit = () => (),
   )(implicit logConfig: LogConfig): QuineIngestSource = new QuineIngestSource {
 
     val name: String = ingestName
@@ -190,8 +209,16 @@ abstract class DecodedSource(val meter: IngestMeter) {
         SourceWithContext
           .fromTuples(ingestStream)
           .asSource
-          .via(DecodedSource.optionallyRetryDecodeStep[Frame, Decoded](logRecordError, retrySettings))
+          .via(DecodedSource.optionallyRetryDecodeStep[Frame, Decoded](name, logRecordError, retrySettings))
           // TODO this is slower than mapAsyncUnordered and is only necessary for Kafka acking case
+          //
+          // A SECOND thing now depends on this being ordered: cluster-ingest slices count the
+          // elements emitted downstream of here as their resume point, and that count is only a
+          // valid position because completion is in order: it is a contiguous prefix rather than a
+          // tally with holes in it. Switching to `mapAsyncUnordered` would not fail anything
+          // visibly; it would make a moved slice resume past records that were still in flight
+          // when it moved, and silently skip them. If that switch is ever wanted, the checkpoint
+          // has to become a low-water mark first (see SliceCheckpoint in quine-enterprise).
           .mapAsync(parallelism) {
             case Right((t, frame)) =>
               preprocessToCypherValue(t, transformation) match {
@@ -236,7 +263,13 @@ abstract class DecodedSource(val meter: IngestMeter) {
               registry.register(gaugeKey("pre-graph-write"), gaugeState)
               b.map(v => ControlSwitches(a, v, c))
           }
-          .mapMaterializedValue(c => setControl(c, initialSwitchMode))
+          .mapMaterializedValue { c =>
+            // Here rather than in the RestartSource factory below, because this runs for the
+            // LogStreamError shape too and runs exactly once per attempt either way: this is the
+            // point at which a fresh read of the source's range is about to begin.
+            onAttemptStart()
+            setControl(c, initialSwitchMode)
+          }
           .named(name)
 
       val restartableSrc = onStreamErrorHandler match {
@@ -416,7 +449,14 @@ object DecodedSource extends LazySafeLogging {
           )
     }
 
+  /** A record that would not decode is dropped here and the source acknowledges it, so this
+    * warning is the only artifact it leaves behind unless a dead-letter queue is configured. It
+    * names the ingest because it is otherwise unattributable: one line reading "error decoding"
+    * on a host running thirty slices of several ingests says a record was lost and nothing about
+    * which stream lost it.
+    */
   private def decodedFlow[Frame, Decoded](
+    ingestName: String,
     logRecord: Boolean,
   ): Flow[(() => Try[Decoded], Frame), Either[DlqEnvelope[Frame, Decoded], (Decoded, Frame)], NotUsed] =
     Flow[(() => Try[Decoded], Frame)].map { case (decoded, frame) =>
@@ -424,13 +464,16 @@ object DecodedSource extends LazySafeLogging {
         case Success(d) => Right((d, frame))
         case Failure(ex) =>
           if (logRecord) {
-            logger.warn(safe"error decoding: ${Safe(ex.getMessage)}")
+            logger.warn(
+              safe"${Safe(ingestName)} dropped a record it could not decode: ${Safe(ex.getMessage)}",
+            )
           }
           Left(DlqEnvelope.apply[Frame, Decoded](frame, None, ex.getMessage))
       }
     }
 
   def optionallyRetryDecodeStep[Frame, Decoded](
+    ingestName: String,
     logRecord: Boolean,
     retrySettings: Option[RecordRetrySettings],
   ): Flow[(() => Try[Decoded], Frame), Either[DlqEnvelope[Frame, Decoded], (Decoded, Frame)], NotUsed] =
@@ -442,12 +485,12 @@ object DecodedSource extends LazySafeLogging {
             maxBackoff = settings.maxBackoff.seconds,
             randomFactor = settings.randomFactor,
             maxRetries = settings.maxRetries,
-            decodedFlow[Frame, Decoded](logRecord),
+            decodedFlow[Frame, Decoded](ingestName, logRecord),
           ) {
             case (in @ (_, _), Left(_)) => Some(in)
             case _ => None
           }
-      case None => decodedFlow[Frame, Decoded](logRecord)
+      case None => decodedFlow[Frame, Decoded](ingestName, logRecord)
     }
 
   /** Convenience to extract parallelism from v1 configuration types w/o altering v1 configurations */
@@ -693,6 +736,7 @@ object DecodedSource extends LazySafeLogging {
     persistor: Option[(PrimePersistor, MemberIdx)] = None,
     kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
     certTokenAcquirer: Option[OAuthCertificateAuth => Future[String]] = None,
+    sourceCursorScope: Option[String] = None,
   )(implicit
     protobufCache: ProtobufSchemaCache,
     avroCache: AvroSchemaCache,
@@ -886,6 +930,7 @@ object DecodedSource extends LazySafeLogging {
           meter = meter,
           persistor = persistor,
           certTokenAcquirer = certTokenAcquirer,
+          cursorScope = sourceCursorScope,
         )(system).decodedSource.valid
       case WebSocketFileUpload(format) =>
         val decoding = FileSource.decodingFoldableFrom(format, meter, Int.MaxValue)

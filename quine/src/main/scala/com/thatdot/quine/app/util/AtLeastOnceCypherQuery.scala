@@ -10,6 +10,7 @@ import org.apache.pekko
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
+import com.thatdot.quine.graph.behavior.NodeStoppedWhilePausedException
 import com.thatdot.quine.graph.cypher.Location
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
 import com.thatdot.quine.graph.{
@@ -57,7 +58,10 @@ final case class AtLeastOnceCypherQuery(
     // Work does not begin until the source is `run` (after the recovery strategy is hooked up below)
     // If a recoverable error occurs, instead return a Source that will fail after a small delay
     // so that recoverWithRetries (below) can retry the query
-    def bestEffortSource: Source[Vector[cypher.Value], NotUsed] =
+    def bestEffortSource: Source[Vector[cypher.Value], NotUsed] = {
+      // Counted, not logged: the retry below re-runs this whole source, re-applying any writes
+      // the failed attempt already made, and it announces that only at debug level.
+      graph.metrics.cypherAtLeastOnceAttemptsCounter.inc()
       if (!graph.isReady) { // Avoid throwing/catching an exception if graph is unavailable if possible.
         Source.future(pekko.pattern.after(startupRetryDelay)(Future.failed(new GraphNotReadyException()))(graph.system))
       } else {
@@ -77,6 +81,7 @@ final case class AtLeastOnceCypherQuery(
             Source.future(pekko.pattern.after(startupRetryDelay)(Future.failed(e))(graph.system))
         }
       }
+    }
 
     bestEffortSource
       .recoverWithRetries(
@@ -122,6 +127,10 @@ object AtLeastOnceCypherQuery {
       // It is registered in QuineError.fromThrowable + the message pickler, so it survives a relay from
       // a remote member as its own type (rather than collapsing to AnyError.GenericError).
       case _: UnregisteredUserDefinedException => Some(e)
+      // A node was stopped (purged, or slept) while it still had paused work. The work may
+      // already have finished, so re-running it against the replacement node is at-least-once and
+      // can repeat a durable write, the same bargain the persistor and timeout cases make.
+      case _: NodeStoppedWhilePausedException => Some(e)
       // Some problem from the persistor. This can include ephemeral errors like timeouts, so conservatively retry
       case _: WrappedPersistorException => Some(e)
       case _: com.datastax.oss.driver.api.core.DriverException => Some(e)

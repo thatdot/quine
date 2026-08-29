@@ -77,6 +77,48 @@ final case class HostQuineMetrics(
   def shardMessagesDeduplicatedCounter(shardName: String): Counter =
     metricRegistry.counter(MetricRegistry.name("shard", shardName, "delivery-relay-deduplicated"))
 
+  /** Every relay this shard deduplicated AGAINST: the denominator the deduplicated count has
+    * never had. Without it "0 deduplicated" is unreadable: it means either nothing was ever
+    * retransmitted, or every retransmission arrived after its entry had been evicted and was
+    * re-executed as new. Those are opposite conclusions.
+    */
+  def shardMessagesRelayedCounter(shardName: String): Counter =
+    metricRegistry.counter(MetricRegistry.name("shard", shardName, "delivery-relay-received"))
+
+  /** Attempts made by [[com.thatdot.quine.app.util.AtLeastOnceCypherQuery]] to run one query:
+    * one per call plus one per retry. Its retry path logs only under `whenDebugEnabled`, so at
+    * INFO a query that silently re-ran N times and re-applied its side effects N times is
+    * indistinguishable from one that ran once. Compare this against the record count.
+    */
+  val cypherAtLeastOnceAttemptsCounter: Counter =
+    metricRegistry.counter(MetricRegistry.name("cypher", "at-least-once-attempts"))
+
+  /** Records the ingest data plane dispatched to a remote shard, and records a shard actually
+    * executed on arrival. Two counters rather than one because they answer different questions:
+    * if executed == dispatched but the graph shows a record applied twice, the duplication is
+    * inside query execution; if executed > dispatched, it is in delivery; if dispatched exceeds
+    * the source record count, the pump is dispatching twice.
+    *
+    * Dispatched increments on the pump's host and executed on the executing member's, so the
+    * two compare only summed across the cluster, never per host. Executed normally runs a
+    * little ahead of dispatched: a reopened channel re-sends its unacked tail and the member
+    * re-executes it, so the excess is exactly the at-least-once redelivery volume.
+    */
+  val clusterIngestRecordsDispatchedCounter: Counter =
+    metricRegistry.counter(MetricRegistry.name("cluster-ingest", "records-dispatched"))
+
+  val clusterIngestRecordsExecutedCounter: Counter =
+    metricRegistry.counter(MetricRegistry.name("cluster-ingest", "records-executed"))
+
+  /** Entries pushed out of the dedup cache by newer ones. This is the failure mode made
+    * visible: an evicted id can no longer be recognised, so its retransmission executes a
+    * second time, silently. The cache is a fixed 10k entries, so the time it covers shrinks as
+    * relay volume grows; eviction rate against the 2s retransmit interval is what says
+    * whether the guarantee still holds.
+    */
+  def shardDedupEvictedCounter(shardName: String): Counter =
+    metricRegistry.counter(MetricRegistry.name("shard", shardName, "delivery-relay-dedup-evicted"))
+
   // Meters that track relayAsk/relayTell messaging volume and latency
   val relayTellMetrics: RelayTellMetric =
     if (enableDebugMetrics) new DefaultRelayTellMetrics(metricRegistry) else NoOpMessageMetric

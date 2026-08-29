@@ -13,6 +13,16 @@ local.sbt
 local.conf
 **/secret.conf
 
+# Private keys — never commit one. A stray `git add -A` over a local harness
+# directory (e.g. the AWS bench rig's SSH key) is how these escape.
+# The clickhouse test certs below were already tracked when this rule landed;
+# ignore rules do not apply to tracked files, so the exceptions only record
+# that those two are deliberate rather than oversights.
+*.pem
+*.key
+!scripts/clickhouse/testing.cert.pem
+!scripts/clickhouse/testing.cert.key
+
 # bloop and metals
 .bloop
 .bsp
@@ -92,3 +102,13 @@ metrics-logs
 node_modules/
 /package-lock.json
 .vite
+
+# Local working notes and the AWS bench rig. These are scratch artifacts of an
+# investigation, not deliverables: keep them on disk, out of the history.
+/bench/
+/docs/
+/CLUSTER_INGEST_CHECKPOINT_SCOPE.md
+/cluster-wide-ingest*.md
+
+# Local scratch write-up, kept out of the repo deliberately
+BUG_UNCOMPILABLE_QUERY_NEVER_POISONS.md

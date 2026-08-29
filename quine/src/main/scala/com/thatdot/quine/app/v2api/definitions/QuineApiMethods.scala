@@ -73,8 +73,22 @@ object ApplicationApiMethods {
     * per-member backpressure callback would nest a cluster-wide broadcast inside the broadcast and
     * attribute every member's ingests to every host's snapshot.
     */
-  type LocalIngestEnumeration =
-    NamespaceId => Future[Seq[(Option[MemberIdx], String, V2IngestEntities.IngestStreamInfo)]]
+  type LocalIngestEnumeration = NamespaceId => Future[Seq[LocalIngest]]
+
+  /** One locally-running ingest, as the backpressure snapshot needs to see it.
+    *
+    * Two names, because they answer different questions. `displayName` is the logical stream the
+    * dashboard groups by, so a cluster ingest's slices roll up into the one stream they are.
+    * `metricsName` is the per-worker identity the pressure gauges were registered under
+    * ([[com.thatdot.quine.app.model.ingest2.source.DecodedSource]] keys them by the source's own
+    * name), so a slice's stage states are still findable. For a local ingest the two are equal.
+    */
+  final case class LocalIngest(
+    memberIdx: Option[MemberIdx],
+    displayName: String,
+    metricsName: String,
+    info: V2IngestEntities.IngestStreamInfo,
+  )
 
   /** Build a [[V2AdministrationEndpointEntities.BackpressureSnapshot]] for the local host from `graph`
     * alone, given a caller-supplied `hostInfo`/`persistorType` (these differ between a config-backed
@@ -141,16 +155,17 @@ object ApplicationApiMethods {
           .traverse(graph.getNamespaces.toSeq) { nsId =>
             listIngests(nsId).map { streams =>
               val ns = nsId.name
-              streams.map { case (_, name, info) =>
+              streams.map { entry =>
+                val info = entry.info
                 IngestSnapshot(
-                  name = name,
+                  name = entry.displayName,
                   namespace = ns,
                   sourceType = info.settings.source.getClass.getSimpleName.stripSuffix("$"),
                   status = info.status.toString.toUpperCase,
                   rateLimit = info.settings.maxPerSecond,
                   rate = info.stats.rates.oneMinute,
                   totalCount = info.stats.ingestedCount,
-                  stages = ingestStages(ns, name),
+                  stages = ingestStages(ns, entry.metricsName),
                 )
               }
             }
@@ -350,7 +365,14 @@ trait ApplicationApiMethods {
     // (OSS/Novelty), whose IngestStreamState reads local state. Enterprise overrides this whole
     // method with a cluster broadcast and supplies its own local enumeration per member.
     val listLocalIngests: Option[ApplicationApiMethods.LocalIngestEnumeration] = app match {
-      case iss: IngestStreamState => Some(iss.getV2IngestStreams(_, None))
+      case iss: IngestStreamState =>
+        Some(ns =>
+          iss
+            .getV2IngestStreams(ns, None)
+            .map(_.map { case (idx, name, info) =>
+              ApplicationApiMethods.LocalIngest(idx, name, name, info)
+            })(ExecutionContext.parasitic),
+        )
       case _ => None
     }
 

@@ -79,6 +79,7 @@ object VariableRewriter {
       case query: SetProperty => convertSetProperty(query, columnsIn)
       case query: SetProperties => convertSetProperties(query, columnsIn)
       case query: SetEdge => convertSetEdge(query, columnsIn)
+      case query: SetHalfEdge => convertSetHalfEdge(query, columnsIn)
       case query: SetLabels => convertSetLabels(query, columnsIn)
       case query: EagerAggregation[Location.OnNode @unchecked] =>
         convertEagerAggregation(query, columnsIn)
@@ -143,6 +144,11 @@ object VariableRewriter {
         columns = andThen.columns,
       )
     }
+
+    protected def convertSetHalfEdge(
+      query: SetHalfEdge,
+      columnsIn: Columns,
+    ): SetHalfEdge = query.copy(columns = columnsIn)
 
     protected def convertSetLabels(
       query: SetLabels,

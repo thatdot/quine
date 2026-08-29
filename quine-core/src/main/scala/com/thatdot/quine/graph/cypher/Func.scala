@@ -821,7 +821,10 @@ object Func {
   ) {
     override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
-        case Vector(Expr.Str(str)) => Expr.Str(str.toLowerCase())
+        // Locale-pinned: the no-argument overload reads the JVM default locale, so two
+        // hosts with different defaults (Turkish dotted-I) disagree, which `isPure` and
+        // cross-member re-evaluation both forbid.
+        case Vector(Expr.Str(str)) => Expr.Str(str.toLowerCase(java.util.Locale.ROOT))
         case other => throw wrongSignature(other)
       }
   }
@@ -834,7 +837,8 @@ object Func {
   ) {
     override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
-        case Vector(Expr.Str(str)) => Expr.Str(str.toUpperCase())
+        // Locale-pinned; see ToLower.
+        case Vector(Expr.Str(str)) => Expr.Str(str.toUpperCase(java.util.Locale.ROOT))
         case other => throw wrongSignature(other)
       }
   }

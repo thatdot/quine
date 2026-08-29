@@ -55,6 +55,7 @@ case class SetStandingQueryState(
   payloadSize: Option[Int],
 ) extends PersistorCall
 case class SetMetaData(key: String, payloadSize: Option[Int]) extends PersistorCall
+case class SetMetaDataIfValue(key: String, payloadSize: Option[Int]) extends PersistorCall
 case class GetMetaData(key: String) extends PersistorCall
 case object GetAllMetaData extends PersistorCall
 case class PersistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]) extends PersistorCall

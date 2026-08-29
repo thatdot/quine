@@ -4,12 +4,14 @@ import scala.util.control.NoStackTrace
 
 import com.thatdot.quine.exceptions.{
   DuplicateIngestException,
+  FileIngestPathUnresolvable,
   FileIngestSecurityException,
   IngestSourceFormatException,
   KafkaValidationException,
   NamespaceNotFoundException,
   ShardIterationException,
 }
+import com.thatdot.quine.graph.behavior.NodeStoppedWhilePausedException
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
 import com.thatdot.quine.graph.{
@@ -102,7 +104,9 @@ object QuineError {
     case e: ShardIterationException => Some(e)
     case e: KafkaValidationException => Some(e)
     case e: FileIngestSecurityException => Some(e)
+    case e: FileIngestPathUnresolvable => Some(e)
     case e: IngestSourceFormatException => Some(e)
+    case e: NodeStoppedWhilePausedException => Some(e)
     case _ => None
   }
 }

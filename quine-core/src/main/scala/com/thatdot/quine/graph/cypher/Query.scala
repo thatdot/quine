@@ -903,6 +903,43 @@ object Query {
     def children: Seq[Query[Location]] = Seq(andThen)
   }
 
+  /** Write ONE half of an edge (this node's half only), with no hop to the
+    * other endpoint and no reciprocal write. The complement of [[SetEdge]],
+    * which writes the local half and then ships the reciprocal (plus the
+    * query continuation) to the other node.
+    *
+    * Exists for scattered ingest execution: a query decomposed into
+    * per-anchor fragments writes each endpoint's half-edge from that
+    * endpoint's own fragment, so no fragment ever messages another node. An
+    * edge whose both halves are written this way is exactly as atomic as a
+    * [[SetEdge]] edge: Quine edges have always been two half-edges written by
+    * separate events; only the sender changes.
+    *
+    * A leaf effect (compare [[SetLabels]]): it mutates and yields its input
+    * context; sequencing composes in the surrounding plan.
+    *
+    * @param label the label of the edge
+    * @param direction the direction of the half-edge from this node
+    * @param target expression evaluating to the other endpoint (node or id)
+    * @param add are we adding or removing the half-edge?
+    */
+  final case class SetHalfEdge(
+    label: Symbol,
+    direction: EdgeDirection,
+    target: Expr,
+    add: Boolean,
+    columns: Columns = Columns.Omitted,
+  ) extends Query[Location.OnNode] {
+    def isReadOnly: Boolean = false
+    def cannotFail: Boolean = false // target may not be node-like
+    def canDirectlyTouchNode: Boolean = true
+    def isIdempotent: Boolean = target.isPure // half-edges are a set: re-adding is a no-op
+    def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): SetHalfEdge =
+      copy(target = target.substitute(parameters))
+    def children: Seq[Query[Location]] = Seq.empty
+  }
+
   /** Mutate labels of a node
     *
     * @param nodeVar the name of the node variable being derefenced. If this is present in the QueryContext, its value

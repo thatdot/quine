@@ -1,8 +1,10 @@
 package com.thatdot.quine.persistor
 
+import java.util.concurrent.atomic.AtomicReference
+
 import scala.concurrent.ExecutionContext.parasitic
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 
 import org.apache.pekko.stream.Materializer
 
@@ -219,6 +221,99 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
   )
 
   protected def internalSetMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit]
+
+  /** Serializes this process's own conditional writes.
+    *
+    * A `synchronized` block cannot do this: it would release at the moment the Future is
+    * returned, not when the write completes, so two conditional writes would still interleave their
+    * read and write halves: the exact race the method exists to detect, reintroduced inside the
+    * thing detecting it. Chaining is what actually holds the window closed.
+    *
+    * One chain per persistor, not per key, so a slow write to one key delays the next conditional
+    * write to any other. The exclusion only has to cover writers of the SAME key; the rest is cost,
+    * and it is affordable because every caller is control plane (fence claims, cluster metadata) at
+    * rates measured in writes per reconcile tick. A per-key map would remove the coupling and would
+    * have to answer when an idle key's entry is removed, which is a harder question than the
+    * contention is worth here.
+    */
+  private val conditionalWriteChain = new AtomicReference[Future[Any]](Future.unit)
+
+  /** Compare-and-set a metadata key: write `newValue` only if the stored value is still exactly
+    * `expected`.
+    *
+    * The witness is the previous VALUE, not a version counter, so this needs no extra column and
+    * no schema migration. That does mean an A→B→A sequence would let a writer holding the first
+    * `A` succeed, so a caller that needs strict ordering must make its own values non-repeating,
+    * which is what the versioned envelope in the cluster metadata codecs does,
+    * and why that discipline lives with the caller rather than here.
+    *
+    * `expected` of [[None]] asserts the key is currently ABSENT, which is how a first write
+    * claims a key without racing another claimant.
+    *
+    * A key written this way must NEVER also be written through [[setMetaData]]. An unconditional
+    * write is invisible to a compare-and-set in progress (on Cassandra literally so, since only
+    * conditional statements are serialized against each other), so one blind write anywhere in the
+    * codebase silently removes the guarantee from every careful writer of that key. The
+    * failure leaves no trace: the compare-and-set reports success for a write that was already
+    * overwritten.
+    *
+    * @param key      name of the metadata - must be nonempty
+    * @param expected the value the caller last observed ([[None]] = expected to be absent)
+    * @param newValue what to store ([[None]] corresponds to clearing out the value)
+    */
+  def setMetaDataIfValue(
+    key: String,
+    expected: Option[Array[Byte]],
+    newValue: Option[Array[Byte]],
+  ): Future[ConditionalWriteResult] = wrapException(
+    SetMetaDataIfValue(key, newValue.map(_.length)),
+    internalSetMetaDataIfValue(key, expected, newValue),
+  )
+
+  /** Default: read, compare, write, with this process's conditional writes serialized against each
+    * other.
+    *
+    * This is the honest general implementation, not a fallback that gives up the guarantee.
+    *
+    *   - On a store owned by one process it is EXACTLY as strong as an engine-level
+    *     compare-and-set, because the only writer that could interleave is this one, and the
+    *     chain above excludes it.
+    *   - On a shared store it is weaker than an engine-level compare-and-set but strictly
+    *     stronger than the unconditional write it replaces: it catches every competing write
+    *     except one landing inside the read-write window, and it can never perform a write an
+    *     unconditional writer would not have performed. There is no deployment this makes worse.
+    *
+    * A persistor for a store MORE THAN ONE PROCESS CAN WRITE must override this with the store's
+    * own conditional write. That is a requirement, not a preference: the cluster-ingest
+    * coordinator derives its fencing rank from the version a conditional write lands at, and two
+    * processes that can both land the same version give two coordinator incarnations the same
+    * rank. Everything single-process (RocksDB, MapDB, in-memory) wants this implementation exactly
+    * as it stands.
+    */
+  protected def internalSetMetaDataIfValue(
+    key: String,
+    expected: Option[Array[Byte]],
+    newValue: Option[Array[Byte]],
+  ): Future[ConditionalWriteResult] = {
+    def sameBytes(a: Option[Array[Byte]], b: Option[Array[Byte]]): Boolean = (a, b) match {
+      case (None, None) => true
+      case (Some(x), Some(y)) => java.util.Arrays.equals(x, y)
+      case _ => false
+    }
+    def attempt(): Future[ConditionalWriteResult] =
+      internalGetMetaData(key).flatMap { current =>
+        if (!sameBytes(current, expected)) Future.successful(ConditionalWriteResult.Conflict(current))
+        else internalSetMetaData(key, newValue).map(_ => ConditionalWriteResult.Written)(parasitic)
+      }(parasitic)
+
+    // Queue behind whatever conditional write is already in flight here, whether it succeeded or
+    // failed: a failed predecessor still finished touching the key, and refusing to run after it
+    // would strand the chain permanently.
+    val started = Promise[ConditionalWriteResult]()
+    val predecessor = conditionalWriteChain.getAndSet(started.future)
+    predecessor.onComplete(_ => started.completeWith(attempt()))(parasitic)
+    started.future
+  }
 
   /** Update (or remove) a local metadata key.
     * For a local persistor, this is the same as setMetaData.

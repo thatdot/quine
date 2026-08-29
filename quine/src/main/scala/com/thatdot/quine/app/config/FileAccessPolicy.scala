@@ -1,12 +1,12 @@
 package com.thatdot.quine.app.config
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{AccessDeniedException, Files, InvalidPathException, Path, Paths}
 
 import cats.data.ValidatedNel
 import cats.implicits._
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.exceptions.FileIngestSecurityException
+import com.thatdot.quine.exceptions.{FileIngestPathUnresolvable, FileIngestSecurityException}
 import com.thatdot.quine.util.BaseError
 
 /** File access policy for ingest security
@@ -174,8 +174,20 @@ object FileAccessPolicy extends LazySafeLogging {
         }
       }
     } catch {
+      // A path string the platform will not parse is an ANSWER: the same string parses the same
+      // way every time, so this belongs with the denials above.
+      case e: InvalidPathException =>
+        FileIngestSecurityException(s"Invalid file path: $pathString - ${e.getMessage}").invalidNel[Path]
+      // So is the filesystem refusing to look: something with the authority to decide said no,
+      // and asking again asks a question that has been answered.
+      case e: AccessDeniedException =>
+        FileIngestSecurityException(s"Access denied for file path: $pathString - ${e.getMessage}").invalidNel[Path]
+      // Everything else reaching here came out of `toRealPath`, which asks a live filesystem. It
+      // throws when the file is absent, when the volume holding it is not mounted, and when the
+      // attempt simply fails, and none of those say the next attempt fails too. Typing them as a
+      // security exception is what made a caller unable to tell a denial from a stalled mount --
+      // the denial stops an ingest, and the mount ought to be waited out.
       case e: Exception =>
-        FileIngestSecurityException(s"Invalid file path: $pathString - ${e.getMessage}")
-          .invalidNel[Path]
+        FileIngestPathUnresolvable(s"Could not resolve file path: $pathString - ${e.getMessage}").invalidNel[Path]
     }
 }

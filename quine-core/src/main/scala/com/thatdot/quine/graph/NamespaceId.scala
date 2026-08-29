@@ -1,6 +1,12 @@
 package com.thatdot.quine.graph
 
+import com.thatdot.quine.verify.VerifyObservedOnly
+
 /** A namespace identifier. Construct via [[NamespaceId.apply]], which throws on invalid names. */
+@VerifyObservedOnly(
+  "ingest_channels",
+  "Identity only: the channel protocol scopes a slice by namespace and never reads the name",
+)
 final case class NamespaceId private (name: String) extends AnyVal
 
 object NamespaceId {

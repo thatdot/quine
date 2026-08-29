@@ -255,6 +255,7 @@ trait OnNodeInterpreter
       case query: SetProperty => interpretSetProperty(query, context)
       case query: SetProperties => interpretSetProperties(query, context)
       case query: SetEdge => interpretSetEdge(query, context)
+      case query: SetHalfEdge => interpretSetHalfEdge(query, context)
       case query: SetLabels => interpretSetLabels(query, context)
       case query: EagerAggregation[Location.OnNode @unchecked] => interpretEagerAggregation(query, context)
       case query: Delete => interpretDelete(query, context)
@@ -766,6 +767,27 @@ trait OnNodeInterpreter
     InterpM
       .futureSourceUnsafe(setThisHalf.flatMap(_ => setOtherHalf)(cypherEc))
       .map(_.result)
+  }
+
+  final private[quine] def interpretSetHalfEdge(
+    query: SetHalfEdge,
+    context: QueryContext,
+  )(implicit
+    parameters: Parameters,
+    logConfig: LogConfig,
+  ): InterpM[CypherException, QueryContext] = {
+    val otherVal = query.target.evalUnsafe(context)
+    val other: QuineId = getQuineId(otherVal).getOrElse {
+      throw CypherException.TypeMismatch(
+        expected = Seq(Type.Node),
+        actualValue = otherVal,
+        context = "one extremity of a half-edge we are modifying",
+      )
+    }
+    val edge: HalfEdge = HalfEdge(query.label, query.direction, other)
+    val event = if (query.add) EdgeAdded(edge) else EdgeRemoved(edge)
+    // This node's half only: the reciprocal half is some other fragment's job.
+    InterpM.liftFutureUnsafe(processEdgeEvents(event :: Nil).map(_ => context)(cypherEc))
   }
 
   final private[quine] def interpretSetLabels(

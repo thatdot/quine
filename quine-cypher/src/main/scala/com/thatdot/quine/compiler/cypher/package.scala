@@ -118,7 +118,10 @@ package object cypher {
       }
 
       val paramArray = IndexedSeq.newBuilder[Value]
-      for ((paramName, paramJavaValue) <- astState.extractedParams()) {
+      // Sorted because the front-end hands back extracted literals in identity-hash order,
+      // which differs between JVMs. Two hosts compiling the same text must assign the same
+      // parameter indices or their plans disagree.
+      for ((paramName, paramJavaValue) <- astState.extractedParams().toSeq.sortBy(_._1)) {
         val paramValue = Value.fromAny(paramJavaValue).getOrThrow
         paramsIdxMap += (paramName -> idx)
         paramArray += paramValue

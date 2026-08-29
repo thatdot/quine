@@ -52,6 +52,7 @@ class BackpressureStoreTest extends AnyFunSuite with Matchers with OptionValues 
     source: String = "FLOWING",
     namespace: String = "default",
     rateLimit: Option[Int] = None,
+    serverRate: Double = 0.0,
   ) =
     V2IngestSnapshot(
       name = name,
@@ -59,7 +60,7 @@ class BackpressureStoreTest extends AnyFunSuite with Matchers with OptionValues 
       sourceType = "NumberIterator",
       status = status,
       rateLimit = rateLimit,
-      rate = 0.0,
+      rate = serverRate,
       totalCount = totalCount,
       stages = V2IngestStages(source = source, preGraphWrite = "FLOWING", postGraphWrite = None),
     )
@@ -236,6 +237,104 @@ class BackpressureStoreTest extends AnyFunSuite with Matchers with OptionValues 
 
     // A partial cap is no cluster-wide cap, so no "of y/s" is shown at all.
     store.view(Scope.Cluster).value.ingests.loneElement.rateLimit shouldBe None
+  }
+
+  // ── Several entries under one name on ONE host: every slice of a cluster ingest it holds ──
+
+  test("every slice a host runs counts, not just the first one it reported") {
+    val store = new BackpressureStore
+    // Four slices of one cluster ingest, all placed on the same host: the ordinary case, since
+    // slices prefer hot spares. Each slice runs at 10/s.
+    def poll(ts: Double, each: Long) =
+      Seq(snap(h0, ts, ingests = (0 until 4).map(_ => ingest("sliced", each))))
+    store.record(poll(T0, 0))
+    store.record(poll(T0 + 10000, 100))
+
+    val view = store.view(Scope.Cluster).value.ingests.loneElement
+    view.totalCount shouldBe 400L // all four slices, not one of them
+    view.rate shouldBe 40.0
+    view.rateLimit shouldBe None
+  }
+
+  test("one backpressured slice is not hidden by the flowing slices beside it") {
+    val store = new BackpressureStore
+    def poll(ts: Double) = Seq(
+      snap(
+        h0,
+        ts,
+        ingests = Seq(
+          ingest("sliced", 10, source = "FLOWING"),
+          ingest("sliced", 10, source = "BACKPRESSURED"),
+          ingest("sliced", 10, source = "FLOWING"),
+        ),
+      ),
+    )
+    store.record(poll(T0))
+    store.record(poll(T0 + 5000))
+
+    val view = store.view(Scope.Cluster).value.ingests.loneElement
+    view.source.combined shouldBe PressureLevel.Backpressured
+    // The host holding the stuck slice is named, so the diagram can still point somewhere.
+    view.source.perHost.map(_._1.memberIdx) shouldBe Seq(Some(0))
+  }
+
+  test("a failed slice is not hidden by the running slices beside it") {
+    val store = new BackpressureStore
+    def poll(ts: Double) = Seq(
+      snap(
+        h0,
+        ts,
+        ingests = Seq(ingest("sliced", 10), ingest("sliced", 10, status = "FAILED"), ingest("sliced", 10)),
+      ),
+    )
+    store.record(poll(T0))
+    store.record(poll(T0 + 5000))
+
+    store.view(Scope.Cluster).value.ingests.loneElement.status shouldBe "FAILED"
+  }
+
+  test("a slice that has finished does not stop the card reading as running") {
+    val store = new BackpressureStore
+    def poll(ts: Double) =
+      Seq(snap(h0, ts, ingests = Seq(ingest("sliced", 10, status = "COMPLETED"), ingest("sliced", 10))))
+    store.record(poll(T0))
+    store.record(poll(T0 + 5000))
+
+    store.view(Scope.Cluster).value.ingests.loneElement.status shouldBe "RUNNING"
+  }
+
+  test("a slice arriving on a host does not manufacture a throughput spike") {
+    val store = new BackpressureStore
+    // One slice on the host, at 10/s by its own counter and saying so in the server's EWMA.
+    store.record(Seq(snap(h0, T0, ingests = Seq(ingest("sliced", 0, serverRate = 10.0)))))
+    store.record(Seq(snap(h0, T0 + 10000, ingests = Seq(ingest("sliced", 100, serverRate = 10.0)))))
+    store.view(Scope.Cluster).value.ingests.loneElement.rate shouldBe 10.0
+
+    // A second slice relocates onto this host, carrying the 5000 records it already ingested
+    // elsewhere. The host's summed counter steps by 5100, and differencing across that step would
+    // report ~510/s. The entry count changed, so the server's EWMA answers for this poll instead.
+    store.record(
+      Seq(
+        snap(
+          h0,
+          T0 + 20000,
+          ingests = Seq(ingest("sliced", 200, serverRate = 10.0), ingest("sliced", 5000, serverRate = 10.0)),
+        ),
+      ),
+    )
+    store.view(Scope.Cluster).value.ingests.loneElement.rate shouldBe 20.0 // 10 + 10, both EWMAs
+
+    // Once the count is stable again, differencing resumes: 100 + 100 records in 10s.
+    store.record(
+      Seq(
+        snap(
+          h0,
+          T0 + 30000,
+          ingests = Seq(ingest("sliced", 300, serverRate = 10.0), ingest("sliced", 5100, serverRate = 10.0)),
+        ),
+      ),
+    )
+    store.view(Scope.Cluster).value.ingests.loneElement.rate shouldBe 20.0
   }
 
   test("a member joining does not manufacture a throughput spike") {

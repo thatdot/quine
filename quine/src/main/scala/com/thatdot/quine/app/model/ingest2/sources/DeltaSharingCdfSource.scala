@@ -99,6 +99,7 @@ case class DeltaSharingCdfSource(
   meter: IngestMeter,
   persistor: Option[(PrimePersistor, MemberIdx)] = None,
   certTokenAcquirer: Option[OAuthCertificateAuth => Future[String]] = None,
+  cursorScope: Option[String] = None,
 )(implicit val system: ActorSystem)
     extends LazySafeLogging {
 
@@ -122,9 +123,18 @@ case class DeltaSharingCdfSource(
 
   /** Persistence key for the version cursor. Scoped by ingest stream coordinates
     * so multiple ingests against different tables don't collide.
+    *
+    * `cursorScope`, when provided, must distinguish INSTANCES of a same-named ingest: the name
+    * alone is reused verbatim by a delete-then-recreate, and a new ingest reading the deleted
+    * one's cursor resumes from a version it was never asked to start at, silently skipping the
+    * beginning of its own range. Callers that can mint an instance identity (cluster ingest's
+    * incarnation) pass it here; a `None` keeps the historical key so existing cursors survive an
+    * upgrade.
     */
-  private val cursorKey: String =
-    s"delta-sharing-cursor:$ingestName:$shareName/$schemaName/$tableName"
+  private val cursorKey: String = {
+    val scopedName = cursorScope.fold(ingestName)(scope => s"$scope:$ingestName")
+    s"delta-sharing-cursor:$scopedName:$shareName/$schemaName/$tableName"
+  }
 
   /** The last version confirmed by the ack flow (after Cypher execution).
     * The poll loop reads this to know which versions have been fully processed.

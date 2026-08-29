@@ -136,6 +136,31 @@ object V2ApiTypes {
       } yield V2IngestInfo(name, status, message, sourceType, sourceId, stats, memberIdx, c.value)
   }
 
+  /** Mirrors `com.thatdot.quine.app.v2api.definitions.ApiClusterIngest` (fields subset).
+    *
+    * Only what a poisoned-but-unassigned cluster ingest needs to render as a card: it has no
+    * live worker anywhere, so none of `V2IngestInfo`'s throughput/stats fields have a value to
+    * report. `failure` is the one field this type exists for — present on a poisoned ingest,
+    * absent otherwise.
+    *
+    * @see [[quine-enterprise/src/main/scala/com/thatdot/quine/app/v2api/definitions/ApiClusterIngest.scala]]
+    */
+  final case class V2ClusterIngestInfo(
+    name: String,
+    namespace: String,
+    goal: String,
+    failure: Option[String],
+  )
+  object V2ClusterIngestInfo {
+    implicit val decoder: Decoder[V2ClusterIngestInfo] = (c: HCursor) =>
+      for {
+        name <- c.downField("name").as[String]
+        namespace <- c.downField("namespace").as[String]
+        goal <- c.downField("goal").as[String]
+        failure <- c.get[Option[String]]("failure")
+      } yield V2ClusterIngestInfo(name, namespace, goal, failure)
+  }
+
   /** Mirrors `com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryStats` (fields subset).
     * @see [[public/quine/src/main/scala/com/thatdot/quine/app/v2api/definitions/query/standing/StandingQueryStats.scala]]
     */

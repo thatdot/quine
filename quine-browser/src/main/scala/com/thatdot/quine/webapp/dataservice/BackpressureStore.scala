@@ -187,11 +187,18 @@ final class BackpressureStore {
       // its member in the tooltip — for the whole retention window. Gating on `samples.last` drops it
       // on the next poll instead. A host that has merely gone silent still carries the ingest in its
       // last snapshot, so its last-known contribution is kept (and flagged via `hostsReporting`).
-      val perHost: Seq[(HostRef, Vector[(Double, V2IngestSnapshot)])] = inScope.flatMap { case (host, samples) =>
+      //
+      // One host can report SEVERAL entries under one name: every cluster-ingest slice it holds
+      // reports under the ingest's name, and slices prefer hot spares, so all of them on one host is
+      // the ordinary case rather than the exception. Every entry counts: reading one and dropping
+      // the rest shows a quarter of the throughput and lets three backpressured slices hide behind
+      // the one that was flowing.
+      val perHost: Seq[(HostRef, Vector[(Double, Seq[V2IngestSnapshot])])] = inScope.flatMap { case (host, samples) =>
         if (!samples.last.ingests.exists(i => i.namespace == ns && i.name == name)) None
         else
           Some(host -> samples.flatMap { s =>
-            s.ingests.find(i => i.namespace == ns && i.name == name).map(s.timestamp -> _)
+            val entries = s.ingests.filter(i => i.namespace == ns && i.name == name)
+            if (entries.isEmpty) None else Some(s.timestamp -> entries)
           })
       }
 
@@ -199,36 +206,56 @@ final class BackpressureStore {
       // counters first. Summing raw counters across members and then differencing would turn a
       // membership change into a phantom throughput spike, since a member joining or leaving is a step
       // change in the total that has nothing to do with throughput.
-      val rate: Double = perHost.map { case (_, series) =>
-        latestRate(series.map { case (t, i) => (t, i.totalCount) }).getOrElse(series.last._2.rate)
-      }.sum
-      val totalCount: Long = perHost.map { case (_, series) => series.last._2.totalCount }.sum
+      //
+      // A host's own entries are summed before differencing, which is the same hazard one level down:
+      // a slice arriving or leaving steps that sum. The wire carries no slice identity to difference
+      // each series separately (and the entries arrive in map order, so position is not one either),
+      // so a poll whose entry count changed falls back to the server's EWMA rather than reporting the
+      // step as throughput.
+      def hostRate(series: Vector[(Double, Seq[V2IngestSnapshot])]): Double = {
+        val countStable = series.takeRight(2) match {
+          case Vector((_, prev), (_, last)) => prev.sizeIs == last.size
+          case _ => false
+        }
+        val summed = series.map { case (t, entries) => (t, entries.map(_.totalCount).sum) }
+        (if (countStable) latestRate(summed) else None).getOrElse(series.last._2.map(_.rate).sum)
+      }
+      val rate: Double = perHost.map { case (_, series) => hostRate(series) }.sum
+      val totalCount: Long = perHost.map { case (_, series) => series.last._2.map(_.totalCount).sum }.sum
+
+      // Every entry in the latest snapshot of every host still running this ingest.
+      val latestEntries: Seq[V2IngestSnapshot] = perHost.flatMap(_._2.last._2)
 
       // A stage's level is the latest snapshot's state, read only where the ingest is RUNNING: a
       // stopped stream's gauge is deregistered or sitting un-pulled at its initial "backpressured"
       // value, so a paused ingest would otherwise read as backpressured. Status, not the gauge, is the
-      // authority. Reduced to the worst member, attribution retained.
+      // authority. Reduced to the worst member, attribution retained, and within a member to the
+      // worst of its entries, so one backpressured slice colours the host that holds it.
       def levelAgg(f: V2IngestStages => Option[String]): Aggregated[PressureLevel] =
         worstLevelAcross(perHost.flatMap { case (host, series) =>
-          val latest = series.last._2
-          if (latest.status == "RUNNING") f(latest.stages).map(s => host -> PressureLevel.fromWire(s)) else None
+          series.last._2
+            .filter(_.status == "RUNNING")
+            .flatMap(e => f(e.stages))
+            .map(PressureLevel.fromWire)
+            .maxOption
+            .map(host -> _)
         })
 
-      // Config fields are member-uniform; take the lowest member's (perHost follows the sorted scope).
-      val repr = perHost.head._2.last._2
+      // Config fields are uniform across a name; take the lowest member's (perHost follows the sorted
+      // scope).
+      val repr = perHost.head._2.last._2.head
       // The rate is summed across members, so the limit must be too, or the card compares a
-      // cluster-wide throughput against a single member's cap ("2/s of 1/s"). Each member throttles
-      // its own instance independently, so the cluster's effective cap is the sum of the per-member
-      // caps. If any member is unthrottled the aggregate has no clean cap, so it reads as unlimited.
+      // cluster-wide throughput against a single member's cap ("2/s of 1/s"). Each entry throttles
+      // itself independently, so the effective cap is the sum of theirs. If any is unthrottled the
+      // aggregate has no clean cap, so it reads as unlimited.
       val rateLimit: Option[Int] =
-        if (perHost.forall(_._2.last._2.rateLimit.isDefined))
-          Some(perHost.map(_._2.last._2.rateLimit.get).sum)
+        if (latestEntries.forall(_.rateLimit.isDefined)) Some(latestEntries.flatMap(_.rateLimit).sum)
         else None
       IngestView(
         name = name,
         namespace = ns,
         sourceType = repr.sourceType,
-        status = repr.status,
+        status = worstStatus(latestEntries.map(_.status)),
         rateLimit = rateLimit,
         rate = rate,
         totalCount = totalCount,
@@ -236,7 +263,7 @@ final class BackpressureStore {
         source = levelAgg(st => Some(st.source)),
         preGraphWrite = levelAgg(st => Some(st.preGraphWrite)),
         postGraphWrite =
-          if (perHost.exists(_._2.last._2.stages.postGraphWrite.isDefined)) Some(levelAgg(_.postGraphWrite))
+          if (perHost.exists(_._2.last._2.exists(_.stages.postGraphWrite.isDefined))) Some(levelAgg(_.postGraphWrite))
           else None,
       )
     }
@@ -440,6 +467,23 @@ object BackpressureStore {
     */
   private def worstLevelAcross(per: Seq[(HostRef, PressureLevel)]): Aggregated[PressureLevel] =
     Aggregated(if (per.isEmpty) PressureLevel.Flowing else per.map(_._2).max, per)
+
+  /** What one card says when the entries collapsed into it disagree, most alarming first. A failed
+    * slice must not hide behind three running ones, and a still-running slice must not hide behind
+    * three that finished, so RUNNING outranks COMPLETED while everything abnormal outranks both. An
+    * unrecognized status sorts behind every known one, so a status added server-side cannot
+    * displace FAILED here.
+    */
+  private val StatusPrecedence: Vector[String] =
+    Vector("FAILED", "TERMINATED", "RESTORED", "PAUSED", "RUNNING", "COMPLETED")
+
+  private def worstStatus(statuses: Seq[String]): String =
+    statuses
+      .minByOption { s =>
+        val i = StatusPrecedence.indexOf(s)
+        if (i < 0) Int.MaxValue else i
+      }
+      .getOrElse("RUNNING")
 
   /** The rate from the two most recent cumulative readings of one series on one host:
     * `(last - prev) / elapsed`. This is the most responsive rate the data supports — one poll

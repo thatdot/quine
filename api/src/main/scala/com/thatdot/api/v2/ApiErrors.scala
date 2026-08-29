@@ -5,8 +5,8 @@ import java.util.UUID
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
-import sttp.model.StatusCode
-import sttp.tapir.{EndpointOutput, Schema, oneOf, oneOfVariantValueMatcher, statusCode}
+import sttp.model.{HeaderNames, StatusCode}
+import sttp.tapir.{EndpointOutput, Schema, header, oneOf, oneOfVariantValueMatcher, statusCode}
 
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances._
 import com.thatdot.api.v2.schema.TapirJsonConfig.jsonBody
@@ -280,6 +280,29 @@ object ErrorResponseHelpers extends LazySafeLogging {
         .description(ErrorText.notFoundDescription(possibleReasons: _*))
     }
 
+  /** 503 for a transient, server-side condition the caller can clear by trying again.
+    *
+    * Carries a fixed `Retry-After`, because the whole point of distinguishing this from a 400 is
+    * that a retry is the correct next move, and a status code that says "retry" without saying when
+    * leaves every client to invent its own delay. One second is generous for what produces
+    * this (a metadata round trip, or a singleton catching up after a hand-over) and short enough
+    * that a caller which honours it does not look hung.
+    *
+    * Deliberately NOT for a request that is wrong: a 400 tells a client to stop, and retry
+    * libraries obey it. Anything the caller could fix belongs in [[badRequestError]].
+    */
+  def serviceUnavailableError(possibleReasons: String*)(implicit
+    enc: Encoder[ErrorResponse.ServiceUnavailable],
+    dec: Decoder[ErrorResponse.ServiceUnavailable],
+    sch: Schema[ErrorResponse.ServiceUnavailable],
+  ): EndpointOutput[ErrorResponse.ServiceUnavailable] =
+    statusCode(StatusCode.ServiceUnavailable)
+      .and(header(HeaderNames.RetryAfter, "1"))
+      .and {
+        jsonBody[ErrorResponse.ServiceUnavailable]
+          .description(ErrorText.serviceUnavailableDescription(possibleReasons: _*))
+      }
+
   def unauthorizedError(possibleReasons: String*)(implicit
     enc: Encoder[ErrorResponse.Unauthorized],
     dec: Decoder[ErrorResponse.Unauthorized],
@@ -366,6 +389,17 @@ object ErrorText {
        |
        |""".stripMargin
 
+  private val serviceUnavailableDoc =
+    """Service Unavailable
+      |
+      |  The request was well-formed, but the server is temporarily unable to serve it.
+      |  Nothing about the request needs to change: retry it after the delay given in the
+      |  `Retry-After` response header.
+      |
+      |  %s
+      |
+      |""".stripMargin
+
   private val forbiddenDoc =
     s"""Forbidden
        |
@@ -392,6 +426,9 @@ object ErrorText {
 
   def serverErrorDescription(messages: String*): String =
     buildErrorMessage(serverErrorDoc, messages)
+
+  def serviceUnavailableDescription(messages: String*): String =
+    buildErrorMessage(serviceUnavailableDoc, messages)
 
   def unauthorizedErrorDescription(messages: String*): String =
     buildErrorMessage(unauthorizedDoc, messages)

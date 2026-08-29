@@ -15,6 +15,7 @@ import com.thatdot.common.logging.Pretty.PrettyHelper
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log.implicits._
+import com.thatdot.quine.util.QuineError
 
 /** Functionality for pausing the processing of messages while a future completes.
   *
@@ -57,6 +58,38 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
 
   def enqueueCallback(callback: Pending[_]): Unit =
     pendingCallbacks.append(callback)
+
+  /** Anything still paused when this actor stops will otherwise never be answered.
+    *
+    * [[pauseMessageProcessingUntil]] hands its caller a future that completes only when the
+    * self-sent [[StashedResultDelivery]] drains the queue. Stopping the actor first (a purge, or a
+    * sleep decided while a write is still in flight) sends that message to dead letters, and
+    * the promise is then neither completed nor failed. The caller waits forever, and nothing
+    * notices: there is no ask in front of it to time out, and retry machinery only fires on
+    * failure, so silence is invisible to both.
+    *
+    * Failing them is what makes the loss observable. The callers that matter run under
+    * at-least-once retry, which re-runs the work against whatever node replaces this one.
+    */
+  override def postStop(): Unit = {
+    if (pendingCallbacks.nonEmpty || messageBuffer.nonEmpty) {
+      val stopped = NodeStoppedWhilePausedException(qid.toString, pendingCallbacks.size, messageBuffer.size)
+      log.info(
+        safe"Node stopped with paused work: failing ${Safe(pendingCallbacks.size.toString)} callback(s) and " +
+        safe"dropping ${Safe(messageBuffer.size.toString)} stashed message(s); callers retry against its replacement",
+      )
+      pendingCallbacks.foreach {
+        case p: Pending[_] => p.promise.tryFailure(stopped): Unit
+        case r: Ready[_] => r.promise.tryFailure(stopped): Unit
+      }
+      pendingCallbacks.clear()
+      // The stashed envelopes die with the actor too. Dead-lettering them at least puts the loss
+      // somewhere a reader can find it, rather than dropping them silently.
+      messageBuffer.foreach(e => context.system.deadLetters.tell(e.message, e.sender))
+      messageBuffer.clear()
+    }
+    super.postStop()
+  }
 
   def addResultToCallback[A](findId: Int, result: Try[A], isResultLogSafe: Boolean): Unit =
     pendingCallbacks.indexWhere(_.id == findId) match {
@@ -220,6 +253,29 @@ final case class StashedMessage(msg: Any)
   * @param result The value returned from the completed future.
   */
 final case class StashedResultDelivery[A](id: Int, result: Try[A])
+
+/** A node actor stopped while it still had paused work.
+  *
+  * Retriable, but at-least-once rather than never-attempted. The paused future is already running
+  * when it reaches `pauseMessageProcessingUntil`, and a `Ready` callback is one whose result has
+  * already arrived, so the work may well have finished. What did not run is the callback that
+  * applies its effects. A retry against the replacement node can therefore repeat a durable write.
+  *
+  * A [[QuineError]] (and registered in the message pickler beside the others), so that a node on
+  * ANOTHER member says the same thing. `AnyError.fromThrowable` renders anything
+  * `QuineError.fromThrowable` does not name as `AnyError.GenericError`, whose type nothing can
+  * match on, and a caller that cannot recognize this failure treats it as terminal -- which would
+  * make the retry above a property of where the node happened to live.
+  *
+  * `node` is the rendered id rather than a `QuineId` so the wire form needs only primitive
+  * picklers; nothing reads these fields except the message.
+  */
+final case class NodeStoppedWhilePausedException(node: String, pending: Int, stashed: Int)
+    extends Exception(
+      s"Node $node stopped while message processing was paused: " +
+      s"$pending pending callback(s) and $stashed stashed message(s) abandoned",
+    )
+    with QuineError
 
 object StashedMessage {
 

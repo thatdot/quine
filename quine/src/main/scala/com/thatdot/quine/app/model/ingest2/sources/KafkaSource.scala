@@ -90,6 +90,37 @@ object KafkaSource {
       .withProperties(properties)
   }
 
+  /** The properties any Kafka client for this ingest must be built with: the user's
+    * `kafkaProperties`, with typed secret parameters and SASL extension properties merged over
+    * them (typed params take precedence).
+    *
+    * Visible to `com.thatdot.quine` rather than private to this package, and NOT public: a
+    * consumer is not the only client an ingest needs. Anything that asks the broker ABOUT this
+    * ingest (topic metadata for slice planning, for instance) has to authenticate exactly as
+    * the consumer does, and a second copy of this merge would be a second thing to keep in sync
+    * as typed secret fields are added. It stays out of the public surface because it
+    * materializes those secrets as plain strings.
+    */
+  private[quine] def clientProperties(
+    kafkaProperties: KafkaIngest.KafkaProperties,
+    sslKeystorePassword: Option[Secret],
+    sslTruststorePassword: Option[Secret],
+    sslKeyPassword: Option[Secret],
+    saslJaasConfig: Option[SaslJaasConfig],
+    saslExtension: Option[KafkaSaslExtension],
+  ): Map[String, String] = {
+    import Secret.Unsafe._
+    val secretProps: Map[String, String] = Map.empty ++
+      sslKeystorePassword.map("ssl.keystore.password" -> _.unsafeValue) ++
+      sslTruststorePassword.map("ssl.truststore.password" -> _.unsafeValue) ++
+      sslKeyPassword.map("ssl.key.password" -> _.unsafeValue) ++
+      saslJaasConfig.map("sasl.jaas.config" -> SaslJaasConfig.toJaasConfigString(_))
+
+    val extensionProps: Map[String, String] = saslExtension.fold(Map.empty[String, String])(_.additionalProperties)
+
+    kafkaProperties ++ secretProps ++ extensionProps
+  }
+
   def subscription(topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments]): Subscription =
     topics.fold(
       KafkaSubscriptions.topics,
@@ -263,18 +294,15 @@ case class KafkaSource(
     *
     * Visible within `ingest2` for testing.
     */
-  private[ingest2] def effectiveProperties: Map[String, String] = {
-    import Secret.Unsafe._
-    val secretProps: Map[String, String] = Map.empty ++
-      sslKeystorePassword.map("ssl.keystore.password" -> _.unsafeValue) ++
-      sslTruststorePassword.map("ssl.truststore.password" -> _.unsafeValue) ++
-      sslKeyPassword.map("ssl.key.password" -> _.unsafeValue) ++
-      saslJaasConfig.map("sasl.jaas.config" -> SaslJaasConfig.toJaasConfigString(_))
-
-    val extensionProps: Map[String, String] = saslExtension.fold(Map.empty[String, String])(_.additionalProperties)
-
-    kafkaProperties ++ secretProps ++ extensionProps
-  }
+  private[ingest2] def effectiveProperties: Map[String, String] =
+    KafkaSource.clientProperties(
+      kafkaProperties,
+      sslKeystorePassword,
+      sslTruststorePassword,
+      sslKeyPassword,
+      saslJaasConfig,
+      saslExtension,
+    )
 
   def framedSource: ValidatedNel[BaseError, FramedSource] = Try {
     warnOnOverriddenProperties()

@@ -230,8 +230,11 @@ final private[quine] class GraphShardActor(
     val loadFactor = 0.75F // the default
     val accessOrder = true // "eldest" tracks according to accesses as well as inserts
     new java.util.LinkedHashMap[Long, None.type](capacity, loadFactor, accessOrder) {
-      override def removeEldestEntry(eldest: java.util.Map.Entry[Long, None.type]) =
-        this.size() >= capacity
+      override def removeEldestEntry(eldest: java.util.Map.Entry[Long, None.type]) = {
+        val evicting = this.size() >= capacity
+        if (evicting) graph.metrics.shardDedupEvictedCounter(shardName).inc()
+        evicting
+      }
     }
   }
 
@@ -350,6 +353,7 @@ final private[quine] class GraphShardActor(
 
     case DeliveryRelay(msg, dedupId, needsAck) =>
       if (needsAck) sender() ! Ack
+      graph.metrics.shardMessagesRelayedCounter(shardName).inc()
       Option(msgDedupCache.put(dedupId, None)) match { // `.put` returns `null` if key is not present
         case None => this.receive(msg) // Not a duplicate
         case Some(_) => graph.metrics.shardMessagesDeduplicatedCounter(shardName).inc() // It is a duplicate. Ignore.

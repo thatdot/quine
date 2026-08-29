@@ -146,9 +146,9 @@ class ConfigErrorFormatterSpec
     }
 
     "name the unknown key when formatting a real pureconfig failure" in {
-      // Regression: pureconfig's UnknownKey.description is just "Unknown key.",
-      // not "Unknown key '<name>'". The formatter previously tried to extract
-      // the key by parsing that description and fell through to
+      // pureconfig's UnknownKey.description is just "Unknown key.", not
+      // "Unknown key '<name>'", so the key has to come from the failure itself.
+      // Parsing it back out of the description falls through to
       // UnclassifiedError("Unknown key.", None), printing a bare "Unknown key."
       // with no key, no path, no useful information.
       val failures = ConfigSource
