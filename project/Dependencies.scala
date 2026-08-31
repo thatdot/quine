@@ -46,7 +46,7 @@ object Dependencies {
   // On update, keep lz4JavaV in sync
   val kafkaClientsV = "3.9.2"
   val kindProjectorV = "0.13.4"
-  val logbackV = "1.6.1"
+  val logbackV = "1.6.3"
   val laminarV = "17.2.1"
   val waypointV = "10.0.0-M7"
   // Keep in sync with the version kafka-clients (kafkaClientsV) depends on
@@ -106,7 +106,7 @@ object Dependencies {
   // On update, check whether com.datastax.oss exclusion in quine-cassandra-persistor is removable
   val sigv4AuthCassandraPluginV = "4.0.9"
   // On update, check whether any NPM Override Versions (below) are removable
-  val stoplightElementsV = "9.0.24"
+  val stoplightElementsV = "9.0.25"
   val sugarV = "2.0.6"
   val tapirV = "1.13.30"
   val ujsonCirceV = "3.3.1"
@@ -134,7 +134,7 @@ object Dependencies {
 
   // zod is a runtime dependency of the in-tree query editor package (its JSON-RPC / LSP payload
   // parsing). Pinned in lockstep with public/query-editor/package.json, like monaco-editor above.
-  val zodV = "3.25.76"
+  val zodV = "4.5.4"
 
   // === Vis-Network and Peer Dependencies
   val visNetworkV = "10.0.2"
@@ -149,7 +149,7 @@ object Dependencies {
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
   /** Parent: [[awsSdkV]] */
-  val jacksonOverrideV = "2.22.1"
+  val jacksonOverrideV = "2.22.2"
 
   /** Parent: [[amazonGlueV]] */
   val wireOverrideV = "6.4.5"
@@ -188,10 +188,19 @@ object Dependencies {
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
   /** Parent: minimatch [[minimatchV]] */
-  val braceExpansionV = "5.0.8" // CVE-2026-14257
+  val braceExpansionV = "5.0.9" // CVE-2026-14257
 
   /** Parent: monaco-editor [[monacoEditorV]] */
   val dompurifyV = "3.4.13" // CVE-2026-65901
+
+  /** Parent: [[stoplightElementsV]]
+    * Faker code never ends up in Quine, evidence being that this command prints 0:
+    * {{{
+    * grep -c faker quine-enterprise-browser/target/scala-2.13/scalajs-bundler\
+    * /main/node_modules/@stoplight/elements/web-components.min.js
+    * }}}
+    */
+  val fakerV = "9.9.0"
 
   /** Parent: @stoplight/elements [[stoplightElementsV]] via react-use */
   val jsCookieV = "3.0.8" // CVE-2026-46625 (GHSA-qjx8-664m-686j)
@@ -203,7 +212,7 @@ object Dependencies {
   val minimatchV = "5.1.9" // CVE-2026-27903 & CVE-2026-27904
 
   /** Parent: @stoplight/elements [[stoplightElementsV]] */
-  val reactRouterDomV = "7.13.0" // CVE-2026-53668
+  val reactRouterDomV = "7.18.3"
 
   /** Parent: @stoplight/elements [[stoplightElementsV]] via @stoplight/yaml and openapi3-ts */
   val yamlV = "1.10.3" // CVE-2026-33532 (GHSA-48c2-rrv3-qjmp)
@@ -214,6 +223,7 @@ object Dependencies {
   val yarnResolutions: JSON = obj(
     "brace-expansion" -> str(braceExpansionV),
     "dompurify" -> str(dompurifyV),
+    "@faker-js/faker" -> str(fakerV),
     "js-cookie" -> str(jsCookieV),
     "lodash" -> str(lodashV),
     "minimatch" -> str(minimatchV),
