@@ -15,6 +15,38 @@ object TapPoint {
   case object Raw extends TapPoint
   final case class PreEnrichment(output: String) extends TapPoint
   final case class PostEnrichment(output: String) extends TapPoint
+
+  /** Which query a tap point's data traces back to, by name — the heading over the query text
+    * wherever it is shown (the card popup's fly-down, the graph-feed picker, the tap-point
+    * tooltips below). The one source for this wording: it is derived at render time from the
+    * point, never stored alongside the query text it heads (see [[TapPointQuery]]). A Pre
+    * (Transformed) point's rows are the transformation's output, not the standing query's, so
+    * the parenthetical says so.
+    */
+  def queryLabel(tapPoint: TapPoint): String = tapPoint match {
+    case Raw => "Standing query"
+    case _: PreEnrichment => "Standing query (its results were then transformed)"
+    case _: PostEnrichment => "Enrichment query"
+  }
+
+  /** What each tap point observes — the hover tooltip shared by the tap pickers
+    * ([[AddTapChooser]], the pipeline tree). When the query that produced the data is
+    * known, it's appended so the tooltip doubles as a query preview.
+    */
+  def hoverDesc(tapPoint: TapPoint, queryText: Option[String]): String = {
+    val base = tapPoint match {
+      case Raw =>
+        "Standing Query Results: every match the standing query produces, before any output runs. " +
+          "Each result is the raw {\"meta\", \"data\"} match envelope."
+      case _: PreEnrichment =>
+        "Transformed: results after this output's transformation, before its enrichment query. " +
+          "Each result is the transformation's output, not the raw {\"meta\", \"data\"} match envelope."
+      case _: PostEnrichment =>
+        "Enriched: final results after this output's enrichment query has run. " +
+          "Each result is the enrichment query's returned columns."
+    }
+    queryText.fold(base)(q => s"$base\n\n${queryLabel(tapPoint)}:\n$q")
+  }
 }
 
 /** Identifies a tap source — a live server-side stream the panel can subscribe to. This is the

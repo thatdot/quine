@@ -52,6 +52,8 @@ object CardStyles {
   val popupMoreButton = "card-popup-more-button" // "Get N more" — sampled exit
   val popupBatchInput = "card-popup-batch-input" // batch size for the next fetch
   val popupPausedAccent = "is-paused" // paused amber on the status dot (streams page's badge color)
+  val popupErrorAccent = "is-errored" // error red on the status dot and its count text
+  val popupErrorStrip = "card-popup-error-strip" // full error message banner under the header
   val popupExportWrap = "card-popup-export-wrap"
   val popupMinimizeButton = "card-popup-minimize-button"
   val popupCloseButton = "card-popup-close-button"

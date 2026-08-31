@@ -4459,6 +4459,16 @@ body.panel-dragging * {
   color: var(--cui-warning, #ffc107);
   animation: none;
 }
+.card-popup-status-dot.is-errored {
+  color: var(--cui-danger, #b02a37);
+  animation: none;
+}
+/* The whole status segment goes red on error, not just the dot — "error · n rows" should
+   read as a failure at a glance, and its tooltip carries the full message. */
+.card-popup-meta > .is-errored {
+  color: var(--cui-danger, #b02a37);
+  font-weight: 600;
+}
 
 .card-popup-actions {
   flex: 0 0 auto;
@@ -4555,6 +4565,19 @@ body.panel-dragging * {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Red banner under the header spelling out why a tap card's stream errored — the status
+   segment wears the state, this carries the message. Display-toggled by the entry's status. */
+.card-popup-error-strip {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--cui-danger-text-emphasis, #842029);
+  background: var(--cui-danger-bg-subtle, #f8d7da);
+  border-bottom: 1px solid var(--cui-danger-border-subtle, #f1aeb5);
+  word-break: break-word;
 }
 
 /* Collapsed-by-default strip showing the query behind a tap card's data — its standing

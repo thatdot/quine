@@ -51,13 +51,11 @@ import com.thatdot.quine.webapp.dataservice.{
 import com.thatdot.quine.webapp.openapi.{ApiSpecCache, FormUiHints}
 import com.thatdot.quine.webapp.resultspanel.cards.{
   CardDefaults,
-  CardId,
-  CardKind,
   CardPopup,
   CardSnapshot,
   CardsStore,
   MinimizedDrawer,
-  TapCardQuery,
+  TapTableCard,
 }
 import com.thatdot.quine.webapp.resultspanel.streaming.LiveStream
 import com.thatdot.quine.webapp.resultspanel.tapmodal.TapModal
@@ -71,6 +69,7 @@ import com.thatdot.quine.webapp.resultspanel.{
   TapCatalogEntry,
   TapEntry,
   TapOutput,
+  TapPointQuery,
   TapTarget,
 }
 import com.thatdot.quine.webapp.util.{Pot, SignalSample}
@@ -223,15 +222,15 @@ object QueryUi {
     // so a later catalog edit doesn't retroactively change an already-open card; a card that
     // opened or restored without one (catalog still loading, pre-capture snapshot) is
     // backfilled on its next restart via the same call.
-    def resolveTapCardQuery(target: TapTarget): Option[TapCardQuery] = target match {
-      case _: TapTarget.StandingQuery =>
+    def resolveTapQuery(target: TapTarget): Option[TapPointQuery] = target match {
+      case TapTarget.StandingQuery(sqName, tapPoint) =>
         val catalogNow = SignalSample.now(tapCatalogSignal).toOption.getOrElse(Vector.empty)
-        TapCardQuery.resolve(catalogNow, target)
+        catalogNow.find(_.sqName == sqName).flatMap(_.queryAt(tapPoint))
       // A background query isn't in the standing-query catalog; its text comes off the
       // execution-record feed instead, read the same one-shot way.
       case TapTarget.BackgroundQuery(executionId, _) =>
         val runsNow = SignalSample.now(props.dataService.backgroundQueriesSignal).toOption.getOrElse(Seq.empty)
-        runsNow.find(_.id == executionId).map(run => TapCardQuery("Background query", run.query))
+        runsNow.find(_.id == executionId).map(run => TapPointQuery(run.query))
     }
     // Taps open under the explorer's own owner; the facade scopes the panel's source list to it.
     val tapSubscriptions = new PanelTapSubscriptions(props.dataService, WiretapOwner("explorer"))
@@ -268,11 +267,22 @@ object QueryUi {
     // surfaced via toast — otherwise the user gets no feedback at all and the dangling
     // key spawns a surprise card when a later source (e.g. a session restore) reuses it.
     val PendingTapTimeoutMs = 10000
-    def timeoutPendingTap(pendingVar: Var[Set[String]], target: TapTarget): Unit = {
+    // Forward-reference cell for `cardsStore.cancelPendingReopen` (the store is
+    // constructed below, after the timeout helper that needs it — same shape as
+    // `submitQueryRef`): a restart that times out must also cancel the store's reopen
+    // marks (restore-live / continuation), or the stale mark is consumed by the target's
+    // next reopen and can silently flip the card to Live.
+    var cancelReopenRef: TapTarget => Unit = _ => ()
+    def timeoutPendingTap(
+      pendingVar: Var[Set[String]],
+      target: TapTarget,
+      onTimeout: () => Unit = () => (),
+    ): Unit = {
       val _ = window.setTimeout(
         () =>
           if (pendingVar.now().contains(target.key)) {
             pendingVar.update(_ - target.key)
+            onTimeout()
             toastVar.set(
               Some(
                 ToastMessage(s"Could not open tap on ${target.label}: no response from the server", ToastVariant.Error),
@@ -281,6 +291,18 @@ object QueryUi {
           },
         PendingTapTimeoutMs.toDouble,
       )
+    }
+    // Tabular-destination opens (design doc §2 step 2 "Results card"): open the tap via
+    // PanelTapSubscriptions, then once its LiveSource appears, spawn a tap-table card for it.
+    // Target keys awaiting a card are tracked here and resolved by the lifecycleMods binder
+    // below (resolvePendingTabularOpens) — the same "open now, select/create once the source
+    // arrives" shape as TapsState.pendingSelectKey/sync, scoped to the card system instead.
+    // Declared before the store because an errored card's Reconnect rides this same path.
+    val pendingTabularOpensVar: Var[Set[String]] = Var(Set.empty)
+    def openTabularTap(target: TapTarget): Unit = {
+      pendingTabularOpensVar.update(_ + target.key)
+      tapSubscriptions.open(target.key, target)
+      timeoutPendingTap(pendingTabularOpensVar, target)
     }
     val cardsStore = new CardsStore(
       liveContent = resultsVar.signal,
@@ -295,9 +317,13 @@ object QueryUi {
       onRestartTap = target => {
         pendingTabularRestartsVar.update(_ + target.key)
         tapSubscriptions.open(target.key, target)
-        timeoutPendingTap(pendingTabularRestartsVar, target)
+        timeoutPendingTap(pendingTabularRestartsVar, target, () => cancelReopenRef(target))
       },
+      // Reconnect (errored card's header button) = the same fresh-open path as the tap
+      // modal's ⊕ pick; its resolution lands in the store's revive branch.
+      onReopenTap = target => openTabularTap(target),
     )
+    cancelReopenRef = cardsStore.cancelPendingReopen
 
     // One tap-card stream session: buffers `src`'s frames under the card's sample budget.
     // Filling the budget ends the session — the stream freezes itself, the entry is marked
@@ -367,87 +393,77 @@ object QueryUi {
       backgroundRunOpenVar.set(true)
     }
 
-    // Tabular-destination opens (design doc §2 step 2 "Results card"): open the tap via
-    // PanelTapSubscriptions, then once its LiveSource appears, spawn a tap-table card for it.
-    // Target keys awaiting a card are tracked here and resolved by the lifecycleMods binder
-    // below — the same "open now, select/create once the source arrives" shape as
-    // TapsState.pendingSelectKey/sync, scoped to the card system instead.
-    val pendingTabularOpensVar: Var[Set[String]] = Var(Set.empty)
-    def openTabularTap(target: TapTarget): Unit = {
-      pendingTabularOpensVar.update(_ + target.key)
-      tapSubscriptions.open(target.key, target)
-      timeoutPendingTap(pendingTabularOpensVar, target)
-    }
+    // A source always arrives in `Connecting` state (its WS handshake fails
+    // asynchronously, if it fails at all), so the open/restart resolves into the card
+    // unconditionally and a connection failure surfaces moments later on the card itself
+    // — red status plus the error banner, with Reconnect as the retry. No toast: the
+    // card is the failure surface.
     val resolvePendingTabularOpens: Binder[HtmlElement] = tapSubscriptions.sources --> { srcs =>
       val pendingOpens = pendingTabularOpensVar.now()
       val pendingRestarts = pendingTabularRestartsVar.now()
       if (pendingOpens.nonEmpty || pendingRestarts.nonEmpty)
         srcs.foreach { src =>
           src.tapTarget.foreach { target =>
-            if (pendingRestarts.contains(target.key) || pendingOpens.contains(target.key)) {
-              // One-shot read of the producer's current status: a source that arrives already
-              // errored must not become a card the user never asked to see fail.
-              SignalSample.now(src.status) match {
-                case SourceStatus.Error(message) =>
-                  // Failed open/restart: drop the pending key (a dangling key would spawn
-                  // a surprise card from a later source on the same target), free the tap,
-                  // and surface the failure. A restarting card just stays stopped.
-                  pendingTabularRestartsVar.update(_ - target.key)
-                  pendingTabularOpensVar.update(_ - target.key)
-                  tapSubscriptions.close(target)
-                  toastVar.set(
-                    Some(ToastMessage(s"Could not open tap on ${target.label}: $message", ToastVariant.Error)),
-                  )
-                case _ if pendingRestarts.contains(target.key) =>
-                  val entry = connectBudgetedTapStream(src, target)
-                  val installed = cardsStore.replaceTapTableEntry(target, entry, resolveTapCardQuery(target))
-                  if (!installed) {
-                    // Card closed while the reopen was in flight: free the reopened tap + stream.
-                    entry.stream.freeze()
-                    tapSubscriptions.close(target)
-                  }
-                  pendingTabularRestartsVar.update(_ - target.key)
-                case _ =>
-                  val entry = connectBudgetedTapStream(src, target)
-                  cardsStore.addTapTableCard(target, entry, resolveTapCardQuery(target))
-                  pendingTabularOpensVar.update(_ - target.key)
+            if (pendingRestarts.contains(target.key)) {
+              val entry = connectBudgetedTapStream(src, target)
+              val installed = cardsStore.replaceTapTableEntry(target, entry, resolveTapQuery(target))
+              if (!installed) {
+                // Card closed while the reopen was in flight: free the reopened tap + stream.
+                entry.stream.freeze()
+                tapSubscriptions.close(target)
               }
+              pendingTabularRestartsVar.update(_ - target.key)
+            } else if (pendingOpens.contains(target.key)) {
+              // The entry argument is by-name: the store only builds (and connects) the
+              // budgeted stream when a card takes ownership of it — a fresh card, or an
+              // errored card revived by this open. On a plain duplicate-target open it
+              // focuses the existing card instead and frees the open's dangling
+              // subscription itself (via onCloseTap) exactly when that card's entry has
+              // ended — a live entry shares this same target.key subscription, so closing
+              // it here unconditionally would kill the live card's stream.
+              val _ =
+                cardsStore.addTapTableCard(
+                  target,
+                  connectBudgetedTapStream(src, target),
+                  resolveTapQuery(target),
+                )
+              pendingTabularOpensVar.update(_ - target.key)
             }
           }
         }
     }
 
-    /** Install a restored card set (from a namespace snapshot — reload or namespace
-      * switch; design doc §6 / checklist A11+C10). States are rebuilt via
-      * [[CardSnapshot.toState]] (adhoc cards with their full saved outcome, tap cards
-      * from their coordinates); tap-table cards that were live at save time then
-      * reconnect through the same restart flow a manual Restart uses — the card sits
-      * `stopped` on its placeholder entry until the fresh source arrives and
-      * `resolvePendingTabularOpens` swaps it in. If the tap can't reopen (SQ deleted,
-      * WS down) the card simply stays stopped.
+    /** Restore cards from card snapshots, and re-open the wiretaps for tap-table cards
+      * that were saved as actively streaming.
       */
-    def restoreCards(snapshots: Seq[CardSnapshot], expandedCardId: Option[String]): Unit = {
-      val states = snapshots.flatMap(CardSnapshot.toState).toVector
-      cardsStore.restore(states, expandedCardId.map(CardId(_)))
+    def restoreCards(snapshots: Seq[CardSnapshot], expandedCardIdx: Option[Int]): Unit = {
+      cardsStore.restore(snapshots, expandedCardIdx)
       snapshots.foreach { snap =>
         if (snap.kind == CardSnapshot.KindTapTable && !snap.stopped)
           CardSnapshot.tapTargetOf(snap).foreach { target =>
+            if (CardSnapshot.wasLive(snap)) cardsStore.restoreLive(target)
             pendingTabularRestartsVar.update(_ + target.key)
             tapSubscriptions.open(target.key, target)
-            timeoutPendingTap(pendingTabularRestartsVar, target)
+            timeoutPendingTap(pendingTabularRestartsVar, target, () => cancelReopenRef(target))
           }
       }
     }
 
-    def cardTapTarget(kind: CardKind): Option[TapTarget] = kind match {
-      case CardKind.TapTableCard(target, _, _) => Some(target)
-      case _: CardKind.AdhocCard => None
-    }
-
-    // Currently-tapped keys — drives the pipeline tree's ✓ badge and the query menu's
-    // "viewing" pill.
+    // Currently-tapped keys — drives the pipeline tree's ✓ badge. An errored entry does
+    // not count as tapped: its point renders re-tappable (⊕) instead of ✓, so picking it
+    // again flows through the normal open into `CardsStore.addTapTableCard`, which
+    // revives the errored card in place — a ✓ would route to focus and dead-end on the
+    // failed card.
     val tappedKeys: Signal[Set[String]] =
-      cardsStore.cards.map(_.flatMap(c => cardTapTarget(c.kind).map(_.key)).toSet)
+      cardsStore.cards
+        .flatMapSwitch { cards =>
+          val keyed = cards.collect { case TapTableCard(_, target, entry, _, _, _, _) =>
+            entry.status.map(target.key -> _)
+          }
+          if (keyed.isEmpty) Signal.fromValue(Seq.empty[(String, SourceStatus)])
+          else Signal.combineSeq(keyed)
+        }
+        .map(_.collect { case (key, status) if !status.isInstanceOf[SourceStatus.Error] => key }.toSet)
 
     // ── Background queries (query bar) ──────────────────────────────────────────────
     // The query bar only starts background queries; the Streams page owns the list of runs and
@@ -579,7 +595,7 @@ object QueryUi {
         * restore path (`restoreCards`).
         */
       cards: Seq[CardSnapshot],
-      expandedCardId: Option[String],
+      expandedCardIdx: Option[Int],
     )
 
     /** In-memory cache of full graph state (nodes, edges, history, results) for namespaces
@@ -653,7 +669,7 @@ object QueryUi {
         resultsCurrentIdx = snap.resultsCurrentIdx,
         resultsCollapsed = snap.resultsCollapsed,
         cards = snap.cards,
-        expandedCardId = snap.expandedCardId,
+        expandedCardIdx = snap.expandedCardIdx,
         savedAt = js.Date.now(),
       )
     }
@@ -705,7 +721,7 @@ object QueryUi {
         resultsCurrentIdx = snap.resultsCurrentIdx,
         resultsCollapsed = snap.resultsCollapsed,
         cards = snap.cards,
-        expandedCardId = snap.expandedCardId,
+        expandedCardIdx = snap.expandedCardIdx,
       )
     }
 
@@ -720,6 +736,7 @@ object QueryUi {
               .asInstanceOf[vis.Node]
           }
         }
+        val (persistedCards, persistedExpandedIdx) = cardsStore.snapshotCards
         val clusterIds = collapsedClusterIds(state.history)
         val liveClusters = state.history.past.reverse.collect {
           case QueryUiEvent.Collapse(nodeIds, clusterId, name) if clusterIds.contains(clusterId) =>
@@ -752,10 +769,11 @@ object QueryUi {
           resultsEntries = Vector.empty,
           resultsCurrentIdx = -1,
           resultsCollapsed = resultsCollapsedVar.now(),
-          // `flatMap`: cards that must not outlive the session project to `None` (a
-          // background-query tap card — its server-side relay is gone by the next load).
-          cards = cardsStore.currentCards.flatMap(CardSnapshot.fromState),
-          expandedCardId = cardsStore.currentExpandedId.map(_.value),
+          // One call for both: cards that must not outlive the session drop out here (a
+          // background-query tap card — its server-side relay is gone by the next load), and
+          // the expanded index is taken after that drop.
+          cards = persistedCards,
+          expandedCardIdx = persistedExpandedIdx,
         )
       }
     }
@@ -874,7 +892,7 @@ object QueryUi {
                   // pending text queries that blocked submitQuery. The card system's own
                   // persistence below is the replacement.
                   resultsCollapsedVar.set(snapshot.resultsCollapsed)
-                  restoreCards(snapshot.cards, snapshot.expandedCardId)
+                  restoreCards(snapshot.cards, snapshot.expandedCardIdx)
                   refetchNodeProperties(namespace, snapshot.atTime)
                   window.requestAnimationFrame { _ =>
                     network.foreach(
@@ -1890,7 +1908,14 @@ object QueryUi {
               // query yields a non-node result). Rather than surface that raw type error, tell
               // the user the query is fine and offer to re-run it as a text/table query — the
               // same "Run as text query" path adhoc cards use.
-              if (message.contains("Expected type(s) Node but got value"))
+              //
+              // Anchored to the stable prefix of `CypherException.pretty`'s output
+              // (`productPrefix + "Error " + positionStr + getMessage`): `TypeMismatch`'s
+              // `getMessage` is "Expected type(s) $expectedTys but got value ..." and this
+              // throw site (`QueryUiCypherApiMethods.queryCypherNodes`) always passes
+              // `expected = Seq(CypherType.Node)` and no `position`, so `positionStr` is
+              // empty — the full prefix is always exactly this literal.
+              if (message.startsWith("TypeMismatchError Expected type(s) Node but got value"))
                 toastVar.set(
                   Some(
                     ToastMessage(

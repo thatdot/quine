@@ -230,6 +230,35 @@ final class WiretapStore(graphName: String, routes: ClientRoutes) {
     }.toVector
   }
 
+  // `onerror`'s placeholder message: the error event carries no failure specifics (the
+  // browser withholds them from script), so `onclose` upgrades exactly this message with
+  // the close event's detail when one arrives.
+  private val genericFailure = "Connection failed"
+
+  /** Best-available failure description for a connection that never went live. A server-sent
+    * close reason is used verbatim; a handshake rejection (e.g. the standing query no longer
+    * exists, so the WebSocket upgrade got an HTTP error) reaches script only as an opaque
+    * abnormal close (code 1006, no reason), so name the likely cause for that one.
+    */
+  private def closeDetail(e: dom.CloseEvent): String = {
+    val reason = e.reason.trim
+    if (reason.nonEmpty) s"$genericFailure: $reason"
+    else if (e.code == 1006)
+      s"$genericFailure before the stream opened, the standing query may have been deleted or the server may be unreachable"
+    else s"$genericFailure (WebSocket close code ${e.code})"
+  }
+
+  /** Failure description for a connection the server closed abnormally after it went live —
+    * the likely causes differ from a handshake failure, so [[closeDetail]]'s never-went-live
+    * wording would mislead.
+    */
+  private def liveCloseDetail(e: dom.CloseEvent): String = {
+    val reason = e.reason.trim
+    if (reason.nonEmpty) s"Connection lost: $reason"
+    else
+      s"Connection lost mid-stream, the standing query may have been deleted or the server may have restarted (WebSocket close code ${e.code})"
+  }
+
   private def openConnection(sqName: String, tapPoint: WiretapTapPoint): Connection = {
     val url = tapUrl(sqName, tapPoint)
     val ws = new dom.WebSocket(url)
@@ -241,9 +270,9 @@ final class WiretapStore(graphName: String, routes: ClientRoutes) {
       }
     ws.onerror = (_: dom.Event) =>
       handlersFor(conn).foreach { h =>
-        if (h.status.now() == WiretapStatus.Connecting) h.setStatus(WiretapStatus.Error("Connection failed"))
+        if (h.status.now() == WiretapStatus.Connecting) h.setStatus(WiretapStatus.Error(genericFailure))
       }
-    ws.onclose = (_: dom.CloseEvent) => {
+    ws.onclose = (e: dom.CloseEvent) => {
       // Evict every handler still attached to this connection. The close-initiated-by-us
       // path has already cleared `conn.attached` and pulled the entry out of `connections`,
       // so this is a no-op in that case; on a server-initiated close it's where the
@@ -256,7 +285,17 @@ final class WiretapStore(graphName: String, routes: ClientRoutes) {
         affected.foreach { case (owner, key) =>
           snapshot.get(owner).flatMap(_.find(_.key == key)).foreach { h =>
             h.status.now() match {
-              case WiretapStatus.Error(_) => () // preserve a prior error status
+              // Upgrade `onerror`'s generic message with the close event's detail — the
+              // error event itself carries none (the browser withholds failure specifics
+              // from script), so the close code/reason is the only diagnostic we ever get.
+              case WiretapStatus.Error(`genericFailure`) => h.setStatus(WiretapStatus.Error(closeDetail(e)))
+              case WiretapStatus.Error(_) => () // preserve a prior specific error status
+              case WiretapStatus.Connecting => h.setStatus(WiretapStatus.Error(closeDetail(e)))
+              // A live stream the server hung up on abnormally (standing query deleted
+              // mid-stream, backend restart) is a failure, not a pause: Closed would
+              // render indistinguishable from a deliberate stop. Code 1000 is a normal
+              // server-side end of stream and still lands Closed below.
+              case WiretapStatus.Live if e.code != 1000 => h.setStatus(WiretapStatus.Error(liveCloseDetail(e)))
               case _ => h.setStatus(WiretapStatus.Closed)
             }
           }

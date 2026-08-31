@@ -19,7 +19,6 @@ object RowDrawer {
       cls(Styles.resultsDrawerOpen) <-- selected.map(_.isDefined),
       div(
         cls := Styles.resultsDrawerHeader,
-        title := "Double-click to close",
         onDblClick --> (_ => vd.onNext(ViewerCommand.CloseRow)),
         span("Row detail"),
         span(cursor := "pointer", "✕", onClick --> (_ => vd.onNext(ViewerCommand.CloseRow))),

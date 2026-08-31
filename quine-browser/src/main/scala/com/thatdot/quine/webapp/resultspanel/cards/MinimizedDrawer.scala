@@ -35,7 +35,7 @@ object MinimizedDrawer {
     *   from under it — hide the drawer entirely for as long as the popup covers the canvas.
     */
   def apply(
-    minimized: Signal[Vector[CardState]],
+    minimized: Signal[Vector[Card]],
     search: Signal[String],
     dispatch: Observer[CardCommand],
     hasCards: Signal[Boolean],
@@ -43,7 +43,7 @@ object MinimizedDrawer {
   ): HtmlElement = {
     val collapsed = Var(false)
 
-    val filtered: Signal[Vector[CardState]] =
+    val filtered: Signal[Vector[Card]] =
       minimized.combineWith(search).map { case (cards, needle) =>
         val n = needle.trim.toLowerCase
         if (n.isEmpty) cards else cards.filter(matches(_, n))
@@ -76,7 +76,7 @@ object MinimizedDrawer {
   /** Small corner button the collapsed drawer folds into: the docked-panel glyph with a
     * minimized-card count badge, expanding the panel again on click.
     */
-  private def collapsedButton(minimized: Signal[Vector[CardState]], collapsed: Var[Boolean]): HtmlElement =
+  private def collapsedButton(minimized: Signal[Vector[Card]], collapsed: Var[Boolean]): HtmlElement =
     div(
       cls := CardStyles.drawerCollapsedButton,
       title := "Show results drawer",
@@ -85,10 +85,10 @@ object MinimizedDrawer {
       span(cls := CardStyles.drawerCollapsedCount, child.text <-- minimized.map(_.size.toString)),
     )
 
-  private def matches(card: CardState, needle: String): Boolean = {
-    val query = card.kind match {
-      case CardKind.AdhocCard(queryText, _, _) => queryText
-      case CardKind.TapTableCard(target, _, _) => target.label
+  private def matches(card: Card, needle: String): Boolean = {
+    val query = card match {
+      case adhoc: AdhocCard => adhoc.query
+      case tt: TapTableCard => tt.target.label
     }
     card.title.toLowerCase.contains(needle) || query.toLowerCase.contains(needle)
   }
@@ -120,14 +120,15 @@ object MinimizedDrawer {
     * errored"). Tap-table cards read this straight off their [[TapEntry.status]].
     * Adhoc cards are never "tap-errored" (a failed adhoc run surfaces as a toast, not a card).
     */
-  private def tapErrored(kind: CardKind): Signal[Boolean] = kind match {
-    case CardKind.TapTableCard(_, entry, _) => entry.status.map { case SourceStatus.Error(_) => true; case _ => false }
-    case _: CardKind.AdhocCard => Val(false)
+  private def tapErrored(card: Card): Signal[Boolean] = card match {
+    case tt: TapTableCard =>
+      tt.entry.status.map { case SourceStatus.Error(_) => true; case _ => false }
+    case _: AdhocCard => Val(false)
   }
 
-  private def kindClass(kind: CardKind, tapErrored: Boolean): String = kind match {
-    case _: CardKind.AdhocCard => Styles.kindQuery
-    case _: CardKind.TapTableCard => if (tapErrored) Styles.kindError else Styles.kindTap
+  private def kindClass(card: Card, tapErrored: Boolean): String = card match {
+    case _: AdhocCard => Styles.kindQuery
+    case _: TapTableCard => if (tapErrored) Styles.kindError else Styles.kindTap
   }
 
   /** The leading kind glyph for a row: a query card reads as a run (terminal glyph); a
@@ -137,10 +138,10 @@ object MinimizedDrawer {
     * [[com.thatdot.quine.webapp.resultspanel.tapmodal.SqPipelineTree]]). A background-query
     * card reads as a run that is still arriving: the query glyph over the clock accent.
     */
-  private def kindIcon(kind: CardKind): HtmlElement = kind match {
-    case _: CardKind.AdhocCard => span(cls := Styles.sourceKindIcon, ResultsIcons.query)
-    case CardKind.TapTableCard(target, _, _) =>
-      target match {
+  private def kindIcon(card: Card): HtmlElement = card match {
+    case _: AdhocCard => span(cls := Styles.sourceKindIcon, ResultsIcons.query)
+    case tt: TapTableCard =>
+      tt.target match {
         case TapTarget.StandingQuery(_, TapPoint.Raw) => span(cls := Styles.sourceKindIcon, ResultsIcons.tap)
         case TapTarget.StandingQuery(_, _: TapPoint.PreEnrichment) =>
           span(cls := Styles.sourceKindIcon, span(cls := CardStyles.miniCardKindFx, "ƒ"))
@@ -151,21 +152,21 @@ object MinimizedDrawer {
       }
   }
 
-  private def rowCountOf(kind: CardKind): Option[Int] = kind match {
-    case CardKind.AdhocCard(_, _, outcomeOpt) =>
-      outcomeOpt.map(_.outcome).collect { case ResultOutcome.Tabular(r) => r.results.size }
+  private def rowCountOf(card: Card): Option[Int] = card match {
+    case adhoc: AdhocCard =>
+      adhoc.outcome.map(_.outcome).collect { case ResultOutcome.Tabular(r) => r.results.size }
     case _ => None
   }
 
-  private def statusLine(card: CardState, tapErrored: Boolean): HtmlElement = card.kind match {
-    case CardKind.AdhocCard(_, _, _) =>
+  private def statusLine(card: Card, tapErrored: Boolean): HtmlElement = card match {
+    case _: AdhocCard =>
       // No stopped badge: adhoc cards have nothing running, so `stopped` is never set for
       // them (see `CardsStore.autoStopIfTapTable`).
       span(
         cls := CardStyles.miniCardStatus,
-        rowCountOf(card.kind).fold("…")(n => s"$n rows"),
+        rowCountOf(card).fold("…")(n => s"$n rows"),
       )
-    case CardKind.TapTableCard(_, entry, _) if tapErrored =>
+    case TapTableCard(_, _, entry, _, _, _, _) if tapErrored =>
       span(
         cls := CardStyles.miniCardStatus,
         child.text <-- entry.status.map {
@@ -173,7 +174,7 @@ object MinimizedDrawer {
           case _ => "⚠ error"
         },
       )
-    case CardKind.TapTableCard(_, entry, _) =>
+    case TapTableCard(_, _, entry, _, stopped, _, _) =>
       // No stopped/paused dot: a stopped tap already reads as paused via its frozen row
       // count, and the standalone amber dot (design doc's streams-page badge color) read
       // as an error/warning at this size — the live dot alone (pulsing green) is enough to
@@ -182,7 +183,7 @@ object MinimizedDrawer {
         cls := CardStyles.miniCardStatus,
         child.text <-- entry.stream.rows.signal.map(rs => s"${rs.size} rows"),
         child <-- entry.ended.signal.map { ended =>
-          if (ended || card.stopped) emptyNode
+          if (ended || stopped) emptyNode
           else span(cls := CardStyles.miniCardStatusDot, cls(CardStyles.miniCardStatusLive) := true, " ●")
         },
       )
@@ -194,20 +195,20 @@ object MinimizedDrawer {
     * itself never changes for a mounted row, so click handlers close over it directly instead of
     * reading it off the signal.
     */
-  private def miniCardRow(id: CardId, cardSig: Signal[CardState], dispatch: Observer[CardCommand]): HtmlElement = {
-    // Re-derives the tap-error signal whenever the card's kind changes (e.g. a restart
-    // swapping in a fresh TapEntry) rather than once at mount — `.flatMapSwitch` re-runs
-    // `tapErrored` for the current kind on every `cardSig` update.
-    val tapErroredSig: Signal[Boolean] = cardSig.map(_.kind).flatMapSwitch(tapErrored)
-    val rowSig: Signal[(CardState, Boolean)] = cardSig.combineWith(tapErroredSig)
+  private def miniCardRow(id: CardId, cardSig: Signal[Card], dispatch: Observer[CardCommand]): HtmlElement = {
+    // Re-derives the tap-error signal whenever the card changes (e.g. a restart swapping in
+    // a fresh TapEntry) rather than once at mount — `.flatMapSwitch` re-runs `tapErrored`
+    // for the current card on every `cardSig` update.
+    val tapErroredSig: Signal[Boolean] = cardSig.flatMapSwitch(tapErrored)
+    val rowSig: Signal[(Card, Boolean)] = cardSig.combineWith(tapErroredSig)
 
     div(
       cls := CardStyles.miniCard,
-      cls <-- rowSig.map { case (c, errored) => kindClass(c.kind, errored) },
+      cls <-- rowSig.map { case (c, errored) => kindClass(c, errored) },
       title <-- cardSig.map(_.title),
       onClick --> (_ => dispatch.onNext(CardCommand.Expand(id))),
       div(cls := CardStyles.miniCardStrip),
-      child <-- cardSig.map(_.kind).map(kindIcon),
+      child <-- cardSig.map(kindIcon),
       div(
         cls := CardStyles.miniCardBody,
         div(cls := CardStyles.miniCardTitle, child.text <-- cardSig.map(_.title)),

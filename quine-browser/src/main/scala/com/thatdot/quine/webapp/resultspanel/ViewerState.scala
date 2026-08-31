@@ -88,6 +88,7 @@ final case class ViewerReads(
   sortDir: Signal[SortDir],
   colWidths: Signal[Vector[Double]],
   selectedRow: Signal[Option[Seq[(String, Json)]]],
+  sampleSize: Signal[Int],
 )
 object ViewerReads {
   def of(s: ViewerState): ViewerReads =
@@ -101,5 +102,6 @@ object ViewerReads {
       sortDir = s.sortDir.signal,
       colWidths = s.colWidths.signal,
       selectedRow = s.selectedRow.signal,
+      sampleSize = s.sampleSize.signal,
     )
 }

@@ -7,9 +7,8 @@ import io.circe.syntax._
 import com.thatdot.quine.webapp.Styles
 import com.thatdot.quine.webapp.components.ApiJsonPreview
 import com.thatdot.quine.webapp.components.streams.{EmbeddedEditorConfig, EmbeddedQueryEditor}
-import com.thatdot.quine.webapp.resultspanel.cards.TapCardQuery
 import com.thatdot.quine.webapp.resultspanel.tapmodal.SqPipelineTree
-import com.thatdot.quine.webapp.resultspanel.{TapCatalogEntry, TapOutput, TapPoint, TapTarget}
+import com.thatdot.quine.webapp.resultspanel.{TapCatalogEntry, TapOutput, TapPoint, TapPointQuery, TapTarget}
 import com.thatdot.quine.webapp.util.Pot
 import com.thatdot.quine.webapp.v2api.V2ApiTypes.{V2GraphFeed, V2StandingQueryInfo, V2SyntheticEdge}
 
@@ -37,6 +36,32 @@ object GraphFeedEditor {
     * in the UI.
     */
   private val WiretapMessageSource = "WIRETAP_MESSAGE"
+
+  /** What the "Run for every result" Cypher below the picker will be handed each time a
+    * result reaches the picked point — the parameter shape its `$`-references have to match,
+    * and which `exampleQuerySignal` then demonstrates. Deliberately not the wording a tap
+    * card's popup uses for the same points (`CardPopup.shapeNote`): that one explains a table
+    * the reader is looking at, this one explains parameters they are about to bind.
+    */
+  private def parameterNote(tapPoint: TapPoint, transformationType: Option[String]): String =
+    tapPoint match {
+      case TapPoint.Raw =>
+        "Your query runs once per match, receiving the whole {\"meta\", \"data\"} envelope: " +
+          "reach the match's own fields through $data."
+      case _: TapPoint.PreEnrichment =>
+        // Every known transformation gets its specific effect spelled out; an unknown (future)
+        // one still gets the honest generic statement rather than nothing.
+        val what = transformationType match {
+          case Some("InlineData") =>
+            "this output's InlineData transformation, which lifts each match's data fields to the top level"
+          case Some(other) => s"this output's $other transformation, which reshapes each match"
+          case None => "this output's transformation, which reshapes each match"
+        }
+        s"Your query runs once per result of $what: those fields arrive as top-level parameters."
+      case _: TapPoint.PostEnrichment =>
+        "Your query runs once per row the enrichment query returns: that row's columns arrive " +
+          "as top-level parameters."
+    }
 
   /** Edge directions offered in the dropdown, in display order. */
   private val DirectionOptions = Vector("OUT", "IN", "UNDIRECTED")
@@ -211,17 +236,18 @@ object GraphFeedEditor {
     // The query behind the picked point's data — the standing query's match pattern for Raw,
     // its output's enrichment query for Enriched — shown under the picker as a hint at the
     // data the "Run for every result" Cypher will receive (for a Transformed point the
-    // label notes the transformation has reshaped it since; see TapCardQuery.labelFor).
-    // `Left(label)` when the point is picked but its query text isn't in the catalog — a
-    // pinned selection whose output has since lost its enrichment, or a non-Cypher pattern —
-    // so the panel can say so instead of silently showing nothing.
-    val selectedQuery: Signal[Option[Either[String, TapCardQuery]]] =
+    // label notes the transformation has reshaped it since; see TapPoint.queryLabel).
+    // The inner `None` is a point picked whose query text isn't in the catalog — a pinned
+    // selection whose output has since lost its enrichment, or a non-Cypher pattern — so the
+    // panel can say so instead of silently showing nothing. Either way the point itself comes
+    // through, since the heading (and the note beneath it) are derived from that.
+    val selectedQuery: Signal[Option[(TapPoint, Option[TapPointQuery])]] =
       catalog.combineWith(selectionVar.signal).map { case (pot, selOpt) =>
         for {
           sel <- selOpt
           sqs <- pot.toOption
           sq <- sqs.find(_.sqName == sel.sqName)
-        } yield TapCardQuery.forPoint(sq, sel.tapPoint).toRight(TapCardQuery.labelFor(sel.tapPoint))
+        } yield sel.tapPoint -> sq.queryAt(sel.tapPoint)
       }
 
     // The example query's parameter shape follows the picked point: a raw standing-query match
@@ -406,21 +432,25 @@ object GraphFeedEditor {
         // The query that produced the picked point's data, so the user can see what shape
         // of data (and which fields) their own Cypher below will run against.
         child <-- selectedQuery.map {
-          case Some(Right(q)) =>
+          case Some((tapPoint, queryOpt)) =>
+            val queryOrExcuse: List[HtmlElement] = queryOpt match {
+              case Some(tpq) =>
+                List(
+                  span(cls := "graph-feed-picker-query-note", parameterNote(tapPoint, tpq.transformation)),
+                  pre(cls := "graph-feed-picker-query-pre", tpq.query),
+                )
+              case None =>
+                List(
+                  span(
+                    cls := "graph-feed-picker-query-missing",
+                    "No query text available for this point. The source may have changed since this definition was saved.",
+                  ),
+                )
+            }
             div(
               cls := "graph-feed-picker-query",
-              span(cls := "graph-feed-picker-query-label", q.label),
-              q.note.map(n => span(cls := "graph-feed-picker-query-note", n)).getOrElse(emptyNode: Node),
-              pre(cls := "graph-feed-picker-query-pre", q.query),
-            )
-          case Some(Left(label)) =>
-            div(
-              cls := "graph-feed-picker-query",
-              span(cls := "graph-feed-picker-query-label", label),
-              span(
-                cls := "graph-feed-picker-query-missing",
-                "No query text available for this point. The source may have changed since this definition was saved.",
-              ),
+              span(cls := "graph-feed-picker-query-label", TapPoint.queryLabel(tapPoint)),
+              queryOrExcuse,
             )
           case None => emptyNode
         },

@@ -35,6 +35,13 @@ object CardCommand {
     */
   final case class GoLive(id: CardId) extends CardCommand
 
+  /** Reconnect an errored tap card: reopen its tap through the host's fresh-open path,
+    * whose resolution revives the card in place with a new stream (see
+    * [[CardsStore.addTapTableCard]]). Tap cards only, and a no-op unless the card's entry
+    * is actually errored — every other state has a live or continuable stream.
+    */
+  final case class Reconnect(id: CardId) extends CardCommand
+
   /** Edit this card's batch-size field (`ViewerState.sampleBatch` — the size of the *next*
     * fetch, not the live display cap, and not itself a fetch).
     */

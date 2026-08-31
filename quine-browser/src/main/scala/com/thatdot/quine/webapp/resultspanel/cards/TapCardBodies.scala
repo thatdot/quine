@@ -5,7 +5,7 @@ import io.circe.{Json, Printer}
 
 import com.thatdot.quine.webapp.Styles
 import com.thatdot.quine.webapp.resultspanel.streaming.StreamingView
-import com.thatdot.quine.webapp.resultspanel.{ResultsData, ResultsView, TapEntry, ViewerCommand}
+import com.thatdot.quine.webapp.resultspanel.{ResultsData, ResultsView, TapEntry, ViewerCommand, ViewerReads}
 
 /** Card body for the tap-table kind. Kept thin: tap-table reuses the existing
   * [[StreamingView]] wholesale (design doc §3: "StreamingView for live tap tables").
@@ -14,36 +14,39 @@ object TapCardBodies {
 
   /** Tap-table card body: the existing [[StreamingView.tapBody]] — the same live growing
     * table used for a tap in today's drawer, now hosted inside a card. The cap is
-    * mode-aware: [[SampleMode.Live]] renders the full buffer (tail-follow tracks new rows),
-    * [[SampleMode.Sampled]] caps at the card's sampling budget. Mode changes rebuild the
-    * popup frame (`mode` is part of `CardsStore.cardRenderKey`), so branching on the
+    * cap-aware: a live card renders the full buffer (tail-follow tracks new rows), a
+    * capped one stops at the card's sampling budget. Lifting the cap rebuilds the popup
+    * frame (`hasSampleLimit` is part of `CardsStore.cardRenderKey`), so branching on the
     * snapshot here is safe. Content only — every stream control (Stop / Get-more / batch
     * size / Go-live) is a fixture in the popup header's stream cluster, enabled or grayed
     * by state rather than mounted and unmounted (see `CardPopup.streamActions`). Sampling
     * is tap-only: adhoc queries return a complete result set, so [[AdhocCardBody]] renders
     * it in full.
     */
-  def tapTable(card: CardState, entry: TapEntry, vd: Observer[ViewerCommand]): HtmlElement = {
-    val cap: Signal[Option[Int]] = card.mode match {
-      case SampleMode.Live => Signal.fromValue(None)
-      case SampleMode.Sampled => card.viewer.sampleSize.signal.map(Some(_))
-    }
+  def tapTable(
+    reads: ViewerReads,
+    entry: TapEntry,
+    hasSampleLimit: Boolean,
+    vd: Observer[ViewerCommand],
+  ): HtmlElement = {
+    val cap: Signal[Option[Int]] =
+      if (hasSampleLimit) reads.sampleSize.map(Some(_)) else Signal.fromValue(None)
     // The header's filter (`ViewerState.search`, written by `ViewerControls`' magnifier)
     // applies to tap cards just as it does to adhoc ones — a display-level narrowing of
     // the capped buffer, in both Table and JSON views.
-    val needle: Signal[String] = card.viewer.search.signal
+    val needle: Signal[String] = reads.search
     div(
       display := "contents",
       // The header's Table·JSON toggle applies here just as it does to adhoc cards —
       // per-card state (`ViewerState.view`), so flipping one card leaves the others alone.
-      child <-- card.viewer.view.signal.map {
+      child <-- reads.view.map {
         case ResultsView.Table =>
           StreamingView.tapBody(
             entry,
             maxRows = cap,
             filterNeedle = needle,
-            colWidths = card.viewer.colWidths.signal,
-            selectedRow = card.viewer.selectedRow.signal,
+            colWidths = reads.colWidths,
+            selectedRow = reads.selectedRow,
             vd = vd,
           )
         case ResultsView.Json => jsonBody(entry, cap, needle)

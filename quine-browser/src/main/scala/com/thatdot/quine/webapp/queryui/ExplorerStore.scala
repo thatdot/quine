@@ -8,7 +8,7 @@ import scala.util.Random
 
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.syntax._
-import io.circe.{Decoder, Encoder, Json}
+import io.circe.{ACursor, Decoder, Encoder, HCursor, Json}
 import org.scalajs.dom
 import org.scalajs.dom.{
   IDBCursorWithValue,
@@ -87,15 +87,26 @@ final case class FullSnapshot(
     * plain data by [[com.thatdot.quine.webapp.resultspanel.cards.CardSnapshot]].
     */
   cards: Seq[CardSnapshot],
-  /** Which card, if any, was expanded when this snapshot was taken. */
-  expandedCardId: Option[String],
+  /** Which card, if any, was expanded when this snapshot was taken, as its index into
+    * `cards`. An index rather than an id because card ids are session-scoped and not
+    * persisted — see `CardsStore.restore`. Snapshots written before that change carry an
+    * `expandedCardId` string instead, which decodes to `None` here: they restore with every
+    * card minimized, once.
+    */
+  expandedCardIdx: Option[Int],
   /** Wall-clock time (`js.Date.now()`) this snapshot was written to IndexedDB. Used only by
     * `ExplorerStore.purgeStale` to find and delete entries older than `MaxAgeMs`.
     */
   savedAt: Double,
 )
 
-object ExplorerStore {
+/** The snapshot format's codecs. They live here, on the companion of the type they
+  * serialize, rather than inside [[ExplorerStore]]: that object's initializer settles the
+  * tab identity (sessionStorage + a Web Lock), so merely naming a codec there would drag
+  * that I/O in — which is what kept this format untestable. Implicit scope finds these with
+  * no import at the use sites in `ExplorerStore.save`/`load`.
+  */
+object FullSnapshot {
 
   implicit private val jsonEncoder: Encoder[Json] = Encoder.instance(identity)
   implicit private val jsonDecoder: Decoder[Json] = Decoder.instance(c => Right(c.value))
@@ -126,15 +137,44 @@ object ExplorerStore {
   implicit private val clusterDecoder: Decoder[SerializableCluster] = deriveDecoder
   implicit private val histEntryEncoder: Encoder[SerializableHistoryEntry] = deriveEncoder
   implicit private val histEntryDecoder: Decoder[SerializableHistoryEntry] = deriveDecoder
-  implicit private val snapshotEncoder: Encoder[FullSnapshot] = deriveEncoder
 
-  // Snapshots written before the card system lack the `cards` field (`expandedCardId`,
-  // being an Option, already decodes from a missing key); inject an empty list so they
-  // keep decoding instead of being discarded by `load`.
-  implicit private val snapshotDecoder: Decoder[FullSnapshot] =
-    deriveDecoder[FullSnapshot].prepare(
-      _.withFocus(_.mapObject(o => if (o.contains("cards")) o else o.add("cards", Json.arr()))),
-    )
+  /** Total and element-wise: a `cards` value that is absent (snapshots written before the
+    * card system), isn't an array, or holds a card this build can no longer read yields
+    * fewer cards — never a failed [[FullSnapshot]].
+    *
+    * The containment matters because the failure isn't local to the card.
+    * `ExplorerStore.load` discards *and deletes* a snapshot it cannot decode, and the next
+    * periodic save writes the empty canvas over it, so a `CardSnapshot` field renamed or
+    * dropped between releases would otherwise cost the user their graph, history, pins, and
+    * viewport as well — unrecoverably, and with no trace beyond one console warning. Cards
+    * are the volatile part of this format; nothing else in it should ride on their shape.
+    */
+  implicit private val cardsDecoder: Decoder[Seq[CardSnapshot]] = new Decoder[Seq[CardSnapshot]] {
+    def apply(c: HCursor): Decoder.Result[Seq[CardSnapshot]] = tryDecode(c)
+    override def tryDecode(c: ACursor): Decoder.Result[Seq[CardSnapshot]] =
+      Right(c.values.getOrElse(Nil).flatMap(_.hcursor.as[CardSnapshot].toOption).toSeq)
+  }
+
+  implicit val encoder: Encoder[FullSnapshot] = deriveEncoder
+
+  private val derivedDecoder: Decoder[FullSnapshot] = deriveDecoder
+
+  /** [[derivedDecoder]], with `expandedCardIdx` cleared whenever [[cardsDecoder]] dropped a
+    * card. The index was saved against the full card list, so a drop shifts every card
+    * behind it one position forward and the index can then address a different card
+    * (`CardsStore.restore` corrects only for drops it performs itself, via
+    * `CardSnapshot.toCard`). Restoring with every card minimized is the honest fallback —
+    * the same one a pre-index snapshot already gets.
+    */
+  implicit val decoder: Decoder[FullSnapshot] = Decoder.instance { c =>
+    derivedDecoder(c).map { snap =>
+      val savedCardCount = c.downField("cards").values.fold(0)(_.size)
+      if (snap.cards.size < savedCardCount) snap.copy(expandedCardIdx = None) else snap
+    }
+  }
+}
+
+object ExplorerStore {
 
   private val DbName = "thatdot.explorer"
   private val DbVersion = 1d

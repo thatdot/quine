@@ -3,7 +3,6 @@ package com.thatdot.quine.webapp.resultspanel.tapmodal
 import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.webapp.Styles
-import com.thatdot.quine.webapp.resultspanel.cards.TapCardQuery
 import com.thatdot.quine.webapp.resultspanel.{ResultsIcons, TapCatalogEntry, TapOutput, TapPoint, TapTarget}
 import com.thatdot.quine.webapp.util.Pot
 
@@ -419,10 +418,10 @@ object SqPipelineTree {
       cls := TapModalStyles.diagramTap,
       cls(TapModalStyles.diagramTapTapped) <-- isTapped,
       // Tooltip: what the point observes plus (when known) the query that produced the data —
-      // shared with AddTapChooser via TapCardQuery.hoverDesc.
+      // shared with AddTapChooser via TapPoint.hoverDesc.
       title <-- isTapped.map(t =>
-        if (t) s"${TapCardQuery.hoverDesc(tapPoint, queryText)} $tappedTooltipSuffix"
-        else TapCardQuery.hoverDesc(tapPoint, queryText),
+        if (t) s"${TapPoint.hoverDesc(tapPoint, queryText)} $tappedTooltipSuffix"
+        else TapPoint.hoverDesc(tapPoint, queryText),
       ),
       onClick.compose(_.sample(isTapped)) --> { tappedNow =>
         if (tappedNow) onFocusExisting(target) else onPickNew(target)

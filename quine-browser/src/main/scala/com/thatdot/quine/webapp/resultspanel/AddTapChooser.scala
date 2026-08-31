@@ -3,7 +3,6 @@ package com.thatdot.quine.webapp.resultspanel
 import com.raquo.laminar.api.L._
 
 import com.thatdot.quine.webapp.Styles
-import com.thatdot.quine.webapp.resultspanel.cards.TapCardQuery
 import com.thatdot.quine.webapp.util.Pot
 
 /** The add-a-tap chooser — the switcher's create mode. A flat, always-visible list of standing
@@ -181,14 +180,14 @@ object AddTapChooser {
   ): HtmlElement = {
     val target = TapTarget.StandingQuery(sqName, tapPoint)
     // Tooltip: what the point observes plus (when known) the query that produced the data —
-    // shared with the pipeline tree via TapCardQuery.hoverDesc.
+    // shared with the pipeline tree via TapPoint.hoverDesc.
     if (watch.contains(target.key))
-      span(cls := Styles.viewingPill, title := TapCardQuery.hoverDesc(tapPoint, queryText), s"✓ $label")
+      span(cls := Styles.viewingPill, title := TapPoint.hoverDesc(tapPoint, queryText), s"✓ $label")
     else
       button(
         tpe := "button",
         cls := Styles.tapButton,
-        title := TapCardQuery.hoverDesc(tapPoint, queryText),
+        title := TapPoint.hoverDesc(tapPoint, queryText),
         onClick --> (_ => sd.onNext(ResultsCommand.OpenTap(target))),
         label,
       )

@@ -17,6 +17,7 @@ import com.thatdot.quine.webapp.resultspanel.{
   SourceStatus,
   TapEntry,
   TapPoint,
+  TapPointQuery,
   TapTarget,
   ViewerState,
 }
@@ -55,17 +56,23 @@ final case class CardOutcomeSnapshot(
   * stream buffer restarts empty on reconnect), and an adhoc card keeps its query + full
   * last outcome.
   *
-  * `stopped` records the card's state at save time; for a tap-table card the *restored*
-  * state is always stopped (a frozen placeholder entry) and the host re-opens the tap for
-  * cards that were live — see [[CardSnapshot.toState]] and the host's restore wiring.
+  * The card's [[CardId]] is deliberately absent: ids are session-scoped, minted by
+  * `CardsStore` off one counter, so persisting them would let a restored id collide with a
+  * freshly minted one. A restore mints new ids, and the *expanded* card — the only card the
+  * snapshot needs to point at — is addressed by its position in the list instead (see
+  * `CardsStore.restore`).
+  *
+  * `stopped` records the card's state at save time; for a tap-table card it folds in the
+  * entry's `ended` flag, so a tap paused any way at all — user Stop, filled budget, departed
+  * source — persists as stopped. The *restored* state is always stopped (a frozen
+  * placeholder entry) and the host re-opens the tap only for cards that were actively
+  * streaming (sampling mid-fill, or live) — see [[CardSnapshot.toCard]] and the host's
+  * restore wiring; a stopped tap is never reactivated by a restore.
   */
 final case class CardSnapshot(
-  id: String,
   kind: String, // "adhoc" | "tapTable"
-  title: String,
-  createdAt: String,
   sampleSize: Int,
-  live: Boolean, // SampleMode.Live
+  hasSampleLimit: Boolean,
   stopped: Boolean,
   viewer: CardViewerSnapshot,
   // adhoc
@@ -75,10 +82,10 @@ final case class CardSnapshot(
   // tap kinds
   sqName: String,
   tapPoint: String, // "raw" | "post:<output>"
-  graphFeedLabel: Option[String], // "Match query" | "Enrichment query" — see TapCardQuery
-  graphFeedText: Option[String],
-  // Transformed cards' shape note (TapCardQuery.note); missing in older snapshots → None.
-  graphFeedNote: Option[String] = None,
+  tapQueryText: Option[String],
+  // A Transformed card's transformation type (TapPointQuery.transformation), from which
+  // the popup re-derives its shape note on restore.
+  tapQueryTransformation: Option[String] = None,
 )
 
 object CardSnapshot {
@@ -158,7 +165,7 @@ object CardSnapshot {
     )
 
   /** `sampleSize` arrives separately because it lives at the [[CardSnapshot]] top level
-    * (persisted-format compatibility with when it was a `CardState` field) rather than in
+    * (persisted-format compatibility with when it was a card-level field) rather than in
     * [[CardViewerSnapshot]].
     */
   private def decodeViewer(snap: CardViewerSnapshot, sampleSize: Int): ViewerState = {
@@ -174,7 +181,7 @@ object CardSnapshot {
   }
 
   /** The [[TapTarget]] a tap-kind snapshot points at; `None` for adhoc snapshots or an
-    * undecodable tap point. Only standing-query taps are ever persisted (see [[fromState]]).
+    * undecodable tap point. Only standing-query taps are ever persisted (see [[fromCard]]).
     */
   def tapTargetOf(snap: CardSnapshot): Option[TapTarget] =
     if (snap.kind == KindTapTable)
@@ -191,27 +198,25 @@ object CardSnapshot {
     * one could only ever be an empty frozen placeholder — strictly worse than the card simply
     * being gone. Standing-query taps do restore, because their source is still producing.
     */
-  def fromState(c: CardState): Option[CardSnapshot] = {
+  def fromCard(c: Card): Option[CardSnapshot] = {
     val base = CardSnapshot(
-      id = c.id.value,
       kind = "",
-      title = c.title,
-      createdAt = c.createdAt,
       sampleSize = c.viewer.sampleSize.now(),
-      live = c.mode == SampleMode.Live,
-      stopped = c.stopped,
+      // adhoc cards have neither a sample mode nor anything running to stop; the tap
+      // branch below sets both
+      hasSampleLimit = false,
+      stopped = false,
       viewer = encodeViewer(c.viewer),
       query = "",
       language = encodeLanguage(QueryLanguage.Cypher),
       outcome = None,
       sqName = "",
       tapPoint = "",
-      graphFeedLabel = None,
-      graphFeedText = None,
-      graphFeedNote = None,
+      tapQueryText = None,
+      tapQueryTransformation = None,
     )
-    c.kind match {
-      case CardKind.AdhocCard(query, language, outcome) =>
+    c match {
+      case AdhocCard(_, query, language, outcome, _, _) =>
         Some(
           base.copy(
             kind = KindAdhoc,
@@ -220,18 +225,23 @@ object CardSnapshot {
             outcome = outcome.map(content => encodeOutcome(content.outcome)),
           ),
         )
-      case CardKind.TapTableCard(TapTarget.StandingQuery(sqName, tapPoint), _, query) =>
+      case TapTableCard(_, TapTarget.StandingQuery(sqName, tapPoint), entry, query, stopped, hasSampleLimit, _) =>
+        // `ended` folds into `stopped`: a pause is a pause — user Stop, filled budget, and
+        // a departed source all persist alike, and none of them may come back streaming on
+        // restore.
+        val ended = entry.ended.now()
         Some(
           base.copy(
             kind = KindTapTable,
+            hasSampleLimit = hasSampleLimit,
+            stopped = stopped || ended,
             sqName = sqName,
             tapPoint = encodeTapPoint(tapPoint),
-            graphFeedLabel = query.map(_.label),
-            graphFeedText = query.map(_.query),
-            graphFeedNote = query.flatMap(_.note),
+            tapQueryText = query.map(_.query),
+            tapQueryTransformation = query.flatMap(_.transformation),
           ),
         )
-      case CardKind.TapTableCard(_: TapTarget.BackgroundQuery, _, _) => None
+      case TapTableCard(_, _: TapTarget.BackgroundQuery, _, _, _, _, _) => None
     }
   }
 
@@ -256,7 +266,9 @@ object CardSnapshot {
     entry
   }
 
-  /** Rebuild a live [[CardState]] from a persisted snapshot. `None` when the snapshot's
+  /** Rebuild a live [[Card]] from a persisted snapshot, under the caller-supplied `id`
+    * (snapshots carry no id of their own — `CardsStore.restore`, the only caller, mints one
+    * from its counter). `None` when the snapshot's
     * kind or tap point no longer decodes (a corrupt, removed-format, or future-format
     * entry — e.g. a "tapGraph" snapshot persisted before graph-tap cards were removed —
     * the card is dropped rather than failing the whole restore).
@@ -264,10 +276,34 @@ object CardSnapshot {
     *   - Adhoc: the full saved outcome is restored (a mid-run save with no outcome yet
     *     becomes the `Restored` placeholder).
     *   - Tap-table: restored `stopped` with a [[placeholderEntry]]; the host re-opens the
-    *     tap for cards that were live at save time (restart protocol).
+    *     tap only for cards saved actively streaming (`!snap.stopped` — mid-fill sampling
+    *     or live; a paused tap stays paused, its sample budget reset to the default since
+    *     its buffer restarts empty and nothing will refill it). A reconnecting card keeps
+    *     its whole saved budget, which its empty buffer then refills. The restored
+    *     card itself always keeps its sample cap regardless of the saved
+    *     `hasSampleLimit` — it starts stopped on a placeholder entry, not actually live,
+    *     and a reopen that never resolves (SQ deleted, WS down) must not leave a
+    *     permanently-stopped card claiming to be live (see `CardsStore.sampleBudgetFor`,
+    *     which trusts the flag alone: a stuck uncapped stopped card would hand out an
+    *     unbounded budget to whatever taps its target next). The saved value still reaches
+    *     the host via [[wasLive]], which drives `CardsStore.restoreLive` — the
+    *     successful-reopen path that lifts the cap again once the fresh source arrives.
     */
-  def toState(snap: CardSnapshot): Option[CardState] = {
-    val kindOpt: Option[CardKind] = snap.kind match {
+  def toCard(snap: CardSnapshot, id: CardId): Option[Card] = {
+    // The sample budget the restored viewer starts with. A paused tap resets to the
+    // default: its buffer restarts empty, no reconnect will refill it, and a later
+    // Get-more recomputes the budget from rows-on-screen anyway — carrying the old
+    // total forward would just make the next reopen chase a stale target. A tap that
+    // reconnects keeps its whole saved budget: the reconnect starts from an empty buffer
+    // (see [[placeholderEntry]]; only a *continuation* reopen seeds from the previous
+    // session), so the budget is what the refilled card will hold, not a remainder on top
+    // of rows that survived.
+    val restoredSampleSize =
+      if (snap.kind == KindTapTable && snap.stopped) ViewerState.DefaultSampleSize
+      else snap.sampleSize
+    // Lazy so an undecodable snapshot (the `None` returns below) allocates no viewer.
+    lazy val viewer = decodeViewer(snap.viewer, restoredSampleSize)
+    snap.kind match {
       case KindAdhoc =>
         val language = decodeLanguage(snap.language)
         // Run identity is session-scoped, not persisted: each restored content gets a
@@ -276,28 +312,31 @@ object CardSnapshot {
         val outcome = snap.outcome
           .map(o => ResultsContent(decodeOutcome(o), snap.query, language, ResultsContent.nextRunId()))
           .orElse(Some(ResultsContent(ResultOutcome.Restored(None), snap.query, language, ResultsContent.nextRunId())))
-        Some(CardKind.AdhocCard(snap.query, language, outcome))
+        Some(AdhocCard(id, snap.query, language, outcome, editAssociated = false, viewer))
       case KindTapTable =>
-        val query = for {
-          label <- snap.graphFeedLabel
-          text <- snap.graphFeedText
-        } yield TapCardQuery(label, text, snap.graphFeedNote)
-        tapTargetOf(snap).map(target => CardKind.TapTableCard(target, placeholderEntry(target), query))
+        val query = snap.tapQueryText.map(TapPointQuery(_, snap.tapQueryTransformation))
+        // A restored tap-table stream is a frozen placeholder until the host swaps a
+        // live entry in, so the card starts stopped and `Sampled` regardless of its saved
+        // state.
+        tapTargetOf(snap).map(target =>
+          TapTableCard(
+            id,
+            target,
+            placeholderEntry(target),
+            query,
+            stopped = true,
+            hasSampleLimit = true,
+            viewer,
+          ),
+        )
       case _ => None
     }
-    kindOpt.map { kind =>
-      CardState(
-        id = CardId(snap.id),
-        kind = kind,
-        title = snap.title,
-        createdAt = snap.createdAt,
-        mode = if (snap.live) SampleMode.Live else SampleMode.Sampled,
-        // A restored tap-table stream is a frozen placeholder until the host swaps a
-        // live entry in, so the card starts stopped regardless of its saved state.
-        stopped = if (snap.kind == KindTapTable) true else snap.stopped,
-        editAssociated = false,
-        viewer = decodeViewer(snap.viewer, snap.sampleSize),
-      )
-    }
   }
+
+  /** Whether a tap-table snapshot was live at save time — the host's cue (alongside
+    * `!snap.stopped`, which triggers the reopen at all) to ask [[CardsStore.restoreLive]]
+    * to put the card back in `Live` mode once the reopen this snapshot triggers actually
+    * succeeds. See [[toCard]]: the restored card itself always starts `Sampled`.
+    */
+  def wasLive(snap: CardSnapshot): Boolean = !snap.hasSampleLimit
 }
