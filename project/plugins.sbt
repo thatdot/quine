@@ -18,8 +18,3 @@ libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "7.7.1.20260724
 addSbtPlugin("com.github.sbt" % "sbt-boilerplate" % "0.8.0")
 addSbtPlugin("com.github.sbt" %% "sbt-sbom" % "0.5.0")
 addSbtPlugin("com.simplytyped" % "sbt-antlr4" % "0.8.3")
-
-// 👇 IMPORTANT: When updating this version, also update the NVD cache key in
-//    .github/workflows/dependency-check.yml (search for "nvd-db-")
-addSbtPlugin("net.nmoncho" % "sbt-dependency-check" % "1.9.0")
-// ☝️ If updating sbt-dependency-check version, update NVD cache key, too!
