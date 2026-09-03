@@ -165,7 +165,7 @@ object QuineDestinationSteps {
     allowAllNodeScan: Boolean = false,
     @description(
       """Whether queries that raise a potentially-recoverable error should be retried. If set to `true` (the default),
-        |such errors will be retried until they succeed. ⚠️ Note that if the query is not idempotent, the query's
+        |such errors will be retried until they succeed. Additionally, if the query is not idempotent, the query's
         |effects may occur multiple times in the case of external system failure. Query idempotency
         |can be checked with the EXPLAIN keyword. If set to `false`, results and effects will not be duplicated,
         |but may be dropped in the case of external system failure""".asOneLine,

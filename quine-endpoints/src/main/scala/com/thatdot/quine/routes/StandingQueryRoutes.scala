@@ -124,14 +124,14 @@ object StandingQueryOutputStructure {
   @unnamed
   @title("Bare")
   @docs(
-    "Output the result as is with no metadata. Warning: if this is used with `includeCancellations=true`" +
-    "then there will be no way to determine the difference between positive and negative matches",
+    "Output the result as is with no metadata. To distinguish positive and negative matches when " +
+    "`includeCancellations=true`, use `WithMetadata` instead.",
   )
   final case class Bare() extends StandingQueryOutputStructure
   val docString: String = "Whether the output should contain the metadata. " +
     "If bare, the result will be returned as is, but if set to include metadata, the output will be wrapped in an object" +
-    "with a field for the metadata and a field for the data itself." +
-    "Warning: if `Bare` with `includeCancellations=true` then there will be no way to determine the difference between positive and negative matches\""
+    "with a field for the metadata and a field for the data itself. " +
+    "To distinguish positive and negative matches when `includeCancellations=true`, use `WithMetadata`."
 }
 
 /** Output sink for processing standing query results */
@@ -239,10 +239,10 @@ object StandingQueryResultOutputUserDef {
     text = """|Publishes an AWS SNS record to the provided topic containing JSON for each result.
               |For the format of the result, see "Standing Query Result Output".
               |
-              |**Double check your credentials and topic ARN.** If writing to SNS fails, the write will
-              |be retried indefinitely. If the error is unfixable (eg, the topic or credentials
-              |cannot be found), the outputs will never be emitted and the Standing Query this output
-              |is attached to may stop running.""".stripMargin,
+              |To guarantee delivery, writes that fail are retried indefinitely, so confirm the credentials
+              |and topic ARN before starting this output. An unfixable error (eg, an invalid topic ARN or
+              |missing credentials) will retry forever without emitting results, which may stop the
+              |Standing Query this output is attached to.""".stripMargin,
   )
   final case class WriteToSNS(
     credentials: Option[AwsCredentials],

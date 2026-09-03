@@ -377,8 +377,9 @@ case class FileIngest(
 @title("S3 File ingest")
 @description(
   """An ingest stream from a file in S3, newline delimited. This ingest source is
-    |experimental and is subject to change without warning. In particular, there are
-    |known issues with durability when the stream is inactive for at least 1 minute.""".asOneLine,
+    |experimental and its behavior is subject to change. It's best suited to continuously
+    |active streams; durability is not guaranteed once a stream has been inactive
+    |for 1 minute or more.""".asOneLine,
 )
 case class S3Ingest(
   @description("Format used to decode each incoming line from a file in S3.")

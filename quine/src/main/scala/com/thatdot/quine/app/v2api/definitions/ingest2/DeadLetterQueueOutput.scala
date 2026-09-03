@@ -73,7 +73,7 @@ object DeadLetterQueueOutput {
   @title("Broadcast to Reactive Stream")
   @description(
     """Creates a 1 to many reactive stream output that other thatDot products can subscribe to.
-      |Warning: Reactive Stream outputs do not function correctly when running in a cluster.""".asOneLine,
+      |Reactive Stream outputs are only supported in standalone (single-host) deployments.""".asOneLine,
   )
   final case class ReactiveStream(
     @description("The address to bind the reactive stream server on.")
@@ -86,11 +86,10 @@ object DeadLetterQueueOutput {
 
   @title("Publish to SNS Topic")
   @description(
-    """Publishes an AWS SNS record to the provided topic for each message.
-      |⚠️ <b><em>Double check your credentials and topic ARN!</em></b> If writing to SNS fails, the write will
-      |be retried indefinitely. If the error is unfixable (e.g., the topic or credentials
-      |cannot be found), the outputs will never be emitted and the Standing Query this output
-      |is attached to may stop running.""".asOneLine,
+    """Publishes an AWS SNS record to the provided topic for each message. To guarantee delivery,
+      |writes that fail are retried indefinitely, so confirm the credentials and topic ARN before starting
+      |this output. An unfixable error (e.g., an invalid topic ARN or missing credentials) will retry
+      |forever without emitting results, which may stop the Standing Query this output is attached to.""".asOneLine,
   )
   final case class SNS(
     credentials: Option[AwsCredentials],

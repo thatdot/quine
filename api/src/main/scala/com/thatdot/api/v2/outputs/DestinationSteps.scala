@@ -136,7 +136,7 @@ object DestinationSteps {
     val propertyDescriptionForPort = "The port to bind the reactive stream server on."
     val description: String =
       """Broadcasts data to a created Reactive Stream. Other thatDot products can subscribe to Reactive Streams.
-      |⚠️ Warning: Reactive Stream outputs do not function correctly when running in a cluster.""".stripMargin
+      |Reactive Stream outputs are only supported in standalone (single-host) deployments.""".stripMargin
     val title = "Broadcast to Reactive Stream"
   }
 
@@ -151,11 +151,10 @@ object DestinationSteps {
   object SNS {
     val propertyEncodedExampleForTopic = "example-topic"
     val propertyDescriptionForTopic = "ARN of the topic to publish to."
-    val description: String = """Publishes an AWS SNS record to the provided topic.
-      |⚠️ <b><em>Double check your credentials and topic ARN!</em></b> If writing to SNS fails, the write will
-      |be retried indefinitely. If the error is unfixable (e.g., the topic or credentials
-      |cannot be found), the outputs will never be emitted and the Standing Query this output
-      |is attached to may stop running.""".stripMargin // Use StringOps#asOneLine when that is accessible
+    val description: String = """Publishes an AWS SNS record to the provided topic. To guarantee delivery,
+      |writes that fail are retried indefinitely, so confirm the credentials and topic ARN before starting
+      |this output. An unfixable error (e.g., an invalid topic ARN or missing credentials) will retry
+      |forever without emitting results, which may stop the Standing Query this output is attached to.""".stripMargin // Use StringOps#asOneLine when that is accessible
     val title = "Publish to SNS Topic"
   }
 
