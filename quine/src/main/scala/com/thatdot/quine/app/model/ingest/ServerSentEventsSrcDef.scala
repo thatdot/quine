@@ -1,7 +1,6 @@
 package com.thatdot.quine.app.model.ingest
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.stream.connectors.sse.scaladsl.EventSource
@@ -9,6 +8,7 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.model.ingest.serialization.{ContentDecoder, ImportFormat}
+import com.thatdot.quine.app.model.ingest.util.StreamingHttpRequest
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.util.SwitchMode
@@ -39,7 +39,7 @@ final case class ServerSentEventsSrcDef(
 
   def source(): Source[ServerSentEvent, NotUsed] = EventSource(
     uri = Uri(url),
-    send = Http().singleRequest(_),
+    send = StreamingHttpRequest.send(_),
   )
 
   def rawBytes(event: ServerSentEvent): Array[Byte] = event.data.getBytes

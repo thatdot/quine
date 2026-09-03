@@ -1,7 +1,6 @@
 package com.thatdot.quine.app.model.ingest2.sources
 
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.stream.connectors.sse.scaladsl.EventSource
@@ -13,6 +12,7 @@ import cats.implicits.catsSyntaxValidatedId
 import com.thatdot.data.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.model.ingest.serialization.ContentDecoder
+import com.thatdot.quine.app.model.ingest.util.StreamingHttpRequest
 import com.thatdot.quine.app.model.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.util.BaseError
@@ -23,7 +23,7 @@ case class ServerSentEventSource(url: String, meter: IngestMeter, decoders: Seq[
 
   def stream: Source[ServerSentEvent, ShutdownSwitch] =
     withKillSwitches(
-      EventSource(uri = Uri(url), send = Http().singleRequest(_))
+      EventSource(uri = Uri(url), send = StreamingHttpRequest.send(_))
         .via(metered[ServerSentEvent](meter, e => e.data.length)),
     )
 
