@@ -581,6 +581,7 @@ lazy val `quine-docs`: Project = {
     Def.setting((Compile / sourceManaged).value / "reference" / "cypher-user-defined-functions.md")
   val cypherTable3 =
     Def.setting((Compile / sourceManaged).value / "reference" / "cypher-user-defined-procedures.md")
+  val capabilitiesJson = Def.setting((Compile / sourceManaged).value / "reference" / "capabilities.json")
 
   val generateDocs = TaskKey[Unit]("generateDocs", "Generate documentation tables for the Quine (Mkdocs) project")
 
@@ -609,6 +610,10 @@ lazy val `quine-docs`: Project = {
             (Compile / runMain)
               .toTask(s" com.thatdot.quine.docs.GenerateOpenApiV2 ${docJsonV2.value.getAbsolutePath}")
           },
+          Def.taskDyn {
+            (Compile / runMain)
+              .toTask(s" com.thatdot.quine.docs.GenerateCapabilities ${capabilitiesJson.value.getAbsolutePath}")
+          },
         )
         .value,
     )
@@ -616,6 +621,8 @@ lazy val `quine-docs`: Project = {
       libraryDependencies ++= Seq(
         "org.pegdown" % "pegdown" % pegdownV,
         "org.parboiled" % "parboiled-java" % parboiledV,
+        // Capability lists are enumerated by reflecting over sealed hierarchies.
+        "org.scala-lang" % "scala-reflect" % scalaVersion.value,
         "org.scalatest" %% "scalatest" % scalaTestV % Test,
       ),
     )
