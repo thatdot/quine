@@ -41,8 +41,5 @@ object RowDrawer {
 
   private def renderValue(value: Json): HtmlElement =
     if (value.isObject || value.isArray) pre(spaces2.print(value))
-    else {
-      val text: String = value.asString.getOrElse(noSpaces.print(value))
-      span(text)
-    }
+    else span(noSpaces.print(value))
 }

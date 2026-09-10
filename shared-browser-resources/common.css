@@ -3060,16 +3060,25 @@ table.results-grid tbody tr:hover {
 }
 .cell-null {
   color: rgba(10, 41, 91, 0.4);
+  font-style: italic;
 }
-.cell-chip {
-  display: inline-block;
-  margin: 1px 4px 1px 0;
-  padding: 1px 6px;
-  font-family: var(--cui-font-sans-serif);
-  font-size: 11px;
-  background: rgba(10, 41, 91, 0.05);
-  border: 1px solid rgba(10, 41, 91, 0.1);
-  border-radius: 5px;
+/* Type-distinct styling so a value's type is always discernible without relying on
+   colour alone (strings carry quotes, booleans/null are literal keywords). */
+.cell-bool {
+  color: var(--error-accent);
+  font-weight: 600;
+}
+.cell-string {
+  color: var(--thatdot-flow-green);
+}
+/* Object keys and structural punctuation ({ } : , [ ] and string quotes) are their own
+   elements, so a key can never be mistaken for a separator (the {g: 42, h: 43} problem). */
+.cell-key {
+  color: var(--thatdot-dark-blue);
+  font-weight: 600;
+}
+.cell-punct {
+  color: rgba(10, 41, 91, 0.4);
 }
 /* Node / relationship cells: labels (or rel type) as chips, a truncating id, and a
    muted property count. */
