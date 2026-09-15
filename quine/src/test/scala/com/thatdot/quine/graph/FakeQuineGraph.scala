@@ -65,7 +65,6 @@ class FakeQuineGraph(
   override def effectOrder: EventEffectOrder = EventEffectOrder.MemoryFirst
   override def declineSleepWhenWriteWithinMillis: Long = 0
   override def declineSleepWhenAccessWithinMillis: Long = 0
-  override def maxCatchUpSleepMillis: Long = 0
   override def labelsProperty: Symbol = Symbol("__LABEL")
   override def isOnThisHost(quineRef: QuineRef): Boolean = true
   override def isSingleHost: Boolean = true

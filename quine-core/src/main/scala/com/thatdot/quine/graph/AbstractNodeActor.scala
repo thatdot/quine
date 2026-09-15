@@ -9,8 +9,9 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
+import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.Actor
-import org.apache.pekko.stream.scaladsl.Keep
+import org.apache.pekko.stream.scaladsl.{Keep, Sink, Source}
 
 import cats.data.NonEmptyList
 import cats.implicits._
@@ -42,6 +43,7 @@ import com.thatdot.quine.graph.edges.{EdgeProcessor, MemoryFirstEdgeProcessor, P
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
   DgnWatchableEventIndexSummary,
+  JournalEntry,
   LocallyRegisteredStandingQuery,
   NodeInternalState,
   SqStateResult,
@@ -633,9 +635,17 @@ abstract private[graph] class AbstractNodeActor(
           atTime.map(EventTime.fromMillis).map(_.largestEventTimeInThisMillisecond).getOrElse(EventTime.MaxValue),
         includeDomainIndexEvents = false,
       )
-      .recover { case err =>
+      // [[NodeInternalState]] carries the journal as a `Set`, so the report cannot be assembled
+      // without it in hand. Collected straight into that `Set` rather than into a `Seq` that is
+      // then converted, which would build the whole journal twice.
+      .runWith(Sink.collection[NodeEvent.WithTime[NodeEvent], Set[NodeEvent.WithTime[NodeEvent]]])(
+        graph.materializer,
+      )
+      // Reported as a failure rather than as an empty journal, which a node that genuinely never
+      // changed would also produce. The log adds the node's identity, which the caller lacks.
+      .recoverWith { case err =>
         log.error(log"failed to get journal for node: $qidAtTime" withException err)
-        Iterable.empty
+        Future.failed(err)
       }(context.dispatcher)
       .map { journal =>
         NodeInternalState(
@@ -656,7 +666,7 @@ abstract private[graph] class AbstractNodeActor(
                 s"${st.toString}{${st.readResults(properties, graph.labelsProperty).map(_.toList)}}",
               )
           },
-          journal.toSet,
+          journal,
           getNodeHashCode().value,
         )
       }(context.dispatcher)
@@ -664,6 +674,37 @@ abstract private[graph] class AbstractNodeActor(
 
   def getNodeHashCode(): GraphNodeHashCode =
     GraphNodeHashCode(qid, properties, edges.toSet)
+
+  /** Retrieve the journal for a node, as of an optional `atTime`
+    *
+    * @param startingAt optional earliest millisecond to report, inclusive; `None` reads from the
+    *                   beginning of the node's history
+    * @param endingAt optional latest millisecond to report, inclusive; `None` reports everything
+    *                 recorded. This bounds the slice of journal returned, not the moment the node is
+    *                 read at, so it may name a moment that has not arrived yet
+    * @return the node's events in ascending timestamp order, streamed rather than collected
+    */
+  def getJournal(
+    startingAt: Option[Milliseconds],
+    endingAt: Option[Milliseconds],
+  ): Source[JournalEntry, NotUsed] = {
+    // Both bounds are inclusive of the whole millisecond they name: the lower bound starts at the
+    // first event that millisecond could hold, the upper bound ends at the last. Neither says
+    // anything about which moment the node is being read at, so an upper bound may name a moment
+    // that has not arrived; the journal simply has nothing recorded past the present to return.
+    val from = startingAt.map(EventTime.fromMillis).getOrElse(EventTime.MinValue)
+    val to =
+      endingAt.map(EventTime.fromMillis(_).largestEventTimeInThisMillisecond).getOrElse(EventTime.MaxValue)
+    // Standing query events are excluded, so only the node-change journal is read. Streaming it
+    // keeps a node with a very long history from being assembled in memory all at once.
+    persistor
+      .getNodeChangeEventsWithTime(
+        qid,
+        startingAt = from,
+        endingAt = to,
+      )
+      .map(JournalEntry(_))
+  }
 
   def getSqState(): SqStateResults =
     SqStateResults(

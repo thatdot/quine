@@ -163,7 +163,6 @@ object Main extends App with LazySafeLogging {
           effectOrder = config.persistence.effectOrder,
           declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
           declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
-          maxCatchUpSleepMillis = config.maxCatchUpSleep.toMillis,
           labelsProperty = config.labelsProperty,
           edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
           metricRegistry = Metrics,

@@ -95,12 +95,6 @@ trait BaseGraph extends StrictSafeLogging {
     */
   def declineSleepWhenAccessWithinMillis: Long
 
-  /** Nodes will wait up to this amount of milliseconds before processing messages
-    * when at-time is in the future. This can occur when there is difference in
-    * the system clock across nodes in the cluster.
-    */
-  def maxCatchUpSleepMillis: Long
-
   /** Property on a node that gets used to store the list of strings that make
     * up the node's labels.
     *

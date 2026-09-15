@@ -144,6 +144,37 @@ object ProcedureRegistry {
     ProcedureSignature("recentNodeIds", Vector("nodeId" -> Type.Any)),
     ProcedureSignature("getFilteredEdges", Vector("edge" -> edge)),
     ProcedureSignature("random.walk", Vector("walk" -> listOfString)),
+    // Historical queries over the event journal
+    ProcedureSignature(
+      "history.propertyChanges",
+      Vector("key" -> string, "value" -> Type.Any, "previousValue" -> Type.Any, "changeTime" -> integer),
+    ),
+    ProcedureSignature("history.queryAt", Vector("value" -> Type.Any)),
+    ProcedureSignature("history.nodeAt", Vector("node" -> node, "edges" -> listOfAny)),
+    ProcedureSignature(
+      "history.nodeChanges",
+      Vector("kind" -> string, "detail" -> Type.Any, "changeTime" -> integer),
+    ),
+    ProcedureSignature(
+      "history.edgeChanges",
+      Vector(
+        "action" -> string,
+        "edgeType" -> string,
+        "direction" -> string,
+        "other" -> string,
+        "changeTime" -> integer,
+      ),
+    ),
+    ProcedureSignature(
+      "history.edgeChangesBetween",
+      Vector(
+        "action" -> string,
+        "edgeType" -> string,
+        "direction" -> string,
+        "other" -> string,
+        "changeTime" -> integer,
+      ),
+    ),
     // Graph writes
     ProcedureSignature("create.relationship", Vector("rel" -> edge)),
     ProcedureSignature("create.setProperty", Vector.empty),

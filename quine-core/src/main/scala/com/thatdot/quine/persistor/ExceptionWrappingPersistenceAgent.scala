@@ -77,6 +77,21 @@ trait ExceptionWrapper extends StrictSafeLogging {
         logger.warn(log"Intercepted persistor error" withException wrapped)
         Failure(wrapped)
     }(ExecutionContext.parasitic)
+
+  /** As [[wrapException]], but for a call whose results arrive as a stream: the failure can surface
+    * at any point while the stream is running, not only when it is started.
+    */
+  protected def wrapExceptionSource[A](
+    reifiedCall: PersistorCall,
+    source: Source[A, NotUsed],
+  ): Source[A, NotUsed] =
+    // Matches [[wrapException]]'s `transform`, which wraps every failure rather than only the
+    // non-fatal ones, so the streaming call reports exactly what the collecting call reported.
+    source.mapError { case exception: Throwable =>
+      val wrapped = new WrappedPersistorException(reifiedCall.toString, exception)
+      logger.warn(log"Intercepted persistor error" withException wrapped)
+      wrapped
+    }
 }
 
 /** @param ec EC on which to schedule error-wrapping logic (low CPU, nonblocking workload)
@@ -106,7 +121,7 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceA
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = wrapException(
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] = wrapExceptionSource(
     GetJournal(id, startingAt, endingAt),
     persistenceAgent.getNodeChangeEventsWithTime(id, startingAt, endingAt),
   )
@@ -115,7 +130,7 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceA
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = wrapException(
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] = wrapExceptionSource(
     GetDomainIndexEvents(id, startingAt, endingAt),
     persistenceAgent.getDomainIndexEventsWithTime(id, startingAt, endingAt),
   )

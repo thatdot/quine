@@ -63,6 +63,47 @@ final case class HostQuineMetrics(
   val persistorGetMultipleValuesStandingQueryStatesTimer: Timer =
     metricRegistry.timer(MetricRegistry.name("persistor", "get-standing-query-states"))
 
+  /** Metrics for a `history.*` procedure that answers by walking a node's journal itself.
+    *
+    * What such a call costs is governed by how much history it walks rather than by how long it
+    * takes to answer, so the two counters are what make the cost visible: the ratio of journal
+    * events read to rows reported is how selective the call's filters were, and a call that walks a
+    * million events to report three rows looks the same as a cheap one in a timer alone.
+    *
+    * @param procedureName the procedure's Cypher name, such as `history.propertyChanges`
+    */
+  def journalWalkMetrics(procedureName: String): HostQuineMetrics.JournalWalkMetrics = {
+    val name = historyMetricName(procedureName)
+    HostQuineMetrics.JournalWalkMetrics(
+      timer = metricRegistry.timer(MetricRegistry.name("history", name, "time")),
+      journalEventsRead = metricRegistry.counter(MetricRegistry.name("history", name, "journal-events-read")),
+      rowsReported = metricRegistry.counter(MetricRegistry.name("history", name, "rows-reported")),
+    )
+  }
+
+  /** Metrics for a `history.*` procedure that answers by reading a node's state at a past moment.
+    *
+    * These rebuild a node through the ordinary wakeup path, which replays the journal below the
+    * procedure rather than through a stream the procedure can observe. There is deliberately no
+    * journal-events-read counter here: one would report zero for every call, which reads as "this
+    * was free" rather than "this was not measured".
+    *
+    * @param procedureName the procedure's Cypher name, such as `history.nodeAt`
+    */
+  def stateReadMetrics(procedureName: String): HostQuineMetrics.StateReadMetrics = {
+    val name = historyMetricName(procedureName)
+    HostQuineMetrics.StateReadMetrics(
+      timer = metricRegistry.timer(MetricRegistry.name("history", name, "time")),
+      rowsReported = metricRegistry.counter(MetricRegistry.name("history", name, "rows-reported")),
+    )
+  }
+
+  /** The metric-name component for a `history.*` procedure. The `history` prefix is supplied by the
+    * registry, so it is stripped here rather than repeated as `history.history-...`.
+    */
+  private def historyMetricName(procedureName: String): String =
+    procedureName.stripPrefix("history.").replace('.', '-')
+
   /** @param context the context for which this timer is being used -- for
     *                example, "ingest-XYZ-deduplication" or "http-webpage-serve"
     */
@@ -257,6 +298,32 @@ final case class HostQuineMetrics(
 }
 
 object HostQuineMetrics {
+
+  /** What one `history.*` procedure records about a call.
+    *
+    * @param timer how long the call took, start to finish
+    * @param journalEventsRead journal events walked, which is what the call actually costs
+    * @param rowsReported rows the call produced, which is what the caller asked for
+    */
+  /** What every `history.*` procedure measures: how long a call took and how much it reported. */
+  sealed trait HistoricalProcedureMetrics {
+    def timer: Timer
+    def rowsReported: Counter
+  }
+
+  /** A procedure that walks a journal itself, and so can also report how much of it it read. */
+  final case class JournalWalkMetrics(
+    timer: Timer,
+    journalEventsRead: Counter,
+    rowsReported: Counter,
+  ) extends HistoricalProcedureMetrics
+
+  /** A procedure that reads state at a past moment, whose journal cost is incurred below it. */
+  final case class StateReadMetrics(
+    timer: Timer,
+    rowsReported: Counter,
+  ) extends HistoricalProcedureMetrics
+
   val MetricsRegistryName = "quine-metrics"
 
   val IngestMetricComponent = "ingest"

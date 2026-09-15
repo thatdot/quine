@@ -241,12 +241,13 @@ abstract class CassandraPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = journals.getJournalWithTime(id, startingAt, endingAt)
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] =
+    journals.getJournalWithTime(id, startingAt, endingAt)
   override def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] =
     domainIndexEvents.getJournalWithTime(id, startingAt, endingAt)
 
   override def persistNodeChangeEvents(

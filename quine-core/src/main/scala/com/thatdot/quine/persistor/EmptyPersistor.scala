@@ -51,13 +51,13 @@ class EmptyPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Vector[NodeEvent.WithTime[NodeChangeEvent]]] = Future.successful(Vector.empty)
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] = Source.empty
 
   override def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Vector[NodeEvent.WithTime[DomainIndexEvent]]] = Future.successful(Vector.empty)
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] = Source.empty
 
   def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
     Future.unit

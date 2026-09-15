@@ -5,7 +5,9 @@ import java.util.UUID
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 
+import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
 import cats.data.NonEmptyList
 import cats.syntax.functor._
@@ -54,6 +56,11 @@ abstract class PersistenceAgentSpec
     with should.Matchers {
 
   implicit val system: ActorSystem = ActorSystem("test-system")
+
+  /** Journal reads stream; these assertions compare whole result sets, so collect them first. */
+  implicit protected class StreamedReadOps[A](source: Source[A, NotUsed]) {
+    def collected: Future[Seq[A]] = source.runWith(Sink.seq)
+  }
 
   // Override this if tests need to be skipped
   def runnable: Boolean = true
@@ -240,26 +247,31 @@ abstract class PersistenceAgentSpec
       allOfConcurrent(
         namespacedPersistor
           .getJournal(qid0, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0, event1, event2, event3))
           },
         namespacedPersistor
           .getJournal(qid1, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0, event1, event2, event3, event4))
           },
         namespacedPersistor
           .getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0, event1, event2, event3))
           },
         namespacedPersistor
           .getJournal(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq.empty)
           },
         namespacedPersistor
           .getJournal(qid4, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = false)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0, event1, event2, event3))
           },
@@ -271,40 +283,47 @@ abstract class PersistenceAgentSpec
         // before anything
         namespacedPersistor
           .getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(2L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq.empty)
           },
         // right up to one event
         namespacedPersistor
           .getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(34L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0))
           },
         // right after one event
         namespacedPersistor
           .getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(37L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0, event1))
           },
         // after all events
         namespacedPersistor
           .getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(48L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0, event1, event2, event3, event4))
           },
         // first event is the min value
         namespacedPersistor
           .getJournal(qid0, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0))
           },
         namespacedPersistor
           .getJournal(qid2, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0))
           },
         namespacedPersistor
           .getJournal(qid4, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0))
           },
@@ -316,46 +335,54 @@ abstract class PersistenceAgentSpec
         // before anything
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(2L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0, event1, event2, event3, event4))
           },
         // before one event
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(42L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event4))
           },
         // starting exactly at one event
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(44L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event4))
           },
         // starting exactly at the first event
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(34L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0, event1, event2, event3, event4))
           },
         // after all events
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(48L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq.empty)
           },
         // first event is the min value
         namespacedPersistor
           .getJournal(qid0, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event3))
           },
         namespacedPersistor
           .getJournal(qid2, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event3))
           },
         namespacedPersistor
           .getJournal(qid4, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event3))
           },
@@ -367,41 +394,48 @@ abstract class PersistenceAgentSpec
         // start and end before any events
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(33L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq.empty)
           },
         // start and end between events
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(42L), EventTime.fromRaw(43L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq.empty)
           },
         // right up to one event
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(34L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0))
           },
         // right after one event
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(35L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0))
           },
         // starting exactly at one event
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(35L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event0))
           },
         // start and end on events
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(36L), EventTime.fromRaw(40L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event1, event2, event3))
           },
         namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(48L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             journal shouldEqual Seq(
               event0,
@@ -419,32 +453,38 @@ abstract class PersistenceAgentSpec
         // event time needs to be treated as unsigned
         namespacedPersistor
           .getJournal(qid0, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event2))
           },
         namespacedPersistor
           .getJournal(qid2, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event2))
           },
         namespacedPersistor
           .getJournal(qid4, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event2))
           },
         // event time needs to be treated as unsigned
         namespacedPersistor
           .getJournal(qid0, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event1, event2))
           },
         namespacedPersistor
           .getJournal(qid2, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event1, event2))
           },
         namespacedPersistor
           .getJournal(qid4, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual Seq(event1, event2))
           },
@@ -928,6 +968,7 @@ abstract class PersistenceAgentSpec
       val maxTime = sorted.last.atTime
       namespacedPersistor
         .getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true)
+        .collected
         .map(_ shouldEqual sorted.toList)
     }
   }
@@ -938,11 +979,13 @@ abstract class PersistenceAgentSpec
         forAll(allQids)(qid =>
           for {
             _ <- namespacedPersistor.deleteNodeChangeEvents(qid)
-            journalEntries <- namespacedPersistor.getNodeChangeEventsWithTime(
-              qid,
-              EventTime.MinValue,
-              EventTime.MaxValue,
-            )
+            journalEntries <- namespacedPersistor
+              .getNodeChangeEventsWithTime(
+                qid,
+                EventTime.MinValue,
+                EventTime.MaxValue,
+              )
+              .collected
           } yield journalEntries shouldBe empty,
         ).map(_ => succeed)(ExecutionContext.parasitic)
       }
@@ -965,13 +1008,16 @@ abstract class PersistenceAgentSpec
       val maxTime = sorted.last.atTime
       namespacedPersistor
         .getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true)
+        .collected
         .map(e => e shouldEqual sorted.toList)
     }
     if (runDeletionTests) {
       it("delete") {
         for {
           _ <- namespacedPersistor.deleteDomainIndexEvents(qid)
-          after <- namespacedPersistor.getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+          after <- namespacedPersistor
+            .getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+            .collected
         } yield after shouldBe empty
       }
     }
@@ -1001,6 +1047,7 @@ abstract class PersistenceAgentSpec
         .traverse(events) { case (qid, _) =>
           namespacedPersistor
             .getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+            .collected
             .map(_.size)
         }
         .map(_.sum)
@@ -1066,14 +1113,18 @@ abstract class PersistenceAgentSpec
     }
     it("should retrieve journals for the same QuineId from different namespaces") {
       allOfConcurrent(
-        altPersistor1.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+        altPersistor1
+          .getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
+          .map { journal =>
             (journal shouldEqual Seq(event0, event2, event4))
-        },
-        altPersistor2.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        altPersistor2
+          .getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
+          .map { journal =>
             (journal shouldEqual Seq(event1, event3))
-        },
+          },
       )
     }
     // Arbitrary DomainIndexEvents
@@ -1099,11 +1150,13 @@ abstract class PersistenceAgentSpec
       allOfConcurrent(
         altPersistor1
           .getJournalWithTime(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual domainIndexEvents1.toList)
           },
         altPersistor2
           .getJournalWithTime(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .collected
           .map { journal =>
             (journal shouldEqual domainIndexEvents2.toList)
           },
@@ -1142,11 +1195,13 @@ abstract class PersistenceAgentSpec
             },
             altPersistor2
               .getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+              .collected
               .map { journal =>
                 (journal shouldEqual Seq(event1, event3))
               },
             altPersistor2
               .getJournalWithTime(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+              .collected
               .map { journal =>
                 (journal shouldEqual domainIndexEvents2.toList)
               },
@@ -1156,6 +1211,7 @@ abstract class PersistenceAgentSpec
             },
             getOrInitTestNamespace(altNamespace1)
               .getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+              .collected
               .map { journal =>
                 (journal shouldEqual Seq.empty)
               },

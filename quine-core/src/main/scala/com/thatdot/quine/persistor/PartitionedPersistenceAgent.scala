@@ -52,14 +52,14 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] =
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] =
     getAgent(id).getNodeChangeEventsWithTime(id, startingAt, endingAt)
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] =
     getAgent(id).getDomainIndexEventsWithTime(id, startingAt, endingAt)
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =

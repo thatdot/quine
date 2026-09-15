@@ -10,7 +10,7 @@ import cats.Applicative
 import cats.data.NonEmptyList
 import cats.syntax.apply._
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
+import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, Row, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
@@ -188,11 +188,8 @@ class Journals(
     deleteByQuineId.bindColumns(quineIdColumn.set(qid)),
   )
 
-  def getJournalWithTime(
-    id: QuineId,
-    startingAt: EventTime,
-    endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = executeSelect(
+  /** The bound statement selecting the requested slice of a node's journal. */
+  private def selectJournalWithTime(id: QuineId, startingAt: EventTime, endingAt: EventTime) =
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
         selectWithTimeByQuineId.bindColumns(quineIdColumn.set(id))
@@ -215,8 +212,20 @@ class Journals(
           timestampColumn.setGt(startingAt),
           timestampColumn.setLt(endingAt),
         )
-    },
-  )(row => NodeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row)))
+    }
+
+  private def journalRow(row: Row): NodeEvent.WithTime[NodeChangeEvent] =
+    NodeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row))
+
+  /** The node's journal, paged by the driver as the consumer takes it. */
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime,
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] =
+    executeSource(selectJournalWithTime(id, startingAt, endingAt))
+      .map(journalRow)
+      .named("cassandra-journal-stream")
 
   def getJournal(
     id: QuineId,

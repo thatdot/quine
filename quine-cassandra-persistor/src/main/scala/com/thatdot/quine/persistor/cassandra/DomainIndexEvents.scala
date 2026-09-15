@@ -2,8 +2,9 @@ package com.thatdot.quine.persistor.cassandra
 
 import scala.concurrent.{ExecutionContext, Future}
 
+import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
-import org.apache.pekko.stream.scaladsl.Sink
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
 import cats.Applicative
 import cats.data.NonEmptyList
@@ -79,7 +80,7 @@ class DomainIndexEvents(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = executeSelect(
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] = executeSource(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
         selectWithTimeByQuineId.bindColumns(quineIdColumn.set(id))
@@ -103,7 +104,8 @@ class DomainIndexEvents(
           timestampColumn.setLt(endingAt),
         )
     },
-  )(row => NodeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row)))
+  ).map(row => NodeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row)))
+    .named("cassandra-domain-index-stream")
 
   def getJournal(
     id: QuineId,

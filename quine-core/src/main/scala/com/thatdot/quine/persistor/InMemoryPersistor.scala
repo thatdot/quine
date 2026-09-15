@@ -100,11 +100,11 @@ class InMemoryPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = {
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] = {
     val eventsMap = journals.get(id)
-    Future.successful(
+    Source(
       if (eventsMap == null)
-        Iterable.empty
+        Vector.empty
       else
         eventsMap
           .subMap(startingAt, true, endingAt, true)
@@ -120,11 +120,11 @@ class InMemoryPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = {
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] = {
     val eventsMap = domainIndexEvents.get(id)
-    Future.successful(
+    Source(
       if (eventsMap == null)
-        Iterable.empty
+        Vector.empty
       else
         eventsMap
           .subMap(startingAt, true, endingAt, true)

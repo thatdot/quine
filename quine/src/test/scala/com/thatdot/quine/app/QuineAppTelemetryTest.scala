@@ -77,7 +77,6 @@ class QuineAppTelemetryTest
         effectOrder = graph.effectOrder,
         declineSleepWhenWriteWithinMillis = graph.declineSleepWhenWriteWithinMillis,
         declineSleepWhenAccessWithinMillis = graph.declineSleepWhenAccessWithinMillis,
-        maxCatchUpSleepMillis = graph.maxCatchUpSleepMillis,
         labelsProperty = graph.labelsProperty,
         edgeCollectionFactory = graph.edgeCollectionFactory,
         metricRegistry = graph.metrics.metricRegistry,

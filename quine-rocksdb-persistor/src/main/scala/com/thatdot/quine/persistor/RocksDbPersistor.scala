@@ -487,6 +487,14 @@ final class RocksDbPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] =
+    PersistenceAgent.collectedAsSource(readNodeChangeEvents(id, startingAt, endingAt))
+
+  /** RocksDB is read under a lock into a builder, so the range is collected in one go. */
+  private def readNodeChangeEvents(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = Future {
     withReadLock {
       val vb = Iterable.newBuilder[NodeEvent.WithTime[NodeChangeEvent]]
@@ -520,6 +528,14 @@ final class RocksDbPersistor(
   }(ioDispatcher)
 
   def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime,
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] =
+    PersistenceAgent.collectedAsSource(readDomainIndexEvents(id, startingAt, endingAt))
+
+  /** @see [[readNodeChangeEvents]] */
+  private def readDomainIndexEvents(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,

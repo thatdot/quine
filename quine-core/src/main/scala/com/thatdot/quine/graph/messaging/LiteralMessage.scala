@@ -104,6 +104,25 @@ object LiteralMessage {
 
   final case class GetNodeHashCode(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[GraphNodeHashCode]
 
+  /** Request the journal of events for this node.
+    *
+    * The reply streams: a node's journal has no bound on its length, so it is delivered one event at
+    * a time rather than assembled into a single message.
+    *
+    * Both bounds are read straight into the persistor query. They say which slice of the journal to
+    * return and nothing about which moment the node is being asked about, so a bound may name a
+    * moment the node has not reached: there is simply nothing recorded after the present to return.
+    *
+    * @param startingAt earliest millisecond to report, inclusive, or `None` for the node's whole history
+    * @param endingAt latest millisecond to report, inclusive, or `None` for everything recorded
+    */
+  final case class GetJournal(
+    startingAt: Option[Milliseconds],
+    endingAt: Option[Milliseconds],
+    replyTo: QuineRef,
+  ) extends LiteralCommand
+      with AskableQuineMessage[Source[JournalEntry, NotUsed]]
+
   /** Check if a node is "interesting" (has at least one property (including labels) or edge).
     * Used to filter out empty nodes from scan results.
     */
@@ -122,6 +141,9 @@ object LiteralMessage {
   /** Payload to report on the current results of the standing query matches on this node. */
   final case class SqStateResults(subscribers: List[SqStateResult], subscriptions: List[SqStateResult])
       extends QuineMessage
+
+  /** One event from a node's journal, as streamed in reply to [[GetJournal]]. */
+  final case class JournalEntry(event: NodeEvent.WithTime[NodeEvent]) extends LiteralMessage
 
   /** IncrementCounter Procedure */
   @deprecated("Use AddToAtomic variants instead for consistency across types", "Feb 2023")

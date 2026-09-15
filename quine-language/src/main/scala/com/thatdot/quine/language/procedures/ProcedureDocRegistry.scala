@@ -213,6 +213,82 @@ object ProcedureDocRegistry {
         "and q, and a `seed` makes the walk reproducible.",
       docsUrl = proceduresReference,
     ),
+    // Historical queries over the event journal
+    ProcedureDoc(
+      name = "history.propertyChanges",
+      signature = "history.propertyChanges(node :: NODE, propertyKey :: STRING?, options :: MAP?) " +
+        ":: (key :: STRING, value :: ANY, previousValue :: ANY, changeTime :: INTEGER)",
+      description = "Yields every recorded change to a node's properties, in chronological order, as the property " +
+        "name, the value it was set to, what it was set to before, and when the change happened. Every change is " +
+        "reported as a setting, with a removal reported as a setting to null. `previousValue` is null for the first " +
+        "reported setting of a key. Omit `propertyKey`, or pass null, to report every property. `options` accepts " +
+        "`since` and `through` millisecond bounds, both inclusive, and `limit`. Requires the journal to be enabled.",
+      docsUrl = proceduresReference,
+    ),
+    ProcedureDoc(
+      name = "history.nodeChanges",
+      signature = "history.nodeChanges(node :: NODE, options :: MAP?) " +
+        ":: (kind :: STRING, detail :: MAP, changeTime :: INTEGER)",
+      description = "Yields everything a node recorded about itself, property changes and edge changes together, " +
+        "from a single reading of its journal. `kind` is \"property\" or \"edge\" and says how to read `detail`: a " +
+        "property change is `{key, value, previousValue}`, with a removal reported as a setting to null; an edge " +
+        "change is `{action, edgeType, other, direction}`. Edges are the halves this node recorded, not checked " +
+        "against the far node, so one listed here is not necessarily traversable by `MATCH` — pass its `edgeType`, " +
+        "`direction`, and `other` to `history.edgeChangesBetween` to find when it became so. `options` accepts `since` " +
+        "and `through` millisecond bounds, both inclusive, `limit`, and `unreadableAsNull`. Requires the " +
+        "journal to be enabled.",
+      docsUrl = proceduresReference,
+    ),
+    ProcedureDoc(
+      name = "history.edgeChanges",
+      signature = "history.edgeChanges(node :: NODE, other :: NODE?, edgeType :: STRING | LIST OF STRING?, " +
+        "direction :: STRING?, options :: MAP?) " +
+        ":: (action :: STRING, edgeType :: STRING, direction :: STRING, other :: STRING, changeTime :: INTEGER)",
+      description = "Yields every recorded change to the half edges a node holds, in chronological order, as " +
+        "\"added\" or \"removed\" with the edge type, the node at the far end, and the direction the node holds it " +
+        "in. Reads one node's journal, so it reports what that node recorded without checking the far node. An edge " +
+        "listed here is not necessarily one `MATCH` will traverse: Quine follows an edge only when both nodes hold " +
+        "their half. Pass a row's `edgeType`, `direction`, and `other` to `history.edgeChangesBetween` to find when the " +
+        "edge became traversable. Omit `other`, `edgeType`, or `direction`, or pass null, to report every one; " +
+        "`edgeType` also accepts a list, reporting an edge matching any type named. `options` accepts `since` and " +
+        "`through` millisecond bounds, both inclusive, and `limit`. Requires the journal to be enabled.",
+      docsUrl = proceduresReference,
+    ),
+    ProcedureDoc(
+      name = "history.queryAt",
+      signature = "history.queryAt(query :: STRING, atTime :: INTEGER, parameters :: MAP?) :: (value :: MAP)",
+      description = "Runs a read-only Cypher query as of a historical moment, yielding one map per row keyed by the " +
+        "query's return columns. Unlike the `at-time` request parameter the moment is an ordinary argument, so one " +
+        "query can read several different moments and can compute each from data. A query that writes is rejected. " +
+        "A moment in the future reads the same graph as the present.",
+      docsUrl = proceduresReference,
+    ),
+    ProcedureDoc(
+      name = "history.nodeAt",
+      signature = "history.nodeAt(node :: NODE, atTime :: INTEGER) :: (node :: NODE, edges :: LIST OF ANY)",
+      description = "Yields the whole node as it stood at a historical moment: the properties and labels it had, " +
+        "and the half edges it held, each as `{edgeType, other, direction}`. Reports state rather than change, but " +
+        "still needs the journal, because a node is rebuilt at a past moment by replaying its journal from the most " +
+        "recent snapshot. The edges are what this node recorded and are not checked against the far node, so one " +
+        "listed here is not necessarily one `MATCH` would have traversed then; `history.edgeChangesBetween` answers that. " +
+        "A moment that has not arrived reports what has already happened.",
+      docsUrl = proceduresReference,
+    ),
+    ProcedureDoc(
+      name = "history.edgeChangesBetween",
+      signature = "history.edgeChangesBetween(node :: NODE, other :: NODE, edgeType :: STRING | LIST OF STRING?, " +
+        "direction :: STRING?, options :: MAP?) " +
+        ":: (action :: STRING, edgeType :: STRING, direction :: STRING, other :: STRING, changeTime :: INTEGER)",
+      description = "Yields every recorded change to whole edges between two nodes, in chronological order. An " +
+        "edge is reported as added only once both nodes hold their half, and as removed as soon as either drops " +
+        "it, which is the same rule `MATCH` applies when deciding whether to traverse. Both nodes are required, so " +
+        "this always reads exactly two journals; pass the `edgeType`, `direction`, and `other` from a " +
+        "`history.edgeChanges` row to find when that edge became traversable. Pass null for `edgeType` or " +
+        "`direction` to report every one; `edgeType` also accepts a list, reporting an edge matching any " +
+        "type named. `options` accepts `since` and `through` millisecond bounds, both inclusive, and " +
+        "`limit`. Requires the journal to be enabled.",
+      docsUrl = proceduresReference,
+    ),
     // Graph writes
     ProcedureDoc(
       name = "create.relationship",

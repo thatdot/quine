@@ -2,13 +2,14 @@ package com.thatdot.quine.graph
 
 import scala.concurrent.{ExecutionContext, Future}
 
+import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.Timeout
 
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.messaging.LiteralMessage._
 import com.thatdot.quine.graph.messaging.ShardMessage.PurgeNode
-import com.thatdot.quine.graph.messaging.{BaseMessage, SpaceTimeQuineId}
+import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.model._
 
 /** Functionality for directly modifying the runtime property graph. Always prefer using something else. */
@@ -19,8 +20,9 @@ trait LiteralOpsGraph extends BaseGraph {
   def literalOps(namespaceId: NamespaceId): LiteralOps = LiteralOps(namespaceId)
 
   case class LiteralOps(namespace: NamespaceId) {
-    def purgeNode(qid: QuineId)(implicit timeout: Timeout): Future[BaseMessage.Done.type] =
+    def purgeNode(qid: QuineId)(implicit timeout: Timeout): Future[Unit] =
       relayAsk(shardFromNode(qid).quineRef, PurgeNode(namespace, qid, _)).flatten
+        .map(_ => ())(ExecutionContext.parasitic)
 
     /** Assemble together debugging information about a node's internal state
       *
@@ -39,6 +41,51 @@ trait LiteralOpsGraph extends BaseGraph {
     def getSqResults(node: QuineId)(implicit timeout: Timeout): Future[SqStateResults] = {
       requireCompatibleNodeType()
       relayAsk(SpaceTimeQuineId(node, namespace, None), GetSqState)
+    }
+
+    /** Query the journal events for a node.
+      *
+      * A node's journal has no bound on its length, so the events are streamed as they are read
+      * rather than collected into one response. Both bounds are inclusive of the whole millisecond
+      * they name.
+      *
+      * The two journal bounds are separate from `atTime`, which says which version of the node to
+      * ask. A bound is only a slice of the journal to return, so it may name a moment that has not
+      * arrived; `atTime` may not, because a node cannot be read at a moment it has not reached.
+      *
+      * `endingAt` is narrowed to `atTime` when it names the later of the two, so the bounds can
+      * never ask for more than the node version being asked. That costs nothing — a node read at a
+      * past moment has recorded nothing after it — and it means the one place the two could
+      * contradict each other is settled here rather than at each call site.
+      *
+      * @param node the node to query
+      * @param startingAt optional earliest timestamp to report; `None` reads from the beginning of
+      *                   the node's history
+      * @param endingAt optional latest timestamp to report; `None` reports everything the node has
+      * @param atTime the historical moment to read the node at, or `None` for the moving present
+      * @param timeout implicit ask timeout
+      * @return the node's journal events, in ascending timestamp order
+      */
+    def getJournal(
+      node: QuineId,
+      startingAt: Option[Milliseconds] = None,
+      endingAt: Option[Milliseconds] = None,
+      atTime: Option[Milliseconds] = None,
+    )(implicit
+      timeout: Timeout,
+    ): Source[NodeEvent.WithTime[NodeEvent], NotUsed] = {
+      requireCompatibleNodeType()
+      val boundedByNodeVersion = (endingAt, atTime) match {
+        case (Some(bound), Some(nodeVersion)) => Some(if (bound.millis <= nodeVersion.millis) bound else nodeVersion)
+        case (Some(bound), None) => Some(bound)
+        case (None, nodeVersion) => nodeVersion
+      }
+      Source
+        .futureSource(
+          relayAsk(SpaceTimeQuineId(node, namespace, atTime), GetJournal(startingAt, boundedByNodeVersion, _)),
+        )
+        .map(_.event)
+        .mapMaterializedValue(_ => NotUsed)
     }
 
     /** Check if a node is "interesting" (has at least one property or edge).
@@ -275,6 +322,49 @@ trait LiteralOpsGraph extends BaseGraph {
         RemoveHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir.reverse, from), _),
       )
       one.zipWith(two)((_, _) => ())(shardDispatcherEC)
+    }
+
+    /** Add only half an edge. WARNING: You probably shouldn't use this. Add full edges whenever possible.
+      *
+      * The two half edges making up one whole edge are stored with opposite directions: the node the
+      * edge runs from holds it as [[EdgeDirection.Outgoing]] and the node it runs to holds it as
+      * [[EdgeDirection.Incoming]] (or both hold it as [[EdgeDirection.Undirected]]). The direction
+      * must therefore be given explicitly — which half is being written is not implied by `onNode`.
+      *
+      * @param onNode HalfEdge will live on this node
+      * @param other HalfEdge will show this node in its `other` field
+      * @param label The edgeType of the HalfEdge
+      * @param direction The direction the HalfEdge is stored with on `onNode`
+      * @return Future completes when HalfEdge creation is confirmed.
+      */
+    def addHalfEdge(onNode: QuineId, other: QuineId, label: String, direction: EdgeDirection)(implicit
+      timeout: Timeout,
+    ): Future[Unit] = {
+      requireCompatibleNodeType()
+      relayAsk(
+        SpaceTimeQuineId(onNode, namespace, None),
+        AddHalfEdgeCommand(HalfEdge(Symbol(label), direction, other), _),
+      ).flatten
+        .map(_ => ())(ExecutionContext.parasitic)
+    }
+
+    /** Remove only half an edge. WARNING: You probably shouldn't use this. Remove full edges whenever possible.
+      *
+      * @param onNode HalfEdge will be removed from this node
+      * @param other the removed HalfEdge will have this node in its `other` field
+      * @param label The edgeType of the HalfEdge
+      * @param direction The direction of the HalfEdge stored on `onNode`
+      * @return Future completes when HalfEdge creation is confirmed.
+      */
+    def removeHalfEdge(onNode: QuineId, other: QuineId, label: String, direction: EdgeDirection)(implicit
+      timeout: Timeout,
+    ): Future[Unit] = {
+      requireCompatibleNodeType()
+      relayAsk(
+        SpaceTimeQuineId(onNode, namespace, None),
+        RemoveHalfEdgeCommand(HalfEdge(Symbol(label), direction, other), _),
+      ).flatten
+        .map(_ => ())(ExecutionContext.parasitic)
     }
   }
 }

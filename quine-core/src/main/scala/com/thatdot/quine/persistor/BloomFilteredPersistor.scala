@@ -93,21 +93,21 @@ private class BloomFilteredPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] =
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] =
     if (mightContain(id))
       wrappedPersistor.getNodeChangeEventsWithTime(id, startingAt, endingAt)
     else
-      Future.successful(Iterable.empty)
+      Source.empty
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] =
     if (mightContain(id))
       wrappedPersistor.getDomainIndexEventsWithTime(id, startingAt, endingAt)
     else
-      Future.successful(Iterable.empty)
+      Source.empty
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = wrappedPersistor.enumerateJournalNodeIds()
 

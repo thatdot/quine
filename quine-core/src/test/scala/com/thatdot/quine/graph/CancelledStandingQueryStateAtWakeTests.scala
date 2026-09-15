@@ -104,7 +104,6 @@ class CancelledStandingQueryStateAtWakeTests extends AnyFunSuite with Eventually
       effectOrder = EventEffectOrder.PersistorFirst,
       declineSleepWhenWriteWithinMillis = 0L,
       declineSleepWhenAccessWithinMillis = 0L,
-      maxCatchUpSleepMillis = 2000L,
       labelsProperty = Symbol("__LABEL"),
       edgeCollectionFactory = new ReverseOrderedEdgeCollection(_),
       metrics = HostQuineMetrics(enableDebugMetrics = false, metricRegistry, omitDefaultNamespace = false),

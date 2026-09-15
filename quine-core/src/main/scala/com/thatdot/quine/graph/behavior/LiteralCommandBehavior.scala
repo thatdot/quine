@@ -6,6 +6,7 @@ import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Success
 
+import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
@@ -15,13 +16,18 @@ import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.LiteralMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
-import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineValue}
+import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineValue}
 
 trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps {
 
   def debugNodeInternalState(): Future[NodeInternalState]
 
   def getNodeHashCode(): GraphNodeHashCode
+
+  def getJournal(
+    startingAt: Option[Milliseconds],
+    endingAt: Option[Milliseconds],
+  ): Source[JournalEntry, NotUsed]
 
   def getSqState(): SqStateResults
 
@@ -169,6 +175,8 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
     case l: LogInternalState => l ?! debugNodeInternalState()
 
     case h: GetNodeHashCode => h ?! getNodeHashCode()
+
+    case j: GetJournal => j ?! getJournal(j.startingAt, j.endingAt)
 
     case m @ GetSqState(_) => m ?! getSqState()
 

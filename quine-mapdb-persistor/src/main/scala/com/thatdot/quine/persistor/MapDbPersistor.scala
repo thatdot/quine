@@ -222,6 +222,14 @@ final class MapDbPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] =
+    PersistenceAgent.collectedAsSource(readNodeChangeEvents(id, startingAt, endingAt))
+
+  /** MapDB reads the key range in one go, so the events are collected before being streamed. */
+  private def readNodeChangeEvents(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = Future {
     quineIdTimeRangeEntries(nodeChangeEvents, id, startingAt, endingAt).map { entry =>
       val eventTime = EventTime.fromRaw(Long.unbox(entry.getKey()(1)))
@@ -235,6 +243,14 @@ final class MapDbPersistor(
     }(nodeDispatcherEC)
 
   def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime,
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] =
+    PersistenceAgent.collectedAsSource(readDomainIndexEvents(id, startingAt, endingAt))
+
+  /** @see [[readNodeChangeEvents]] */
+  private def readDomainIndexEvents(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,

@@ -79,14 +79,14 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] =
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed] =
     wrapped.getNodeChangeEventsWithTime(id, startingAt, endingAt)
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed] =
     wrapped.getDomainIndexEventsWithTime(id, startingAt, endingAt)
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = wrapped.enumerateJournalNodeIds()

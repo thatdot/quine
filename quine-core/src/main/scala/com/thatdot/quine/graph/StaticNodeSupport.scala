@@ -5,6 +5,8 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
 
+import org.apache.pekko.stream.scaladsl.Sink
+
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.NodeActor.{Journal, MultipleValuesStandingQueries}
@@ -131,7 +133,17 @@ abstract class StaticNodeSupport[
           case None => EventTime.MaxValue
         }
         graph.metrics.persistorGetJournalTimer.time {
-          persistor.getJournal(qid, startingAt, endingAt, includeDomainIndexEvents)
+          // Collected because [[createNodeArgs]] takes the journal as a `Journal`, not because
+          // wakeup needs to hold it: the events are folded into the node's initial state and never
+          // looked at again. Folding them as they arrive would hold only that state and not the
+          // history behind it, which would matter for a node with a long journal since its last
+          // snapshot — but it means changing `createNodeArgs` and every implementation of it.
+          //
+          // No backpressure is lost either way. Nothing downstream is a stream: this gates the
+          // actor's initialization, which stashes messages until it completes.
+          persistor
+            .getJournal(qid, startingAt, endingAt, includeDomainIndexEvents)
+            .runWith(Sink.seq)(graph.materializer)
         }
       }
 

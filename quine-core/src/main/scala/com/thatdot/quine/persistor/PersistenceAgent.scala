@@ -28,6 +28,26 @@ import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.util.Log.implicits._
 object PersistenceAgent {
 
+  /** Which of the two journal stores an event came from, as a sort key.
+    *
+    * Reproduces the tie-break a stable sort of (node-change events ++ domain-index events) gives:
+    * within one millisecond, node-change events come first.
+    */
+  private[persistor] def sideRank(event: NodeEvent): Int = event match {
+    case _: NodeChangeEvent => 0
+    case _: DomainIndexEvent => 1
+  }
+
+  /** Present a read that can only be performed in one go as a stream.
+    *
+    * For a backend whose driver cannot page a result set, the whole range is read and then handed
+    * to the consumer one event at a time. That is no cheaper than returning the collection, but it
+    * keeps every backend behind the same streaming interface, so a consumer that folds over a
+    * journal never has to know which kind of backend it is talking to.
+    */
+  def collectedAsSource[A](collected: Future[Iterable[A]]): Source[A, NotUsed] =
+    Source.future(collected).mapConcat(identity)
+
   /** persistence version implemented by the running persistor */
   val CurrentVersion: Version = Version(13, 2, 0)
 
@@ -74,7 +94,7 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
 
   def deleteDomainIndexEvents(qid: QuineId): Future[Unit]
 
-  /** Fetch a time-ordered list of events without timestamps affecting a node's state.
+  /** Stream a node's state-affecting events, without timestamps, in ascending timestamp order.
     *
     * @param id         affected node
     * @param startingAt only get events that occurred 'at' or 'after' this moment
@@ -87,13 +107,10 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
     startingAt: EventTime,
     endingAt: EventTime,
     includeDomainIndexEvents: Boolean,
-  ): Future[Iterable[NodeEvent]] =
-    getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents).map(_.map(_.event))(
-      ExecutionContext.parasitic,
-    )
+  ): Source[NodeEvent, NotUsed] =
+    getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents).map(_.event)
 
-  /** Fetch a time-ordered list of events with timestamps affecting a node's state,
-    * discarding timestamps.
+  /** Stream a node's state-affecting events, with timestamps, in ascending timestamp order.
     *
     * @param id         affected node
     * @param startingAt only get events that occurred 'at' or 'after' this moment
@@ -106,34 +123,51 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
     startingAt: EventTime,
     endingAt: EventTime,
     includeDomainIndexEvents: Boolean,
-  ): Future[Iterable[NodeEvent.WithTime[NodeEvent]]] = {
+  ): Source[NodeEvent.WithTime[NodeEvent], NotUsed] = {
+    val nceEvents: Source[NodeEvent.WithTime[NodeEvent], NotUsed] =
+      getNodeChangeEventsWithTime(id, startingAt, endingAt)
 
-    def mergeEvents(
-      i1: Iterable[NodeEvent.WithTime[NodeChangeEvent]],
-      i2: Iterable[NodeEvent.WithTime[DomainIndexEvent]],
-    ): Iterable[NodeEvent.WithTime[NodeEvent]] = (i1 ++ i2).toVector.sortBy(e => e.atTime.millis)
-
-    val nceEvents = getNodeChangeEventsWithTime(id, startingAt, endingAt)
-
-    if (!includeDomainIndexEvents)
-      nceEvents
+    if (!includeDomainIndexEvents) nceEvents
     else
-      nceEvents.zipWith(
-        getDomainIndexEventsWithTime(id, startingAt, endingAt),
-      )(mergeEvents)(ExecutionContext.parasitic)
+      // Both sides arrive in ascending timestamp order, so they are interleaved lazily instead of
+      // being collected and re-sorted.
+      //
+      // The ordering must reproduce exactly what a stable sort of (node-change events ++
+      // domain-index events) by millisecond produces, because a node's journal is replayed in this
+      // order to rebuild its state on wakeup. Sorting on the millisecond alone leaves ties, and a
+      // stable sort breaks them by the order of that concatenation, so a node-change event is
+      // ordered ahead of a domain-index event recorded in the same millisecond. `sideRank` makes
+      // that tie-break explicit rather than leaving it to the merge's own preference.
+      nceEvents.mergeSorted(getDomainIndexEventsWithTime(id, startingAt, endingAt))(
+        Ordering.by(event => (event.atTime.millis, PersistenceAgent.sideRank(event.event))),
+      )
   }
 
+  /** Stream a node's state-affecting events, in ascending timestamp order.
+    *
+    * A node's journal has no bound on its length, so this is a stream rather than a collection: a
+    * backend whose driver can page results reads them as the consumer takes them, and one that can
+    * only read the range in one go wraps that read in a `Source` of its own.
+    *
+    * @param id         affected node
+    * @param startingAt only get events that occurred 'at' or 'after' this moment
+    * @param endingAt   only get events that occurred 'at' or 'before' this moment
+    */
   def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]]
+  ): Source[NodeEvent.WithTime[NodeChangeEvent], NotUsed]
 
+  /** Stream a node's standing-query index events, in ascending timestamp order.
+    *
+    * @see [[getNodeChangeEventsWithTime]] for why this is a stream
+    */
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]]
+  ): Source[NodeEvent.WithTime[DomainIndexEvent], NotUsed]
 
   /** Get a source of every node in the graph which has been written to the
     * journal store.
