@@ -26,24 +26,54 @@ object IngestMetered {
     override val bytes: Metered = StoppedMeter.fromMeter(im.bytes)
   }
 
+  private def meterFor(
+    component: String,
+    namespaceId: NamespaceId,
+    name: String,
+    metrics: HostQuineMetrics,
+  ): IngestMeter =
+    IngestMeter(
+      name,
+      namespaceId,
+      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List(component, name, "count"))),
+      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List(component, name, "bytes"))),
+      metrics,
+    )
+
+  private def removeMeterFor(
+    component: String,
+    namespaceId: NamespaceId,
+    name: String,
+    metrics: HostQuineMetrics,
+  ): Boolean =
+    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List(component, name, "count"))) &&
+    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List(component, name, "bytes")))
+
   /** Returns an ingest meter with meters retrieved or created based on the provided ingest name
     * @see com.codahale.metrics.MetricRegistry#meter
     */
   def ingestMeter(namespaceId: NamespaceId, name: String, metrics: HostQuineMetrics): IngestMeter =
-    IngestMeter(
-      name,
-      namespaceId,
-      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List(IngestMetricComponent, name, "count"))),
-      metrics.metricRegistry.meter(metrics.metricName(namespaceId, List(IngestMetricComponent, name, "bytes"))),
-      metrics,
-    )
+    meterFor(IngestMetricComponent, namespaceId, name, metrics)
 
   /** Removes any meters used in ingest meters for the provided ingest name
     * @see com.codahale.metrics.MetricRegistry#remove
     */
   def removeIngestMeter(namespaceId: NamespaceId, name: String, metrics: HostQuineMetrics): Boolean =
-    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List(IngestMetricComponent, name, "count"))) &&
-    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List(IngestMetricComponent, name, "bytes")))
+    removeMeterFor(IngestMetricComponent, namespaceId, name, metrics)
+
+  /** The meter for one cluster-ingest partition worker. Under [[IngestMetricComponent]], the same
+    * as a member-local ingest, so `/metrics` redaction gates it on `IngestRead` like any other
+    * ingest meter. It can share a name with a member-local ingest (`orders#2`), but that ingest
+    * cannot be created while the worker runs -- the collision is refused at ingest creation
+    * ([[com.thatdot.quine.app.QuineEnterpriseApp.addV2IngestStream]]), not kept apart by a separate
+    * metric component.
+    */
+  def clusterPartitionMeter(namespaceId: NamespaceId, workerName: String, metrics: HostQuineMetrics): IngestMeter =
+    meterFor(IngestMetricComponent, namespaceId, workerName, metrics)
+
+  /** @see [[clusterPartitionMeter]] */
+  def removeClusterPartitionMeter(namespaceId: NamespaceId, workerName: String, metrics: HostQuineMetrics): Boolean =
+    removeMeterFor(IngestMetricComponent, namespaceId, workerName, metrics)
 }
 
 final case class IngestMeter private[routes] (

@@ -146,10 +146,10 @@ final case class HostQuineMetrics(
     * re-executes it, so the excess is exactly the at-least-once redelivery volume.
     */
   val clusterIngestRecordsDispatchedCounter: Counter =
-    metricRegistry.counter(MetricRegistry.name("cluster-ingest", "records-dispatched"))
+    metricRegistry.counter(MetricRegistry.name(ClusterIngestMetricComponent, "records-dispatched"))
 
   val clusterIngestRecordsExecutedCounter: Counter =
-    metricRegistry.counter(MetricRegistry.name("cluster-ingest", "records-executed"))
+    metricRegistry.counter(MetricRegistry.name(ClusterIngestMetricComponent, "records-executed"))
 
   /** Entries pushed out of the dedup cache by newer ones. This is the failure mode made
     * visible: an evicted id can no longer be recognised, so its retransmission executes a
@@ -327,6 +327,13 @@ object HostQuineMetrics {
   val MetricsRegistryName = "quine-metrics"
 
   val IngestMetricComponent = "ingest"
+
+  /** Metric component for cluster-wide dispatch/execution counters. Per-partition worker meters do
+    * NOT live here -- they use [[IngestMetricComponent]], so `/metrics` redaction gates them on
+    * `IngestRead` like any ingest. This component holds only the cluster-level counters, which the
+    * same redaction gates on `IngestRead` too.
+    */
+  val ClusterIngestMetricComponent = "cluster-ingest"
   val StandingQueryMetricComponent = "standing-queries"
 
   sealed trait MessagingMetric {

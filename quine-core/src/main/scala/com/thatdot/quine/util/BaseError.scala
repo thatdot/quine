@@ -9,6 +9,7 @@ import com.thatdot.quine.exceptions.{
   IngestSourceFormatException,
   KafkaValidationException,
   NamespaceNotFoundException,
+  ReservedIngestNameException,
   ShardIterationException,
 }
 import com.thatdot.quine.graph.behavior.NodeStoppedWhilePausedException
@@ -100,6 +101,7 @@ object QuineError {
     case e: UnregisteredUserDefinedException => Some(e)
     case e: WrappedPersistorException => Some(e)
     case e: NamespaceNotFoundException => Some(e)
+    case e: ReservedIngestNameException => Some(e)
     case e: DuplicateIngestException => Some(e)
     case e: ShardIterationException => Some(e)
     case e: KafkaValidationException => Some(e)
