@@ -8,13 +8,13 @@ addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.14.6")
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.3.2")
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.3.1")
 addSbtPlugin("se.marcuslonnberg" % "sbt-docker" % "1.11.0")
-addSbtPlugin("com.eed3si9n" % "sbt-buildinfo" % "0.13.1")
-addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.6.1")
-addSbtPlugin("com.github.sbt" % "sbt-git" % "2.1.0")
+addSbtPlugin("com.eed3si9n" % "sbt-buildinfo" % "0.13.2")
+addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.6.2")
+addSbtPlugin("com.github.sbt" % "sbt-git" % "2.2.0")
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.10.0")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.8")
 libraryDependencies += "software.amazon.awssdk" % "ecr" % "2.17.231"
-libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "7.7.1.202607240634-r"
-addSbtPlugin("com.github.sbt" % "sbt-boilerplate" % "0.8.0")
+libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "7.8.0.202609011348-r"
+addSbtPlugin("com.github.sbt" % "sbt-boilerplate" % "0.8.1")
 addSbtPlugin("com.github.sbt" %% "sbt-sbom" % "0.5.0")
 addSbtPlugin("com.simplytyped" % "sbt-antlr4" % "0.8.3")
