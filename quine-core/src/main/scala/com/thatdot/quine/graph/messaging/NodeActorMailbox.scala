@@ -1,14 +1,14 @@
 package com.thatdot.quine.graph.messaging
 
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import java.util.{Comparator, Queue}
 
 import org.apache.pekko.actor._
 import org.apache.pekko.dispatch._
 import org.apache.pekko.util.StablePriorityBlockingQueue
 
-import com.codahale.metrics.{MetricRegistry, SharedMetricRegistries}
+import com.codahale.metrics.{Counter, MetricRegistry, SharedMetricRegistries}
 import com.typesafe.config.Config
 
 import com.thatdot.quine.graph.behavior.StashedMessage
@@ -72,18 +72,60 @@ object NodeActorMailbox {
     *
     * This queue is like the `UnboundedStablePriorityMailbox.MessageQueue`, but
     * doesn't drain letters on cleanup.
+    *
+    * @param mailboxSizeHistogram host-wide histogram of mailbox depths, kept current on every enqueue and dequeue
+    * @param messagesReceived     host-wide count of messages received by node actors, excluding
+    *                             [[StashedMessage]] re-deliveries
     */
-  final class NodeMessageQueue(mailboxSizeHistogram: BinaryHistogramCounter)
+  final class NodeMessageQueue(mailboxSizeHistogram: BinaryHistogramCounter, messagesReceived: Counter)
       extends StablePriorityBlockingQueue[Envelope](capacity = 11, cmp)
       with QueueBasedMessageQueue
       with UnboundedMessageQueueSemantics {
     private[this] val sizeCounter = new AtomicInteger()
 
+    /** Deepest this queue has been since [[takePeakSize]] was last called */
+    private[this] val peakSize = new AtomicInteger()
+
+    /** Messages received since [[takeReceived]] was last called, excluding [[StashedMessage]] re-deliveries */
+    private[this] val received = new AtomicLong()
+
     def queue: Queue[Envelope] = this
+
+    /** Messages currently in this queue, read without taking the queue lock */
+    def currentSize: Int = sizeCounter.get
+
+    /** Deepest this queue has been since the previous call, then start the next window from the current depth.
+      *
+      * A busy node's queue fills in a burst and drains within milliseconds, so the depth at any one instant says
+      * little; the peak over a window is what identifies a hot node.
+      */
+    def takePeakSize(): Int = {
+      val peak = peakSize.getAndSet(sizeCounter.get)
+      // An enqueue racing the reset above may have raised the depth past the value just installed
+      peakSize.accumulateAndGet(sizeCounter.get, Math.max(_, _))
+      peak
+    }
+
+    /** Messages received since the previous call, then start the next window at zero.
+      *
+      * A message that the node paused and re-delivered to itself as a [[StashedMessage]] is counted once,
+      * on its first arrival.
+      */
+    def takeReceived(): Long = received.getAndSet(0L)
 
     // Normally, this just adds to the queue. We track mailbox size along the way.
     def enqueue(receiver: ActorRef, handle: Envelope): Unit = {
-      if (handle != null) mailboxSizeHistogram.increment(sizeCounter.getAndIncrement)
+      if (handle != null) {
+        val previousSize = sizeCounter.getAndIncrement
+        mailboxSizeHistogram.increment(previousSize)
+        val newSize = previousSize + 1
+        if (newSize > peakSize.get) peakSize.accumulateAndGet(newSize, Math.max(_, _))
+        if (!handle.message.isInstanceOf[StashedMessage]) {
+          messagesReceived.inc()
+          received.incrementAndGet()
+          ()
+        }
+      }
       queue.add(handle)
       ()
     }
@@ -132,6 +174,13 @@ final class NodeActorMailboxExtensionImpl extends Extension {
     MetricRegistry.name("node", "mailbox-sizes"),
   )
 
+  /** Messages received by node actors on this host, excluding [[StashedMessage]] re-deliveries. Monotonic, so a
+    * metrics backend can derive the exact and average message rate from it.
+    */
+  val messagesReceived: Counter = SharedMetricRegistries
+    .getOrCreate(HostQuineMetrics.MetricsRegistryName)
+    .counter(MetricRegistry.name("node", "messages-received"))
+
   /** Find the message queue for a node. If that queue doesn't exist, create a
     * fresh queue
     *
@@ -141,7 +190,7 @@ final class NodeActorMailboxExtensionImpl extends Extension {
   def getOrCreateMessageQueue(qid: SpaceTimeQuineId): NodeActorMailbox.NodeMessageQueue =
     messageQueues.computeIfAbsent(
       qid,
-      (_: SpaceTimeQuineId) => new NodeActorMailbox.NodeMessageQueue(mailboxSizes),
+      (_: SpaceTimeQuineId) => new NodeActorMailbox.NodeMessageQueue(mailboxSizes, messagesReceived),
     )
 
   /** Removes the message queue for a node if that queue is empty
@@ -192,7 +241,7 @@ final class NodeActorMailboxExtensionImpl extends Extension {
         qid,
         (_: SpaceTimeQuineId, queue: NodeActorMailbox.NodeMessageQueue) => {
           val newQueue = if (queue eq null) {
-            new NodeActorMailbox.NodeMessageQueue(mailboxSizes)
+            new NodeActorMailbox.NodeMessageQueue(mailboxSizes, messagesReceived)
           } else {
             queue
           }

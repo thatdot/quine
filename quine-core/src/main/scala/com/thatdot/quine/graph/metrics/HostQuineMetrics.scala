@@ -18,11 +18,13 @@ import com.thatdot.quine.util.SharedValve
   *                           a noticeable impact on runtime performance.
   * @param omitDefaultNamespace       Is this an enterprise instance? Used to determine naming conventions.
   * @param metricRegistry     the registry to wrap
+  * @param hotNodes           settings for the hot-node gauges, see [[HotNodeSampler]]
   */
 final case class HostQuineMetrics(
   enableDebugMetrics: Boolean,
   metricRegistry: MetricRegistry,
   omitDefaultNamespace: Boolean,
+  hotNodes: HotNodeMetricsConfig = HotNodeMetricsConfig(),
 ) {
   import HostQuineMetrics._
 

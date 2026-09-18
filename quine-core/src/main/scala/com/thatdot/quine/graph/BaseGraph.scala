@@ -20,6 +20,7 @@ import com.thatdot.quine.graph.messaging.ShardMessage.RequestNodeSleep
 import com.thatdot.quine.graph.messaging.{
   AskableQuineMessage,
   LocalShardRef,
+  NodeActorMailboxExtension,
   QuineMessage,
   QuineRef,
   ResultHandler,
@@ -27,7 +28,7 @@ import com.thatdot.quine.graph.messaging.{
   ShardRef,
   SpaceTimeQuineId,
 }
-import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.graph.metrics.{HostQuineMetrics, HotNodeSampler}
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PrimePersistor, WrappedPersistenceAgent}
 import com.thatdot.quine.util.{PressureGaugeRegistry, QuineDispatchers, SharedValve, ValveFlow}
@@ -69,6 +70,20 @@ trait BaseGraph extends StrictSafeLogging {
   private val pressureGaugeSampler: org.apache.pekko.actor.Cancellable = pressureGaugeRegistry.startSampling(system)
   // Stop the 500ms sampling scheduler when the actor system terminates so it does not outlive the graph.
   system.registerOnTermination(pressureGaugeSampler.cancel())
+
+  /** Publishes gauges naming the node actors with the deepest mailbox backlogs and highest message rates on this host */
+  private val hotNodeSampler: HotNodeSampler = new HotNodeSampler(
+    NodeActorMailboxExtension(system).messageQueues,
+    metrics,
+    idProvider,
+    metrics.hotNodes,
+  )
+  private val hotNodeSampling: org.apache.pekko.actor.Cancellable = hotNodeSampler.start(system)
+  // The metric registry outlives the graph, so drop the gauges with the scheduler.
+  system.registerOnTermination {
+    hotNodeSampling.cancel()
+    hotNodeSampler.removeAll()
+  }
 
   val masterStream: MasterStream = new MasterStream
 

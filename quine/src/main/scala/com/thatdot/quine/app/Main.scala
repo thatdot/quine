@@ -167,6 +167,7 @@ object Main extends App with LazySafeLogging {
           edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
           metricRegistry = Metrics,
           enableDebugMetrics = config.metrics.enableDebugMetrics,
+          hotNodes = config.metrics.hotNodes,
         ).flatMap(graph =>
           graph.namespacePersistor
             .syncVersion(

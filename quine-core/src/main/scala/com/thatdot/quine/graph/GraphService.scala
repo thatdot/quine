@@ -17,7 +17,7 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.edges.{ReverseOrderedEdgeCollection, SyncEdgeCollection}
 import com.thatdot.quine.graph.messaging.LocalShardRef
 import com.thatdot.quine.graph.messaging.ShardMessage.{CreateNamespace, DeleteNamespace}
-import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.graph.metrics.{HostQuineMetrics, HotNodeMetricsConfig}
 import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.{EventEffectOrder, PrimePersistor}
@@ -203,6 +203,7 @@ object GraphService {
     edgeCollectionFactory: QuineId => SyncEdgeCollection = new ReverseOrderedEdgeCollection(_),
     metricRegistry: MetricRegistry = new MetricRegistry,
     enableDebugMetrics: Boolean = false,
+    hotNodes: HotNodeMetricsConfig = HotNodeMetricsConfig(),
   )(implicit logConfig: LogConfig): Future[GraphService] =
     try {
       // Must happen before instantiating the actor system extensions
@@ -236,7 +237,7 @@ object GraphService {
         declineSleepWhenAccessWithinMillis,
         labelsProperty,
         edgeCollectionFactory,
-        HostQuineMetrics(enableDebugMetrics, metricRegistry, omitDefaultNamespace = false),
+        HostQuineMetrics(enableDebugMetrics, metricRegistry, omitDefaultNamespace = false, hotNodes),
       )
     } catch {
       case NonFatal(e) => Future.failed(e)

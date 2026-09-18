@@ -10,6 +10,7 @@ import org.scalacheck.{Arbitrary, Gen}
 import software.amazon.awssdk.regions.Region
 
 import com.thatdot.quine.ScalaPrimitiveGenerators
+import com.thatdot.quine.graph.metrics.HotNodeMetricsConfig
 import com.thatdot.quine.util.{Host, Port}
 
 /** Generators for pureconfig types used in QuineConfig and related configuration. */
@@ -261,7 +262,19 @@ object ConfigGenerators {
       path <- optNonEmptyAlphaNumStr.map(_.map(s => s"/$s"))
     } yield WebserverAdvertiseConfig(address, p, path)
 
-    val metricsConfig: Gen[MetricsConfig] = bool.map(MetricsConfig(_))
+    val hotNodeMetricsConfig: Gen[HotNodeMetricsConfig] = for {
+      enabled <- bool
+      topN <- Gen.choose(1, 100)
+      minBacklog <- Gen.choose(0, 1000)
+      minMessageRate <- Gen.choose(0, 100000).map(_.toDouble)
+      minWaitSeconds <- Gen.choose(0, 3600).map(_.toDouble)
+      sampleInterval <- finiteDuration
+    } yield HotNodeMetricsConfig(enabled, topN, minBacklog, minMessageRate, minWaitSeconds, sampleInterval)
+
+    val metricsConfig: Gen[MetricsConfig] = for {
+      enableDebugMetrics <- bool
+      hotNodes <- hotNodeMetricsConfig
+    } yield MetricsConfig(enableDebugMetrics, hotNodes)
 
     val resolutionMode: Gen[ResolutionMode] = Gen.oneOf(ResolutionMode.Static, ResolutionMode.Dynamic)
 
@@ -293,6 +306,9 @@ object ConfigGenerators {
     implicit val webServerBindConfig: Arbitrary[WebServerBindConfig] = Arbitrary(Gens.webServerBindConfig)
     implicit val webserverAdvertiseConfig: Arbitrary[WebserverAdvertiseConfig] = Arbitrary(
       Gens.webserverAdvertiseConfig,
+    )
+    implicit val hotNodeMetricsConfig: Arbitrary[HotNodeMetricsConfig] = Arbitrary(
+      Gens.hotNodeMetricsConfig,
     )
     implicit val metricsConfig: Arbitrary[MetricsConfig] = Arbitrary(Gens.metricsConfig)
     implicit val resolutionMode: Arbitrary[ResolutionMode] = Arbitrary(Gens.resolutionMode)
