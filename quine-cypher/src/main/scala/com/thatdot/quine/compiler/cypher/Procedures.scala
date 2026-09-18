@@ -102,12 +102,6 @@ case object resolveCalls extends StatementRewriter {
     RecentNodeIds,
     JsonLoad,
     IncrementCounter, // TODO don't include in Quine Pattern
-    HistoricalProperty,
-    HistoricalNode,
-    HistoricalEdge,
-    HistoricalEdgeBetween,
-    HistoricalQueryAt,
-    HistoricalNodeAt,
     AddToInt,
     AddToFloat,
     InsertToSet,

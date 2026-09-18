@@ -1,5 +1,10 @@
 package com.thatdot.quine.language.procedures
 
+import java.util.concurrent.ConcurrentHashMap
+
+import scala.collection.concurrent
+import scala.jdk.CollectionConverters._
+
 import cats.data.NonEmptyList
 
 import com.thatdot.quine.language.types.Type
@@ -43,6 +48,7 @@ final case class ProcedureSignature(name: String, outputs: Vector[(String, Type)
   *   - `QuinePatternProcedureRegistry` in quine-core
   *     (`com.thatdot.quine.graph.cypher.quinepattern.procedures`), whose procedures are a
   *     subset of the above by name
+  *   - procedures registered at runtime through [[register]]
   *
   * Runtime output types with no quine-language counterpart (maps, bytes, date/time types,
   * `Anything`) are recorded as [[Type.Any]]; node and edge columns are recorded exactly,
@@ -68,6 +74,15 @@ object ProcedureRegistry {
   def outputType(procedureName: String, column: String): Option[Type] =
     lookup(procedureName).flatMap(_.outputType(column))
 
+  /** Adds the signature of a procedure registered at runtime, keyed by lowercased name like the
+    * runtime registries. A later registration under the same name replaces the earlier one.
+    */
+  def register(signature: ProcedureSignature): Unit =
+    byLowerCaseName += signature.name.toLowerCase -> signature
+
+  /** Every registered procedure's signature. */
+  def all: Vector[ProcedureSignature] = byLowerCaseName.values.toVector
+
   private val node: Type = PrimitiveType.NodeType
   private val edge: Type = PrimitiveType.EdgeType
   private val integer: Type = PrimitiveType.Integer
@@ -79,7 +94,7 @@ object ProcedureRegistry {
   /** Every shipped procedure's return signature, mirroring the runtime declarations cited in
     * the object documentation.
     */
-  val all: Vector[ProcedureSignature] = Vector(
+  private val builtIn: Vector[ProcedureSignature] = Vector(
     // Stubs for compatibility with external systems (StubbedUserDefinedProcedure)
     ProcedureSignature(
       "db.indexes",
@@ -144,37 +159,6 @@ object ProcedureRegistry {
     ProcedureSignature("recentNodeIds", Vector("nodeId" -> Type.Any)),
     ProcedureSignature("getFilteredEdges", Vector("edge" -> edge)),
     ProcedureSignature("random.walk", Vector("walk" -> listOfString)),
-    // Historical queries over the event journal
-    ProcedureSignature(
-      "history.propertyChanges",
-      Vector("key" -> string, "value" -> Type.Any, "previousValue" -> Type.Any, "changeTime" -> integer),
-    ),
-    ProcedureSignature("history.queryAt", Vector("value" -> Type.Any)),
-    ProcedureSignature("history.nodeAt", Vector("node" -> node, "edges" -> listOfAny)),
-    ProcedureSignature(
-      "history.nodeChanges",
-      Vector("kind" -> string, "detail" -> Type.Any, "changeTime" -> integer),
-    ),
-    ProcedureSignature(
-      "history.edgeChanges",
-      Vector(
-        "action" -> string,
-        "edgeType" -> string,
-        "direction" -> string,
-        "other" -> string,
-        "changeTime" -> integer,
-      ),
-    ),
-    ProcedureSignature(
-      "history.edgeChangesBetween",
-      Vector(
-        "action" -> string,
-        "edgeType" -> string,
-        "direction" -> string,
-        "other" -> string,
-        "changeTime" -> integer,
-      ),
-    ),
     // Graph writes
     ProcedureSignature("create.relationship", Vector("rel" -> edge)),
     ProcedureSignature("create.setProperty", Vector.empty),
@@ -197,6 +181,7 @@ object ProcedureRegistry {
     ProcedureSignature("toProtobuf", Vector("protoBytes" -> Type.Any)),
   )
 
-  private val byLowerCaseName: Map[String, ProcedureSignature] =
-    all.map(signature => signature.name.toLowerCase -> signature).toMap
+  private val byLowerCaseName: concurrent.Map[String, ProcedureSignature] =
+    new ConcurrentHashMap[String, ProcedureSignature]().asScala
+  byLowerCaseName ++= builtIn.map(signature => signature.name.toLowerCase -> signature)
 }
