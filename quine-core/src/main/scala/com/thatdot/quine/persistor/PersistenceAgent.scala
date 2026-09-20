@@ -28,16 +28,6 @@ import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.util.Log.implicits._
 object PersistenceAgent {
 
-  /** Which of the two journal stores an event came from, as a sort key.
-    *
-    * Reproduces the tie-break a stable sort of (node-change events ++ domain-index events) gives:
-    * within one millisecond, node-change events come first.
-    */
-  private[persistor] def sideRank(event: NodeEvent): Int = event match {
-    case _: NodeChangeEvent => 0
-    case _: DomainIndexEvent => 1
-  }
-
   /** Present a read that can only be performed in one go as a stream.
     *
     * For a backend whose driver cannot page a result set, the whole range is read and then handed
@@ -48,12 +38,26 @@ object PersistenceAgent {
   def collectedAsSource[A](collected: Future[Iterable[A]]): Source[A, NotUsed] =
     Source.future(collected).mapConcat(identity)
 
-  /** persistence version implemented by the running persistor */
-  val CurrentVersion: Version = Version(13, 2, 0)
+  /** persistence version implemented by the running persistor.
+    *
+    * [[Version.canReadFrom]] compares major and minor only, so the minor moves whenever a build writes something
+    * an earlier build cannot read, such as a new journal union member, which the codecs throw on. The earlier
+    * build then refuses the store at startup rather than failing at wake, one node at a time. A field appended to
+    * a table moves the patch: an earlier build reads past it.
+    */
+  val CurrentVersion: Version = Version(13, 3, 0)
 
   /** key used to store [[Version]] in persistence metadata */
   val VersionMetadataKey = "serialization_version"
 }
+
+/** A snapshot as the persistor holds it.
+  *
+  * @param atTime the time the row is stored under, which is what [[NamespacedPersistenceAgent.getLatestSnapshot]]
+  *               orders by. Under `snapshot-singleton` this is [[EventTime.MaxValue]] whatever time the
+  *               bytes themselves record.
+  */
+final case class StoredSnapshot(atTime: EventTime, bytes: Array[Byte])
 
 /** Interface for a Quine storage layer that only exposes a namespace's data */
 trait NamespacedPersistenceAgent extends StrictSafeLogging {
@@ -132,14 +136,12 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
       // Both sides arrive in ascending timestamp order, so they are interleaved lazily instead of
       // being collected and re-sorted.
       //
-      // The ordering must reproduce exactly what a stable sort of (node-change events ++
-      // domain-index events) by millisecond produces, because a node's journal is replayed in this
-      // order to rebuild its state on wakeup. Sorting on the millisecond alone leaves ties, and a
-      // stable sort breaks them by the order of that concatenation, so a node-change event is
-      // ordered ahead of a domain-index event recorded in the same millisecond. `sideRank` makes
-      // that tie-break explicit rather than leaving it to the merge's own preference.
+      // Ordered on the whole `EventTime`. Both journals draw their times from the node's one
+      // `tickEventSequence`, so the sequence numbers below the millisecond are what order events
+      // recorded in the same one, whichever journal they went to. Replay folds the journal in the
+      // order it arrives, so that is the order in which the node applied them.
       nceEvents.mergeSorted(getDomainIndexEventsWithTime(id, startingAt, endingAt))(
-        Ordering.by(event => (event.atTime.millis, PersistenceAgent.sideRank(event.event))),
+        Ordering.by(_.atTime),
       )
   }
 
@@ -198,16 +200,21 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
 
   def deleteSnapshots(qid: QuineId): Future[Unit]
 
+  /** Delete every snapshot of a node except the one stored at `keep`. A no-op when `keep` names
+    * the node's only snapshot.
+    */
+  def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit]
+
   /** Fetch the latest snapshot of a node
     *
     * @param id       affected node
     * @param upToTime snapshot must have been taken 'at' or 'before' this time
-    * @return latest snapshot, along with the timestamp at which it was taken
+    * @return latest snapshot, along with the time it is stored under
     */
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime,
-  ): Future[Option[Array[Byte]]]
+  ): Future[Option[StoredSnapshot]]
 
   def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit]
 
@@ -314,11 +321,11 @@ trait MultipartSnapshotPersistenceAgent {
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime,
-  ): Future[Option[Array[Byte]]] =
+  ): Future[Option[StoredSnapshot]] =
     getLatestMultipartSnapshot(id, upToTime).flatMap {
       case Some(MultipartSnapshot(time, parts)) =>
         if (validateSnapshotParts(parts))
-          Future.successful(Some(parts.flatMap(_.partBytes).toArray))
+          Future.successful(Some(StoredSnapshot(time, parts.flatMap(_.partBytes).toArray)))
         else {
           logger.warn(
             safe"Failed reading multipart snapshot for id: ${Safe(id)} upToTime: ${Safe(upToTime)}; retrying with time: ${Safe(time)}",

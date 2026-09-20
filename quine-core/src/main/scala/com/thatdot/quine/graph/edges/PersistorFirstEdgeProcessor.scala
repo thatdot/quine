@@ -17,7 +17,10 @@ class PersistorFirstEdgeProcessor(
   edges: SyncEdgeCollection,
   persistToJournal: NonEmptyList[NodeEvent.WithTime[EdgeEvent]] => Future[Unit],
   pauseMessageProcessingUntil: (Future[Unit], Try[Unit] => Unit, Boolean) => Future[Unit],
-  updateSnapshotTimestamp: () => Unit,
+  /** Run from the success callback with the number of events the batch journaled, so a batch whose write failed
+    * counts nothing.
+    */
+  onBatchApplied: Int => Unit,
   runPostActions: List[NodeChangeEvent] => Unit,
   qid: QuineId,
   costToSleep: CostToSleep,
@@ -36,7 +39,7 @@ class PersistorFirstEdgeProcessor(
           // Instead of unwrapping the WithTimes here, maybe just take the raw EdgeEvents and () => EventTime here, and only wrap them on the line above?
           val events = effectingEvents.toList
           events.foreach(updateEdgeCollection)
-          updateSnapshotTimestamp()
+          onBatchApplied(events.size)
           runPostActions(events)
         case Failure(err) =>
           logger.error(

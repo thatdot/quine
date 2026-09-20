@@ -52,6 +52,11 @@ class SerializationTests
     }
   }
 
+  // The test that stood here built a subscription with subscribers but no per-subscriber query attribution, to
+  // check that the decoder fills the gap from `related_queries`. That state is no longer representable --
+  // `subscribers` is now the key set of `queriesPerSubscriber` -- so the only honest way to reach the decoder's
+  // backfill is from bytes in the older format. See [[SnapshotFormatMigrationTest]].
+
   it should "roundtrip StandingQuery" in {
     forAll { (sq: StandingQueryInfo) =>
 

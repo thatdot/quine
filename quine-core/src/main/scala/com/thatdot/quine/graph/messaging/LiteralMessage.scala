@@ -7,7 +7,7 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.messaging.LiteralMessage.AddToAtomicResult.Aux
-import com.thatdot.quine.graph.{EventTime, GraphNodeHashCode, NodeEvent}
+import com.thatdot.quine.graph.{EventTime, GraphNodeHashCode, NodeEvent, StandingQueryId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineValue}
 
@@ -136,11 +136,54 @@ object LiteralMessage {
   final case class GetSqState(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[SqStateResults]
 
   /** A single result. Could be for an incoming subscriber or an outgoing subscription. */
-  final case class SqStateResult(dgnId: DomainGraphNodeId, qid: QuineId, lastResult: Option[Boolean])
+  /** One subscriber to one DistinctId pattern rooted on this node.
+    *
+    * @param dgnId the pattern, rooted here, that the subscriber asked about
+    * @param subscriberNode set when the subscriber is another node; then `subscriberQuery` is empty
+    * @param subscriberQuery set when the subscriber is the standing query itself; then `subscriberNode` is empty
+    * @param forQueries the standing queries this subscriber depends on this node for. What decides whether the
+    *                   subscription is still wanted, so it is reported rather than summarised away.
+    * @param lastResult the answer last reported for `dgnId`
+    */
+  final case class DistinctIdSubscriberState(
+    dgnId: DomainGraphNodeId,
+    subscriberNode: Option[QuineId],
+    subscriberQuery: Option[StandingQueryId],
+    forQueries: List[StandingQueryId],
+    lastResult: Option[Boolean],
+  )
 
-  /** Payload to report on the current results of the standing query matches on this node. */
-  final case class SqStateResults(subscribers: List[SqStateResult], subscriptions: List[SqStateResult])
-      extends QuineMessage
+  /** One answer a peer gave this node about one child pattern.
+    *
+    * @param dgnId the child pattern the peer was asked about
+    * @param peer the node that was asked
+    * @param forQueries the standing queries the ask was made on behalf of. The peer holds the same set, and both
+    *                   ends retire the subscription by the same test, so this is state in its own right.
+    * @param answer the peer's last answer, or None while the question is out
+    */
+  final case class DistinctIdIndexState(
+    dgnId: DomainGraphNodeId,
+    peer: QuineId,
+    forQueries: List[StandingQueryId],
+    answer: Option[Boolean],
+  )
+
+  /** One child-to-parent link in the index used to route a peer's answer to the patterns that care about it. */
+  final case class DistinctIdParentLink(childDgnId: DomainGraphNodeId, parentDgnId: DomainGraphNodeId)
+
+  /** Every piece of DistinctId standing query state a node holds.
+    *
+    * @param subscribers who is subscribed to patterns rooted here, and what they were told
+    * @param subscriptions what peers have told this node about the children of those patterns
+    * @param parentIndex child-to-parent links. Unlike the two above this is derived: it is rebuilt at every wake
+    *                    from the registry and the index, and the rebuild may legitimately be more complete than
+    *                    what was there before. Reported for inspection; not something a restore must reproduce.
+    */
+  final case class SqStateResults(
+    subscribers: List[DistinctIdSubscriberState],
+    subscriptions: List[DistinctIdIndexState],
+    parentIndex: List[DistinctIdParentLink],
+  ) extends QuineMessage
 
   /** One event from a node's journal, as streamed in reply to [[GetJournal]]. */
   final case class JournalEntry(event: NodeEvent.WithTime[NodeEvent]) extends LiteralMessage

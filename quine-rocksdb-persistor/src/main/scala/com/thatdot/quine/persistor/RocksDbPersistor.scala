@@ -343,6 +343,16 @@ final class RocksDbPersistor(
 
   override def deleteSnapshots(qid: QuineId): Future[Unit] = deleteQid(qid, snapshotsCF)
 
+  override def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit] = Future {
+    val keptKey = qidAndTime2Key(qid, keep)
+    // `deleteRange` excludes its end key. Every key under one qid has the same length, so a key one
+    // byte longer than the kept one falls after it and before the qid's next time.
+    withReadLock {
+      db.deleteRange(snapshotsCF, writeOpts, qidAndTime2Key(qid, EventTime.MinValue), keptKey)
+      db.deleteRange(snapshotsCF, writeOpts, keptKey :+ 0.toByte, qidBytes2NextKey(qid.array))
+    }
+  }(ioDispatcher)
+
   def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = Future {
     val sqBytes = StandingQueryCodec.format.write(standingQuery)
     putKeyValue(standingQueriesCF, standingQuery.name.getBytes(UTF_8), sqBytes)
@@ -601,14 +611,14 @@ final class RocksDbPersistor(
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime,
-  ): Future[Option[Array[Byte]]] = Future(withReadLock {
+  ): Future[Option[StoredSnapshot]] = Future(withReadLock {
     val it = db.newIterator(snapshotsCF)
     try {
       val startKey = qidAndTime2Key(id, upToTime)
       it.seekForPrev(startKey)
       if (it.isValid) {
-        val (foundId, _) = key2QidAndTime(it.key())
-        if (foundId == id) Some(it.value()) else None
+        val (foundId, foundTime) = key2QidAndTime(it.key())
+        if (foundId == id) Some(StoredSnapshot(foundTime, it.value())) else None
       } else {
         None
       }

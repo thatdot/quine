@@ -2,7 +2,7 @@ package com.thatdot.quine.app.config
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should
-import pureconfig.error.{ConfigReaderException, ConvertFailure, UnknownKey}
+import pureconfig.error.{ConfigReaderException, ConvertFailure, UnknownKey, UserValidationFailed}
 import pureconfig.{ConfigSource, ConfigWriter}
 
 class QuineConfigTest extends AnyFunSuite with should.Matchers {
@@ -54,5 +54,51 @@ class QuineConfigTest extends AnyFunSuite with should.Matchers {
     val roundtripped = readConfig(writeConfig(annotated))
     roundtripped shouldEqual annotated
     defaultConf shouldEqual annotated
+  }
+
+  private def refusal(config: String): String = {
+    val error = intercept[ConfigReaderException[QuineConfig]](readConfig(config))
+    val failure = error.failures.head.asInstanceOf[ConvertFailure]
+    failure.path shouldEqual "quine.persistence"
+    failure.reason match {
+      case UserValidationFailed(reason) => reason
+      case other => fail(s"expected a validation failure, got $other")
+    }
+  }
+
+  test("snapshot-after-events is refused without a journal and with a singleton snapshot") {
+    refusal("quine { persistence { journal-enabled = false, snapshot-after-events = 2 } }") should include(
+      "requires journal-enabled = true",
+    )
+    refusal("quine { persistence { snapshot-singleton = true, snapshot-after-events = 2 } }") should include(
+      "must be 0 with snapshot-singleton = true",
+    )
+    readConfig(
+      "quine { persistence { journal-enabled = true, snapshot-after-events = 2 } }",
+    ).persistence.snapshotAfterEvents shouldEqual 2
+    readConfig("quine { persistence { snapshot-singleton = true } }").persistence.snapshotAfterEvents shouldEqual 0
+    readConfig(
+      "quine { persistence { journal-enabled = false, snapshot-after-events = 0 } }",
+    ).persistence.snapshotAfterEvents shouldEqual 0
+  }
+
+  test("snapshot-after-events is refused when negative") {
+    refusal("quine { persistence { snapshot-after-events = -1 } }") should include("must not be negative")
+    // Refused for being negative, not for the journal it would not have needed.
+    refusal("quine { persistence { journal-enabled = false, snapshot-after-events = -1 } }") should include(
+      "must not be negative",
+    )
+  }
+
+  test("snapshot-after-events is refused under a schedule that never snapshots on sleep") {
+    refusal("quine { persistence { snapshot-schedule = on-node-update, snapshot-after-events = 2 } }") should include(
+      "unless snapshot-schedule = on-node-sleep",
+    )
+    refusal("quine { persistence { snapshot-schedule = never, snapshot-after-events = 2 } }") should include(
+      "unless snapshot-schedule = on-node-sleep",
+    )
+    readConfig(
+      "quine { persistence { snapshot-schedule = on-node-update } }",
+    ).persistence.snapshotAfterEvents shouldEqual 0
   }
 }

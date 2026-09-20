@@ -143,11 +143,11 @@ object ProcedureRegistry {
     ),
     ProcedureSignature(
       "subscribers",
-      Vector("queryId" -> integer, "queryDepth" -> integer, "receiverId" -> string, "lastResult" -> Type.Any),
+      Vector("dgnId" -> integer, "subscriber" -> string, "forQueries" -> Type.Any, "lastResult" -> Type.Any),
     ),
     ProcedureSignature(
       "subscriptions",
-      Vector("queryId" -> integer, "queryDepth" -> integer, "receiverId" -> string, "lastResult" -> Type.Any),
+      Vector("dgnId" -> integer, "peer" -> string, "forQueries" -> Type.Any, "answer" -> Type.Any),
     ),
     // Nested-query execution
     ProcedureSignature("do.when", Vector("value" -> Type.Any)),

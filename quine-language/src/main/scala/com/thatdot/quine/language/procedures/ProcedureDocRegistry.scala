@@ -139,20 +139,22 @@ object ProcedureDocRegistry {
     ),
     ProcedureDoc(
       name = "subscribers",
-      signature = "subscribers(node :: ANY) :: (queryId :: INTEGER, queryDepth :: INTEGER, " +
-        "receiverId :: STRING, lastResult :: ANY)",
-      description = "Returns the nodes subscribed to this node for standing query updates, one row per " +
-        "subscriber with the query, depth, receiver, and last propagated result. Useful for tracing how a " +
-        "standing query propagates through the graph; `subscriptions` answers the opposite direction.",
+      signature = "subscribers(node :: ANY) :: (dgnId :: INTEGER, subscriber :: STRING, " +
+        "forQueries :: ANY, lastResult :: ANY)",
+      description = "Returns who is subscribed to this node for standing query updates, one row per " +
+        "subscriber with the pattern it asked about, the subscriber, the standing queries it depends on this " +
+        "node for, and the answer last reported to it. Useful for tracing how a standing query propagates " +
+        "through the graph; `subscriptions` answers the opposite direction.",
       docsUrl = proceduresReference,
     ),
     ProcedureDoc(
       name = "subscriptions",
-      signature = "subscriptions(node :: ANY) :: (queryId :: INTEGER, queryDepth :: INTEGER, " +
-        "receiverId :: STRING, lastResult :: ANY)",
+      signature = "subscriptions(node :: ANY) :: (dgnId :: INTEGER, peer :: STRING, " +
+        "forQueries :: ANY, answer :: ANY)",
       description = "Returns the nodes this node subscribes to for standing query updates, one row per " +
-        "subscription with the query, depth, receiver, and last propagated result. Useful for tracing how a " +
-        "standing query propagates through the graph; `subscribers` answers the opposite direction.",
+        "subscription with the child pattern asked about, the peer asked, the standing queries the ask was " +
+        "made on behalf of, and the peer's last answer. Useful for tracing how a standing query propagates " +
+        "through the graph; `subscribers` answers the opposite direction.",
       docsUrl = proceduresReference,
     ),
     // Nested-query execution

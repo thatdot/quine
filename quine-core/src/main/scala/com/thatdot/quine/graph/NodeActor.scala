@@ -100,18 +100,21 @@ private[graph] class NodeActor(
     metrics.nodeEdgesCounter(namespace).bucketContaining(edges.size).inc()
     metrics.nodePropertyCounter(namespace).bucketContaining(properties.size).inc()
 
-    // replay journal
-    initialJournal foreach {
-      case event: PropertyEvent => applyPropertyEffect(event)
-      case event: EdgeEvent => edges.updateEdgeCollection(event)
-      case event: DomainIndexEvent => applyDomainIndexEffect(event, shouldCauseSideEffects = false)
-    }
+    journaledEventsAppliedSinceSnapshot = replayJournal(initialJournal)
+
+    // This would only update the snapshot if: 1.) the configuration changes, or 2.) a previous snapshot failed to save
+    if (
+      atTime.isEmpty && journaledEventsAppliedSinceSnapshot > 0 &&
+      (!persistenceConfig.journalEnabled || !journalCarriesEveryWrite ||
+      journaledEventsAppliedSinceSnapshot >= persistenceConfig.snapshotAfterEvents)
+    )
+      updateRelevantToSnapshotOccurred()
 
     // Once edge map is updated, recompute cost to sleep:
     costToSleep.set(Math.round(Math.round(edges.size.toDouble) / Math.log(2) - 2))
 
     // Make a best-effort attempt at restoring the watchableEventIndex: This will fail for DGNs that no longer exist,
-    // so also make note of which those are for further cleanup. Now that the journal and snapshot have both been
+    // so also make note of which those are. Now that the journal and snapshot have both been
     // applied, we know that this reconstruction + removal detection will be as complete as possible
     val (watchableEventIndexRestored, locallyWatchedDgnsToRemove) = StandingQueryWatchableEventIndex.from(
       dgnRegistry,
@@ -123,9 +126,6 @@ private[graph] class NodeActor(
 
     // Phase: The node has caught up to the target time, but some actions locally on the node need to catch up
     // with what happened with the graph while this node was asleep.
-
-    // stop tracking subscribers of deleted DGNs that were previously watching for local events
-    domainGraphSubscribers.removeSubscribersOf(locallyWatchedDgnsToRemove)
 
     // determine newly-registered DistinctId SQs and the DGN IDs they track (returns only those DGN IDs that are
     // potentially-rooted on this node)
@@ -144,16 +144,16 @@ private[graph] class NodeActor(
     } yield sqId -> dgnId
 
     // Make a best-effort attempt at restoring the nodeParentIndex: This will fail for DGNs that no longer exist,
-    // so also make note of which those are for further cleanup.
-    // By doing this after removing `locallyWatchedDgnsToRemove`, we'll have fewer wasted entries in the
-    // reconstructed index. By doing this after journal restoration, we ensure that this reconstruction + removal
-    // detection will be as complete as possible
+    // so also make note of which those are. By doing this after journal restoration, we ensure that this
+    // reconstruction + removal detection will be as complete as possible
     val (nodeParentIndexPruned, propagationsToRemove) =
       NodeParentIndex.reconstruct(domainNodeIndex, domainGraphSubscribers.subscribersToThisNode.keys, dgnRegistry)
     this.domainGraphNodeParentIndex = nodeParentIndexPruned
 
-    // stop tracking subscribers of deleted DGNs that were previously propagating messages
-    domainGraphSubscribers.removeSubscribersOf(propagationsToRemove)
+    // Subscriptions for queries cancelled while this node slept, `locallyWatchedDgnsToRemove` and
+    // `propagationsToRemove` among them, are dropped here with the answers they held. Local state only: like the
+    // fold before it, this sends nothing.
+    reconcileDistinctIdStateAtWake()
 
     // Now that we have a comprehensive diff of the SQs added/removed, debug-log that diff.
     log.whenDebugEnabled {

@@ -336,6 +336,15 @@ final class MapDbPersistor(
   override def deleteSnapshots(qid: QuineId): Future[Unit] =
     deleteQuineIdEntries(snapshots, qid, "deleteSnapshots")
 
+  override def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit] = Future {
+    quineIdTimeRangeEntries(snapshots, qid, EventTime.MinValue, EventTime.MaxValue)
+      .filter(entry => EventTime.fromRaw(Long.unbox(entry.getKey()(1))) != keep)
+      .foreach(entry => snapshots.remove(entry.getKey))
+  }(blockingDispatcherEC).recoverWith { case e =>
+    logger.error(log"deleteSnapshotsExcept failed." withException e)
+    Future.failed(e)
+  }(nodeDispatcherEC)
+
   /* MapDB has a [bug](https://github.com/jankotek/mapdb/issues/966) that sporadically causes
    * errors in `getLatestSnapshot`. This is an attempt to reduce the likelihood of this error
    * (which we hypothesize might occur due to some race condition under heavy concurrent writes)
@@ -360,7 +369,7 @@ final class MapDbPersistor(
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime,
-  ): Future[Option[Array[Byte]]] = {
+  ): Future[Option[StoredSnapshot]] = {
     // missing values in key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = Array[AnyRef](id.array)
     val endingKey: Array[AnyRef] = upToTime match {
@@ -370,7 +379,7 @@ final class MapDbPersistor(
 
     tryGetLatestSnapshot(startingKey, endingKey, 5)
       .map { (maybeEntry: Option[JavaMap.Entry[Array[AnyRef], Array[Byte]]]) =>
-        maybeEntry.map(_.getValue)
+        maybeEntry.map(entry => StoredSnapshot(EventTime.fromRaw(Long.unbox(entry.getKey()(1))), entry.getValue))
       }(blockingDispatcherEC)
       .recoverWith { case e =>
         logger.error(log"getLatestSnapshot failed on ${Safe(id)}." withException e)

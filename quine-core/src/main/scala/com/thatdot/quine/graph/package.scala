@@ -46,7 +46,7 @@ package object graph {
 
   type Notifiable = Either[QuineId, StandingQueryId]
 
-  private[quine] type LastNotification = Option[Boolean]
+  private[quine] type LatestAnswer = Option[Boolean]
 
   /* DelayedInit on the object creation will keep objects nested inside from being instantiated until their first use.
    * Multithreaded deserialization was creating a race condition in nested object creation. Somehow this lead to a deadlock.

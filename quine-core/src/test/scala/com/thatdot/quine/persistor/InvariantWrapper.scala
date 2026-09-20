@@ -104,7 +104,7 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
     wrapped.persistSnapshot(id, atTime, state)
   }
 
-  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
+  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[StoredSnapshot]] =
     wrapped.getLatestSnapshot(id, upToTime)
 
   def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
@@ -123,6 +123,7 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
     wrapped.persistQueryPlan(standingQueryId, qp)
 
   def deleteSnapshots(qid: QuineId): Future[Unit] = wrapped.deleteSnapshots(qid)
+  def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit] = wrapped.deleteSnapshotsExcept(qid, keep)
   def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = wrapped.deleteNodeChangeEvents(qid)
   def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = wrapped.deleteDomainIndexEvents(qid)
   def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =

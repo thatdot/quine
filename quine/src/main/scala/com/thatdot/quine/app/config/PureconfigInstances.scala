@@ -6,7 +6,7 @@ import scala.jdk.CollectionConverters._
 import org.apache.pekko.util.Timeout
 
 import pureconfig.BasicReaders.stringConfigReader
-import pureconfig.error.CannotConvert
+import pureconfig.error.{CannotConvert, UserValidationFailed}
 import pureconfig.generic.ProductHint
 import pureconfig.generic.semiauto.{deriveConvert, deriveEnumerationConvert}
 import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
@@ -31,8 +31,13 @@ trait PureconfigInstances {
   implicit val effectOrderConvert: ConfigConvert[EventEffectOrder] =
     deriveEnumerationConvert[EventEffectOrder]
 
-  implicit val persistenceConfigConvert: ConfigConvert[PersistenceConfig] =
-    deriveConvert[PersistenceConfig]
+  implicit val persistenceConfigConvert: ConfigConvert[PersistenceConfig] = {
+    val derived = deriveConvert[PersistenceConfig]
+    ConfigConvert.fromReaderAndWriter(
+      derived.emap(config => config.invalidReason.toLeft(config).left.map(UserValidationFailed(_))),
+      derived,
+    )
+  }
 
   // RedactMethod is a sealed trait with only RedactHide case object
   // Uses type discriminator (e.g., redactor { type = redact-hide })

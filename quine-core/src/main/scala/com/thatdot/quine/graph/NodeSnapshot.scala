@@ -19,7 +19,7 @@ abstract class AbstractNodeSnapshot {
   ]
   def domainNodeIndex: MutableMap[
     QuineId,
-    MutableMap[DomainGraphNodeId, Option[Boolean]],
+    MutableMap[DomainGraphNodeId, DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult],
   ]
 }
 // Convenience class to define which NodeActor fields to close over (sometimes mutable!) for the sake of immediately serializing it.
@@ -34,7 +34,7 @@ final case class NodeSnapshot(
   ],
   domainNodeIndex: MutableMap[
     QuineId,
-    MutableMap[DomainGraphNodeId, Option[Boolean]],
+    MutableMap[DomainGraphNodeId, DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult],
   ],
 ) extends AbstractNodeSnapshot
 
@@ -47,7 +47,10 @@ object NodeSnapshot {
       properties: Map[Symbol, PropertyValue],
       edges: Iterable[HalfEdge],
       subscribersToThisNode: MutableMap[DomainGraphNodeId, SubscribersToThisNodeUtil.DistinctIdSubscription],
-      domainNodeIndex: MutableMap[QuineId, MutableMap[DomainGraphNodeId, Option[Boolean]]],
+      domainNodeIndex: MutableMap[
+        QuineId,
+        MutableMap[DomainGraphNodeId, DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult],
+      ],
       reserved: Boolean,
     ): NodeSnapshot = {
       if (reserved) { // must be false in Quine

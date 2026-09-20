@@ -28,9 +28,20 @@ enum LastNotification: byte {
 
 table Subscriber {
   dgn_id: long;
+  // Read only to migrate a snapshot written by 2.1.1, which listed the subscribers here and recorded only the
+  // union of their queries in `related_queries`. Not written by 2.2.0 onwards: `queries_per_subscriber` carries
+  // both, and its key set *is* the subscriber set. Downgrading from 2.2.0 is not supported, so writing them for
+  // the benefit of an older reader would be bytes in every snapshot for nothing.
   notifiable: [Notifiable];
   last_notification: LastNotification;
-  related_queries: [StandingQueryId] (required);
+  // Read only to migrate a 2.1.1 snapshot; see `notifiable`. No longer `required`, so it can be omitted.
+  related_queries: [StandingQueryId];
+  queries_per_subscriber: [SubscriberQueries];
+}
+
+table SubscriberQueries {
+  subscriber: Notifiable;
+  queries: [StandingQueryId];
 }
 
 table NodeIndex {
@@ -41,6 +52,10 @@ table NodeIndex {
 table NodeIndexQuery {
   dgn_id: long;
   result: LastNotification;
+  // Appended. The standing queries this node told the peer the question was for; see
+  // [[DomainNodeIndex.DomainIndexResult.forQueries]]. Absent in a snapshot written before the field existed,
+  // which reads as unknown rather than as nobody.
+  for_queries: [StandingQueryId];
 }
 
 root_type NodeSnapshot;

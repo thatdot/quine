@@ -835,13 +835,14 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Anything),
     outputs = Vector(
-      "queryId" -> Type.Integer,
-      "queryDepth" -> Type.Integer,
-      "receiverId" -> Type.Str,
+      "dgnId" -> Type.Integer,
+      "subscriber" -> Type.Str,
+      "forQueries" -> Type.Anything,
       "lastResult" -> Type.Anything,
     ),
     description =
-      "Returns nodes subscribed to this node for standing query updates. Useful for tracing standing query propagation.",
+      "Returns who is subscribed to this node for standing query updates, and which standing queries each of " +
+      "them depends on this node for. Useful for tracing standing query propagation.",
   )
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
@@ -870,7 +871,9 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
             sqr.subscribers.map { s =>
               Vector(
                 Expr.Integer(s.dgnId),
-                Expr.Str(s.qid.pretty),
+                // Either another node or the standing query itself; both are subscribers.
+                Expr.Str(s.subscriberNode.map(_.pretty).orElse(s.subscriberQuery.map(_.uuid.toString)).getOrElse("")),
+                Expr.List(s.forQueries.map(q => Expr.Str(q.uuid.toString)).toVector),
                 s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r)),
               )
             }.iterator
@@ -889,13 +892,14 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Anything),
     outputs = Vector(
-      "queryId" -> Type.Integer,
-      "queryDepth" -> Type.Integer,
-      "receiverId" -> Type.Str,
-      "lastResult" -> Type.Anything,
+      "dgnId" -> Type.Integer,
+      "peer" -> Type.Str,
+      "forQueries" -> Type.Anything,
+      "answer" -> Type.Anything,
     ),
     description =
-      "Returns nodes this node subscribes to for standing query updates. Useful for tracing standing query propagation.",
+      "Returns the nodes this node subscribes to for standing query updates, and which standing queries each " +
+      "subscription was made on behalf of. Useful for tracing standing query propagation.",
   )
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
@@ -924,8 +928,9 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
             sqr.subscriptions.map { s =>
               Vector(
                 Expr.Integer(s.dgnId.toLong),
-                Expr.Str(s.qid.pretty),
-                s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r)),
+                Expr.Str(s.peer.pretty),
+                Expr.List(s.forQueries.map(q => Expr.Str(q.uuid.toString)).toVector),
+                s.answer.fold[Value](Expr.Null)(r => Expr.Bool(r)),
               )
             }.iterator
           },

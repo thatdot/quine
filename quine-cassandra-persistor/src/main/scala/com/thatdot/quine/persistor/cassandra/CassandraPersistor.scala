@@ -162,6 +162,8 @@ abstract class CassandraPersistor(
     snapshots.persistSnapshotPart(id, atTime, bytes, index, count)
   }
   override def deleteSnapshots(qid: QuineId): Future[Unit] = snapshots.deleteAllByQid(qid)
+  override def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit] =
+    snapshots.deleteAllExcept(qid, keep)
 
   override def getLatestMultipartSnapshot(
     id: QuineId,

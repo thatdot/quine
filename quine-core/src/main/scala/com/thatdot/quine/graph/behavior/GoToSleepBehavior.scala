@@ -47,6 +47,29 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
   protected def lastWriteMillis: Long
 
+  protected def journaledEventsAppliedSinceSnapshot: Int
+
+  /** Whether every write this node's snapshot would reflect is in its journal. `snapshotAfterEvents`
+    * skips a snapshot on the strength of the journal, so a node for which this is false is not
+    * subject to it.
+    */
+  protected def journalCarriesEveryWrite: Boolean = true
+
+  /** Whether this sleep should write a snapshot.
+    *
+    * With a journal a snapshot is not required for durability -- everything in it is replayable --
+    * so it only bounds how much journal a wake reads back, and below `snapshotAfterEvents` that
+    * bound is not worth the write. Without a journal the snapshot is the only record, and the
+    * schedule alone decides. A node with writes the journal does not carry is in the same position
+    * without a journal: what those writes changed is in the snapshot or nowhere.
+    */
+  private def shouldSnapshotOnSleep: Boolean =
+    atTime.isEmpty &&
+    latestUpdateAfterSnapshot.isDefined &&
+    persistenceConfig.snapshotOnSleep &&
+    !(persistenceConfig.journalEnabled && journalCarriesEveryWrite &&
+    journaledEventsAppliedSinceSnapshot < persistenceConfig.snapshotAfterEvents)
+
   // TODO: retry in persistors
   private def retryPersistence[T](timer: Timer, op: => Future[T], ec: ExecutionContext)(implicit
     scheduler: Scheduler,
@@ -117,54 +140,73 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
             )
           }
 
-          latestUpdateAfterSnapshot match {
-            case Some(latestUpdateTime) if persistenceConfig.snapshotOnSleep && atTime.isEmpty =>
-              val snapshot: Array[Byte] = toSnapshotBytes(latestUpdateTime)
+          /* Two independent pieces of sleep-time state, each on its own schedule: the snapshot
+           * (`history`) and any deferred MultipleValues standing query states
+           * (`standingQuerySchedule`). `MultipleValuesStandingQueryBehavior` defers those writes to
+           * sleep, so if the flush only ran when a snapshot was also written, a skipped snapshot
+           * would silently discard standing query state.
+           */
+          val snapshotToSave: Option[(EventTime, Array[Byte])] =
+            if (shouldSnapshotOnSleep) latestUpdateAfterSnapshot.map { latestUpdateTime =>
+              // Read before `toSnapshotBytes`, which resets the counter.
+              val eventsThisSnapshotReplaces = journaledEventsAppliedSinceSnapshot
+              val snapshot = toSnapshotBytes(latestUpdateTime)
               metrics.snapshotSize.update(snapshot.length)
+              // The histogram sizes the threshold, so only snapshots the threshold decided belong in it.
+              if (journalCarriesEveryWrite) metrics.snapshotEconomics.recordSnapshotOnSleep(eventsThisSnapshotReplaces)
+              latestUpdateTime -> snapshot
+            }
+            else None
 
-              implicit val scheduler: Scheduler = context.system.scheduler
+          val multipleValuesToSave: Set[(StandingQueryId, MultipleValuesStandingQueryPartId)] =
+            if (atTime.isEmpty && persistenceConfig.standingQueryOnSleep) pendingMultipleValuesWrites.toSet
+            else Set.empty
 
-              // Save all persistor data
-              val snapshotSaved = retryPersistence(
-                metrics.persistorPersistSnapshotTimer,
-                persistor.persistSnapshot(
-                  qid,
-                  if (persistenceConfig.snapshotSingleton) EventTime.MaxValue
-                  else latestUpdateTime,
-                  snapshot,
-                ),
+          if (snapshotToSave.isEmpty && multipleValuesToSave.isEmpty) {
+            reportSleepSuccess(qidAtTime, sleepTimer)
+          } else {
+            implicit val scheduler: Scheduler = context.system.scheduler
+
+            val snapshotSaved: Future[Unit] = snapshotToSave match {
+              case Some((latestUpdateTime, snapshot)) =>
+                retryPersistence(
+                  metrics.persistorPersistSnapshotTimer,
+                  persistor.persistSnapshot(
+                    qid,
+                    if (persistenceConfig.snapshotSingleton) EventTime.MaxValue else latestUpdateTime,
+                    snapshot,
+                  ),
+                  context.dispatcher,
+                )
+              case None => Future.unit
+            }
+
+            val multipleValuesStatesSaved = Future.traverse(multipleValuesToSave) { case key @ (globalId, localId) =>
+              val serialized =
+                multipleValuesStandingQueries.get(key).map(MultipleValuesStandingQueryStateCodec.format.write)
+              serialized.foreach(arr => metrics.standingQueryStateSize(namespace, globalId).update(arr.length))
+              retryPersistence(
+                metrics.persistorSetStandingQueryStateTimer,
+                persistor.setMultipleValuesStandingQueryState(globalId, qid, localId, serialized),
                 context.dispatcher,
               )
-              val multipleValuesStatesSaved = Future.traverse(pendingMultipleValuesWrites) {
-                case key @ (globalId, localId) =>
-                  val serialized =
-                    multipleValuesStandingQueries.get(key).map(MultipleValuesStandingQueryStateCodec.format.write)
-                  serialized.foreach(arr => metrics.standingQueryStateSize(namespace, globalId).update(arr.length))
-                  retryPersistence(
-                    metrics.persistorSetStandingQueryStateTimer,
-                    persistor.setMultipleValuesStandingQueryState(globalId, qid, localId, serialized),
-                    context.dispatcher,
-                  )
-              }(implicitly, context.dispatcher)
+            }(implicitly, context.dispatcher)
 
-              val persistenceFuture = snapshotSaved zip multipleValuesStatesSaved
+            val persistenceFuture = snapshotSaved zip multipleValuesStatesSaved
 
-              // Schedule an update to the shard
-              persistenceFuture.onComplete {
-                case Success(_) => reportSleepSuccess(qidAtTime, sleepTimer)
-                case Failure(err) =>
-                  shardActor ! SleepOutcome.SleepFailed(
-                    qidAtTime,
-                    snapshot,
-                    edges.size,
-                    properties.transform((_, v) => v.serialized.length), // this eagerly serializes; can be expensive
-                    err,
-                    shardPromise,
-                  )
-              }(context.dispatcher)
-
-            case _ =>
-              reportSleepSuccess(qidAtTime, sleepTimer)
+            // Schedule an update to the shard
+            persistenceFuture.onComplete {
+              case Success(_) => reportSleepSuccess(qidAtTime, sleepTimer)
+              case Failure(err) =>
+                shardActor ! SleepOutcome.SleepFailed(
+                  qidAtTime,
+                  snapshotToSave.map(_._2),
+                  edges.size,
+                  properties.transform((_, v) => v.serialized.length), // this eagerly serializes; can be expensive
+                  err,
+                  shardPromise,
+                )
+            }(context.dispatcher)
           }
 
           /* Block waiting for the write lock to the ActorRef

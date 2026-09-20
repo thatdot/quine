@@ -5,6 +5,14 @@ package com.thatdot.quine.persistor
   * @param journalEnabled Enable or disable Quine journal persistence
   * @param snapshotSchedule When to save snapshots
   * @param snapshotSingleton Overwrite a single snapshot record per graph node
+  * @param snapshotAfterEvents With a journal, only snapshot a sleeping node once it has journaled at
+  *                            least this many events since its last snapshot. A snapshot is not
+  *                            needed for durability when journaling is on -- it only bounds replay
+  *                            on wake -- so writing one for a node that journaled almost nothing is
+  *                            near-pure overhead. Defaults to 0, which snapshots on every sleep;
+  *                            raising it is what enables the saving. Refused when negative, without
+  *                            a journal, with a singleton snapshot, and under a snapshot schedule
+  *                            other than on-node-sleep; see [[PersistenceConfig.invalidReason]].
   * @param standingQuerySchedule when to save standing query partial results (SQv4 only - DGB is always on node sleep)
   */
 final case class PersistenceConfig(
@@ -12,11 +20,36 @@ final case class PersistenceConfig(
   effectOrder: EventEffectOrder = EventEffectOrder.PersistorFirst,
   snapshotSchedule: PersistenceSchedule = PersistenceSchedule.OnNodeSleep,
   snapshotSingleton: Boolean = false,
+  snapshotAfterEvents: Int = 0,
   standingQuerySchedule: PersistenceSchedule = PersistenceSchedule.OnNodeSleep,
 ) {
   def snapshotEnabled: Boolean = snapshotSchedule != PersistenceSchedule.Never
   def snapshotOnSleep: Boolean = snapshotSchedule == PersistenceSchedule.OnNodeSleep
   def snapshotOnUpdate: Boolean = snapshotSchedule == PersistenceSchedule.OnNodeUpdate
+  def standingQueryOnSleep: Boolean = standingQuerySchedule == PersistenceSchedule.OnNodeSleep
+
+  /** Why this configuration is refused, if it is. `snapshotAfterEvents` skips sleep-time snapshots on the strength
+    * of the journal, so it needs one, and a singleton snapshot is one row meant to hold the latest state, which a
+    * skipped write would leave behind. Under any schedule but on-node-sleep no sleep-time snapshot is ever
+    * considered, so the setting would do nothing, and a user who set it is refused rather than left thinking it did.
+    */
+  def invalidReason: Option[String] =
+    if (snapshotAfterEvents == 0) None
+    else if (snapshotAfterEvents < 0)
+      Some("snapshot-after-events must not be negative")
+    else if (!journalEnabled)
+      Some(
+        "snapshot-after-events requires journal-enabled = true: without a journal the snapshot is the only durable record",
+      )
+    else if (snapshotSingleton)
+      Some(
+        "snapshot-after-events must be 0 with snapshot-singleton = true: the one snapshot row is meant to hold the latest state",
+      )
+    else if (!snapshotOnSleep)
+      Some(
+        "snapshot-after-events must be 0 unless snapshot-schedule = on-node-sleep: it only decides sleep-time snapshots",
+      )
+    else None
 }
 
 sealed abstract class PersistenceSchedule

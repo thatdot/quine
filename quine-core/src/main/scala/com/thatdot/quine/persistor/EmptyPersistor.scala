@@ -73,7 +73,9 @@ class EmptyPersistor(
 
   def deleteSnapshots(qid: QuineId): Future[Unit] = Future.unit
 
-  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
+  def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit] = Future.unit
+
+  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[StoredSnapshot]] =
     Future.successful(None)
 
   def persistStandingQuery(standingQuery: StandingQueryInfo) = Future.unit

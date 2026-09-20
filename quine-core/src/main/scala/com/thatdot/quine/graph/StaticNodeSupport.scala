@@ -1,11 +1,16 @@
 package com.thatdot.quine.graph
 
 import scala.collection.mutable
+import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.stream.scaladsl.Sink
+
+import com.codahale.metrics.Timer
+import org.apache.pekko
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.quineid.QuineId
@@ -22,8 +27,8 @@ import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.persistor.NamespacedPersistenceAgent
 import com.thatdot.quine.persistor.codecs.{AbstractSnapshotCodec, MultipleValuesStandingQueryStateCodec}
+import com.thatdot.quine.persistor.{NamespacedPersistenceAgent, StoredSnapshot}
 import com.thatdot.quine.util.Log.implicits._
 
 abstract class StaticNodeSupport[
@@ -33,7 +38,7 @@ abstract class StaticNodeSupport[
 ](implicit
   val nodeClass: ClassTag[Node],
   val snapshotCodec: AbstractSnapshotCodec[Snapshot],
-) {
+) extends LazySafeLogging {
 
   /** nodeClass is the class of nodes in the graph
     *
@@ -71,7 +76,7 @@ abstract class StaticNodeSupport[
     recoverySnapshotBytes match {
       case Some(recoverySnapshotBytes) =>
         val snapshot =
-          deserializeSnapshotBytes(recoverySnapshotBytes, quineIdAtTime)(
+          deserializeSnapshotBytes(recoverySnapshotBytes, quineIdAtTime, graph.metrics.snapshotDeserializeTimer)(
             graph.idProvider,
             snapshotCodec,
           )
@@ -106,25 +111,106 @@ abstract class StaticNodeSupport[
       val SpaceTimeQuineId(qid, _, atTime) = quineIdAtTime
       val persistenceConfig = persistor.persistenceConfig
 
-      def getSnapshot(): Future[Option[Snapshot]] =
-        if (!persistenceConfig.snapshotEnabled) Future.successful(None)
-        else {
-          val upToTime = atTime match {
-            case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
-              EventTime.fromMillis(historicalTime)
-            case _ =>
-              EventTime.MaxValue
+      def getSnapshot(): Future[Option[Snapshot]] = if (!persistenceConfig.snapshotEnabled) Future.successful(None)
+      else {
+        // A single overwritten row holds only the latest state, so it is what a historical read gets too.
+        val upToTime = atTime match {
+          case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
+            EventTime.fromMillis(historicalTime)
+          case _ =>
+            EventTime.MaxValue
+        }
+        graph.metrics.persistorGetLatestSnapshotTimer
+          .time {
+            persistor.getLatestSnapshot(qid, upToTime)
           }
-          graph.metrics.persistorGetLatestSnapshotTimer
-            .time {
-              persistor.getLatestSnapshot(qid, upToTime)
+          .flatMap { maybeStored =>
+            // Recorded for every wake that looked, zero included: a wake that found no snapshot
+            // is the case a threshold creates, and leaving it out would bias the distribution
+            // toward exactly the nodes the threshold does not affect.
+            graph.metrics.snapshotBytesRead.update(maybeStored.fold(0)(_.bytes.length).toLong)
+            maybeStored match {
+              case None => Future.successful(None)
+              case Some(stored) => resolveStoredSnapshot(stored).map(Some(_))(ExecutionContext.parasitic)
             }
-            .map { maybeBytes =>
-              maybeBytes.map(
-                deserializeSnapshotBytes(_, quineIdAtTime)(graph.idProvider, snapshotCodec),
-              )
+          }(graph.nodeDispatcherEC)
+      }
+
+      def retried[T](op: => Future[T]): Future[T] =
+        pekko.pattern.retry(
+          () => op,
+          attempts = 5,
+          minBackoff = 100.millis,
+          maxBackoff = 5.seconds,
+          randomFactor = 0.5,
+        )(graph.nodeDispatcherEC, graph.system.scheduler)
+
+      def decode(bytes: Array[Byte]): Snapshot =
+        deserializeSnapshotBytes(bytes, quineIdAtTime, graph.metrics.snapshotDeserializeTimer)(
+          graph.idProvider,
+          snapshotCodec,
+        )
+
+      /** Delete every snapshot row but `keep`. A row this fails to delete is harmless: a leftover singleton row is
+        * what the next wake reads first and [[resolveStoredSnapshot]] resolves it, and any other leftover holds
+        * older state than the row a wake reads.
+        */
+      def removeRowsExcept(keep: EventTime): Future[Unit] =
+        retried(persistor.deleteSnapshotsExcept(qid, keep)).recover { case NonFatal(err) =>
+          logger.warn(
+            log"Could not remove the snapshots of node: ${Safe(qid)} other than the one at: ${Safe(keep)}" withException err,
+          )
+        }(graph.nodeDispatcherEC)
+
+      /** Write `bytes` at `key`, then remove the other rows. Written first, and waited on, so that a crash
+        * leaves two rows rather than none. A failed write leaves the old row for the next wake to find again.
+        */
+      def moveTo(key: EventTime, bytes: Array[Byte]): Future[Unit] =
+        retried(graph.metrics.persistorPersistSnapshotTimer.time(persistor.persistSnapshot(qid, key, bytes)))
+          .flatMap(_ => removeRowsExcept(key))(graph.nodeDispatcherEC)
+          .map(_ => graph.metrics.snapshotsRekeyedOnWake.inc())(ExecutionContext.parasitic)
+          .recover { case NonFatal(err) =>
+            logger.warn(
+              log"""Could not move the snapshot of node: ${Safe(qid)} to the key this configuration uses.
+                   |It will be tried again the next time the node wakes.""".cleanLines withException err,
+            )
+          }(graph.nodeDispatcherEC)
+
+      /** The snapshot to restore from, with storage brought to the shape the snapshot-singleton setting expects.
+        *
+        * The two settings key snapshots differently, and each reads the newest key at or before
+        * [[EventTime.MaxValue]]. A singleton row is stored at exactly that time, so once it exists it is what every
+        * later wake finds, however many time-keyed snapshots are written after it. So a singleton row found under
+        * a journal is not necessarily the newest state: it is either from before the setting changed, or one an
+        * earlier wake moved but failed to delete, after which this node may have slept and written a newer row
+        * below it. One more read tells the two apart. If a time-keyed row exists at or after the singleton row's
+        * own time, that row is the newer state and the singleton row is the one to remove; otherwise the singleton
+        * bytes are moved to their own time. Either way the delete never removes a row holding newer state than the
+        * one restored from.
+        *
+        * A time-keyed row found under a single snapshot means no singleton row exists, or it would have been read
+        * instead, so the setting changed and the bytes are moved to the singleton key.
+        */
+      def resolveStoredSnapshot(stored: StoredSnapshot): Future[Snapshot] = {
+        val storedForSingleton = stored.atTime == EventTime.MaxValue
+        if (atTime.nonEmpty || storedForSingleton == persistenceConfig.snapshotSingleton)
+          Future.successful(decode(stored.bytes))
+        else if (persistenceConfig.snapshotSingleton) {
+          val snapshot = decode(stored.bytes)
+          moveTo(EventTime.MaxValue, stored.bytes).map(_ => snapshot)(ExecutionContext.parasitic)
+        } else {
+          val singleton = decode(stored.bytes)
+          graph.metrics.persistorGetLatestSnapshotTimer
+            .time(persistor.getLatestSnapshot(qid, StaticNodeSupport.newestTimeKeyedSnapshotKey))
+            .flatMap {
+              case Some(newer) if newer.atTime >= singleton.time =>
+                val snapshot = decode(newer.bytes)
+                removeRowsExcept(newer.atTime).map(_ => snapshot)(ExecutionContext.parasitic)
+              case _ =>
+                moveTo(singleton.time, stored.bytes).map(_ => singleton)(ExecutionContext.parasitic)
             }(graph.nodeDispatcherEC)
         }
+      }
 
       def getJournalAfter(after: Option[EventTime], includeDomainIndexEvents: Boolean): Future[Iterable[NodeEvent]] = {
         val startingAt = after.fold(EventTime.MinValue)(_.tickEventSequence(None))
@@ -147,16 +233,16 @@ abstract class StaticNodeSupport[
         }
       }
 
-      // Get the snapshot and journal events
+      // The journal is read whatever the snapshot-singleton setting is now. A node that slept under a journal with fewer
+      // events than `snapshotAfterEvents` has state that exists only there, and it must come back after the
+      // store is switched to a single snapshot. On a store that never journaled the read finds nothing.
       val snapshotAndJournal =
         getSnapshot()
           .flatMap { latestSnapshotOpt =>
-            val journalAfterSnapshot: Future[Journal] = if (persistenceConfig.journalEnabled) {
+            val journalAfterSnapshot: Future[Journal] =
               getJournalAfter(latestSnapshotOpt.map(_.time), includeDomainIndexEvents = atTime.isEmpty)
-              // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
-              // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
-            } else
-              Future.successful(Vector.empty)
+            // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
+            // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
 
             journalAfterSnapshot.map(journalAfterSnapshot => (latestSnapshotOpt, journalAfterSnapshot))(
               ExecutionContext.parasitic,
@@ -175,21 +261,37 @@ abstract class StaticNodeSupport[
         .zip(multipleValuesStandingQueryStates)
     }
     .map { case ((snapshotOpt, journal), multipleValuesStates) =>
+      // `size` forces the journal, so only pay it when measuring.
+      if (graph.metrics.snapshotEconomics.enabled) {
+        graph.metrics.snapshotEconomics.recordJournalReplayedOnWake(journal.size)
+      }
       createNodeArgs(snapshotOpt, journal, multipleValuesStates)
     }(graph.nodeDispatcherEC)
 }
 
 object StaticNodeSupport extends LazySafeLogging {
+
+  /** The largest key a time-keyed snapshot can be stored at: the one just below the singleton key. Reading the
+    * newest snapshot at or before this key finds the newest time-keyed row even when a singleton row exists.
+    */
+  val newestTimeKeyedSnapshotKey: EventTime = EventTime.fromRaw(EventTime.MaxValue.eventTime - 1)
+
+  /** @param timer measures the decode alone. The fetch that supplied these bytes is timed
+    *              separately, so the two together separate store latency from codec cost.
+    */
   @throws[NodeWakeupFailedException]("When snapshot could not be deserialized")
   private def deserializeSnapshotBytes[Snapshot <: AbstractNodeSnapshot](
     snapshotBytes: Array[Byte],
     qidForDebugging: SpaceTimeQuineId,
+    timer: Timer,
   )(implicit
     idProvider: QuineIdProvider,
     snapshotCodec: AbstractSnapshotCodec[Snapshot],
   ): Snapshot =
-    snapshotCodec.format
-      .read(snapshotBytes)
+    timer
+      .time { () =>
+        snapshotCodec.format.read(snapshotBytes)
+      }
       .fold(
         err =>
           throw new NodeWakeupFailedException(

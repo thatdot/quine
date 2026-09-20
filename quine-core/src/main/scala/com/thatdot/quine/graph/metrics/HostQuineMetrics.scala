@@ -55,6 +55,17 @@ final case class HostQuineMetrics(
   def propertySizes(namespaceId: NamespaceId): Histogram =
     metricRegistry.histogram(metricName(namespaceId, List("node", "property-sizes")))
 
+  /** Turning node state into snapshot bytes, and back again.
+    *
+    * Separate from the persist and fetch timers around them, which measure the store rather than
+    * the codec. Serialization runs synchronously on the actor thread while the write that follows
+    * it does not, so it is the part of snapshotting that competes with everything else the node
+    * is doing, and the part a snapshot threshold actually avoids.
+    */
+  val snapshotSerializeTimer: Timer = metricRegistry.timer(MetricRegistry.name("persistor", "serialize-snapshot"))
+  val snapshotDeserializeTimer: Timer =
+    metricRegistry.timer(MetricRegistry.name("persistor", "deserialize-snapshot"))
+
   val persistorPersistEventTimer: Timer = metricRegistry.timer(MetricRegistry.name("persistor", "persist-event"))
   val persistorPersistSnapshotTimer: Timer = metricRegistry.timer(MetricRegistry.name("persistor", "persist-snapshot"))
   val persistorGetJournalTimer: Timer = metricRegistry.timer(MetricRegistry.name("persistor", "get-journal"))
@@ -281,6 +292,30 @@ final case class HostQuineMetrics(
   val snapshotSize: Histogram =
     metricRegistry.histogram(MetricRegistry.name("persistor", "snapshot-sizes"))
 
+  /** Snapshot bytes a waking node read back, or zero when it woke without one.
+    *
+    * The write-side counterpart above only sees nodes that wrote; this sees every wake, including
+    * the ones a snapshot threshold turns into journal replay instead. Together with
+    * `snapshot-economics.journal-events-replayed` it is what a wake cost to load.
+    */
+  val snapshotBytesRead: Histogram =
+    metricRegistry.histogram(MetricRegistry.name("persistor", "snapshot-bytes-read"))
+
+  /** Snapshots a waking node found stored under the other kind of history and moved to the key
+    * this one writes. Climbs after the kind changes and settles once every node that had a
+    * snapshot has woken since.
+    */
+  val snapshotsRekeyedOnWake: Counter =
+    metricRegistry.counter(MetricRegistry.name("persistor", "snapshots-rekeyed-on-wake"))
+
+  /** What each snapshot-on-sleep buys and what each wake pays.
+    *
+    * @see [[SnapshotEconomics]]. Gated on `enableDebugMetrics` because the wake-side hook forces
+    * the restored journal to be counted.
+    */
+  val snapshotEconomics: SnapshotEconomics =
+    new SnapshotEconomics(if (enableDebugMetrics) metricRegistry else noOpRegistry, enableDebugMetrics)
+
   def registerGaugeDomainGraphNodeCount(size: () => Int): Unit = {
     metricRegistry.registerGauge(MetricRegistry.name("dgn-reg", "count"), () => size())
     ()
@@ -327,6 +362,35 @@ object HostQuineMetrics {
   ) extends HistoricalProcedureMetrics
 
   val MetricsRegistryName = "quine-metrics"
+
+  /** The two distributions that size `snapshotAfterEvents`. With journaling on, a snapshot only
+    * bounds how much journal a wake replays, so a snapshot written after few events buys little.
+    * Mass near zero in `events-since-snapshot` means the threshold is too low; a long tail in
+    * `journal-events-replayed` means it is too high.
+    */
+  final class SnapshotEconomics(registry: MetricRegistry, val enabled: Boolean) {
+
+    private def name(parts: String*): String =
+      MetricRegistry.name("persistor", "snapshot-economics" +: parts: _*)
+
+    /** Journal events each written snapshot was standing in for. */
+    val eventsSinceSnapshot: Histogram = registry.histogram(name("events-since-snapshot"))
+
+    /** Journal events replayed on wake. */
+    val journalEventsReplayed: Histogram = registry.histogram(name("journal-events-replayed"))
+
+    /** Record a snapshot written on node sleep.
+      *
+      * @param journaledEventsSinceSnapshot events journaled since this node's last snapshot; zero
+      *                                     means the snapshot replaced nothing replayable at all
+      */
+    def recordSnapshotOnSleep(journaledEventsSinceSnapshot: Int): Unit =
+      if (enabled) eventsSinceSnapshot.update(journaledEventsSinceSnapshot.toLong)
+
+    /** Record the journal length replayed when a node woke. */
+    def recordJournalReplayedOnWake(events: Int): Unit =
+      if (enabled) journalEventsReplayed.update(events.toLong)
+  }
 
   val IngestMetricComponent = "ingest"
 

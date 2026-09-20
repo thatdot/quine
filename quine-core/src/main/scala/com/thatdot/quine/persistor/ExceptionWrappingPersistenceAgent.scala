@@ -40,6 +40,7 @@ case object EnumerateJournalNodeIds extends PersistorCall
 case object EnumerateSnapshotNodeIds extends PersistorCall
 case class PersistSnapshot(id: QuineId, atTime: EventTime, snapshotSize: Int) extends PersistorCall
 case class DeleteSnapshot(id: QuineId) extends PersistorCall
+case class DeleteSnapshotsExcept(id: QuineId, keep: EventTime) extends PersistorCall
 case class GetLatestSnapshot(id: QuineId, upToTime: EventTime) extends PersistorCall
 case class PersistStandingQuery(standingQuery: StandingQueryInfo) extends PersistorCall
 case class RemoveStandingQuery(standingQuery: StandingQueryInfo) extends PersistorCall
@@ -139,6 +140,10 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceA
     DeleteSnapshot(qid),
     persistenceAgent.deleteSnapshots(qid),
   )
+  override def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit] = wrapException(
+    DeleteSnapshotsExcept(qid, keep),
+    persistenceAgent.deleteSnapshotsExcept(qid, keep),
+  )
   override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = wrapException(
     DeleteNodeChangeEvents(qid),
     persistenceAgent.deleteNodeChangeEvents(qid),
@@ -169,7 +174,7 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceA
     persistenceAgent.persistSnapshot(id, atTime, state),
   )
 
-  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] = wrapException(
+  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[StoredSnapshot]] = wrapException(
     GetLatestSnapshot(id, upToTime),
     persistenceAgent.getLatestSnapshot(id, upToTime),
   )

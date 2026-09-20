@@ -1,6 +1,6 @@
 package com.thatdot.quine.persistor.cassandra
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
@@ -18,7 +18,7 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{EventTime, NamespaceId}
 import com.thatdot.quine.persistor.MultipartSnapshotPersistenceAgent.MultipartSnapshotPart
 import com.thatdot.quine.persistor.cassandra.support._
-import com.thatdot.quine.util.{T2, T4}
+import com.thatdot.quine.util.{T3, T5}
 trait SnapshotsColumnNames {
   import CassandraCodecs._
   final protected val quineIdColumn: CassandraColumn[QuineId] = CassandraColumn[QuineId]("quine_id")
@@ -55,6 +55,16 @@ abstract class SnapshotsTableDefinition(namespace: NamespaceId)
     .where(timestampColumn.is.eq)
     .build()
 
+  private val getAllTimes: SimpleStatement = select
+    .columns(timestampColumn.name)
+    .where(quineIdColumn.is.eq)
+    .build()
+
+  private val deleteByTime: SimpleStatement = delete
+    .where(quineIdColumn.is.eq, timestampColumn.is.eq)
+    .build()
+    .setIdempotent(true)
+
   protected val selectAllQuineIds: SimpleStatement
 
   def create(config: TableDefinition.DefaultCreateConfig)(implicit
@@ -66,13 +76,13 @@ abstract class SnapshotsTableDefinition(namespace: NamespaceId)
     logger.debug(log"Preparing statements for ${(Safe(tableName.toString))}")
 
     (
-      T2(insertStatement, deleteAllByPartitionKeyStatement)
+      T3(insertStatement, deleteAllByPartitionKeyStatement, deleteByTime)
         .map(prepare(config.session, config.writeSettings))
         .toTuple ++
-      T4(getLatestTime.build, getLatestTimeBefore, getParts, selectAllQuineIds)
+      T5(getLatestTime.build, getLatestTimeBefore, getParts, getAllTimes, selectAllQuineIds)
         .map(prepare(config.session, config.readSettings))
         .toTuple
-    ).mapN(new Snapshots(config.session, firstRowStatement, dropTableStatement, _, _, _, _, _, _))
+    ).mapN(new Snapshots(config.session, firstRowStatement, dropTableStatement, _, _, _, _, _, _, _, _))
   }
 
 }
@@ -83,9 +93,11 @@ class Snapshots(
   dropTableStatement: SimpleStatement,
   insertStatement: PreparedStatement,
   deleteByQidStatement: PreparedStatement,
+  deleteByTimeStatement: PreparedStatement,
   getLatestTimeStatement: PreparedStatement,
   getLatestTimeBeforeStatement: PreparedStatement,
   getPartsStatement: PreparedStatement,
+  getAllTimesStatement: PreparedStatement,
   selectAllQuineIds: PreparedStatement,
 ) extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with SnapshotsColumnNames {
@@ -108,6 +120,15 @@ class Snapshots(
   )
 
   def deleteAllByQid(id: QuineId): Future[Unit] = executeFuture(deleteByQidStatement.bindColumns(quineIdColumn.set(id)))
+
+  def deleteAllExcept(id: QuineId, keep: EventTime)(implicit mat: Materializer): Future[Unit] =
+    selectColumn[EventTime, Set[EventTime]](getAllTimesStatement.bindColumns(quineIdColumn.set(id)), timestampColumn)
+      .flatMap { times =>
+        Future.traverse((times - keep).toSeq) { time =>
+          executeFuture(deleteByTimeStatement.bindColumns(quineIdColumn.set(id), timestampColumn.set(time)))
+        }(implicitly, ExecutionContext.parasitic)
+      }(ExecutionContext.parasitic)
+      .map(_ => ())(ExecutionContext.parasitic)
 
   def getLatestSnapshotTime(
     id: QuineId,

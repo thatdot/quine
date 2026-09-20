@@ -57,16 +57,42 @@ sealed trait DomainIndexEvent extends NodeEvent {
 }
 
 object DomainIndexEvent {
+
+  /** This is the internal node-to-node subscription (dual to: [[CancelDomainNodeSubscription]]) */
   final case class CreateDomainNodeSubscription(
     dgnId: DomainGraphNodeId,
     replyTo: QuineId,
     relatedQueries: Set[StandingQueryId],
   ) extends DomainIndexEvent
 
+  /** This is the outer-most subscriber for a Standing Query.
+    * Dual of: [[CancelDomainStandingQuerySubscription]]
+    */
   final case class CreateDomainStandingQuerySubscription(
     dgnId: DomainGraphNodeId,
     replyTo: StandingQueryId,
     relatedQueries: Set[StandingQueryId],
+  ) extends DomainIndexEvent
+
+  /** This retires the outer-most subscriber for a Standing Query (dual to:
+    * [[CreateDomainStandingQuerySubscription]]).
+    *
+    * A cancelled query is gone from the graph, so a node could once read the cancellation off its absence. That
+    * says *whether* it happened but not *when*, and when is what a replay needs: the same events with the teardown
+    * before or after them leave the node in different states. Nor can one graph-wide time answer it, because each
+    * node applies the teardown at its own moment -- awake nodes when the cancellation reaches them, sleeping ones
+    * at their next wake. So the node that discovers the query is gone records it here, in its own journal, at the
+    * point it retires the subscription. That is the one ordering a replay of this node needs, and it needs no
+    * clock to establish.
+    *
+    * Which answers went with it needs no recording: each answer records the queries it is kept for, and a replay
+    * knows from this node's own history which of those were still live at this point, so applying this drops the
+    * answers left with no live query needing them -- the same rule the node applied when it wrote this. See
+    * `retireSubscription`.
+    */
+  final case class CancelDomainStandingQuerySubscription(
+    dgnId: DomainGraphNodeId,
+    alreadyCancelledSubscriber: StandingQueryId,
   ) extends DomainIndexEvent
 
   final case class DomainNodeSubscriptionResult(
@@ -75,6 +101,7 @@ object DomainIndexEvent {
     result: Boolean,
   ) extends DomainIndexEvent
 
+  /** This cancels internal subscriptions (dual to: [[CreateDomainNodeSubscription]]) */
   final case class CancelDomainNodeSubscription(
     dgnId: DomainGraphNodeId,
     alreadyCancelledSubscriber: QuineId,

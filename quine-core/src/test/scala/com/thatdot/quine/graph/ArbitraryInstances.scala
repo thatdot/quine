@@ -26,7 +26,7 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil
-import com.thatdot.quine.graph.behavior.MultipleValuesStandingQueryPartSubscription
+import com.thatdot.quine.graph.behavior.{DomainNodeIndexBehavior, MultipleValuesStandingQueryPartSubscription}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.LocalProperty.{
   Any,
   Equal,
@@ -433,6 +433,9 @@ trait ArbitraryInstances {
       ),
       Gen.resultOf[QuineId, DomainGraphNodeId, Boolean, DomainIndexEvent](DomainNodeSubscriptionResult.apply),
       Gen.resultOf[DomainGraphNodeId, QuineId, DomainIndexEvent](CancelDomainNodeSubscription.apply),
+      Gen.resultOf[DomainGraphNodeId, StandingQueryId, DomainIndexEvent](
+        CancelDomainStandingQuerySubscription.apply,
+      ),
     )
   }
 
@@ -586,12 +589,17 @@ trait ArbitraryInstances {
   implicit val arbProperties: Arbitrary[Properties] = cachedImplicit
 
   implicit val arbSubscription: Arbitrary[SubscribersToThisNodeUtil.DistinctIdSubscription] = Arbitrary {
-    Gen.resultOf[
-      Set[Notifiable],
-      LastNotification,
-      Set[StandingQueryId],
-      SubscribersToThisNodeUtil.DistinctIdSubscription,
-    ](SubscribersToThisNodeUtil.DistinctIdSubscription.apply)
+    for {
+      subscribers <- arbitrary[Set[Notifiable]]
+      latestAnswer <- arbitrary[LatestAnswer]
+      // The pool the per-subscriber sets are drawn from. `relatedQueries` on the subscription is their union,
+      // so it is derived rather than generated.
+      queryPool <- arbitrary[Set[StandingQueryId]]
+      queriesPerSubscriber <- Gen
+        .sequence[List[(Notifiable, Set[StandingQueryId])], (Notifiable, Set[StandingQueryId])](
+          subscribers.toList.map(s => Gen.someOf(queryPool).map(qs => s -> qs.toSet)),
+        )
+    } yield SubscribersToThisNodeUtil.DistinctIdSubscription(latestAnswer, queriesPerSubscriber.toMap)
   }
 
   type IndexSubscribers = MutableMap[
@@ -600,11 +608,17 @@ trait ArbitraryInstances {
   ]
   implicit val arbIndexSubscribers: Arbitrary[IndexSubscribers] = cachedImplicit
 
+  implicit val arbDomainIndexResult: Arbitrary[DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult] = Arbitrary {
+    Gen.resultOf[LatestAnswer, Set[StandingQueryId], DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult](
+      DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult.apply,
+    )
+  }
+
   type DomainNodeIndex = MutableMap[
     QuineId,
     MutableMap[
       DomainGraphNodeId,
-      Option[IsDirected],
+      DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult,
     ],
   ]
   implicit val arbDomainNodeIndex: Arbitrary[DomainNodeIndex] = cachedImplicit

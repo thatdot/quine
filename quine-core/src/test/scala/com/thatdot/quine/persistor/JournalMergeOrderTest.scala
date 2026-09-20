@@ -23,9 +23,12 @@ import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineValue}
   *
   * A node's journal is replayed in order to rebuild its state on wakeup, and node-change events and
   * standing-query-index events are read from two separate stores. Any change to how those two are
-  * interleaved changes what a node wakes up as, so the merge is pinned here against the exact
-  * expression it has always computed: a stable sort of (node-change events ++ domain-index events)
-  * by millisecond.
+  * interleaved changes what a node wakes up as.
+  *
+  * The order is ascending [[EventTime]], whole. A node stamps every event it journals from one
+  * `tickEventSequence`, whichever of the two stores it then goes to, so the sequence numbers below
+  * the millisecond are what say which of two events in the same millisecond happened first. Sorting
+  * on the millisecond alone discards that and hands back an order the node never applied.
   */
 class JournalMergeOrderTest extends AnyFunSuite with BeforeAndAfterAll with should.Matchers {
   implicit val system: ActorSystem = ActorSystem("journal-merge-order-test")
@@ -39,15 +42,12 @@ class JournalMergeOrderTest extends AnyFunSuite with BeforeAndAfterAll with shou
 
   private val qid = QuineId(Array[Byte](1, 2, 3))
 
-  /** The merge order this must always produce: a stable sort by millisecond of the node-change
-    * events followed by the domain-index events. Ties therefore resolve to node-change first, and
-    * each store's internal order is preserved.
-    */
+  /** The merge order this must always produce: ascending whole [[EventTime]] across both stores. */
   private def expectedMerge(
     nodeChanges: Vector[NodeEvent.WithTime[NodeChangeEvent]],
     domainIndex: Vector[NodeEvent.WithTime[DomainIndexEvent]],
   ): Vector[NodeEvent.WithTime[NodeEvent]] =
-    (nodeChanges ++ domainIndex).sortBy(e => e.atTime.millis)
+    (nodeChanges ++ domainIndex).sortBy(_.atTime)
 
   private def propertyEvent(name: String, at: EventTime): NodeEvent.WithTime[NodeChangeEvent] =
     NodeEvent.WithTime(PropertySet(Symbol(name), PropertyValue(QuineValue.Integer(1L))), at)
@@ -92,9 +92,8 @@ class JournalMergeOrderTest extends AnyFunSuite with BeforeAndAfterAll with shou
       .toVector
   }
 
-  test("a domain-index event ties with node-change events in the same millisecond, and loses") {
-    // Every event in one millisecond: the index event is stamped between the two property events,
-    // but a stable sort by millisecond hoists both property events ahead of it.
+  test("a domain-index event stamped between two node-change events comes back between them") {
+    // Every event in one millisecond, so the sequence numbers are the only thing separating them.
     val times = withinMillisecond(1000L, 3)
     val first = propertyEvent("a", times(0))
     val index = indexEvent(1L, times(1))
@@ -103,7 +102,7 @@ class JournalMergeOrderTest extends AnyFunSuite with BeforeAndAfterAll with shou
     val result = merged(Vector(first, second), Vector(index), includeDomainIndexEvents = true)
 
     result shouldEqual expectedMerge(Vector(first, second), Vector(index))
-    result.map(_.event) shouldEqual Vector(first.event, second.event, index.event)
+    result.map(_.event) shouldEqual Vector(first.event, index.event, second.event)
   }
 
   test("events in distinct milliseconds interleave by timestamp regardless of store") {
@@ -116,14 +115,15 @@ class JournalMergeOrderTest extends AnyFunSuite with BeforeAndAfterAll with shou
     result.map(_.atTime.millis) shouldEqual Vector(10L, 20L, 30L, 40L)
   }
 
-  test("randomised interleavings all match a stable sort of the concatenation") {
+  test("randomised interleavings all come back in ascending EventTime order") {
     val random = new Random(20260904L)
     forAllInterleavings(random)
   }
 
   /** Assign each millisecond in `millis` a distinct [[EventTime]], ticking the sequence counter
-    * when a millisecond repeats. A node stamps its events this way, so a store never holds two
-    * events at the same EventTime even when it holds several in the same millisecond.
+    * when a millisecond repeats. A node stamps its events from one such counter whichever store
+    * they go to, so this is called once over both stores' events rather than once per store: no
+    * two events share an EventTime, and the merge has no tie to break.
     */
   private def distinctTimes(millis: Vector[Long]): Vector[EventTime] =
     millis
@@ -136,12 +136,14 @@ class JournalMergeOrderTest extends AnyFunSuite with BeforeAndAfterAll with shou
     (1 to 40).foreach { case _ =>
       // Draw from a small pool of milliseconds so collisions are frequent, both within a store and
       // across the two of them.
-      val nodeChanges =
-        distinctTimes(Vector.fill(random.nextInt(6))(random.nextInt(4).toLong * 10L).sorted).zipWithIndex
-          .map { case (t, i) => propertyEvent(s"p$i", t) }
-      val domainIndex =
-        distinctTimes(Vector.fill(random.nextInt(6))(random.nextInt(4).toLong * 10L).sorted).zipWithIndex
-          .map { case (t, i) => indexEvent(i.toLong, t) }
+      val toIndexStore = Vector.fill(random.nextInt(10))(random.nextBoolean())
+      val times = distinctTimes(Vector.fill(toIndexStore.size)(random.nextInt(4).toLong * 10L).sorted)
+      val nodeChanges = times.zip(toIndexStore).collect { case (t, false) => t }.zipWithIndex.map { case (t, i) =>
+        propertyEvent(s"p$i", t)
+      }
+      val domainIndex = times.zip(toIndexStore).collect { case (t, true) => t }.zipWithIndex.map { case (t, i) =>
+        indexEvent(i.toLong, t)
+      }
 
       if (nodeChanges.nonEmpty || domainIndex.nonEmpty) {
         val result = merged(nodeChanges, domainIndex, includeDomainIndexEvents = true)

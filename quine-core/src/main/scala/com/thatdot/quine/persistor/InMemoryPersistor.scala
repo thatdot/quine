@@ -169,14 +169,20 @@ class InMemoryPersistor(
     Future.unit
   }
 
-  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] = {
+  override def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit] = {
+    val snapshotsMap = snapshots.get(qid)
+    if (snapshotsMap != null) snapshotsMap.keySet.removeIf(_ != keep)
+    Future.unit
+  }
+
+  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[StoredSnapshot]] = {
     val snapshotsMap = snapshots.get(id)
     Future.successful(
       if (snapshotsMap == null) None
       else
         Option
           .apply(snapshotsMap.floorEntry(upToTime))
-          .map(e => e.getValue),
+          .map(e => StoredSnapshot(e.getKey, e.getValue)),
     )
   }
 

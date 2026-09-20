@@ -66,6 +66,15 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
           builder.createByteVector(alreadyCancelledSubscriber.array),
         )
         TypeAndOffset(persistence.DomainIndexEventUnion.CancelDomainNodeSubscription, event)
+
+      case DomainIndexEvent.CancelDomainStandingQuerySubscription(testBranch, alreadyCancelledSubscriber) =>
+        val event =
+          persistence.CancelDomainStandingQuerySubscription.createCancelDomainStandingQuerySubscription(
+            builder,
+            testBranch,
+            writeStandingQueryId(builder, alreadyCancelledSubscriber),
+          )
+        TypeAndOffset(persistence.DomainIndexEventUnion.CancelDomainStandingQuerySubscription, event)
     }
 
   private[this] def readDomainIndexEventUnion(
@@ -115,6 +124,13 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
         val dgnId = event.testDgnId()
         val subscriber = QuineId(event.alreadyCancelledSubscriberAsByteBuffer.remainingBytes)
         DomainIndexEvent.CancelDomainNodeSubscription(dgnId, subscriber)
+
+      case persistence.DomainIndexEventUnion.CancelDomainStandingQuerySubscription =>
+        val event = makeEvent(new persistence.CancelDomainStandingQuerySubscription())
+          .asInstanceOf[persistence.CancelDomainStandingQuerySubscription]
+        val dgnId = event.testDgnId()
+        val subscriber = readStandingQueryId(event.alreadyCancelledSubscriber)
+        DomainIndexEvent.CancelDomainStandingQuerySubscription(dgnId, subscriber)
 
       case other =>
         throw new InvalidUnionType(other, persistence.DomainIndexEventUnion.names)

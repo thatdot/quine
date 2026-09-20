@@ -469,7 +469,9 @@ final private[quine] class GraphShardActor(
       */
     case SleepOutcome.SleepFailed(id, snapshot, numEdges, propertySizes, exception, shardPromise) =>
       log.error(
-        log"Failed to store: ${Safe(snapshot.length)} bytes on: $id, composed of: ${Safe(numEdges)} edges and: ${Safe(propertySizes.size)} properties. Restoring the node."
+        log"Failed to store sleep-time data for: ${Safe(
+          snapshot.fold("no snapshot")(s => s"${s.length} snapshot bytes"),
+        )} on: $id, composed of: ${Safe(numEdges)} edges and: ${Safe(propertySizes.size)} properties. Restoring the node."
         withException exception,
       )
       log.info(
@@ -502,7 +504,7 @@ final private[quine] class GraphShardActor(
       this.receive(
         WakeUp(
           id,
-          Some(snapshot),
+          snapshot,
           errorCount = Map(WakeUpErrorStates.SleepOutcomeSleepFailed -> 1),
         ),
       )
@@ -859,7 +861,9 @@ object SleepOutcome {
     * spin up a new actor to hold this state.
     *
     * @param id node that stopped
-    * @param snapshotBytes data bytes of the node snapshot that could not be saved
+    * @param snapshotBytes the node snapshot that could not be saved, or `None` when the failed
+    *                      sleep-time write was not a snapshot (a MultipleValues standing query
+    *                      state, say); the node is then restored from the persistor
     * @param numEdges number of half edges on this node
     * @param propertySizes exact serialized size of each property on this node
     * @param error the error from the persistence layer
@@ -867,7 +871,7 @@ object SleepOutcome {
     */
   final private[quine] case class SleepFailed(
     id: SpaceTimeQuineId,
-    snapshotBytes: Array[Byte],
+    snapshotBytes: Option[Array[Byte]],
     numEdges: Int,
     propertySizes: Map[Symbol, Int],
     error: Throwable,

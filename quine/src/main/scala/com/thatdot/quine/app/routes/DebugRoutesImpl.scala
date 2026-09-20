@@ -11,9 +11,11 @@ import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
   DgnWatchableEventIndexSummary,
+  DistinctIdIndexState,
+  DistinctIdParentLink,
+  DistinctIdSubscriberState,
   LocallyRegisteredStandingQuery,
   NodeInternalState,
-  SqStateResult,
   SqStateResults,
 }
 import com.thatdot.quine.model
@@ -67,7 +69,9 @@ trait DebugRoutesImpl
       genericRecord[DgnWatchableEventIndexSummary]
     implicit val neSchema: Tagged[NodeEvent] = genericTagged[NodeEvent]
     implicit val newtSchema: Record[NodeEvent.WithTime[NodeEvent]] = genericRecord[NodeEvent.WithTime[NodeEvent]]
-    implicit val sqResult: Record[SqStateResult] = genericRecord[SqStateResult]
+    implicit val distinctIdSubscriber: Record[DistinctIdSubscriberState] = genericRecord[DistinctIdSubscriberState]
+    implicit val distinctIdIndex: Record[DistinctIdIndexState] = genericRecord[DistinctIdIndexState]
+    implicit val distinctIdParent: Record[DistinctIdParentLink] = genericRecord[DistinctIdParentLink]
     implicit val sqResults: Record[SqStateResults] = genericRecord[SqStateResults]
     genericRecord[NodeInternalState]
   }

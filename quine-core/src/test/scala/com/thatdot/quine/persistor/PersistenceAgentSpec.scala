@@ -529,22 +529,22 @@ abstract class PersistenceAgentSpec
     it("can query the latest snapshot of a node") {
       allOfConcurrent(
         namespacedPersistor.getLatestSnapshot(qid0, EventTime.MaxValue).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot3)
         },
         namespacedPersistor.getLatestSnapshot(qid1, EventTime.MaxValue).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot4)
         },
         namespacedPersistor.getLatestSnapshot(qid2, EventTime.MaxValue).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot3)
         },
         namespacedPersistor.getLatestSnapshot(qid3, EventTime.MaxValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         namespacedPersistor.getLatestSnapshot(qid4, EventTime.MaxValue).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot3)
         },
       )
@@ -553,21 +553,21 @@ abstract class PersistenceAgentSpec
     it("can query with EventTime.MinValue as the target time") {
       allOfConcurrent(
         namespacedPersistor.getLatestSnapshot(qid0, EventTime.MinValue).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot0)
         },
         namespacedPersistor.getLatestSnapshot(qid1, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         namespacedPersistor.getLatestSnapshot(qid2, EventTime.MinValue).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot0)
         },
         namespacedPersistor.getLatestSnapshot(qid3, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         namespacedPersistor.getLatestSnapshot(qid4, EventTime.MinValue).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot0)
         },
       )
@@ -581,25 +581,25 @@ abstract class PersistenceAgentSpec
         },
         // right up to one snapshot
         namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(34L)).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot0)
         },
         // right after one snapshot
         namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(35L)).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot0)
         },
         // after some snapshots, before others
         namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(37L)).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot1)
         },
         namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(38L)).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot2)
         },
         namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(48L)).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot4)
         },
       )
@@ -608,23 +608,37 @@ abstract class PersistenceAgentSpec
     it("can handle unsigned EventTime") {
       allOfConcurrent(
         namespacedPersistor.getLatestSnapshot(qid0, EventTime.fromRaw(-2L)).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot2)
         },
         namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(-2L)).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot4)
         },
         namespacedPersistor.getLatestSnapshot(qid2, EventTime.fromRaw(-2L)).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot2)
         },
         namespacedPersistor.getLatestSnapshot(qid3, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         namespacedPersistor.getLatestSnapshot(qid4, EventTime.fromRaw(-2L)).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot2)
+        },
+      )
+    }
+
+    it("reports the time each snapshot is stored under") {
+      allOfConcurrent(
+        namespacedPersistor.getLatestSnapshot(qid0, EventTime.MaxValue).map { snapshotOpt =>
+          snapshotOpt.map(_.atTime) shouldBe Some(EventTime.MaxValue)
+        },
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.MaxValue).map { snapshotOpt =>
+          snapshotOpt.map(_.atTime) shouldBe Some(EventTime.fromRaw(44L))
+        },
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(37L)).map { snapshotOpt =>
+          snapshotOpt.map(_.atTime) shouldBe Some(EventTime.fromRaw(36L))
         },
       )
     }
@@ -634,11 +648,33 @@ abstract class PersistenceAgentSpec
         _ <- altPersistor1.persistSnapshot(qid0, EventTime.MaxValue, snapshot4)
         _ <- altPersistor1.persistSnapshot(qid0, EventTime.MaxValue, snapshot3)
         snapshotAfter <- altPersistor1.getLatestSnapshot(qid0, EventTime.MaxValue)
-      } yield snapshotAfter should contain(snapshot3)
+      } yield snapshotAfter.map(_.bytes) should contain(snapshot3)
     }
   }
 
   if (runDeletionTests) {
+
+    describe("deleteSnapshotsExcept") {
+      it("keeps only the snapshot stored at the given time and leaves other nodes alone") {
+        for {
+          _ <- namespacedPersistor.deleteSnapshotsExcept(qid0, EventTime.MaxValue)
+          keptAtMax <- namespacedPersistor.getLatestSnapshot(qid0, EventTime.MaxValue)
+          belowMax <- namespacedPersistor.getLatestSnapshot(qid0, EventTime.fromRaw(-2L))
+          _ <- namespacedPersistor.deleteSnapshotsExcept(qid2, EventTime.fromRaw(2394872938L))
+          keptMidway <- namespacedPersistor.getLatestSnapshot(qid2, EventTime.MaxValue)
+          belowMidway <- namespacedPersistor.getLatestSnapshot(qid2, EventTime.fromRaw(2394872937L))
+          neighbour <- namespacedPersistor.getLatestSnapshot(qid1, EventTime.MaxValue)
+        } yield {
+          keptAtMax.map(_.atTime) shouldBe Some(EventTime.MaxValue)
+          assertArraysEqual(keptAtMax.get.bytes, snapshot3)
+          belowMax shouldBe empty
+          keptMidway.map(_.atTime) shouldBe Some(EventTime.fromRaw(2394872938L))
+          assertArraysEqual(keptMidway.get.bytes, snapshot1)
+          belowMidway shouldBe empty
+          neighbour.map(_.atTime) shouldBe Some(EventTime.fromRaw(44L))
+        }
+      }
+    }
 
     describe("deleteSnapshot") {
       it("deletes all snapshots for the given QuineId") {
@@ -1083,11 +1119,11 @@ abstract class PersistenceAgentSpec
     it("should retrieve snapshots from different namespaces with the same QuineId and AtTime") {
       allOfConcurrent(
         altPersistor1.getLatestSnapshot(qid1, testTimestamp1).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot0)
         },
         altPersistor2.getLatestSnapshot(qid1, testTimestamp1).map { snapshotOpt =>
-          val snapshot = snapshotOpt.get
+          val snapshot = snapshotOpt.get.bytes
           assertArraysEqual(snapshot, snapshot1)
         },
       )
@@ -1190,7 +1226,7 @@ abstract class PersistenceAgentSpec
         alt1Deleted.flatMap { _ =>
           allOfConcurrent(
             altPersistor2.getLatestSnapshot(qid1, testTimestamp1).map { snapshotOpt =>
-              val snapshot = snapshotOpt.get
+              val snapshot = snapshotOpt.get.bytes
               assertArraysEqual(snapshot, snapshot1)
             },
             altPersistor2

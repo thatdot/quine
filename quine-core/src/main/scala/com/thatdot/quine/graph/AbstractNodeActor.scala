@@ -43,10 +43,12 @@ import com.thatdot.quine.graph.edges.{EdgeProcessor, MemoryFirstEdgeProcessor, P
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
   DgnWatchableEventIndexSummary,
+  DistinctIdIndexState,
+  DistinctIdParentLink,
+  DistinctIdSubscriberState,
   JournalEntry,
   LocallyRegisteredStandingQuery,
   NodeInternalState,
-  SqStateResult,
   SqStateResults,
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps, SpaceTimeQuineId}
@@ -133,7 +135,7 @@ abstract private[graph] class AbstractNodeActor(
           edges = edgeCollection,
           persistToJournal = persistEventsToJournal,
           pauseMessageProcessingUntil = pauseMessageProcessingUntil,
-          updateSnapshotTimestamp = () => updateLastWriteAfterSnapshot(),
+          onBatchApplied = countJournaledEdgesAndUpdateSnapshotTimestamp,
           runPostActions = runPostActions,
           qid = qid,
           costToSleep = costToSleep,
@@ -143,7 +145,7 @@ abstract private[graph] class AbstractNodeActor(
         new MemoryFirstEdgeProcessor(
           edges = edgeCollection,
           persistToJournal = persistEventsToJournal,
-          updateSnapshotTimestamp = () => updateLastWriteAfterSnapshot(),
+          onBatchApplied = countJournaledEdgesAndUpdateSnapshotTimestamp,
           runPostActions = runPostActions,
           qid = qid,
           costToSleep = costToSleep,
@@ -157,6 +159,24 @@ abstract private[graph] class AbstractNodeActor(
 
   protected var latestUpdateAfterSnapshot: Option[EventTime] = None
   protected var lastWriteMillis: Long = 0
+
+  /** Journal events applied to this node since its last persisted snapshot: the replay the next
+    * snapshot would save. [[replayJournal]] seeds it with the length of the journal replayed at
+    * wake, so it spans sleep/wake cycles and a node that repeatedly sleeps below the threshold
+    * still accumulates towards it. Only advanced under a journal; without one there is no
+    * threshold to read it.
+    * @see [[HostQuineMetrics.SnapshotEconomics]]
+    */
+  protected var journaledEventsAppliedSinceSnapshot: Int = 0
+
+  /** Bound to the edge processors' `onBatchApplied`. Edge events reach the journal through
+    * [[defaultSynchronousEdgeProcessor]] rather than [[persistAndApplyEventsEffectsInMemory]], so they are
+    * counted here.
+    */
+  private[this] def countJournaledEdgesAndUpdateSnapshotTimestamp(journaled: Int): Unit = {
+    if (persistenceConfig.journalEnabled) journaledEventsAppliedSinceSnapshot += journaled
+    updateLastWriteAfterSnapshot()
+  }
 
   protected def updateRelevantToSnapshotOccurred(): Unit = {
     if (atTime.nonEmpty) {
@@ -298,18 +318,75 @@ abstract private[graph] class AbstractNodeActor(
   def refuseHistoricalUpdates[A](events: Seq[NodeEvent])(action: => Future[A]): Future[A] =
     atTime.fold(action)(historicalTime => Future.failed(IllegalHistoricalUpdate(events, qid, historicalTime)))
 
+  /** Whether this event would change the DistinctId state that a journal replay rebuilds.
+    *
+    * The counterpart of [[propertyEventHasEffect]], holding DistinctId bookkeeping to the same rule: a journal row
+    * stands for a change. Each case asks the state the event lands in whether the effect is already there, by the
+    * same test the applying code itself uses, so the two cannot drift apart.
+    */
+  protected def domainIndexEventHasEffect(event: DomainIndexEvent): Boolean = {
+    import DomainIndexEvent._
+    event match {
+      case CreateDomainStandingQuerySubscription(dgnId, sqId, forQueries) =>
+        domainGraphSubscribers.subscriptionWouldChange(dgnId, Right(sqId), forQueries)
+      case CreateDomainNodeSubscription(dgnId, nodeId, forQueries) =>
+        domainGraphSubscribers.subscriptionWouldChange(dgnId, Left(nodeId), forQueries)
+      // Cancelling for someone who is not a subscriber removes nothing, and the teardown that follows a removal
+      // is reached only when one happened. See `cancelSubscription`.
+      case CancelDomainNodeSubscription(dgnId, fromSubscriber) =>
+        domainGraphSubscribers.hasSubscriber(dgnId, Left(fromSubscriber))
+      case CancelDomainStandingQuerySubscription(dgnId, fromSubscriber) =>
+        domainGraphSubscribers.hasSubscriber(dgnId, Right(fromSubscriber))
+      // An answer repeating what is already recorded leaves this node holding the same thing, and one about a
+      // pattern it does not ask about is refused outright. Keeping the refused ones out matters for more than
+      // volume: a fold records an answer even where it has yet to re-derive the subscription, so a row the live
+      // node threw away would otherwise come back as an entry it never had.
+      case DomainNodeSubscriptionResult(from, dgnId, result) =>
+        domainNodeIndex.answerWouldChange(from, dgnId, result)
+    }
+  }
+
+  /** Handle a DistinctId command, journaling it only if it changes this node.
+    *
+    * Unlike a property event, a command that changes nothing here can still owe its sender a reply: a subscriber
+    * re-asking a question it has already asked needs the answer again, because it may have lost the one it was
+    * given. So the effect is applied either way and only the journal write is gated. Skipping that write also
+    * keeps a no-op command from counting towards the events a snapshot would replace.
+    */
   protected def processDomainIndexEvent(
     event: DomainIndexEvent,
   ): Future[Done.type] =
     refuseHistoricalUpdates(event :: Nil)(
-      persistAndApplyEventsEffectsInMemory[DomainIndexEvent](
-        NonEmptyList.one(NodeEvent.WithTime(event, tickEventSequence())),
-        persistor.persistDomainIndexEvents(qid, _),
-        // We know there is only one event here, because we're only passing one above.
-        // So just calling .head works as well as .foreach
-        events => applyDomainIndexEffect(events.head, shouldCauseSideEffects = true),
-      ),
+      if (domainIndexEventHasEffect(event))
+        persistAndApplyEventsEffectsInMemory[DomainIndexEvent](
+          NonEmptyList.one(NodeEvent.WithTime(event, tickEventSequence())),
+          persistor.persistDomainIndexEvents(qid, _),
+          // We know there is only one event here, because we're only passing one above.
+          // So just calling .head works as well as .foreach
+          events => applyDomainIndexEffect(events.head, shouldCauseSideEffects = true),
+        )
+      else {
+        applyDomainIndexEffect(event, shouldCauseSideEffects = true)
+        Future.successful(Done)
+      },
     )
+
+  /** Record an event whose effect this node has already applied.
+    *
+    * For what a node works out for itself rather than being told: a standing query it serves is gone, so it retires
+    * that subscription. The teardown follows from the query's absence and happens either way, and it must not be
+    * done twice, so the caller applies it and this only writes the record. What the record adds is *when* it
+    * happened, which absence cannot say and a replay needs; see
+    * [[DomainIndexEvent.CancelDomainStandingQuerySubscription]]. Replay applies it from the event, at this
+    * position, with no side effects.
+    */
+  protected[this] def journalAlreadyAppliedDomainIndexEvent(event: DomainIndexEvent): Unit = if (atTime.isEmpty) {
+    val _ = persistAndApplyEventsEffectsInMemory[DomainIndexEvent](
+      NonEmptyList.one(NodeEvent.WithTime(event, tickEventSequence())),
+      persistor.persistDomainIndexEvents(qid, _),
+      _ => (), // applied by the caller, which is what discovered it
+    )
+  }
 
   protected def persistAndApplyEventsEffectsInMemory[A <: NodeEvent](
     effectingEvents: NonEmptyList[NodeEvent.WithTime[A]],
@@ -337,11 +414,18 @@ abstract private[graph] class AbstractNodeActor(
           )(cypherEc)
       } else Future.unit
 
+    // Counted here rather than in `persistEventsToJournal` so that a batch counts once, however
+    // many times the persistor write is retried.
+    def applyEffectsAndNotify(): Unit = {
+      val events = effectingEvents.map(_.event)
+      if (persistenceConfig.journalEnabled) journaledEventsAppliedSinceSnapshot += effectingEvents.size
+      applyEventsEffectsInMemory(events)
+      notifyNodeUpdate(events collect { case e: NodeChangeEvent => e })
+    }
+
     graph.effectOrder match {
       case EventEffectOrder.MemoryFirst =>
-        val events = effectingEvents.map(_.event)
-        applyEventsEffectsInMemory(events)
-        notifyNodeUpdate(events collect { case e: NodeChangeEvent => e })
+        applyEffectsAndNotify()
         pekko.pattern
           .retry(
             () => persistEventsToJournal(),
@@ -357,9 +441,7 @@ abstract private[graph] class AbstractNodeActor(
           {
             case Success(_) =>
               // Executed by this actor (which is not slept), in order before any other messages are processed.
-              val events = effectingEvents.map(_.event)
-              applyEventsEffectsInMemory(events)
-              notifyNodeUpdate(events collect { case e: NodeChangeEvent => e })
+              applyEffectsAndNotify()
             case Failure(e) =>
               log.info(
                 log"Persistor error occurred when writing events to journal on node: $qid Will not apply " +
@@ -469,21 +551,71 @@ abstract private[graph] class AbstractNodeActor(
     *                               as Standing Query results. This value should be false when restoring
     *                               events from a journal.
     */
-  protected[this] def applyDomainIndexEffect(event: DomainIndexEvent, shouldCauseSideEffects: Boolean): Unit = {
+  /** Which standing queries count as running, for an event happening now or one being replayed.
+    *
+    * Now, the graph is the authority. Mid-replay it is not: what runs now is the answer for now, not for the point
+    * in this node's history being replayed, so the node's own tally of what its journal has introduced and retired
+    * is what applies. See [[queriesLiveWhileReplaying]].
+    */
+  private[this] def isRunningWhen(live: Boolean): StandingQueryId => Boolean =
+    if (live) q => graph.standingQueries(namespace).exists(_.runningStandingQuery(q).isDefined)
+    else queriesLiveWhileReplaying.contains
+
+  /** Follow what an event says about which standing queries were live when it happened.
+    *
+    * A subscription names the queries it is for, so they were live; a retirement says one is gone. A node
+    * withdrawing its own subscription says nothing either way -- its queries may still be served elsewhere -- so it
+    * is passed over. See [[queriesLiveWhileReplaying]].
+    */
+  private[this] def noteQueriesLiveAt(event: DomainIndexEvent): Unit = {
     import DomainIndexEvent._
     event match {
-      case CreateDomainNodeSubscription(dgnId, nodeId, forQuery) =>
-        receiveDomainNodeSubscription(Left(nodeId), dgnId, forQuery, shouldSendReplies = shouldCauseSideEffects)
+      case CreateDomainStandingQuerySubscription(_, sqId, relatedQueries) =>
+        queriesLiveWhileReplaying ++= relatedQueries + sqId
+      case CreateDomainNodeSubscription(_, _, relatedQueries) =>
+        queriesLiveWhileReplaying ++= relatedQueries
+      case CancelDomainStandingQuerySubscription(_, sqId) =>
+        queriesLiveWhileReplaying -= sqId
+      case CancelDomainNodeSubscription(_, _) => ()
+      case DomainNodeSubscriptionResult(_, _, _) => ()
+    }
+  }
 
+  protected[this] def applyDomainIndexEffect(
+    event: DomainIndexEvent,
+    shouldCauseSideEffects: Boolean,
+  ): Unit = {
+    import DomainIndexEvent._
+    event match {
+      /** Outer-most subscriber for a Standing Query (no dual) */
       case CreateDomainStandingQuerySubscription(dgnId, sqId, forQuery) =>
         receiveDomainNodeSubscription(Right(sqId), dgnId, forQuery, shouldSendReplies = shouldCauseSideEffects)
 
+      /** Internal node-to-node subscription. Dual of: CancelDomainNodeSubscription */
+      case CreateDomainNodeSubscription(dgnId, nodeId, forQuery) =>
+        receiveDomainNodeSubscription(Left(nodeId), dgnId, forQuery, shouldSendReplies = shouldCauseSideEffects)
+
+      /** Cancels internal subscriptions. Dual of: CreateDomainNodeSubscription */
+      case CancelDomainNodeSubscription(dgnId, fromSubscriber) =>
+        retireSubscription(
+          dgnId,
+          Left(fromSubscriber),
+          isRunningWhen(live = shouldCauseSideEffects),
+          shouldSendReplies = shouldCauseSideEffects,
+        )
+
+      /** Retires a standing query's subscription. Dual of: CreateDomainStandingQuerySubscription */
+      case CancelDomainStandingQuerySubscription(dgnId, fromSubscriber) =>
+        retireSubscription(
+          dgnId,
+          Right(fromSubscriber),
+          isRunningWhen(live = shouldCauseSideEffects),
+          shouldSendReplies = shouldCauseSideEffects,
+        )
+
+      /** Record of this node matching or not. */
       case DomainNodeSubscriptionResult(from, dgnId, result) =>
         receiveIndexUpdate(from, dgnId, result, shouldSendReplies = shouldCauseSideEffects)
-
-      case CancelDomainNodeSubscription(dgnId, fromSubscriber) =>
-        cancelSubscription(dgnId, Some(Left(fromSubscriber)), shouldSendReplies = shouldCauseSideEffects)
-
     }
   }
 
@@ -513,6 +645,70 @@ abstract private[graph] class AbstractNodeActor(
     runPostActions(events)
   }
 
+  /** Fold the journal accumulated since the snapshot back into this node.
+    *
+    * A property or edge event re-runs the DistinctId evaluation it triggered when it was first
+    * applied, with replies suppressed. `latestAnswer` is not journaled: it is rebuilt by
+    * evaluating at the same points the live node evaluated. Skip those and the node wakes
+    * remembering an answer from partway through its own history, and re-reports on the next write.
+    *
+    * @return The number of events applied while replaying this journal
+    */
+  protected[this] def replayJournal(journal: NodeActor.Journal): Int = {
+    // A historical node serves reads at a past time and no standing query, and refuses to be marked
+    // updated, which evaluating would do. It applies property and edge events and skips DistinctId
+    // bookkeeping. The wake read in StaticNodeSupport already gives it no domain index events; the
+    // guard below is so that holds here too.
+    val isPresentNode = atTime.isEmpty
+    var journalEventsApplied = 0
+    // Whatever a snapshot restored was written while its queries were live, so those start the tally.
+    queriesLiveWhileReplaying ++= domainGraphSubscribers.subscribersToThisNode.valuesIterator.flatMap(_.relatedQueries)
+    queriesLiveWhileReplaying ++= domainNodeIndex.index.valuesIterator.flatMap(_.valuesIterator.flatMap(_.forQueries))
+    journal.foreach {
+      case event: PropertyEvent =>
+        applyPropertyEffect(event)
+        journalEventsApplied += 1
+        if (isPresentNode) reevaluateDomainNodesWatching(event, shouldSendReplies = false)
+      case event: EdgeEvent =>
+        edges.updateEdgeCollection(event)
+        journalEventsApplied += 1
+        if (isPresentNode) {
+          withdrawSubscriptionsUnreachableAfter(event, shouldSendReplies = false)
+          reevaluateDomainNodesWatching(event, shouldSendReplies = false)
+        }
+      case event: DomainIndexEvent =>
+        if (isPresentNode) {
+          noteQueriesLiveAt(event)
+          applyDomainIndexEffect(event, shouldCauseSideEffects = false)
+          journalEventsApplied += 1
+        }
+    }
+    journalEventsApplied
+  }
+
+  /** Re-run the DistinctId evaluations rooted here that watch `event`. */
+  private[this] def reevaluateDomainNodesWatching(event: NodeChangeEvent, shouldSendReplies: Boolean): Unit =
+    watchableEventIndex.standingQueriesWatchingNodeEvent(
+      event,
+      {
+        case _: StandingQueryWatchableEventIndex.StandingQueryWithId => false
+        case StandingQueryWatchableEventIndex.DomainNodeIndexSubscription(dgnId) =>
+          reevaluateDomainNode(dgnId, shouldSendReplies)
+      },
+    )
+
+  /** Returns true when the DGN no longer exists, which tells the watch index to drop its record. */
+  private[this] def reevaluateDomainNode(dgnId: DomainGraphNodeId, shouldSendReplies: Boolean): Boolean =
+    dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
+      case Some(dgn) =>
+        // ensure that this node is subscribed to all other necessary nodes to continue processing the DGN
+        ensureSubscriptionToDomainEdges(dgn, domainGraphSubscribers.getRelatedQueries(dgnId), shouldSendReplies)
+        // inform all subscribers to this node about any relevant changes caused by the recent event
+        domainGraphSubscribers.updateAnswerAndNotifySubscribers(dgn, shouldSendReplies)
+        false
+      case None => true
+    }
+
   /** Hook for registering some arbitrary action after processing a node event. Right now, all this
     * does is advance standing queries
     *
@@ -530,20 +726,7 @@ abstract private[graph] class AbstractNodeActor(
             eventsForMvsqs += cypherSubscriber -> (event +: eventsForMvsqs.getOrElse(cypherSubscriber, Seq.empty))
             false
           case StandingQueryWatchableEventIndex.DomainNodeIndexSubscription(dgnId) =>
-            dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
-              case Some(dgn) =>
-                // ensure that this node is subscribed to all other necessary nodes to continue processing the DGN
-                ensureSubscriptionToDomainEdges(
-                  dgn,
-                  domainGraphSubscribers.getRelatedQueries(dgnId),
-                  shouldSendReplies = true,
-                )
-                // inform all subscribers to this node about any relevant changes caused by the recent event
-                domainGraphSubscribers.updateAnswerAndNotifySubscribers(dgn, shouldSendReplies = true)
-                false
-              case None =>
-                true // true returned to standingQueriesWatchingNodeEvent indicates record should be removed
-            }
+            reevaluateDomainNode(dgnId, shouldSendReplies = true)
         },
       )
     }
@@ -555,10 +738,23 @@ abstract private[graph] class AbstractNodeActor(
     events.foreach {
       case EdgeEvent.EdgeAdded(edge) =>
         handleGraphEvent(GraphEvent.EdgeAdded(edge))
-      case EdgeEvent.EdgeRemoved(edge) =>
+      case removal @ EdgeEvent.EdgeRemoved(edge) =>
+        withdrawSubscriptionsUnreachableAfter(removal, shouldSendReplies = true)
         handleGraphEvent(GraphEvent.EdgeRemoved(edge))
       case _ => () // Property events are handled in applyPropertyEffect
     }
+  }
+
+  /** Run a snapshot codec, with the bookkeeping every snapshot owes whichever codec writes it.
+    *
+    * Subclasses override `toSnapshotBytes` to supply their own codec, so anything done alongside
+    * the write lives here or it exists in one copy and not the other. Timed apart from the persist
+    * that follows because this runs on the actor thread and that does not.
+    */
+  protected[this] def serializingSnapshot(write: => Array[Byte]): Array[Byte] = {
+    latestUpdateAfterSnapshot = None // TODO: reconsider what to do if saving the snapshot fails!
+    journaledEventsAppliedSinceSnapshot = 0
+    metrics.snapshotSerializeTimer.time(() => write)
   }
 
   /** Serialize node state into a binary node snapshot
@@ -568,8 +764,7 @@ abstract private[graph] class AbstractNodeActor(
     *
     * @return Snapshot bytes, as managed by [[SnapshotCodec]]
     */
-  def toSnapshotBytes(time: EventTime): Array[Byte] = {
-    latestUpdateAfterSnapshot = None // TODO: reconsider what to do if saving the snapshot fails!
+  def toSnapshotBytes(time: EventTime): Array[Byte] = serializingSnapshot {
     NodeSnapshot.snapshotCodec.format.write(
       NodeSnapshot(
         time,
@@ -594,7 +789,7 @@ abstract private[graph] class AbstractNodeActor(
         a -> c.subscribers.map {
           case Left(q) => q.pretty
           case Right(x) => x
-        } -> c.lastNotification -> c.relatedQueries
+        } -> c.latestAnswer -> c.relatedQueries
       }
       .map(_.toString)
 
@@ -706,17 +901,38 @@ abstract private[graph] class AbstractNodeActor(
       .map(JournalEntry(_))
   }
 
+  /** Every piece of DistinctId standing query state this node holds.
+    *
+    * Reports each subscriber individually, including the standing queries that subscribe directly rather than
+    * only the nodes: a pattern whose one subscriber is its own query used to appear here as nothing at all. The
+    * per-subscriber and per-answer query sets are reported too, since they are what decides whether either end of
+    * a subscription still wants it.
+    */
   def getSqState(): SqStateResults =
     SqStateResults(
-      domainGraphSubscribers.subscribersToThisNode.toList.flatMap { case (dgnId, subs) =>
-        subs.subscribers.toList.collect { case Left(q) => // filters out receivers outside the graph
-          SqStateResult(dgnId, q, subs.lastNotification)
+      subscribers = domainGraphSubscribers.subscribersToThisNode.toList.flatMap { case (dgnId, subscription) =>
+        subscription.queriesPerSubscriber.toList.map { case (subscriber, queries) =>
+          DistinctIdSubscriberState(
+            dgnId = dgnId,
+            subscriberNode = subscriber.left.toOption,
+            subscriberQuery = subscriber.toOption,
+            forQueries = queries.toList,
+            lastResult = subscription.latestAnswer,
+          )
         }
       },
-      domainNodeIndex.index.toList.flatMap { case (q, m) =>
-        m.toList.map { case (dgnId, lastN) =>
-          SqStateResult(dgnId, q, lastN)
+      subscriptions = domainNodeIndex.index.toList.flatMap { case (peer, byDgn) =>
+        byDgn.toList.map { case (dgnId, result) =>
+          DistinctIdIndexState(
+            dgnId = dgnId,
+            peer = peer,
+            forQueries = result.forQueries.toList,
+            answer = result.answer,
+          )
         }
+      },
+      parentIndex = domainGraphNodeParentIndex.knownParents.toList.flatMap { case (child, parents) =>
+        parents.toList.map(DistinctIdParentLink(child, _))
       },
     )
 }

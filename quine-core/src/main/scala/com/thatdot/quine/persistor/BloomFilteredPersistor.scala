@@ -118,7 +118,7 @@ private class BloomFilteredPersistor(
     wrappedPersistor.persistSnapshot(id, atTime, state)
   }
 
-  override def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
+  override def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[StoredSnapshot]] =
     if (mightContain(id))
       wrappedPersistor.getLatestSnapshot(id, upToTime)
     else
@@ -154,6 +154,9 @@ private class BloomFilteredPersistor(
     wrappedPersistor.persistQueryPlan(standingQueryId, qp)
 
   override def deleteSnapshots(qid: QuineId): Future[Unit] = wrappedPersistor.deleteSnapshots(qid)
+
+  override def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit] =
+    wrappedPersistor.deleteSnapshotsExcept(qid, keep)
 
   override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = wrappedPersistor.deleteNodeChangeEvents(qid)
 

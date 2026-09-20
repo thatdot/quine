@@ -79,10 +79,13 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   override def deleteSnapshots(qid: QuineId): Future[Unit] =
     getAgent(qid).deleteSnapshots(qid)
 
+  override def deleteSnapshotsExcept(qid: QuineId, keep: EventTime): Future[Unit] =
+    getAgent(qid).deleteSnapshotsExcept(qid, keep)
+
   override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
     getAgent(id).deleteMultipleValuesStandingQueryStates(id)
 
-  override def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
+  override def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[StoredSnapshot]] =
     getAgent(id).getLatestSnapshot(id, upToTime)
 
   override def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =

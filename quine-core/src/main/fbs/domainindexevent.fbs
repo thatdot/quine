@@ -3,11 +3,13 @@ include "base.fbs";
 namespace com.thatdot.quine.persistence;
 
 // See [[com.thatdot.quine.graph.DomainIndexEvent]]
+// New members are appended, never inserted: a member's position is its type byte in already-written journals.
 union DomainIndexEventUnion {
   CreateDomainNodeSubscription,
   CreateDomainStandingQuerySubscription,
   DomainNodeSubscriptionResult,
   CancelDomainNodeSubscription,
+  CancelDomainStandingQuerySubscription,
 }
 
 table CreateDomainNodeSubscription {
@@ -34,6 +36,12 @@ table DomainNodeSubscriptionResult {
 table CancelDomainNodeSubscription {
     test_dgn_id: long;
     already_cancelled_subscriber: [byte] (required); // raw bytes of a `QuineId`
+}
+
+// See [[com.thatdot.quine.graph.DomainIndexEvent.CancelDomainStandingQuerySubscription]]
+table CancelDomainStandingQuerySubscription {
+    test_dgn_id: long;
+    already_cancelled_subscriber: StandingQueryId (required);
 }
 
 // Also see [[com.thatdot.quine.graph.NodeEvent.WithTime]]

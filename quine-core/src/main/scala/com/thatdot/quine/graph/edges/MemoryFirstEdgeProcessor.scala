@@ -22,7 +22,10 @@ import com.thatdot.quine.util.QuineDispatchers
 class MemoryFirstEdgeProcessor(
   edges: SyncEdgeCollection,
   persistToJournal: NonEmptyList[NodeEvent.WithTime[EdgeEvent]] => Future[Unit],
-  updateSnapshotTimestamp: () => Unit,
+  /** Run once per batch, with the number of events it journals. Called before the retrying write, so a retried
+    * write cannot count its events again.
+    */
+  onBatchApplied: Int => Unit,
   runPostActions: List[NodeChangeEvent] => Unit,
   qid: QuineId,
   costToSleep: CostToSleep,
@@ -56,7 +59,7 @@ class MemoryFirstEdgeProcessor(
         )(nodeDispatcher)
 
     effectingEvents.toList.foreach(updateEdgeCollection)
-    updateSnapshotTimestamp()
+    onBatchApplied(effectingEvents.size)
     runPostActions(effectingEvents.toList)
 
     pekko.pattern

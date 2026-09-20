@@ -33,10 +33,36 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
     ],
     domainNodeIndex: MutableMap[
       QuineId,
-      MutableMap[DomainGraphNodeId, Option[Boolean]],
+      MutableMap[DomainGraphNodeId, DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult],
     ],
     reserved: Boolean,
   ): SnapshotT
+
+  private[this] def writeLastNotification(value: Option[Boolean]): Byte = value match {
+    case None => persistence.LastNotification.None
+    case Some(false) => persistence.LastNotification.False
+    case Some(true) => persistence.LastNotification.True
+  }
+
+  private[this] def readLastNotification(value: Byte): Option[Boolean] = value match {
+    case persistence.LastNotification.None => None
+    case persistence.LastNotification.False => Some(false)
+    case persistence.LastNotification.True => Some(true)
+    case other => throw new InvalidUnionType(other, persistence.LastNotification.names)
+  }
+
+  private[this] def readNotifiable(
+    unionType: Byte,
+    read: com.google.flatbuffers.Table => com.google.flatbuffers.Table,
+  ): Notifiable =
+    unionType match {
+      case persistence.Notifiable.QuineId =>
+        Left(readQuineId(read(new persistence.QuineId()).asInstanceOf[persistence.QuineId]))
+      case persistence.Notifiable.StandingQueryId =>
+        Right(readStandingQueryId(read(new persistence.StandingQueryId()).asInstanceOf[persistence.StandingQueryId]))
+      case other =>
+        throw new InvalidUnionType(other, persistence.Notifiable.names)
+    }
 
   private[codecs] def writeNodeSnapshot(
     builder: FlatBufferBuilder,
@@ -64,52 +90,40 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
       if (snapshot.subscribersToThisNode.isEmpty) NoOffset
       else {
         val subscribersOffs: Array[Offset] = new Array[Offset](snapshot.subscribersToThisNode.size)
-        for (
-          (
-            (
-              node,
-              DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription(
-                notifiables,
-                lastNotification,
-                relatedQueries,
-              ),
-            ),
-            i,
-          ) <- snapshot.subscribersToThisNode.zipWithIndex
-        ) {
-          val notifiableTypes: Array[Byte] = new Array[Byte](notifiables.size)
-          val notifiableOffsets: Array[Offset] = new Array[Offset](notifiables.size)
-          for ((notifiable, i) <- notifiables.zipWithIndex)
-            notifiable match {
-              case Left(nodeId) =>
-                notifiableTypes(i) = persistence.Notifiable.QuineId
-                notifiableOffsets(i) = writeQuineId(builder, nodeId)
+        for (((node, subscription), i) <- snapshot.subscribersToThisNode.zipWithIndex) {
+          val latestAnswer = subscription.latestAnswer
+          val queriesPerSubscriber = subscription.queriesPerSubscriber
+          val lastNotificationEnum: Byte = writeLastNotification(latestAnswer)
 
-              case Right(standingQueryId) =>
-                notifiableTypes(i) = persistence.Notifiable.StandingQueryId
-                notifiableOffsets(i) = writeStandingQueryId(builder, standingQueryId)
+          // `notifiable` and `related_queries` are not written. Both exist only so that a snapshot from 2.1.1 can
+          // still be read: the first listed the subscribers, the second the union of their queries, and
+          // `queries_per_subscriber` now carries both. Downgrading from 2.2.0 is not supported, so writing them
+          // would put bytes in every snapshot -- largest on exactly the supernodes this work is trimming -- for a
+          // reader that will never exist.
+
+          val queriesPerSubscriberOffsets = new Array[Offset](queriesPerSubscriber.size)
+          for (((subscriber, queries), j) <- queriesPerSubscriber.zipWithIndex) {
+            val queriesOffs = new Array[Offset](queries.size)
+            for ((query, k) <- queries.zipWithIndex) queriesOffs(k) = writeStandingQueryId(builder, query)
+            val queriesOff = persistence.SubscriberQueries.createQueriesVector(builder, queriesOffs)
+            val (subscriberType, subscriberOff) = subscriber match {
+              case Left(nodeId) => (persistence.Notifiable.QuineId, writeQuineId(builder, nodeId))
+              case Right(sqId) => (persistence.Notifiable.StandingQueryId, writeStandingQueryId(builder, sqId))
             }
-
-          val notifiableType = persistence.Subscriber.createNotifiableTypeVector(builder, notifiableTypes)
-          val notifiableOffset = persistence.Subscriber.createNotifiableVector(builder, notifiableOffsets)
-          val lastNotificationEnum: Byte = lastNotification match {
-            case None => persistence.LastNotification.None
-            case Some(false) => persistence.LastNotification.False
-            case Some(true) => persistence.LastNotification.True
+            queriesPerSubscriberOffsets(j) =
+              persistence.SubscriberQueries.createSubscriberQueries(builder, subscriberType, subscriberOff, queriesOff)
           }
-
-          val relatedQueriesOffsets = new Array[Offset](relatedQueries.size)
-          for ((relatedQueries, i) <- relatedQueries.zipWithIndex)
-            relatedQueriesOffsets(i) = writeStandingQueryId(builder, relatedQueries)
-          val relatedQueriesOffset = persistence.Subscriber.createRelatedQueriesVector(builder, relatedQueriesOffsets)
+          val queriesPerSubscriberOffset =
+            persistence.Subscriber.createQueriesPerSubscriberVector(builder, queriesPerSubscriberOffsets)
 
           subscribersOffs(i) = persistence.Subscriber.createSubscriber(
             builder,
             node,
-            notifiableType,
-            notifiableOffset,
+            NoOffset, // notifiable_type
+            NoOffset, // notifiable
             lastNotificationEnum,
-            relatedQueriesOffset,
+            NoOffset, // related_queries
+            queriesPerSubscriberOffset,
           )
         }
         persistence.NodeSnapshot.createSubscribersVector(builder, subscribersOffs)
@@ -124,16 +138,16 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
           val queries: Offset = {
             val queriesOffs: Array[Offset] = new Array[Offset](results.size)
             for (((branch, result), i) <- results.zipWithIndex) {
-              val lastNotificationEnum: Byte = result match {
-                case None => persistence.LastNotification.None
-                case Some(false) => persistence.LastNotification.False
-                case Some(true) => persistence.LastNotification.True
-              }
-
+              val lastNotificationEnum: Byte = writeLastNotification(result.answer)
+              val forQueriesOff = persistence.NodeIndexQuery.createForQueriesVector(
+                builder,
+                result.forQueries.toArray.map(writeStandingQueryId(builder, _)),
+              )
               queriesOffs(i) = persistence.NodeIndexQuery.createNodeIndexQuery(
                 builder,
                 branch,
                 lastNotificationEnum,
+                forQueriesOff,
               )
             }
             persistence.NodeIndex.createQueriesVector(builder, queriesOffs)
@@ -193,32 +207,26 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
         var j: Int = 0
         val notifiableLength = subscriber.notifiableLength
         while (j < notifiableLength) {
-          val notifiable = subscriber.notifiableType(j) match {
-            case persistence.Notifiable.QuineId =>
-              Left(
-                readQuineId(
-                  subscriber.notifiable(new persistence.QuineId(), j).asInstanceOf[persistence.QuineId],
-                ),
-              )
-
-            case persistence.Notifiable.StandingQueryId =>
-              Right(
-                readStandingQueryId(
-                  subscriber.notifiable(new persistence.StandingQueryId(), j).asInstanceOf[persistence.StandingQueryId],
-                ),
-              )
-
-            case other =>
-              throw new InvalidUnionType(other, persistence.Notifiable.names)
-          }
-          notifiables += notifiable
+          notifiables += readNotifiable(subscriber.notifiableType(j), subscriber.notifiable(_, j))
           j += 1
         }
-        val lastNotification: Option[Boolean] = subscriber.lastNotification match {
-          case persistence.LastNotification.None => None
-          case persistence.LastNotification.False => Some(false)
-          case persistence.LastNotification.True => Some(true)
-          case other => throw new InvalidUnionType(other, persistence.LastNotification.names)
+        // `subscriber.lastNotification` is the generated accessor for the wire field, which keeps its name.
+        val latestAnswer: Option[Boolean] = readLastNotification(subscriber.lastNotification)
+        val recordedQueriesPerSubscriber = Map.newBuilder[Notifiable, Set[StandingQueryId]]
+        var n: Int = 0
+        val queriesPerSubscriberLength = subscriber.queriesPerSubscriberLength
+        val hasQueriesPerSubscriber = queriesPerSubscriberLength > 0
+        while (n < queriesPerSubscriberLength) {
+          val entry = subscriber.queriesPerSubscriber(n)
+          val queries = Set.newBuilder[StandingQueryId]
+          var q: Int = 0
+          val queriesLength = entry.queriesLength
+          while (q < queriesLength) {
+            queries += readStandingQueryId(entry.queries(q))
+            q += 1
+          }
+          recordedQueriesPerSubscriber += readNotifiable(entry.subscriberType, entry.subscriber(_)) -> queries.result()
+          n += 1
         }
 
         val relatedQueries = mutable.Set.empty[StandingQueryId]
@@ -229,10 +237,23 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
           k += 1
         }
 
+        val subscribers = notifiables.toSet
+        val related = relatedQueries.toSet
+
+        // Which release wrote this, and what that means for the query attribution, is stated in one place.
+        val attributedQueriesPerSubscriber = SnapshotMigration.subscriberFormat(hasQueriesPerSubscriber) match {
+          case SnapshotMigration.Version.V2_2_0 => recordedQueriesPerSubscriber.result()
+          case SnapshotMigration.Version.V2_1_1 =>
+            SnapshotMigration.From_2_1_1_to_2_2_0.queriesPerSubscriber(
+              recorded = recordedQueriesPerSubscriber.result(),
+              subscribers = subscribers,
+              union = related,
+            )
+        }
+
         builder += dgnId -> DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription(
-          notifiables.toSet,
-          lastNotification,
-          relatedQueries.toSet,
+          latestAnswer,
+          attributedQueriesPerSubscriber,
         )
         i += 1
       }
@@ -242,7 +263,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
     val domainNodeIndex = {
       val builder = mutable.Map.empty[
         QuineId,
-        mutable.Map[DomainGraphNodeId, Option[Boolean]],
+        mutable.Map[DomainGraphNodeId, DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult],
       ]
 
       var i: Int = 0
@@ -250,18 +271,23 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
       while (i < domainNodeIndexLength) {
         val nodeIndex: persistence.NodeIndex = snapshot.domainNodeIndex(i)
         val subscriber = readQuineId(nodeIndex.subscriber)
-        val results = mutable.Map.empty[DomainGraphNodeId, Option[Boolean]]
+        val results = mutable.Map.empty[DomainGraphNodeId, DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult]
         var j: Int = 0
         val queriesLength = nodeIndex.queriesLength
         while (j < queriesLength) {
           val query = nodeIndex.queries(j)
-          val result = query.result match {
-            case persistence.LastNotification.None => None
-            case persistence.LastNotification.False => Some(false)
-            case persistence.LastNotification.True => Some(true)
-            case other => throw new InvalidUnionType(other, persistence.LastNotification.names)
+          val forQueries = Set.newBuilder[StandingQueryId]
+          var a: Int = 0
+          val forQueriesLength = query.forQueriesLength
+          while (a < forQueriesLength) {
+            forQueries += readStandingQueryId(query.forQueries(a))
+            a += 1
           }
-          results += query.dgnId -> result
+          results += query.dgnId ->
+          DomainNodeIndexBehavior.DomainNodeIndex.DomainIndexResult(
+            readLastNotification(query.result),
+            forQueries.result(),
+          )
           j += 1
         }
         builder += subscriber -> results
