@@ -310,13 +310,6 @@ object ProcedureDocRegistry {
         "list already contains them all, the call has no effect.",
       docsUrl = proceduresReference,
     ),
-    ProcedureDoc(
-      name = "purgeNode",
-      signature = "purgeNode(node :: ANY) :: VOID",
-      description = "Purges a node from history: the node and its historical events are deleted from the " +
-        "graph. Yields no rows.",
-      docsUrl = proceduresReference,
-    ),
     // Utilities
     ProcedureDoc(
       name = "loadJsonLines",

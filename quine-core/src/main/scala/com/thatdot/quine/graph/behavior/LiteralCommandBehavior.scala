@@ -98,8 +98,8 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
       } else {
         // Clear properties, half edges, and request removal of the reciprocal half edges.
         val propertyRemovalEvents = properties.map { case (k, v) => PropertyRemoved(k, v) }
-        val allEdges = edges.all
-        val edgeRemovalEvents = allEdges.map(EdgeRemoved).toList
+        val allEdges = edges.all.toList
+        val edgeRemovalEvents = allEdges.map(EdgeRemoved)
         val otherSidesRemoved = Future.traverse(allEdges)(edge =>
           edge.other.?(RemoveHalfEdgeCommand(edge.reflect(qid), _)).flatten,
         )(implicitlyBF, context.dispatcher)

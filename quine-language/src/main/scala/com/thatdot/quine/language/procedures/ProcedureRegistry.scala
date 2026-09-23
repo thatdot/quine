@@ -169,7 +169,6 @@ object ProcedureRegistry {
     ProcedureSignature("float.add", Vector("result" -> real)),
     ProcedureSignature("set.insert", Vector("result" -> listOfAny)),
     ProcedureSignature("set.union", Vector("result" -> listOfAny)),
-    ProcedureSignature("purgeNode", Vector.empty),
     // Utilities
     ProcedureSignature("loadJsonLines", Vector("value" -> Type.Any)),
     ProcedureSignature("log", Vector("log" -> string)),
