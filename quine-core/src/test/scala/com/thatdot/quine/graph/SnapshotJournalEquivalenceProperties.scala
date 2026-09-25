@@ -388,9 +388,18 @@ abstract class SnapshotJournalEquivalenceProperties(
           // registered while it was awake, and first hears of it at its next wake. Reading before that cycle would
           // show a node missing a subscription and then "gaining" one on restore, which is the graph catching up,
           // not a restore inventing state, and is not what this is testing.
+          //
+          // The same goes for a node asleep at registration: `propagateStandingQueries(None)` does not wake it, so
+          // it too first hears of the query at this wake. If it matches the query's root it asks its peers as part
+          // of waking, and it answers a read before they reply. So the wake is done by a read whose result is
+          // discarded, and the reference reading is taken once the graph is quiet; taken at the wake itself it
+          // would catch the question out, with the answer landing before the restored reading. Which rig that
+          // bit was decided by how much the waking node wrote before it got to the read, so the always-snapshot
+          // rig passed the schedules the others failed.
           nodes.foreach(sleepNode(rig.graph, _))
-          awake(label) = nodes.map(observe(rig, _))
+          nodes.foreach(observe(rig, _))
           settle(rig.graph)
+          awake(label) = nodes.map(observe(rig, _))
           // Everything restored at once, then read back; a read wakes a sleeping node, which is the restore.
           nodes.foreach(sleepNode(rig.graph, _))
           restored(label) = nodes.map(observe(rig, _))
@@ -515,6 +524,16 @@ abstract class SnapshotJournalEquivalenceProperties(
   test(s"[$persistorLabel] a node asleep when a two-hop query is registered restores the same either way") {
     assertEquivalentAfter(
       List(SetProp(2, "kind"), AddEdge(0, 2), Sleep(0), Register(TwoHop("kind", "region"))),
+    )
+  }
+
+  // Unlike the case above, the sleeping node matches the query's root, so at the wake that first tells it of the
+  // query it has to ask node 1 about the child pattern. The reference reading must be taken after node 1 has
+  // answered, or it holds the question out where the restored reading holds the answer. The generated schedules
+  // found this shape; it is pinned here so it is checked every run.
+  test(s"[$persistorLabel] a node asleep at registration that must ask a peer at its wake is read once answered") {
+    assertEquivalentAfter(
+      List(AddEdge(0, 1), SetProp(0, "other"), Sleep(0), Register(ThreeHop("other", "kind", "region"))),
     )
   }
 
