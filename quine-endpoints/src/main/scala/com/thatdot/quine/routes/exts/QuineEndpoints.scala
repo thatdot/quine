@@ -89,6 +89,26 @@ trait AtTimeQueryString extends endpoints4s.algebra.Urls {
       .xmapWithCodec(atTimeCodec)
 }
 
+/** [[AtTimeQueryString]] for the v2 API, where timestamps travel as RFC 3339 strings
+  * (AIP-142) instead of epoch milliseconds.
+  *
+  * This module is compiled for both the JVM and Scala.js, and `java.time` is unavailable on the
+  * latter, so the formatter is supplied by the platform-specific mix-in, exactly as [[atTimeCodec]]
+  * is.
+  */
+trait AtTimeRfc3339QueryString extends AtTimeQueryString {
+
+  /** Serialization/deserialization of an [[AtTime]] to/from an RFC 3339 string */
+  protected def atTimeRfc3339Codec: Codec[Option[String], AtTime]
+
+  /** Not implicit: [[atTimeQueryStringParam]] is already the implicit instance for [[AtTime]],
+    * so this one is passed explicitly to `qs` where the RFC 3339 spelling is wanted.
+    */
+  lazy val atTimeRfc3339QueryStringParam: QueryStringParam[AtTime] =
+    optionalQueryStringParam(stringQueryString)
+      .xmapWithCodec(atTimeRfc3339Codec)
+}
+
 trait NoopAtTimeQueryString extends AtTimeQueryString {
   type AtTime = Option[Long]
 

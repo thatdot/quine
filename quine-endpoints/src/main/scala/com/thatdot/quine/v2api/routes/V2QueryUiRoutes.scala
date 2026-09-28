@@ -8,7 +8,7 @@ import endpoints4s.generic.{docs, title, unnamed}
 import io.circe.Json
 
 import com.thatdot.quine.routes._
-import com.thatdot.quine.routes.exts.NamespaceParameter
+import com.thatdot.quine.routes.exts.{AtTimeRfc3339QueryString, NamespaceParameter}
 
 /** Mirrors the AIP-193 wire shape: every error response is `{"error": {code, status, message}}`.
   * `details` is intentionally omitted — the UI renders only the human-readable `message`,
@@ -85,7 +85,22 @@ trait ErrorResponses extends Endpoints with V2QuerySchemas with JsonEntitiesFrom
       .xmap[ClientErrors](convertV2ErrorResponseToClientErrors)(convertClientErrorsToV2ErrorResponse)
 }
 
-trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with ErrorResponses with StatusCodes {
+trait V2QueryUiRoutes
+    extends QueryUiRoutes
+    with V2QuerySchemas
+    with ErrorResponses
+    with StatusCodes
+    with AtTimeRfc3339QueryString {
+
+  /** The v2 spelling of the historical-moment parameter. The v2 server reads `atTime` as an RFC 3339
+    * string; the v1 `at-time` epoch-millis parameter is silently ignored there.
+    */
+  private val atTimeV2: QueryString[AtTime] = qs[AtTime](
+    "atTime",
+    docs = Some(
+      "An RFC 3339 timestamp representing the historical moment to query (e.g. `2026-04-27T15:30:00Z`). Must not be in the future.",
+    ),
+  )(atTimeRfc3339QueryStringParam)
 
   implicit private lazy val v2NamespaceSegment: Segment[NamespaceParameter] =
     stringSegment.xmapWithCodec(NamespaceParameter.namespaceCodec)
@@ -133,7 +148,7 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with ErrorRespon
   val cypherPostV2: Endpoint[V2QueryInputs[CypherQuery], Either[ClientErrors, Option[CypherQueryResult]]] =
     endpoint(
       request = v2QueryInputs(
-        url = graphScopedV2Base / "cypher:query" /? (atTime & reqTimeout),
+        url = graphScopedV2Base / "cypher:query" /? (atTimeV2 & reqTimeout),
         entity = jsonOrYamlRequest[CypherQuery]
           .orElse(textRequest)
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
@@ -145,7 +160,7 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with ErrorRespon
   val cypherNodesPostV2: Endpoint[V2QueryInputs[CypherQuery], Either[ClientErrors, Option[Seq[UiNode[Id]]]]] =
     endpoint(
       request = v2QueryInputs(
-        url = graphScopedV2Base / "cypher:queryNodes" /? (atTime & reqTimeout),
+        url = graphScopedV2Base / "cypher:queryNodes" /? (atTimeV2 & reqTimeout),
         entity = jsonOrYamlRequest[CypherQuery]
           .orElse(textRequest)
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
@@ -164,7 +179,7 @@ trait V2QueryUiRoutes extends QueryUiRoutes with V2QuerySchemas with ErrorRespon
   val cypherEdgesPostV2: Endpoint[V2QueryInputs[CypherQuery], Either[ClientErrors, Option[Seq[UiEdge[Id]]]]] =
     endpoint(
       request = v2QueryInputs(
-        url = graphScopedV2Base / "cypher:queryEdges" /? (atTime & reqTimeout),
+        url = graphScopedV2Base / "cypher:queryEdges" /? (atTimeV2 & reqTimeout),
         entity = jsonOrYamlRequest[CypherQuery]
           .orElse(textRequest)
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),

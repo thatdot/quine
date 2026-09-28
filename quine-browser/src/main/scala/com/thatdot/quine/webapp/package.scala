@@ -149,7 +149,7 @@ package webapp {
     val showHostInTooltip: js.UndefOr[Boolean] = js.undefined
 
     /** historical millisecond unix time to query (`undefined` means the present) */
-    val queryHistoricalTime: js.UndefOr[Int] = js.undefined
+    val queryHistoricalTime: js.UndefOr[Double] = js.undefined
 
     /** call this when creating a `vis` network */
     val onNetworkCreate: js.UndefOr[js.Function1[vis.Network, js.Any]] = js.undefined
