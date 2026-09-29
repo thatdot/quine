@@ -149,7 +149,7 @@ object Dependencies {
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
   /** Parent: [[awsSdkV]] */
-  val jacksonOverrideV = "2.22.2"
+  val jacksonOverrideV = "2.22.3"
 
   /** Parent: [[amazonGlueV]] */
   val wireOverrideV = "6.4.5"
