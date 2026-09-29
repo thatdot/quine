@@ -4,7 +4,7 @@ import scalajsbundler.util.JSON.{obj, str}
 
 object Dependencies {
   // On update, check whether opentelemetryOverrideV is removable
-  val amazonKinesisClientV = "3.5.1"
+  val amazonKinesisClientV = "3.5.3"
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.1"
   // On update, check whether jacksonOverrideV override is removable
