@@ -115,6 +115,12 @@ class SubscriptionFanOutTest extends AnyFunSuite with BeforeAndAfterAll with Mat
     if (awakeNodes().contains(qid)) fail(s"node never slept after being asked")
   }
 
+  private def awaitCondition(what: String)(condition: => Boolean): Unit = {
+    val deadline = System.nanoTime() + timeout.duration.toNanos
+    while (!condition && System.nanoTime() < deadline) Thread.sleep(10)
+    if (!condition) fail(s"timed out waiting for $what")
+  }
+
   private def journalRows(qid: QuineId): Int =
     Option(journals.get(qid)).fold(0)(_.size) + Option(domainIndexEvents.get(qid)).fold(0)(_.size)
 
@@ -157,7 +163,9 @@ class SubscriptionFanOutTest extends AnyFunSuite with BeforeAndAfterAll with Mat
     Await.result(ops.setProp(hub, "kind", QuineValue.Str("k1")), timeout.duration)
     members.foreach(m => Await.result(ops.addEdge(hub, m, "to"), timeout.duration))
     Await.result(sqns.propagateStandingQueries(None), timeout.duration)
-    Thread.sleep(1000)
+    awaitCondition("the hub to hold every member's answer")(
+      members.forall(m => subscriptionsOf(hub).contains((childDgn, m))),
+    )
     withClue("the hub holds every member's answer: ")(
       subscriptionsOf(hub) should contain allElementsOf members.map(m => (childDgn, m)),
     )
@@ -169,6 +177,7 @@ class SubscriptionFanOutTest extends AnyFunSuite with BeforeAndAfterAll with Mat
     // Wake the hub and write the property the pattern watches, with a value that keeps the answer as it was.
     Await.result(ops.getProps(hub), timeout.duration)
     Await.result(ops.setProp(hub, "kind", QuineValue.Str("k2")), timeout.duration)
+    // Absence has no completion signal, so a wrong wake or write is given this long to show.
     Thread.sleep(1000)
 
     withClue("no member was woken by the hub's write: ")(awakeNodes().intersect(members.toSet) shouldBe empty)

@@ -182,7 +182,14 @@ class CancelledPatternAnswerReuseTest extends AnyFunSuite with Matchers {
     if (sleepsCompleted(graph) == before) fail("node never slept after being asked; the schedule would be a lie")
   }
 
-  private def settle(): Unit = Thread.sleep(500)
+  private def awaitCondition(what: String)(condition: => Boolean): Unit = {
+    val deadline = System.nanoTime() + timeout.duration.toNanos
+    while (!condition && System.nanoTime() < deadline) Thread.sleep(10)
+    if (!condition) fail(s"timed out waiting for $what")
+  }
+
+  /** Absence has no completion signal, so a wrong report is given this long to show before it is ruled out. */
+  private def absenceBound(): Unit = Thread.sleep(500)
 
   /** The answers node B has reported to its subscribers, by pattern. */
   private def reportedByB(graph: GraphService): Set[(Long, QuineId, Option[Boolean])] =
@@ -212,20 +219,21 @@ class CancelledPatternAnswerReuseTest extends AnyFunSuite with Matchers {
     Await.result(ops.addEdge(nodeA, nodeB, "to"), timeout.duration)
 
     val first = register(graph, "first")
-    settle()
+    awaitCondition("the first query to match")(first.positiveMatches == 1)
     val matchesUnderFirst = first.positiveMatches
 
     // Node B stays awake for the whole schedule, so nothing below depends on how a node is restored.
     if (rootAsleepAtCancel) sleepNode(graph, nodeA)
     cancel(graph, first)
-    settle()
+    awaitCondition("the cancellation to reach node B")(
+      !reportedByB(graph).contains((regionDgnId, nodeA, Some(true))),
+    )
 
     // The pattern no longer matches: B is not a `region` any more. B is awake and processes this itself.
     Await.result(ops.removeProp(nodeB, "region"), timeout.duration)
-    settle()
 
     val second = register(graph, "second")
-    settle()
+    absenceBound()
     (second, matchesUnderFirst)
   }
 
@@ -254,7 +262,7 @@ class CancelledPatternAnswerReuseTest extends AnyFunSuite with Matchers {
 
         // Waking the root is what makes it subscribe for the second query, which is what asks B.
         val _ = Await.result(graph.literalOps(namespace).logState(nodeA), timeout.duration)
-        settle()
+        absenceBound()
 
         withClue(
           "node B has no `region`, so nothing satisfies the pattern and the second query has nothing to report: ",
@@ -277,7 +285,7 @@ class CancelledPatternAnswerReuseTest extends AnyFunSuite with Matchers {
         )
 
         val _ = Await.result(graph.literalOps(namespace).logState(nodeA), timeout.duration)
-        settle()
+        absenceBound()
 
         withClue("node B has no `region`, so the second query has nothing to report: ")(
           second.positiveMatches shouldBe 0,

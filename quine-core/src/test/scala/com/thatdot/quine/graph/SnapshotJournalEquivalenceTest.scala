@@ -223,7 +223,7 @@ class SnapshotJournalEquivalenceTest extends AsyncFunSuite with BeforeAndAfterAl
       // latent rather than visible.
       // This suite registers exactly one standing query, so every id seen here is that one and a constant label
       // is its canonical form. Registering a second would make this wrong: it would then need labelling by the
-      // pattern each query was registered for, as `SnapshotJournalEquivalenceProperties` does.
+      // pattern each query was registered for.
       def rank(q: StandingQueryId): String = { val _ = q; "the-query" }
       def normalizeSubs(
         rs: List[DistinctIdSubscriberState],

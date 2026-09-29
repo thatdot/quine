@@ -118,6 +118,19 @@ class HistoricalReadOfSubscribedNodeTest extends AnyFunSuite with BeforeAndAfter
     if (awakeNodes().contains(qid)) fail("node never slept after being asked")
   }
 
+  private def awaitCondition(what: String)(condition: => Boolean): Unit = {
+    val deadline = System.nanoTime() + timeout.duration.toNanos
+    while (!condition && System.nanoTime() < deadline) Thread.sleep(10)
+    if (!condition) fail(s"timed out waiting for $what")
+  }
+
+  private def holdsAnswerFrom(qid: QuineId, peer: QuineId): Boolean =
+    Await
+      .result(graph.literalOps(namespace).logState(qid), timeout.duration)
+      .sqStateResults
+      .subscriptions
+      .exists(r => r.peer == peer && r.answer.contains(true))
+
   private def storedRows(qid: QuineId): (Int, Int, Int) = (
     Option(journals.get(qid)).fold(0)(_.size),
     Option(domainIndexEvents.get(qid)).fold(0)(_.size),
@@ -155,10 +168,11 @@ class HistoricalReadOfSubscribedNodeTest extends AnyFunSuite with BeforeAndAfter
     Await.result(ops.setProp(root, "kind", QuineValue.Str("k1")), timeout.duration)
     Await.result(ops.addEdge(root, neighbour, "to"), timeout.duration)
     Await.result(sqns.propagateStandingQueries(None), timeout.duration)
-    Thread.sleep(1000)
+    awaitCondition("the root to hold its neighbour's answer")(holdsAnswerFrom(root, neighbour))
     val earlier = Milliseconds.currentTime()
-    Thread.sleep(5)
+    Thread.sleep(5) // the later write must carry a later millisecond than `earlier`
     Await.result(ops.setProp(root, "kind", QuineValue.Str("k2")), timeout.duration)
+    // Absence has no completion signal: anything the write causes is given this long to land before the baseline.
     Thread.sleep(500)
 
     sleep(root)

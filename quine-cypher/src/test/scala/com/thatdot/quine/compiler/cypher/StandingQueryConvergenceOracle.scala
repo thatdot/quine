@@ -59,21 +59,15 @@ class StandingQueryConvergenceOracle extends AnyFunSuite with BeforeAndAfterAll 
 
   implicit private def materializer: Materializer = graph.materializer
 
-  /** How long a standing query is given to stop reporting before the run is called inconclusive.
-    *
-    * Generous on purpose: this is not a statement about how fast the query should be, only a bound past which a
-    * silent partial answer would be worse than a failure. The whole suite shares one machine, and these cases are
-    * the slowest thing on it.
+  /** How long a standing query is given to reach the answer the case owes before the run is called inconclusive.
+    * A passing run never waits this long; it only bounds how long a hang takes to report.
     */
-  private val QuiesceTimeoutMillis: Long = 120000
+  private val AnswerDeadlineMillis: Long = 120000
 
-  private val QuiescePollMillis: Long = 10
+  private val AnswerPollMillis: Long = 10
 
-  /** 50ms of quiet, once the reports already add up to the answer the case says the pattern has. */
-  private val QuietSamplesOnceAnswered: Int = 5
-
-  /** 250ms of quiet otherwise, which is what the largest case needs before it has finished reporting. */
-  private val QuietSamplesWhileIncomplete: Int = 25
+  /** A case expecting no rows has nothing owed to wait for, so a wrong row is given this long to arrive. */
+  private val NoRowsSpanMillis: Long = 250
 
   override def afterAll(): Unit = {
     Await.result(graph.shutdown(), 20.seconds)
@@ -109,14 +103,10 @@ class StandingQueryConvergenceOracle extends AnyFunSuite with BeforeAndAfterAll 
     }
   }
 
-  /** Run the standing query until it stops changing, then report what it settled on.
-    *
-    * Quiescence is measured rather than waited out: what matters is that nothing more arrives, and a fixed sleep
-    * either wastes time or is a race depending on the machine.
-    */
+  /** Run the standing query until it reports the rows the case owes, then report what it settled on. */
   private def standingMatches(
     queryText: String,
-    populate: (() => Unit) => Any,
+    populate: (Int => Unit) => Any,
     dataFirst: Boolean,
     expectedRows: Int,
   ): Settled = {
@@ -125,38 +115,18 @@ class StandingQueryConvergenceOracle extends AnyFunSuite with BeforeAndAfterAll 
     val graphPattern = compileStandingQueryGraphPattern(queryText)(graph.idProvider, logConfig)
     val compiled = graphPattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, graph.idProvider)
 
-    // Let whatever has been reported stop changing. Quiescence is measured rather than waited out: what matters is
-    // that nothing more arrives, and a fixed sleep either wastes time or is a race depending on the machine.
-    //
-    // How long quiet has to last depends on what the quiet means. Once the reports add up to the answer this case
-    // says the pattern has, a short quiet is enough to say nothing more is coming, and that is the case nearly
-    // every run takes. Until then it has to be generous, because "not finished" and "not going to" look identical
-    // from here, and a case expecting no rows at all is never in the first situation, since its answer is what
-    // it would hold before reporting anything.
-    //
-    // Giving up is recorded rather than ignored. A run that was still reporting when the deadline arrived has a
-    // partial answer, which compared against the ad-hoc one looks exactly like a query that reported the wrong
-    // rows, so the two are told apart here, where the difference is still known, rather than in the mismatch.
+    // Wait for the net matches, positives less withdrawals, to reach what is owed. Giving up is recorded rather
+    // than ignored: a run that never got there has a partial answer, which compared against the ad-hoc one looks
+    // exactly like a query that reported the wrong rows, so the two are told apart here.
     var gaveUpWaiting = false
-    def quiesce(target: Option[Int]): Unit = {
-      def answered: Boolean =
-        target.exists(rows => rows > 0 && foldToCurrentMatches(reported.asScala.toVector).size == rows)
-      var stableFor = 0
-      var lastSeen = -1
-      var settled = false
-      val deadline = System.currentTimeMillis + QuiesceTimeoutMillis
-      while (!settled && System.currentTimeMillis < deadline) {
-        Thread.sleep(QuiescePollMillis)
-        val seen = reported.size
-        if (seen == lastSeen) stableFor += 1 else { stableFor = 0; lastSeen = seen }
-        settled = stableFor >= (if (answered) QuietSamplesOnceAnswered else QuietSamplesWhileIncomplete)
-      }
-      if (!settled) gaveUpWaiting = true
+    def currentMatches: Int = foldToCurrentMatches(reported.asScala.toVector).size
+    def awaitNetMatches(rows: Int): Unit = {
+      val deadline = System.currentTimeMillis + AnswerDeadlineMillis
+      while (currentMatches != rows && System.currentTimeMillis < deadline) Thread.sleep(AnswerPollMillis)
+      if (currentMatches != rows) gaveUpWaiting = true
     }
 
-    // The reports during population are not being compared against anything yet (in the one case that quiesces
-    // mid-populate the answer is different at each pause), so there is no target to wait for there.
-    if (dataFirst) { val _ = populate(() => quiesce(None)) }
+    if (dataFirst) { val _ = populate(awaitNetMatches) }
 
     val outputs: Map[String, Sink[StandingQueryResult, UniqueKillSwitch]] = Map(
       "oracle" -> Flow[StandingQueryResult]
@@ -176,16 +146,16 @@ class StandingQueryConvergenceOracle extends AnyFunSuite with BeforeAndAfterAll 
     )
     Await.result(standingQueries.propagateStandingQueries(Some(4)), 20.seconds)
 
-    if (!dataFirst) { val _ = populate(() => quiesce(None)) }
+    if (!dataFirst) { val _ = populate(awaitNetMatches) }
 
     try {
-      quiesce(Some(expectedRows))
+      if (expectedRows == 0) Thread.sleep(NoRowsSpanMillis) else awaitNetMatches(expectedRows)
       val settled = reported.asScala.toVector
       val (positive, negative) = settled.partition(_.meta.isPositiveMatch)
       assert(
         !gaveUpWaiting,
-        s"the standing query was still reporting after ${QuiesceTimeoutMillis / 1000} seconds, so what it settled " +
-        s"on is not known: ${positive.size} matches and ${negative.size} withdrawals so far",
+        s"the standing query had not reported $expectedRows rows after ${AnswerDeadlineMillis / 1000} seconds: " +
+        s"${positive.size} matches and ${negative.size} withdrawals so far",
       )
       Settled(foldToCurrentMatches(settled), positive.size, negative.size)
     } finally {
@@ -227,7 +197,7 @@ class StandingQueryConvergenceOracle extends AnyFunSuite with BeforeAndAfterAll 
 
     def check(variant: String, dataFirst: Boolean): Unit = {
       val query = scoped(standingQuery, variant)
-      val populate = (_: () => Unit) => runAdHoc(scoped(setup, variant)).size
+      val populate = (_: Int => Unit) => runAdHoc(scoped(setup, variant)).size
       val actual = standingMatches(query, populate, dataFirst, expectedRows)
       val expected = runAdHoc(query)
       assert(expected.size == expectedRows, "the ad-hoc query did not match what this case says it should")
@@ -360,11 +330,11 @@ class StandingQueryConvergenceOracle extends AnyFunSuite with BeforeAndAfterAll 
     val query = "MATCH (n)-[:e11_X]->(m) WHERE n.p11_X IS NOT NULL AND m.q11_X IS NOT NULL RETURN n.p11_X, m.q11_X"
     val actual = standingMatches(
       query,
-      quiesce => {
+      awaitNetMatches => {
         val _ = runAdHoc("CREATE (a {p11_X: 'a'})-[:e11_X]->(b {q11_X: 'b'})")
-        quiesce()
+        awaitNetMatches(1)
         val _ = runAdHoc("MATCH (n {p11_X: 'a'})-[e:e11_X]->(m {q11_X: 'b'}) DELETE e")
-        quiesce()
+        awaitNetMatches(0)
         runAdHoc("MATCH (n {p11_X: 'a'}), (m {q11_X: 'b'}) CREATE (n)-[:e11_X]->(m)")
       },
       dataFirst = false,
