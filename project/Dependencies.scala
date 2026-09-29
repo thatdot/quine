@@ -6,7 +6,7 @@ object Dependencies {
   // On update, check whether opentelemetryOverrideV is removable
   val amazonKinesisClientV = "3.5.3"
   val apacheCommonsCsvV = "1.14.1"
-  val avroV = "1.12.1"
+  val avroV = "1.12.2"
   // On update, check whether jacksonOverrideV override is removable
   val awsSdkV = "2.55.7"
   // On update, check whether nettyOverrideV or wireOverrideV are removable
