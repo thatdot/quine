@@ -13,7 +13,7 @@ import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.cypher.Func.UserDefined
 import com.thatdot.quine.model.QuineValue
 
-import Log.implicits.{logExpr, logQuineValue, LogQuineIdRaw, LogSecret}
+import Log.implicits.{LogQuineIdRaw, LogSecret, logExpr, logQuineValue}
 
 class LoggableTest extends AnyFunSpecLike {
   describe("cypher.Expr") {
