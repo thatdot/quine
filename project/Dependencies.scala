@@ -8,7 +8,7 @@ object Dependencies {
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.2"
   // On update, check whether jacksonOverrideV override is removable
-  val awsSdkV = "2.55.7"
+  val awsSdkV = "2.55.8"
   // On update, check whether nettyOverrideV or wireOverrideV are removable
   val amazonGlueV = "1.1.27"
   val betterMonadicForV = "0.3.1"
