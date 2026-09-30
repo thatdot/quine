@@ -1,55 +1,38 @@
 package com.thatdot.quine.webapp.queryui
 
-import scala.scalajs.js.Date
-import scala.util.Try
-import scala.util.matching.Regex
-
 import com.raquo.laminar.api.L._
 import org.scalajs.dom
-import org.scalajs.dom.{console, window}
 
-import com.thatdot.quine.webapp.Sugar
+import com.thatdot.quine.webapp.Styles
 import com.thatdot.quine.webapp.components.ToolbarButton
 
 /** Bar of buttons for adjusting history */
 object HistoryNavigationButtons {
 
-  // Time parsing helpers
+  private def currentTime(atTimeOpt: Option[Long]): String = atTimeOpt.fold("now")(AtTimeInput.formatIso)
 
-  object ShorthandRelativeTime {
-    val SecondsShorthand: Regex = """([\-+])\s*(\d+\.?\d*)\s*s(?:ec|ecs|econd|econds)?\s*$""".r
-    val MinutesShorthand: Regex = """([\-+])\s*(\d+\.?\d*)\s*m(?:in|ins|inute|inutes)?\s*$""".r
-    val HoursShorthand: Regex = """([\-+])\s*(\d+\.?\d*)\s*h(?:r|rs|our|ours)?\s*$""".r
-    val DaysShorthand: Regex = """([\-+])\s*(\d+\.?\d*)\s*d(?:ay|ays)?\s*$""".r
-    def nowMillis: Double = new Date().getTime()
-    def unapply(timestamp: String): Option[Long] = (timestamp match {
-      case SecondsShorthand("-", seconds) => Some(nowMillis - seconds.toDouble * 1000)
-      case SecondsShorthand("+", seconds) => Some(nowMillis + seconds.toDouble * 1000)
-      case MinutesShorthand("-", minutes) => Some(nowMillis - minutes.toDouble * 1000 * 60)
-      case MinutesShorthand("+", minutes) => Some(nowMillis + minutes.toDouble * 1000 * 60)
-      case HoursShorthand("-", hours) => Some(nowMillis - hours.toDouble * 1000 * 60 * 60)
-      case HoursShorthand("+", hours) => Some(nowMillis + hours.toDouble * 1000 * 60 * 60)
-      case DaysShorthand("-", days) => Some(nowMillis - days.toDouble * 1000 * 60 * 60 * 24)
-      case DaysShorthand("+", days) => Some(nowMillis + days.toDouble * 1000 * 60 * 60 * 24)
-      case _ => None
-    }).map(_.toLong)
-  }
-  object UnixLikeTime {
-    def unapply(millis: String): Option[Long] =
-      Try(millis.toLong).toOption.map(millisLong => Sugar.Date.create(millisLong.toDouble).getTime().toLong)
-  }
-  object SugaredDate {
-    def unapply(datestr: String): Option[Long] = {
-      val sugarDate = Sugar.Date.create(datestr)
-      if (Sugar.Date.isValid(sugarDate)) Some(sugarDate.getTime().toLong)
-      else None
-    }
-  }
-
-  private def currentTime(atTimeOpt: Option[Long]): String = atTimeOpt match {
-    case None => "now"
-    case Some(millis) => new Date(millis.toDouble).toISOString()
-  }
+  /** The clock button. While a time is pinned the glyph fills and turns amber, the hue the app
+    * already uses for a paused stream, not the blue that means hover or pressed elsewhere in
+    * the bar; the words ("as of 3 hours ago") are on the canvas, in [[AtTimeTag]].
+    */
+  private def queryTime(
+    atTime: Signal[Option[Long]],
+    canSetTime: Signal[Boolean],
+    openAtTimeModal: () => Unit,
+  ): HtmlElement =
+    htmlTag("i")(
+      cls <-- atTime
+        .combineWith(canSetTime)
+        .map { case (t, canSet) =>
+          val icon = if (t.isDefined) "ion-ios-time" else "ion-ios-time-outline"
+          val state = if (canSet) Styles.clickable else Styles.disabled
+          val pin = if (t.isDefined) s" ${AtTimeModalStyles.toolbarPinned}" else ""
+          s"$icon ${Styles.navBarButton} $state$pin"
+        }
+        .distinct,
+      title <-- atTime.map(t => s"Querying for time: ${currentTime(t)}").distinct,
+      onClick.compose(_.sample(canSetTime)) --> Observer[Boolean](canSet => if (canSet) openAtTimeModal()),
+    )
 
   def apply(
     canStepBackward: Signal[Boolean],
@@ -70,7 +53,7 @@ object HistoryNavigationButtons {
     uploadHistory: dom.FileList => Unit,
     atTime: Signal[Option[Long]],
     canSetTime: Signal[Boolean],
-    setTime: Option[Long] => Unit,
+    openAtTimeModal: () => Unit,
     toggleLayout: () => Unit,
     recenterViewport: () => Unit,
   ): HtmlElement = {
@@ -148,54 +131,9 @@ object HistoryNavigationButtons {
           uploadHistory(files)
         },
       ),
-      // Time button
-      child <-- atTime.combineWith(canSetTime).map { case (atTimeOpt, canSet) =>
-        val timeStr = currentTime(atTimeOpt)
-        ToolbarButton.simple(
-          "ion-ios-time-outline",
-          s"Querying for time: $timeStr",
-          enabled = Val(canSet),
-          onClickAction = { _ =>
-            if (canSet) {
-              val enteredDate = window.prompt(
-                s"""Enter the moment in time the UI should track and use for all queries. The moment entered must be one of:
-                   |
-                   |  \u2022 "now"
-                   |  \u2022 A number (milliseconds elapsed since Unix epoch)
-                   |  \u2022 A relative time (eg, "six seconds ago" or "-15s")
-                   |  \u2022 An absolute time (eg, "6:47 PM December 21, 2043" or "2021-05-29T10:02:00.004Z")
-                   |
-                   |The moment currently being tracked is: $timeStr.
-                   |
-                   |WARNING: this will reset the query history and clear all currently rendered nodes from the browser window (the actual data is unaffected)
-                   |""".stripMargin,
-                timeStr,
-              )
-              enteredDate match {
-                case null => // user clicked cancel
-                case "now" =>
-                  console.log("Query time set to the present moment")
-                  setTime(None)
-                case UnixLikeTime(ms) =>
-                  console.log("Historical query time set to UNIX timestamp", enteredDate)
-                  setTime(Some(ms))
-                case ShorthandRelativeTime(timestampMs) =>
-                  console.log(
-                    "Historical query time set from offset timestamp",
-                    enteredDate,
-                    "to UNIX timestamp",
-                    timestampMs,
-                  )
-                  setTime(Some(timestampMs))
-                case SugaredDate(ms) =>
-                  console.log("Historical query time set from date-like string", enteredDate)
-                  setTime(Some(ms))
-                case _ => window.alert(s"Invalid time provided: $enteredDate")
-              }
-            }
-          },
-        )
-      },
+      // Time button: opens the query-time dialog (AtTimeModal), mounted by the host at viewport
+      // level alongside the other explorer modals.
+      queryTime(atTime, canSetTime, openAtTimeModal),
       // Layout toggle
       ToolbarButton.simple(
         "ion-android-share-alt",

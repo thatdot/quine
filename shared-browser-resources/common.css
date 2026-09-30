@@ -4934,6 +4934,485 @@ body.panel-dragging * {
   color: #888;
 }
 
+/* Query-time dialog (toolbar → clock button): shares the tap-modal shell above. A distance
+ * ruler at the top that can be dragged to fill the text field under it, the field in the old
+ * prompt's grammar, a preview of what the text resolves to, and the accepted formats beneath
+ * it. */
+/* Wider than the tap shell's default so the format chips and their meanings wrap less, and
+   allowed most of the viewport's height, so the buttons stay in view without scrolling. */
+.at-time-dialog {
+  width: min(640px, calc(100vw - 48px));
+  max-height: calc(100vh - 32px);
+}
+
+.at-time-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.at-time-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.at-time-field-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #5b6b86;
+}
+
+.at-time-input {
+  width: 100%;
+  padding: 11px 13px;
+  font-family: var(--thatdot-font-mono);
+  font-size: 16px;
+}
+
+/* The only mark of invalid text on the field itself; the reason is in the preview. */
+.at-time-input-invalid,
+.at-time-input-invalid:focus {
+  border-color: var(--error-accent);
+  box-shadow: 0 0 0 3px rgba(196, 69, 61, 0.14);
+}
+
+/* Leads with the same diamond that marks this instant on the ruler and in its legend. */
+.at-time-tracking {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: #5b6b86;
+}
+
+.at-time-tracking code {
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  color: var(--thatdot-dark-blue);
+  background: var(--thatdot-gradient-middle);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+/* Inside the chip the chip is the hit area, so the copyable value adds no box of its own. */
+.at-time-tracking code .at-time-copyable {
+  margin: 0;
+  padding: 0;
+}
+
+.at-time-tracking code .at-time-copyable:hover,
+.at-time-tracking code .at-time-copyable:focus-visible {
+  background: transparent;
+}
+
+/* Distance ruler: a fixed log-scale strip anchored at now (see AtTimeRuler.scala for the
+   geometry). Marks are styled here so the SVG carries only positions. */
+.at-time-ruler-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.at-time-ruler-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.at-time-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #5b6b86;
+}
+
+.at-time-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.at-time-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.at-time-legend-now {
+  background: var(--thatdot-flow-green);
+}
+
+.at-time-legend-chosen {
+  background: var(--thatdot-brite-blue);
+}
+
+/* A diamond, the same mark the ruler draws for the tracked instant. */
+.at-time-legend-tracked {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: var(--thatdot-gray);
+}
+
+/* The focusable wrapper takes the keyboard; the SVG takes the pointer. */
+.at-time-ruler-focus {
+  border-radius: 8px;
+  outline: none;
+}
+
+.at-time-ruler-focus:focus-visible {
+  box-shadow: 0 0 0 3px rgba(22, 88, 183, 0.18);
+}
+
+.at-time-ruler {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+
+.at-time-ruler-past {
+  fill: url(#at-time-ruler-past-fill);
+}
+
+.at-time-ruler-edge {
+  font-size: 10px;
+  font-style: italic;
+  fill: #5b6b86;
+}
+
+.at-time-ruler-base {
+  stroke: #aeb6c8;
+  stroke-width: 1.2;
+}
+
+.at-time-ruler-tick line {
+  stroke: #cdd3e0;
+}
+
+.at-time-ruler-tick-major line {
+  stroke: #aeb6c8;
+}
+
+.at-time-ruler-tick text {
+  font-size: 10.5px;
+  fill: #5b6b86;
+}
+
+.at-time-ruler-tick:hover text {
+  fill: var(--thatdot-brite-blue);
+}
+
+.at-time-ruler-now-dot {
+  fill: var(--thatdot-flow-green);
+}
+
+.at-time-ruler-now-ring {
+  fill: none;
+  stroke: var(--thatdot-flow-green);
+  stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: atTimeRulerRing 1.6s infinite;
+}
+
+@keyframes atTimeRulerRing {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+.at-time-ruler-now-text {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--thatdot-flow-green);
+}
+
+.at-time-ruler-chosen line {
+  stroke: var(--thatdot-brite-blue);
+  stroke-width: 1.5;
+}
+
+.at-time-ruler-chosen-head {
+  fill: var(--thatdot-brite-blue);
+}
+
+.at-time-ruler-chosen-bubble {
+  fill: #fff;
+  stroke: var(--thatdot-brite-blue);
+  stroke-width: 1;
+}
+
+.at-time-ruler-chosen-text {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--thatdot-brite-blue);
+}
+
+.at-time-ruler-tracked path {
+  fill: var(--thatdot-gray);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.at-time-ruler-tracked line {
+  stroke: var(--thatdot-gray);
+  stroke-width: 1;
+}
+
+.at-time-ruler-tracked text {
+  font-size: 10px;
+  font-weight: 600;
+  fill: var(--thatdot-gray);
+}
+
+.at-time-ruler-ghost line {
+  stroke: var(--thatdot-gray);
+  stroke-dasharray: 2 3;
+}
+
+.at-time-ruler-ghost text {
+  font-size: 10.5px;
+  fill: #5b6b86;
+}
+
+/* What the current input resolves to. Its row count varies by state (two for a pinned
+   instant, one for live, one for an error), so it reserves the two-row height up front:
+   the dialog must not resize between states. */
+.at-time-preview {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  align-items: baseline;
+  align-content: start;
+  min-height: 68px; /* comfortably above 2 * 10px padding + 2 rows * ~19.5px + 4px gap, so every state is exactly this tall */
+  padding: 10px 12px;
+  border: 1px solid #eef0f5;
+  border-radius: 10px;
+  background: var(--thatdot-gradient-end);
+  font-size: 13px;
+}
+
+.at-time-preview-error {
+  grid-template-columns: 1fr;
+  background: #fdf1f0;
+  border-color: #f0c9c6;
+  color: var(--error-accent);
+}
+
+.at-time-preview-key {
+  font-size: 12px;
+  color: #5b6b86;
+}
+
+.at-time-preview-value {
+  font-family: var(--thatdot-font-mono);
+  font-size: 13px;
+}
+
+.at-time-preview-text {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* A value that copies on click: the tracked instant, the UTC and the local preview. A faint
+   copy glyph after the text says so and brightens on hover; a green "Copied" replaces it for a
+   moment after the click. An offset names a new instant every second, so a selection in the
+   text does not survive long enough to be copied by hand. */
+.at-time-copyable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px -5px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.at-time-copyable:hover,
+.at-time-copyable:focus-visible {
+  background: rgba(22, 88, 183, 0.08);
+  outline: none;
+}
+
+.at-time-copyable.copied {
+  color: var(--thatdot-flow-green);
+}
+
+.at-time-copy-glyph {
+  font-size: 14px;
+  line-height: 1;
+  color: #8a97b0;
+  opacity: 0.7;
+  transition: opacity 0.12s, color 0.12s;
+}
+
+.at-time-copyable:hover .at-time-copy-glyph,
+.at-time-copyable:focus-visible .at-time-copy-glyph {
+  color: var(--thatdot-brite-blue);
+  opacity: 1;
+}
+
+.at-time-copied-tag {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--thatdot-flow-green);
+}
+
+.at-time-copyable:not(.copied) .at-time-copied-tag,
+.at-time-copyable.copied .at-time-copy-glyph {
+  display: none;
+}
+
+.at-time-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--thatdot-flow-green);
+  box-shadow: 0 0 0 0 rgba(18, 165, 114, 0.5);
+  animation: atTimeLivePulse 1.6s infinite;
+}
+
+@keyframes atTimeLivePulse {
+  0% { box-shadow: 0 0 0 0 rgba(18, 165, 114, 0.5); }
+  70% { box-shadow: 0 0 0 6px rgba(18, 165, 114, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(18, 165, 114, 0); }
+}
+
+/* The accepted formats, under the preview. Each example is a button that fills the field, so
+   the reference is also the quick picks. */
+/* Both columns are bounded so a row with many examples wraps its chips rather than squeezing
+   the meaning into a sliver. */
+.at-time-formats-table {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  column-gap: 14px;
+  align-items: start;
+  font-size: 13px;
+}
+
+/* Each row spans both columns and lays its two cells on the table's tracks, so a hairline
+   can run between rows and tie a group of examples to its meaning. */
+.at-time-format-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: start;
+  padding: 7px 0;
+}
+
+.at-time-format-row + .at-time-format-row {
+  border-top: 1px solid #dfe3ec;
+}
+
+.at-time-format-row:first-child {
+  padding-top: 2px;
+}
+
+.at-time-format-row:last-child {
+  padding-bottom: 2px;
+}
+
+.at-time-format-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.at-time-format-example {
+  font-family: var(--thatdot-font-mono);
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: var(--thatdot-gradient-middle);
+  color: var(--thatdot-dark-blue);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.at-time-format-example:hover {
+  border-color: var(--thatdot-brite-blue);
+}
+
+.at-time-format-example[aria-pressed="true"] {
+  background: var(--thatdot-brite-blue);
+  border-color: var(--thatdot-brite-blue);
+  color: #fff;
+}
+
+.at-time-format-meaning {
+  padding-top: 3px; /* sits on the first line of chips */
+  color: #5b6b86;
+}
+
+.at-time-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* The toolbar's clock while a time is pinned: filled glyph, amber, the hue the stream cards
+   use for "paused". */
+.nav-bar-button.at-time-pinned {
+  color: var(--cui-warning, #ffc107);
+}
+
+/* "3 hours ago" in the top-left corner of the canvas while a time is pinned. Mostly
+   transparent at rest so it reads as a watermark, solid under the pointer. The corner is the
+   one the other canvas overlays leave free (loader and result count top right, feed chips
+   bottom left, cards drawer bottom right); z-index matches the feed chips and drawer. */
+.at-time-tag {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #8a5f00;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0.45;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: opacity 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.at-time-tag i {
+  font-size: 13px;
+  line-height: 1;
+  color: #d99a00;
+}
+
+.at-time-tag.clickable {
+  cursor: pointer;
+}
+
+.at-time-tag.clickable:hover,
+.at-time-tag:focus-visible {
+  opacity: 1;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.22);
+  outline: none;
+}
+
 /* ── Inspect Standing Queries (Step 1): SQ picker rail + stage diagram ─────── */
 .tap-inspect-root {
   display: flex;

@@ -368,6 +368,9 @@ object QueryUi {
     val tapModalOpenVar: Var[Boolean] = Var(false)
     def openTapModal(): Unit = tapModalOpenVar.set(true)
 
+    // ── Query-time dialog (toolbar clock button) ───────────────────────────────────
+    val atTimeModalOpenVar: Var[Boolean] = Var(false)
+
     // ── Run-in-background dialog ────────────────────────────────────────────────────
     val backgroundRunOpenVar: Var[Boolean] = Var(false)
     val backgroundRunSubmittingVar: Var[Boolean] = Var(false)
@@ -3100,7 +3103,7 @@ object QueryUi {
             uploadHistory = files => uploadHistory(files),
             atTime = stateVar.signal.map(_.atTime),
             canSetTime = stateVar.signal.map(_.runningQueryCount == 0),
-            setTime = setAtTime(_),
+            openAtTimeModal = () => atTimeModalOpenVar.set(true),
             toggleLayout = toggleNetworkLayout,
             recenterViewport = recenterNetworkViewport,
           ),
@@ -3263,6 +3266,13 @@ object QueryUi {
           edgeCount = stateVar.signal.map(_.foundEdgesCount).distinct,
           fadeMs = CardDefaults.IndicatorFadeMs,
         ),
+        // "as of 3 hours ago" in the top-left corner while a query time is pinned; opens the
+        // query-time dialog like the toolbar's clock.
+        AtTimeTag(
+          atTime = stateVar.signal.map(_.atTime).distinct,
+          canSetTime = stateVar.signal.map(_.runningQueryCount == 0).distinct,
+          openAtTimeModal = () => atTimeModalOpenVar.set(true),
+        ),
         // ContextMenu
         child <-- contextMenuVar.signal.map {
           case Some(ContextMenuState(x, y, model)) => ContextMenu.fromModel(x, y, model)
@@ -3292,6 +3302,14 @@ object QueryUi {
         onSubmit = body => runInBackground(body),
         submitting = backgroundRunSubmittingVar.signal,
         error = backgroundRunErrorVar.signal,
+      ),
+      // Query-time dialog (toolbar → clock button): live now, or pin every query to one
+      // instant. Same viewport-level fixed overlay as the tap modal above.
+      AtTimeModal(
+        openSignal = atTimeModalOpenVar.signal,
+        setOpen = atTimeModalOpenVar.writer,
+        atTime = stateVar.signal.map(_.atTime),
+        onSet = setAtTime(_),
       ),
       // Explorer Settings modal (junk drawer → Configure → "Explorer settings…"): the
       // tap-query / sample-query / quick-query / node-appearance catalogs, overlaying the
