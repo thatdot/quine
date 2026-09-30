@@ -157,7 +157,7 @@ object Dependencies {
   val okhttpOverrideV = "5.3.2"
 
   /** Parent: [[amazonKinesisClientV]] */
-  val opentelemetryOverrideV = "1.62.0"
+  val opentelemetryOverrideV = "1.66.0"
 
   /** Parent: [[cassandraClientV]] */
   val hdrhistographOverrideV = "2.2.2"
