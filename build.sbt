@@ -52,7 +52,7 @@ lazy val `quine-core`: Project = project
       // Testing
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
-      "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
+      "org.scalatestplus" %% "scalacheck-1-20" % scalaTestScalaCheckV % Test,
       "org.apache.pekko" %% "pekko-testkit" % pekkoTestkitV % Test,
       "ch.qos.logback" % "logback-classic" % logbackV % Test,
       "commons-io" % "commons-io" % commonsIoV % Test,
@@ -305,7 +305,7 @@ lazy val `api`: Project = project
       "io.circe" %% "circe-yaml" % circeYamlV,
       "com.thatdot" %% "quine-security" % quineCommonV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
-      "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
+      "org.scalatestplus" %% "scalacheck-1-20" % scalaTestScalaCheckV % Test,
     ),
   )
 
@@ -544,7 +544,7 @@ lazy val `quine`: Project = project
       "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test,
       "org.endpoints4s" %% "pekko-http-server" % endpoints4sHttpServerV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
-      "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
+      "org.scalatestplus" %% "scalacheck-1-20" % scalaTestScalaCheckV % Test,
       // WebJars (javascript dependencies masquerading as JARs)
       "org.webjars" % "ionicons" % ioniconsV,
       "org.webjars" % "jquery" % jqueryV,
