@@ -29,7 +29,7 @@ object Dependencies {
   val commonsTextV = "1.15.0"
   val commonsIoV = "2.21.0"
   val cronUtilsV = "9.2.1"
-  val dropwizardMetricsV = "4.2.38"
+  val dropwizardMetricsV = "4.2.40"
   val embeddedCassandraV = "5.0.3"
   val endpoints4sDefaultV = "1.13.0"
   val endpoints4sCirceV = "2.7.0"
@@ -46,7 +46,7 @@ object Dependencies {
   // On update, keep lz4JavaV in sync
   val kafkaClientsV = "3.9.2"
   val kindProjectorV = "0.13.4"
-  val logbackV = "1.6.4"
+  val logbackV = "1.6.5"
   val laminarV = "17.2.1"
   val waypointV = "10.0.0-M7"
   // Keep in sync with the version kafka-clients (kafkaClientsV) depends on
