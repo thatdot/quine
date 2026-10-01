@@ -39,7 +39,7 @@ object Dependencies {
   val flatbuffersV = "25.2.10"
   val graalV = "25.0.2"
   val ioniconsV = "2.0.1"
-  val jnrPosixV = "3.1.22"
+  val jnrPosixV = "3.2.4"
   val jqueryV = "3.6.3"
   val jwtV = "0.13.0"
   val jwtScalaV = "11.0.4"
@@ -93,7 +93,7 @@ object Dependencies {
   val rocksdbV = "10.10.1.1"
   val scaffeineV = "5.3.0"
   val scalaCheckV = "1.20.0"
-  val scalaJavaTimeV = "2.6.0"
+  val scalaJavaTimeV = "2.7.0"
   val scalaLoggingV = "3.9.6"
   val scalaParserCombinatorsV = "2.4.0"
   val scalaTestScalaCheckV = "3.2.20.0"
@@ -102,7 +102,7 @@ object Dependencies {
   val scalajsMacroTaskExecutorV = "1.1.1"
   val scoptV = "4.1.0"
   val shapelessV = "2.3.13"
-  val ayzaV = "10.0.6"
+  val ayzaV = "10.1.0"
   // On update, check whether com.datastax.oss exclusion in quine-cassandra-persistor is removable
   val sigv4AuthCassandraPluginV = "4.0.9"
   // On update, check whether any NPM Override Versions (below) are removable
