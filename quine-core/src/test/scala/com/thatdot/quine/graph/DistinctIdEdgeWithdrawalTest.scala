@@ -505,14 +505,12 @@ class DistinctIdEdgeWithdrawalTest extends AnyFunSuite with Matchers {
       // tell the peer is the `CancelDomainNodeSubscription` the root sends, and
       // `NodeActorMailbox.shouldIgnoreWhenSleeping` discards that when the peer is not awake.
       //
-      // `literalOps.removeEdge` writes the reciprocal half-edge too, which *does* wake the peer -- but by then
-      // the cancellation has already been dropped, and nothing on the peer's side removes a subscriber in
-      // response to its own edge event. So a peer that was asleep at that instant keeps the record.
+      // `literalOps.removeEdge` sends both half-edge removals at once, and the peer's own wakes it, so whether
+      // the root's cancellation finds the peer awake is a race. The two halves are removed here one at a time,
+      // the root's first, which sends the cancellation while the peer is still asleep. Nothing on the peer's
+      // side removes a subscriber in response to its own edge event, so it keeps the record.
       //
-      // Nothing wrong is reported: the root refuses any answer for an entry it no longer holds, and journals
-      // nothing for the refusal. What it costs is a subscriber record that outlives its use, and -- because a
-      // subscription result is not a message the mailbox drops -- a spurious wake of the root every time the
-      // peer's answer moves. Both last until the query is cancelled.
+      // Nothing wrong is reported: the root refuses any answer for an entry it no longer holds.
       val shared = new Shared
       val g = new Graph(s"withdraw-peer-asleep-$label", shared, config)
       try {
@@ -527,17 +525,21 @@ class DistinctIdEdgeWithdrawalTest extends AnyFunSuite with Matchers {
         g.awaiting("the peer has the root as a subscriber")(g.subscribersOf(peerA).contains((regionDgn, root)))
 
         g.sleepOnly(peerA)
-        Await.result(ops.removeEdge(root, peerA, "to"), awaitTimeout)
+        Await.result(ops.removeHalfEdge(root, peerA, "to", EdgeDirection.Outgoing), awaitTimeout)
         g.awaiting("the root withdrew its side")(g.heldBy(root).isEmpty)
+        Await.result(ops.removeHalfEdge(peerA, root, "to", EdgeDirection.Incoming), awaitTimeout)
 
         withClue("the peer never saw the cancellation, so it still lists the root: ")(
           g.subscribersOf(peerA) should contain((regionDgn, root)),
         )
-        // The consequence that is not a wrong answer: the peer still reports to a root that refuses to record it.
+
+        // `setProp` returns only after the peer has sent the root its new answer, and the read below queues
+        // behind that in the root's mailbox, so it sees the report already handled.
         Await.result(ops.removeProp(peerA, "region"), awaitTimeout)
         Await.result(ops.setProp(peerA, "region", QuineValue.Str("a2")), awaitTimeout)
-        withClue("and the root records nothing from it, so no result follows: ")(g.heldBy(root) shouldBe empty)
-        withClue("the query matched once, when the edge was there, and not again: ")(results.positiveMatches shouldBe 1)
+        withClue("the root no longer holds the entry, so it refuses the peer's report: ")(
+          g.heldBy(root) shouldBe empty,
+        )
       } finally g.shutdown()
     }
 
