@@ -25,6 +25,10 @@ import com.thatdot.quine.openapi.UiHintsSource
   *   - `descriptions` : per-field help text, overriding the schema's `description`. Use this to
   *                      keep the form terse while the API reference (the schema) stays thorough.
   *   - `placeholders` : per-field greyed placeholder text (e.g. `168h` on a duration field).
+  *   - `defaults`     : UI-only default values seeded into form state where the API schema
+  *                      declares none. Keyed on a discriminated variant (e.g. `NumberIterator`),
+  *                      the create form seeds these when that variant is chosen — used to
+  *                      pre-fill a sibling config field (`maxPerSecond`) the API leaves unset.
   *
   * Drift between these hints and the current spec is reported as a browser
   * console warning at startup (see [[UiHintsSource.checkDrift]]).
@@ -33,6 +37,9 @@ object FormUiHints {
 
   private val rawJson: String =
     """{
+      |  "NumberIterator": {
+      |    "defaults": { "maxPerSecond": 10 }
+      |  },
       |  "StandingQueryDefinition": {
       |    "order": ["name", "pattern", "outputs", "includeCancellations", "inputBufferSize"],
       |    "promote": ["outputs"]

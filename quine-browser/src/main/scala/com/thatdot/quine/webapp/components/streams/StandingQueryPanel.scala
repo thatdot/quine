@@ -56,7 +56,8 @@ object StandingQueryPanel {
         CreateStandingQueryForm(
           spec = client.spec,
           createSchema = client.sqCreateSchema,
-          onSubmit = body => client.createStandingQuery(body),
+          queryParams = client.sqCreateQueryParams,
+          onSubmit = (body, queryParams) => client.createStandingQuery(body, queryParams),
           onComplete = onComplete,
           onCancel = onCancel,
           editorConfig = editorConfig,

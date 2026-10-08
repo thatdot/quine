@@ -25,7 +25,8 @@ object CreateStandingQueryForm {
   def apply(
     spec: ParsedSpec,
     createSchema: Option[SchemaNode],
-    onSubmit: Json => Future[Either[String, Json]],
+    queryParams: List[QueryParam],
+    onSubmit: (Json, Map[String, String]) => Future[Either[String, Json]],
     onComplete: () => Unit,
     onCancel: () => Unit,
     editorConfig: EmbeddedEditorConfig,
@@ -35,9 +36,13 @@ object CreateStandingQueryForm {
     val submit = new SubmitState
 
     // Strip `name` from the schema — the form collects the name via a dedicated
-    // input so users don't see the field twice. Merged back on submit.
+    // input so users don't see the field twice. Merged back on submit. The
+    // endpoint's HTTP query parameters (e.g. propagateTo, wakeUpParallelism) are
+    // folded in as optional properties so they render inside "More Options"; they
+    // are split back out of the request body and sent as query params on submit.
     val renderedSchema = createSchema
       .map(s => s.copy(properties = s.properties.map(_.removed("name"))))
+      .map(s => QueryParamFields.mergeInto(s, queryParams))
 
     div(
       cls := "p-2",
@@ -81,8 +86,12 @@ object CreateStandingQueryForm {
           state = submit,
           canSubmit = nameVar.signal.map(_.trim.nonEmpty),
         ) { () =>
-          val body = formState.now().deepMerge(Json.obj("name" -> Json.fromString(nameVar.now())))
-          submit.run(onSubmit(body))(_ => onComplete())
+          val assembled = formState.now()
+          val queryParamValues = QueryParamFields.extract(assembled, queryParams)
+          val body = QueryParamFields
+            .stripFrom(assembled, queryParams)
+            .deepMerge(Json.obj("name" -> Json.fromString(nameVar.now())))
+          submit.run(onSubmit(body, queryParamValues))(_ => onComplete())
         },
       ),
     )

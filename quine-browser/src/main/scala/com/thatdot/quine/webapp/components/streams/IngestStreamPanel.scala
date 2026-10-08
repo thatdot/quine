@@ -42,8 +42,9 @@ object IngestStreamPanel {
         CreateIngestForm(
           spec = client.spec,
           createSchema = client.ingestCreateSchema,
+          queryParams = client.ingestCreateQueryParams,
           memberIndices = memberIndices,
-          onSubmit = (body, memberIdx) => client.createIngest(body, memberIdx),
+          onSubmit = (body, memberIdx, queryParams) => client.createIngest(body, memberIdx, queryParams),
           onComplete = onComplete,
           onCancel = onCancel,
           editorConfig = editorConfig,

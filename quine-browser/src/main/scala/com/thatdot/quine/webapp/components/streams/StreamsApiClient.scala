@@ -4,7 +4,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import io.circe.Json
 
-import com.thatdot.quine.openapi.{OpenApiParser, ParsedSpec, SchemaNode}
+import com.thatdot.quine.openapi.{OpenApiParser, ParsedSpec, QueryParam, SchemaNode}
 
 /** Typed API client for the Streams page. Hides endpoint discovery, path param
   * substitution, HTTP methods, and AIP-158 page-envelope unwrapping behind
@@ -25,14 +25,24 @@ trait StreamsApiClient {
   def jobCreateSchema: Option[SchemaNode]
   def backgroundQueryCreateSchema: Option[SchemaNode]
 
+  // HTTP query parameters the create endpoints accept, so the create forms can surface them
+  // (e.g. a standing query's `propagateTo` / `wakeUpParallelism`). Ingest has none, but the
+  // accessor exists for parity so its form is wired the same way.
+  def ingestCreateQueryParams: List[QueryParam]
+  def sqCreateQueryParams: List[QueryParam]
+
   // Ingest operations (reads live on the DataService; only mutations go through here)
-  def createIngest(body: Json, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]]
+  def createIngest(body: Json, memberIdx: Option[Int], queryParams: Map[String, String])(implicit
+    ec: ExecutionContext,
+  ): Future[Either[String, Json]]
   def deleteIngest(name: String, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def pauseIngest(name: String, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def resumeIngest(name: String, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]]
 
   // Standing query operations (reads live on the DataService; only mutations go through here)
-  def createStandingQuery(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]]
+  def createStandingQuery(body: Json, queryParams: Map[String, String])(implicit
+    ec: ExecutionContext,
+  ): Future[Either[String, Json]]
   def deleteStandingQuery(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def addOutput(sqName: String, body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]]
   def removeOutput(sqName: String, outputName: String)(implicit ec: ExecutionContext): Future[Either[String, Json]]
@@ -80,8 +90,15 @@ object StreamsApiClient {
         .flatMap(_.requestBodySchema)
         .map(OpenApiParser.resolveNode(_, spec.schemas))
 
-    def createIngest(body: Json, memberIdx: Option[Int])(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      callWithBody(StreamOp.CreateIngest, body, memberHeader(memberIdx))
+    def ingestCreateQueryParams: List[QueryParam] =
+      registry.findEndpoint(StreamOp.CreateIngest).map(_.queryParams).getOrElse(Nil)
+    def sqCreateQueryParams: List[QueryParam] =
+      registry.findEndpoint(StreamOp.CreateStandingQuery).map(_.queryParams).getOrElse(Nil)
+
+    def createIngest(body: Json, memberIdx: Option[Int], queryParams: Map[String, String])(implicit
+      ec: ExecutionContext,
+    ): Future[Either[String, Json]] =
+      callWithBody(StreamOp.CreateIngest, body, memberHeader(memberIdx), queryParams)
 
     /** A specific position routes the mutation to that one cluster member via the
       * `Quine-Member-Idx` header; `None` sends no header.
@@ -104,8 +121,10 @@ object StreamsApiClient {
     ): Future[Either[String, Json]] =
       registry.executeAction(StreamOp.ResumeIngest, name, defaultPathParams, memberHeader(memberIdx))
 
-    def createStandingQuery(body: Json)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
-      callWithBody(StreamOp.CreateStandingQuery, body)
+    def createStandingQuery(body: Json, queryParams: Map[String, String])(implicit
+      ec: ExecutionContext,
+    ): Future[Either[String, Json]] =
+      callWithBody(StreamOp.CreateStandingQuery, body, queryParams = queryParams)
 
     def deleteStandingQuery(name: String)(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.executeAction(StreamOp.DeleteStandingQuery, name, defaultPathParams, Map.empty)
@@ -142,10 +161,18 @@ object StreamsApiClient {
       op: StreamOp,
       body: Json,
       headers: Map[String, String] = Map.empty,
+      queryParams: Map[String, String] = Map.empty,
     )(implicit ec: ExecutionContext): Future[Either[String, Json]] =
       registry.findEndpoint(op) match {
         case Some(ep) =>
-          HttpClient.call(ep, pathParams = defaultPathParams, body = Some(body), headers = headers, baseUrl = baseUrl)
+          HttpClient.call(
+            ep,
+            pathParams = defaultPathParams,
+            queryParams = queryParams,
+            body = Some(body),
+            headers = headers,
+            baseUrl = baseUrl,
+          )
         case None => Future.successful(Left(s"Endpoint for $op not found in API spec."))
       }
   }

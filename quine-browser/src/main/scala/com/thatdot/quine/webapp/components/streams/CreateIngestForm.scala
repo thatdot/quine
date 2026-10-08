@@ -21,14 +21,19 @@ object CreateIngestForm {
   def apply(
     spec: ParsedSpec,
     createSchema: Option[SchemaNode],
+    queryParams: List[QueryParam],
     memberIndices: Signal[Seq[Int]],
-    onSubmit: (Json, Option[Int]) => Future[Either[String, Json]],
+    onSubmit: (Json, Option[Int], Map[String, String]) => Future[Either[String, Json]],
     onComplete: () => Unit,
     onCancel: () => Unit,
     editorConfig: EmbeddedEditorConfig,
   ): HtmlElement = {
     val currentStep = Var(StepSource)
     val formState = Var(Json.obj())
+    // Fold the endpoint's HTTP query parameters into the request schema as optional properties, so
+    // they render inside the form's existing "Advanced Configuration" section and are split back out
+    // of the body on submit. Ingest create has none today; this is wired for parity with the SQ form.
+    val schema = createSchema.map(s => QueryParamFields.mergeInto(s, queryParams))
     val nameVar = Var("")
     // Which cluster member should run the new ingest. None until members are known
     // (single-node deployments never populate, so no selector is shown).
@@ -53,9 +58,9 @@ object CreateIngestForm {
       // Step content
       child <-- currentStep.signal.map {
         case StepSource =>
-          renderSourceStep(formState, createSchema, spec, currentStep)
+          renderSourceStep(formState, schema, spec, currentStep)
         case StepConfig =>
-          renderConfigStep(nameVar, formState, createSchema, spec, memberIndices, selectedMember, editorConfig)
+          renderConfigStep(nameVar, formState, schema, spec, memberIndices, selectedMember, editorConfig)
         case _ => div()
       },
       ErrorAlert(submit.error.signal),
@@ -75,8 +80,8 @@ object CreateIngestForm {
               "Back",
               onClick --> { _ =>
                 // Clear source type selection and go back to Step 1
-                createSchema.foreach { schema =>
-                  findSourceUnion(schema, spec).foreach { union =>
+                schema.foreach { s =>
+                  findSourceUnion(s, spec).foreach { union =>
                     val discPath = union.path :+ union.propertyName
                     formState.update(SchemaFormState.removeAt(_, discPath))
                   }
@@ -94,8 +99,12 @@ object CreateIngestForm {
               state = submit,
               canSubmit = nameVar.signal.map(_.trim.nonEmpty),
             ) { () =>
-              val body = formState.now().deepMerge(Json.obj("name" -> Json.fromString(nameVar.now())))
-              submit.run(onSubmit(body, selectedMember.now()))(_ => onComplete())
+              val assembled = formState.now()
+              val queryParamValues = QueryParamFields.extract(assembled, queryParams)
+              val body = QueryParamFields
+                .stripFrom(assembled, queryParams)
+                .deepMerge(Json.obj("name" -> Json.fromString(nameVar.now())))
+              submit.run(onSubmit(body, selectedMember.now(), queryParamValues))(_ => onComplete())
             }
           case _ => emptyNode
         },
@@ -166,7 +175,7 @@ object CreateIngestForm {
         case Some(schema) =>
           findSourceUnion(schema, spec) match {
             case Some(union) =>
-              renderSourceTypeSelector(union, formState, currentStep)
+              renderSourceTypeSelector(union, formState, spec, currentStep)
             case None =>
               div(cls := "text-body-secondary", "Select a source type (schema has no discriminator)")
           }
@@ -178,6 +187,7 @@ object CreateIngestForm {
   private def renderSourceTypeSelector(
     union: SourceUnion,
     formState: Var[Json],
+    spec: ParsedSpec,
     currentStep: Var[Int],
   ): HtmlElement =
     div(
@@ -198,6 +208,7 @@ object CreateIngestForm {
               onClick --> { _ =>
                 val resetUnion = Json.obj(union.propertyName -> Json.fromString(discValue))
                 formState.update(SchemaFormState.setAt(_, union.path, resetUnion))
+                applyVariantDefaults(union, discValue, spec, formState)
                 currentStep.set(StepConfig)
               },
               div(
@@ -220,6 +231,28 @@ object CreateIngestForm {
         },
       ),
     )
+
+  /** Seed the UI-only default values declared for the chosen source variant in the form UI hints
+    * (`defaults`, keyed by discriminator value), into top-level form state. This pre-fills config
+    * fields the API deliberately leaves unset — e.g. a Number Iterator seeds a `maxPerSecond` rate
+    * so it doesn't run unbounded, while the API keeps `maxPerSecond` empty for every other source.
+    *
+    * Any default declared by any sibling variant is cleared first, so switching source types never
+    * leaves a previous variant's seed behind.
+    */
+  private def applyVariantDefaults(
+    union: SourceUnion,
+    selected: String,
+    spec: ParsedSpec,
+    formState: Var[Json],
+  ): Unit = {
+    val allDefaultKeys =
+      union.variants.flatMap { case (discValue, _) => spec.hints.forSchema(discValue).defaults.keys }.toSet
+    allDefaultKeys.foreach(field => formState.update(SchemaFormState.removeAt(_, List(field))))
+    spec.hints.forSchema(selected).defaults.foreach { case (field, value) =>
+      formState.update(SchemaFormState.setAt(_, List(field), value))
+    }
+  }
 
   /** A field to render, with enough context to place it in the correct form state path
     * and determine whether it belongs in the primary or advanced section.

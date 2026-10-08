@@ -34,6 +34,12 @@ final case class UiHints(
   // duration field. Lives in the overlay rather than the schema so the form's hint
   // is independent of the API reference.
   placeholders: Map[String, String] = Map.empty,
+  // Form-only default values to seed into form state, overriding the fact that the
+  // API schema declares no default. Used for values that should be pre-filled in the
+  // UI but left unset in the API — e.g. a discriminated variant keyed here can seed a
+  // sibling config field when that variant is chosen. Because a default may target a
+  // field outside this schema's own properties, its keys are not drift-checked.
+  defaults: Map[String, Json] = Map.empty,
 )
 
 object UiHints {
@@ -86,6 +92,7 @@ object UiHintsSource {
         labels = c.downField("labels").as[Map[String, String]].getOrElse(Map.empty),
         descriptions = c.downField("descriptions").as[Map[String, String]].getOrElse(Map.empty),
         placeholders = c.downField("placeholders").as[Map[String, String]].getOrElse(Map.empty),
+        defaults = c.downField("defaults").as[Map[String, Json]].getOrElse(Map.empty),
       ),
     )
   }
@@ -104,6 +111,8 @@ object UiHintsSource {
           warn(s"UI hints: schema '$schemaName' does not exist in the spec.")
         case Some(schema) =>
           val specFields = schema.properties.map(_.keySet).getOrElse(Set.empty)
+          // `defaults` is intentionally omitted: it may seed a field outside this schema's own
+          // properties (e.g. a variant seeding a sibling config field), so it isn't validated here.
           val referenced = hints.order.toSet ++ hints.promote ++ hints.hide ++
             hints.labels.keySet ++ hints.descriptions.keySet ++ hints.placeholders.keySet
           val unknown = referenced -- specFields

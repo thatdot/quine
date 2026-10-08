@@ -31,16 +31,18 @@ object PropagateTo {
     Schema.string.validate(Validator.enumeration(wireNames.values.toList, v => Some(toWire(v))))
 
   implicit val plainCodec: Codec[String, PropagateTo, CodecFormat.TextPlain] =
-    Codec.string.mapDecode { s =>
-      wireNames.get(s) match {
-        case Some(v) => DecodeResult.Value(v)
-        case scala.None =>
-          DecodeResult.Error(
-            s,
-            new IllegalArgumentException(
-              s"Unknown propagateTo value: $s. Expected one of: ${wireNames.keys.mkString(", ")}",
-            ),
-          )
-      }
-    }(toWire(_))
+    Codec.string
+      .mapDecode { s =>
+        wireNames.get(s) match {
+          case Some(v) => DecodeResult.Value(v)
+          case scala.None =>
+            DecodeResult.Error(
+              s,
+              new IllegalArgumentException(
+                s"Unknown propagateTo value: $s. Expected one of: ${wireNames.keys.mkString(", ")}",
+              ),
+            )
+        }
+      }(toWire(_))
+      .schema(schema)
 }
