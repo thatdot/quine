@@ -23,7 +23,7 @@ object Dependencies {
   // On update check whether hdrhistographOverrideV is removable
   val cassandraClientV = "4.19.3"
   val catsV = "2.13.0"
-  val catsEffectV = "3.7.0"
+  val catsEffectV = "3.7.1"
   val circeYamlV = "0.16.1"
   val commonsCodecV = "1.22.1"
   val commonsTextV = "1.15.0"
@@ -95,12 +95,12 @@ object Dependencies {
   val scalaCheckV = "1.20.0"
   val scalaJavaTimeV = "2.7.0"
   val scalaLoggingV = "3.9.6"
-  val scalaParserCombinatorsV = "2.4.0"
+  val scalaParserCombinatorsV = "2.5.0"
   val scalaTestScalaCheckV = "3.2.20.0"
   val scalajsDomV = "2.8.1"
   val scalaTestV = "3.2.20"
   val scalajsMacroTaskExecutorV = "1.1.1"
-  val scoptV = "4.1.0"
+  val scoptV = "4.2.0"
   val shapelessV = "2.3.13"
   val ayzaV = "10.1.0"
   // On update, check whether com.datastax.oss exclusion in quine-cassandra-persistor is removable
@@ -152,7 +152,7 @@ object Dependencies {
   val jacksonOverrideV = "2.22.3"
 
   /** Parent: [[amazonGlueV]] */
-  val wireOverrideV = "6.4.5"
+  val wireOverrideV = "6.4.7"
 
   val okhttpOverrideV = "5.3.2"
 
