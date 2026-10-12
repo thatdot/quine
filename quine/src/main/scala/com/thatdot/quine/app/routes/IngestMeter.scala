@@ -1,10 +1,12 @@
 package com.thatdot.quine.app.routes
 
+import java.util.concurrent.atomic.AtomicReference
+
 import com.codahale.metrics.{Meter, Metered, Timer}
 
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.metrics.HostQuineMetrics.IngestMetricComponent
+import com.thatdot.quine.graph.metrics.{HostQuineMetrics, IngestHostMetrics}
 
 /** Like [[Metered]], but maintains multiple counters relevant to ingest
   */
@@ -38,16 +40,8 @@ object IngestMetered {
       metrics.metricRegistry.meter(metrics.metricName(namespaceId, List(component, name, "count"))),
       metrics.metricRegistry.meter(metrics.metricName(namespaceId, List(component, name, "bytes"))),
       metrics,
+      metricsAreRegistered = true,
     )
-
-  private def removeMeterFor(
-    component: String,
-    namespaceId: NamespaceId,
-    name: String,
-    metrics: HostQuineMetrics,
-  ): Boolean =
-    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List(component, name, "count"))) &&
-    metrics.metricRegistry.remove(metrics.metricName(namespaceId, List(component, name, "bytes")))
 
   /** Returns an ingest meter with meters retrieved or created based on the provided ingest name
     * @see com.codahale.metrics.MetricRegistry#meter
@@ -55,11 +49,19 @@ object IngestMetered {
   def ingestMeter(namespaceId: NamespaceId, name: String, metrics: HostQuineMetrics): IngestMeter =
     meterFor(IngestMetricComponent, namespaceId, name, metrics)
 
-  /** Removes any meters used in ingest meters for the provided ingest name
-    * @see com.codahale.metrics.MetricRegistry#remove
+  /** Removes every metric registered for the provided ingest name
+    * @see [[HostQuineMetrics.removeIngestMetrics]]
     */
   def removeIngestMeter(namespaceId: NamespaceId, name: String, metrics: HostQuineMetrics): Boolean =
-    removeMeterFor(IngestMetricComponent, namespaceId, name, metrics)
+    metrics.removeIngestMetrics(namespaceId, name)
+
+  /** Returns an ingest meter whose metrics are private to the caller until it calls [[IngestMeter.register]].
+    * For the window in which an ingest's configuration is still being validated: the meter can be threaded
+    * through source construction and then abandoned, so a rejected configuration leaves nothing registered
+    * to retire. A meter abandoned this way is ordinary garbage.
+    */
+  def unregisteredIngestMeter(namespaceId: NamespaceId, name: String, metrics: HostQuineMetrics): IngestMeter =
+    IngestMeter(name, namespaceId, new Meter(), new Meter(), metrics, metricsAreRegistered = false)
 
   /** The meter for one cluster-ingest partition worker. Under [[IngestMetricComponent]], the same
     * as a member-local ingest, so `/metrics` redaction gates it on `IngestRead` like any other
@@ -71,9 +73,11 @@ object IngestMetered {
   def clusterPartitionMeter(namespaceId: NamespaceId, workerName: String, metrics: HostQuineMetrics): IngestMeter =
     meterFor(IngestMetricComponent, namespaceId, workerName, metrics)
 
-  /** @see [[clusterPartitionMeter]] */
+  /** Removes every metric registered for the provided partition worker
+    * @see [[clusterPartitionMeter]], [[HostQuineMetrics.removeIngestMetrics]]
+    */
   def removeClusterPartitionMeter(namespaceId: NamespaceId, workerName: String, metrics: HostQuineMetrics): Boolean =
-    removeMeterFor(IngestMetricComponent, namespaceId, workerName, metrics)
+    metrics.removeIngestMetrics(namespaceId, workerName)
 }
 
 final case class IngestMeter private[routes] (
@@ -82,7 +86,17 @@ final case class IngestMeter private[routes] (
   countMeter: Meter, // mutable
   bytesMeter: Meter, // mutable
   private val metrics: HostQuineMetrics,
+  /** Whether these metrics are already in the registry ([[IngestMetered.ingestMeter]]) or are held
+    * privately until [[register]] ([[IngestMetered.unregisteredIngestMeter]]).
+    */
+  private val metricsAreRegistered: Boolean,
 ) extends IngestMetered {
+
+  /** The deserialization timer, once some source has asked for one. Held rather than re-resolved so that
+    * [[register]] can publish the same instance the source is timing into.
+    */
+  private val deserializationTimer: AtomicReference[Timer] = new AtomicReference()
+
   def mark(bytes: Int): Unit = {
     countMeter.mark()
     bytesMeter.mark(bytes.toLong)
@@ -106,10 +120,29 @@ final case class IngestMeter private[routes] (
   /** Returns a timer that can be used to track deserializations.
     * CAUTION this timer has different lifecycle behavior than the other metrics in this class.
     * See [[metrics.ingestDeserializationTimer]] for more information.
-    * Note that not all ingest types use this timer.
+    * Note that not all ingest types use this timer, which is why asking for one is what brings it into
+    * existence: an ingest that never times a deserialization registers no such metric at all.
     */
   def unmanagedDeserializationTimer: Timer =
-    metrics.ingestDeserializationTimer(namespaceId, name)
+    deserializationTimer.updateAndGet {
+      case null if metricsAreRegistered => metrics.ingestDeserializationTimer(namespaceId, name)
+      case null => new Timer()
+      case existing => existing
+    }
+
+  /** Publish these metrics, making them visible to metrics reporting. Call once the ingest they belong to
+    * is known to be starting; until then an [[IngestMetered.unregisteredIngestMeter]]'s metrics are private
+    * to their creator, so abandoning it needs no cleanup. A no-op for a meter that was registered on
+    * creation. The deserialization timer takes part only if some source asked for one.
+    */
+  def register(): Unit =
+    if (!metricsAreRegistered) {
+      metrics.registerIngestMetric(namespaceId, name, IngestHostMetrics.IngestCountComponent, countMeter)
+      metrics.registerIngestMetric(namespaceId, name, IngestHostMetrics.IngestBytesComponent, bytesMeter)
+      Option(deserializationTimer.get).foreach { timer =>
+        metrics.registerIngestMetric(namespaceId, name, IngestHostMetrics.IngestDeserializationComponent, timer)
+      }
+    }
 }
 
 /** Meter that has been halted (so its rates/counts are no longer changing)

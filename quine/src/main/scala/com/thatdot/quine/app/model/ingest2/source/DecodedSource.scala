@@ -187,6 +187,11 @@ abstract class DecodedSource(val meter: IngestMeter) {
       val registry = graph.pressureGaugeRegistry
       def gaugeKey(stage: String): GaugeKey = GaugeKey("ingest", ns, name, stage)
 
+      // Resolved once per materialization, like `meter` above, rather than per record below: deleting the
+      // ingest removes this timer from the registry, and a per-record get-or-create would re-register it
+      // from records still draining.
+      val queryTimer = graph.metrics.ingestQueryTimer(intoNamespace, name)
+
       // TODO error handler should be settable from a config, e.g. DeadLetterErrorHandler
       val ingestStream =
         DecodedSource.this.stream
@@ -225,8 +230,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
                 case Left(value) =>
                   Future.successful(Left(DlqEnvelope(frame, Some(t), value.getMessage)))
                 case Right(cypherInput) =>
-                  graph.metrics
-                    .ingestQueryTimer(intoNamespace, name)
+                  queryTimer
                     .time(ingestQuery.apply(cypherInput))
                     .map(_ => Right((t, frame)))
               }
@@ -257,10 +261,11 @@ abstract class DecodedSource(val meter: IngestMeter) {
           .map(_ => token)
           .watchTermination() {
             case (((a: ShutdownSwitch, b: Future[ValveSwitch]), gaugeState: PressureGauge.State), c: Future[Done]) =>
+              val key = gaugeKey("pre-graph-write")
               // Registration is a `put`, so a rematerialization after restart replaces the
-              // previous instance's gauge state; deregistration happens on terminal
-              // termination below, outside the RestartSource wrapper.
-              registry.register(gaugeKey("pre-graph-write"), gaugeState)
+              // previous instance's gauge state.
+              registry.register(key, gaugeState)
+              c.onComplete(_ => registry.deregister(key, gaugeState))
               b.map(v => ControlSwitches(a, v, c))
           }
           .mapMaterializedValue { c =>
@@ -284,14 +289,12 @@ abstract class DecodedSource(val meter: IngestMeter) {
       }
 
       // Terminal-only hooks: attached outside the RestartSource wrapper so a restartable
-      // failure doesn't freeze metrics, close shared source clients (onTermination closes
-      // e.g. the Kinesis/SQS client, which restarts still need), or tear down gauges the
-      // restarted instance re-registered.
+      // failure doesn't freeze metrics or close shared source clients (onTermination closes
+      // e.g. the Kinesis/SQS client, which restarts still need).
       restartableSrc.watchTermination() { (mat, done) =>
         registerTerminationHooks(done)
         done.onComplete { _ =>
           onTermination()
-          registry.deregisterByPrefix("ingest", ns, name)
         }
         mat
       }

@@ -41,11 +41,11 @@ object BackpressureLevel {
   * assessment based on the recent history rather than a single point-in-time read.
   */
 class PressureGaugeRegistry {
+  import PressureGaugeRegistry.Entry
+
   private val RingSize = 5
 
-  private val gauges = new ConcurrentHashMap[GaugeKey, PressureGauge.State]()
-
-  /** Per-gauge ring buffer of recent samples (0 = flowing, 1 = backpressured, -1 = disabled).
+  /** Each [[Entry]]'s `ring` holds recent samples (0 = flowing, 1 = backpressured, -1 = disabled).
     *
     * == Threading model ==
     *
@@ -78,18 +78,18 @@ class PressureGaugeRegistry {
     * If the sampling interval were reduced to microseconds or the data were used for
     * correctness-critical decisions (rather than UI display), atomics would be warranted.
     */
-  private val ringBuffers = new ConcurrentHashMap[GaugeKey, Array[Int]]()
+  private val entries = new ConcurrentHashMap[GaugeKey, Entry]()
   private var writeIndex: Int = 0
 
-  def register(key: GaugeKey, state: PressureGauge.State): Unit = {
-    val _ = gauges.put(key, state)
-    val _ = ringBuffers.putIfAbsent(key, new Array[Int](RingSize))
-  }
+  def register(key: GaugeKey, state: PressureGauge.State): Unit =
+    entries.put(key, Entry(state, new Array[Int](RingSize))): Unit
 
-  def deregister(key: GaugeKey): Unit = {
-    val _ = gauges.remove(key)
-    val _ = ringBuffers.remove(key)
-  }
+  /** Removes the gauge under `key`, but only if it is `state`. Checking the state prevents
+    * deleting the wrong gauge, which can happen if a newer stream overwrites the gauge of
+    * an older draining stream.
+    */
+  def deregister(key: GaugeKey, state: PressureGauge.State): Unit =
+    entries.computeIfPresent(key, (_, entry) => if (entry.state eq state) null else entry): Unit
 
   /** Remove the gauges for a stream and all of its hierarchical sub-streams.
     *
@@ -101,28 +101,22 @@ class PressureGaugeRegistry {
     * deregistering standing query "q" still removes every "q/..." output.
     */
   def deregisterByPrefix(pipelineType: String, namespace: String, streamName: String): Unit =
-    gauges
+    entries
       .keySet()
       .asScala
       .filter { k =>
         k.pipelineType == pipelineType && k.namespace == namespace &&
         (k.streamName == streamName || k.streamName.startsWith(streamName + "/"))
       }
-      .foreach { k =>
-        val _ = gauges.remove(k)
-        val _ = ringBuffers.remove(k)
-      }
+      .foreach(k => entries.remove(k): Unit)
 
   /** Called by the background scheduler every 500ms. Reads each gauge and writes
     * the current state into the next ring buffer slot.
     */
   private[util] def sampleAll(): Unit = {
     val idx = writeIndex % RingSize
-    gauges.forEach { (key, state) =>
-      val ring = ringBuffers.get(key)
-      if (ring != null) {
-        ring(idx) = if (state.isUnderPressure) 1 else 0
-      }
+    entries.forEach { (_, entry) =>
+      entry.ring(idx) = if (entry.state.isUnderPressure) 1 else 0
     }
     writeIndex += 1
   }
@@ -135,7 +129,7 @@ class PressureGaugeRegistry {
     * computed from the ring buffer of recent samples.
     */
   def snapshot(): Map[GaugeKey, BackpressureLevel] =
-    ringBuffers.asScala.map { case (key, ring) =>
+    entries.asScala.map { case (key, Entry(_, ring)) =>
       var backpressuredCount = 0
       var i = 0
       while (i < RingSize) {
@@ -145,4 +139,10 @@ class PressureGaugeRegistry {
       val level = BackpressureLevel.fromCount(backpressuredCount)
       key -> level
     }.toMap
+}
+
+object PressureGaugeRegistry {
+
+  /** Just the pair of things keyed by a [[GaugeKey]] in [[PressureGaugeRegistry.entries]]. */
+  final private case class Entry(state: PressureGauge.State, ring: Array[Int])
 }

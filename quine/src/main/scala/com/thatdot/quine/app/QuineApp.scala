@@ -50,15 +50,14 @@ import com.thatdot.quine.graph.StandingQueryPattern.{
   QuinePatternQueryPattern,
 }
 import com.thatdot.quine.graph.cypher.quinepattern.{OutputTarget => V2OutputTarget, QueryPlanner, RuntimeMode}
-import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.quinepattern.LoadQuery
 import com.thatdot.quine.graph.{
   GraphService,
   MemberIdx,
   NamespaceId,
   PatternOrigin,
+  RunningStandingQueryStats,
   StandingQueryId,
-  StandingQueryInfo,
   StandingQueryResult,
   defaultNamespaceId,
 }
@@ -514,14 +513,10 @@ final class QuineApp(
         graph.pressureGaugeRegistry.deregisterByPrefix("sq-output", inNamespace.name, queryName)
 
         // Map to return type
-        cancelledSq.map { case (internalSq, startTime, bufferSize) =>
+        cancelledSq.map { cancelled =>
           makeRegisteredStandingQueryV2(
-            internal = internalSq,
-            inNamespace = inNamespace,
+            sq = cancelled,
             outputs = v2Outputs.toSeq,
-            startTime = startTime,
-            bufferSize = bufferSize,
-            metrics = graph.metrics,
           )
         }(graph.system.dispatcher)
       }
@@ -550,14 +545,10 @@ final class QuineApp(
         removeOutputs(inNamespace, queryName)
 
         // Map to return type
-        cancelledSq.map { case (internalSq, startTime, bufferSize) =>
+        cancelledSq.map { cancelled =>
           makeRegisteredStandingQuery(
-            internal = internalSq,
-            inNamespace = inNamespace,
+            sq = cancelled,
             outputs = v1Outputs,
-            startTime = startTime,
-            bufferSize = bufferSize,
-            metrics = graph.metrics,
           )
         }(graph.system.dispatcher)
       }
@@ -740,16 +731,12 @@ final class QuineApp(
                   },
                 )
               })
-            (internalSq, startTime, bufferSize) <- graph
+            runningSq <- graph
               .standingQueries(inNamespace)
               .flatMap(_.listStandingQueries.get(sqId))
           } yield makeRegisteredStandingQueryV2(
-            internal = internalSq,
-            inNamespace = inNamespace,
+            sq = runningSq,
             outputs = outputs.values.map(_.definition).toSeq,
-            startTime = startTime,
-            bufferSize = bufferSize,
-            metrics = graph.metrics,
           )
         Future.successful(matchingInfo.toList)
       }
@@ -782,16 +769,12 @@ final class QuineApp(
         }
         (sqId, outputs) <- outputTargets.get(inNamespace).flatMap(_.get(queryName))
         v1Outputs = outputs.collect { case (name, target: OutputTarget.V1) => name -> target.definition }
-        (internalSq, startTime, bufferSize) <- graph
+        runningSq <- graph
           .standingQueries(inNamespace)
           .flatMap(_.listStandingQueries.get(sqId))
       } yield makeRegisteredStandingQuery(
-        internalSq,
-        inNamespace,
+        runningSq,
         v1Outputs,
-        startTime,
-        bufferSize,
-        graph.metrics,
       )
       Future.successful(matchingInfo.toList)
     }
@@ -939,7 +922,7 @@ final class QuineApp(
 
       blocking(ingestStreamsLock.synchronized {
 
-        val meter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
+        val meter = IngestMetered.unregisteredIngestMeter(intoNamespace, name, graph.metrics)
         val metrics = IngestMetrics(Instant.now, None, meter)
 
         val validatedSrc = createV2IngestSource(
@@ -982,7 +965,7 @@ final class QuineApp(
   )(implicit logConfig: LogConfig): ValidatedNel[BaseError, Unit] =
     invalidIfNoNamespace(intoNamespace) {
       blocking(ingestStreamsLock.synchronized {
-        val meter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
+        val meter = IngestMetered.unregisteredIngestMeter(intoNamespace, name, graph.metrics)
         val metrics = IngestMetrics(Instant.now, None, meter)
 
         val validatedSrc = createV2IngestSource(
@@ -992,7 +975,7 @@ final class QuineApp(
           previousStatus = None,
           shouldResumeRestoredIngests = false,
           metrics = metrics,
-          meter = meter,
+          unregisteredMeter = meter,
           graph = graph,
         )(protobufSchemaCache, avroSchemaCache, logConfig)
 
@@ -1026,7 +1009,7 @@ final class QuineApp(
     invalidIfNoNamespace(intoNamespace) {
       blocking(ingestStreamsLock.synchronized {
 
-        val meter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
+        val meter = IngestMetered.unregisteredIngestMeter(intoNamespace, name, graph.metrics)
         val metrics = IngestMetrics(Instant.now, None, meter)
 
         val validatedSrc = createV2IngestSource(
@@ -1771,20 +1754,14 @@ object QuineApp {
   /** Aggregate Quine SQ outputs and Quine standing query into a user-facing SQ
     *
     * @note this includes only local information/metrics!
-    * @param internal   Quine representation of the SQ
-    * @param outputs    SQ outputs registered on the query
-    * @param startTime  when the query was started (or re-started)
-    * @param bufferSize number of elements buffered in the SQ output queue
-    * @param metrics    Quine metrics object
+    * @param sq      the SQ and this host's measurements of it
+    * @param outputs SQ outputs registered on the query
     */
   private def makeRegisteredStandingQuery(
-    internal: StandingQueryInfo,
-    inNamespace: NamespaceId,
+    sq: RunningStandingQueryStats,
     outputs: Map[String, V1.StandingQueryResultOutputUserDef],
-    startTime: Instant,
-    bufferSize: Int,
-    metrics: HostQuineMetrics,
   ): V1.RegisteredStandingQuery = {
+    val internal = sq.query
     val mode = internal.queryPattern match {
       case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
         V1.StandingQueryPattern.StandingQueryMode.DistinctId
@@ -1800,8 +1777,7 @@ object QuineApp {
         None
     }
 
-    val meter = metrics.standingQueryResultMeter(inNamespace, internal.name)
-    val outputHashCode = metrics.standingQueryResultHashCode(internal.id)
+    val meter = sq.resultRates
 
     V1.RegisteredStandingQuery(
       internal.name,
@@ -1819,10 +1795,10 @@ object QuineApp {
             fifteenMinute = meter.getFifteenMinuteRate,
             overall = meter.getMeanRate,
           ),
-          startTime,
-          MILLIS.between(startTime, Instant.now()),
-          bufferSize,
-          outputHashCode.sum.toString,
+          sq.startTime,
+          MILLIS.between(sq.startTime, Instant.now()),
+          sq.bufferSize,
+          sq.outputHashCode.toString,
         ),
       ),
     )
@@ -1831,20 +1807,14 @@ object QuineApp {
   /** Aggregate Quine SQ outputs and Quine standing query into a user-facing SQ, V2
     *
     * @note this includes only local information/metrics!
-    * @param internal   Quine representation of the SQ
-    * @param outputs    SQ outputs registered on the query
-    * @param startTime  when the query was started (or re-started)
-    * @param bufferSize number of elements buffered in the SQ output queue
-    * @param metrics    Quine metrics object
+    * @param sq      the SQ and this host's measurements of it
+    * @param outputs SQ outputs registered on the query
     */
   private def makeRegisteredStandingQueryV2(
-    internal: StandingQueryInfo,
-    inNamespace: NamespaceId,
+    sq: RunningStandingQueryStats,
     outputs: Seq[V2ApiStanding.StandingQueryResultWorkflow],
-    startTime: Instant,
-    bufferSize: Int,
-    metrics: HostQuineMetrics,
   ): V2ApiStanding.StandingQuery.RegisteredStandingQuery = {
+    val internal = sq.query
     // TODO Make a decision here about return type;
     //  - should callers manage getting this to a "data model" representation?
     //  - should this simply return the "data model" representation?
@@ -1868,8 +1838,7 @@ object QuineApp {
         None
     }
 
-    val meter = metrics.standingQueryResultMeter(inNamespace, internal.name)
-    val outputHashCode = metrics.standingQueryResultHashCode(internal.id)
+    val meter = sq.resultRates
 
     V2ApiStanding.StandingQuery.RegisteredStandingQuery(
       name = Api2.ResourceName.unsafeFromString(internal.name),
@@ -1887,10 +1856,10 @@ object QuineApp {
             fifteenMinute = meter.getFifteenMinuteRate,
             overall = meter.getMeanRate,
           ),
-          startTime = startTime,
-          totalRuntime = MILLIS.between(startTime, Instant.now()).millis,
-          bufferSize = bufferSize,
-          outputHashCode = outputHashCode.sum,
+          startTime = sq.startTime,
+          totalRuntime = MILLIS.between(sq.startTime, Instant.now()).millis,
+          bufferSize = sq.bufferSize,
+          outputHashCode = sq.outputHashCode,
         ),
       ),
     )

@@ -247,19 +247,19 @@ object ApplicationApiMethods {
       val threshold = sqInfo.queueBackpressureThreshold
       val maxSize = sqInfo.queueMaxSize
       val bufferCount = runningSq.bufferCount
-      val consumptionMeter = graph.metrics.standingQueryConsumptionMeter(nsId, sqInfo.name)
+      val sqMetrics = runningSq.metrics
       val queue = SqQueue(
         bufferCount = bufferCount,
         backpressureThreshold = threshold,
         maxSize = maxSize,
         thresholdRatio = if (threshold > 0) math.min(bufferCount.toDouble / threshold, 1.0) else 0.0,
         capacityRatio = if (maxSize > 0) math.min(bufferCount.toDouble / maxSize, 1.0) else 0.0,
-        totalProduced = runningSq.resultMeter.getCount,
-        totalCancellations = runningSq.cancellationMeter.getCount,
-        totalDropped = runningSq.droppedCounter.getCount,
-        totalConsumed = consumptionMeter.getCount,
-        productionRate = runningSq.resultMeter.getOneMinuteRate,
-        consumptionRate = consumptionMeter.getOneMinuteRate,
+        totalProduced = sqMetrics.resultMeter.getCount,
+        totalCancellations = sqMetrics.cancellationMeter.getCount,
+        totalDropped = sqMetrics.droppedCounter.getCount,
+        totalConsumed = sqMetrics.consumptionMeter.getCount,
+        productionRate = sqMetrics.resultMeter.getOneMinuteRate,
+        consumptionRate = sqMetrics.consumptionMeter.getOneMinuteRate,
       )
       StandingQuerySnapshot(
         name = sqInfo.name,

@@ -23,6 +23,7 @@ import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.cypher.quinepattern.{QueryPlan, RuntimeMode}
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
+import com.thatdot.quine.graph.metrics.StandingQueryHostMetrics.StandingQueryMetrics
 import com.thatdot.quine.model.DomainGraphNodePackage
 import com.thatdot.quine.util.Log.implicits._
 
@@ -207,11 +208,16 @@ trait StandingQueryOpsGraph extends BaseGraph {
     ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
       val sqInfo =
         StandingQueryInfo(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize, shouldCalculateResultHashCode)
-      val (runningSq, killSwitches) = runStandingQuery(sqInfo, outputs)
+      val sqMetrics = metrics.unregisteredStandingQueryMetrics()
+      val (runningSq, killSwitches) = runStandingQuery(sqInfo, outputs, sqMetrics)
 
       // Atomically update index with the new query and its indexed parts
       val (nextIndex, collisions) = index.withQuery(sqId, runningSq)
       index = nextIndex
+
+      // Registered only once the query is indexed, so a failure above leaves no metrics behind.
+      // From here on, `cancelStandingQuery` is what unregisters them.
+      metrics.registerStandingQueryMetrics(namespace, name, sqMetrics)
 
       // Log any part ID collisions (matching previous behavior)
       collisions.foreach { case (partId, (existing, newPart)) =>
@@ -241,18 +247,30 @@ trait StandingQueryOpsGraph extends BaseGraph {
       * @param standingQueryId which standing query to cancel
       * @param skipPersistor whether to skip modifying durable storage
       * @return Some Future that will return the final state of the standing query, or [[None]] if the standing query
-      *         doesn't exist
+      *         doesn't exist. The query's measurements come back in that state rather than being left for the caller
+      *         to look up, since the query they describe no longer exists to be looked up.
       */
     def cancelStandingQuery(
       standingQueryId: StandingQueryId,
       skipPersistor: Boolean = false,
-    ): Option[Future[(StandingQueryInfo, Instant, Int)]] = {
+    ): Option[Future[RunningStandingQueryStats]] = {
       requireCompatibleNodeType()
       // Get the query before removing, then atomically update the index
       val currentIndex = index
       currentIndex.queries.get(standingQueryId).map { (sq: RunningStandingQuery) =>
         // Atomically remove the query and rebuild the part index
         index = currentIndex.withoutQuery(standingQueryId)
+
+        /* The single place a standing query's metrics are retired. This is the only exit a running query
+         * has -- namespace deletion and a failed output stream both arrive here -- and the query left the
+         * index just above, so whatever is not retired here is unreachable forever after.
+         *
+         * Retired now rather than once the cancellation finishes, so that a persistor which fails or never
+         * answers cannot strand them. Safe this early because the final stats reported below read this
+         * query's metric objects, which [[RunningStandingQuery]] holds, rather than looking them up by
+         * name: retiring a metric unpublishes it without disturbing the object.
+         */
+        val _ = metrics.removeStandingQueryMetrics(namespace, sq.query.name, standingQueryId)
 
         val persistence = (
           if (skipPersistor) Future.unit
@@ -266,7 +284,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
           }
         }(shardDispatcherEC)
         val cancellation = sq.terminateOutputQueue()
-        persistence.zipWith(cancellation)((_, _) => (sq.query, sq.startTime, sq.bufferCount))(shardDispatcherEC)
+        persistence.zipWith(cancellation)((_, _) => sq.stats)(shardDispatcherEC)
       }
     }
 
@@ -275,11 +293,11 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
     /** List standing queries that are currently registered
       *
-      * @return standing query, when it was started (or re-started), and the number of buffered results
+      * @return each standing query, with this host's measurements of it
       */
-    def listStandingQueries: Map[StandingQueryId, (StandingQueryInfo, Instant, Int)] = {
+    def listStandingQueries: Map[StandingQueryId, RunningStandingQueryStats] = {
       requireCompatibleNodeType()
-      runningStandingQueries.fmap(sq => (sq.query, sq.startTime, sq.bufferCount))
+      runningStandingQueries.fmap(_.stats)
     }
 
     /** Fetch a source to wire-tap a standing query
@@ -327,9 +345,11 @@ trait StandingQueryOpsGraph extends BaseGraph {
           throw new StandingQueryPartNotFoundException(queryPartId),
         )
 
+    /** @param sqMetrics this query's metrics, which the stream stages below mark */
     private def runStandingQuery(
       sq: StandingQueryInfo,
       outputs: Map[String, Sink[StandingQueryResult, UniqueKillSwitch]],
+      sqMetrics: StandingQueryMetrics,
     ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
 
       /* Counter for how many elements are in the queue
@@ -344,8 +364,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
        * increment/decrement that should trigger a change in the valve state.
        */
       val inBuffer = new AtomicInteger()
-
-      val consumptionMeter = metrics.standingQueryConsumptionMeter(namespace, sq.name)
 
       val ((queue, term), timedResultsHub: Source[StandingQueryResult, NotUsed]) = Source
         .queue[StandingQueryResult.WithQueueTimer](
@@ -371,7 +389,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         // raw result observer (the raw tap publish) has the same once-per-result requirement.
         .map { case StandingQueryResult.WithQueueTimer(r, timerCtx) =>
           timerCtx.stop()
-          consumptionMeter.mark()
+          sqMetrics.consumptionMeter.mark()
           try standingQueryRawResultObserver.get()(namespace, sq, r)
           catch {
             case NonFatal(e) =>
@@ -417,16 +435,16 @@ trait StandingQueryOpsGraph extends BaseGraph {
               if (sq.shouldCalculateResultHashCode)
                 // Integrate each standing query result hash code using `add`
                 // so the result is order agnostic
-                metrics.standingQueryResultHashCode(sq.id).add(r.result.dataHashCode)
+                sqMetrics.resultHashCode.add(r.result.dataHashCode)
             }
             res
           }
         },
         query = sq,
-        namespace,
         resultsHub = timedResultsHub,
         outputTermination = term,
-        metrics = metrics,
+        metrics = sqMetrics,
+        startTime = Instant.now(),
       )
       (runningStandingQuery, killSwitches)
     }

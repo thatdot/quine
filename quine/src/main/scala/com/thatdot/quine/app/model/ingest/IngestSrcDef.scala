@@ -264,6 +264,12 @@ abstract class IngestSrcDef(
 
   final val meter: IngestMeter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
 
+  /** Resolved once here, like `meter` above, rather than per record in [[writeSuccessValues]]: deleting the
+    * ingest removes this timer from the registry, and a per-record get-or-create would re-register it from
+    * records still draining.
+    */
+  final val queryTimer: Timer = graph.metrics.ingestQueryTimer(intoNamespace, name)
+
   /** A source of deserialized values along with a control. Ingest types
     * that provide a source of raw types should extend [[RawValuesIngestSrcDef]]
     * instead of this class.
@@ -284,8 +290,7 @@ abstract class IngestSrcDef(
   protected def writeSuccessValues(intoNamespace: NamespaceId)(record: TryDeserialized): Future[TryDeserialized] =
     record match {
       case (Success(deserializedRecord), _) =>
-        graph.metrics
-          .ingestQueryTimer(intoNamespace, name)
+        queryTimer
           .time(
             format
               .writeValueToGraph(graph, intoNamespace, deserializedRecord)

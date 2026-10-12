@@ -1,16 +1,11 @@
 package com.thatdot.quine.graph.metrics
 
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.LongAdder
-
-import scala.collection.concurrent
 import scala.concurrent.Future
-import scala.jdk.CollectionConverters._
 
 import com.codahale.metrics.{Counter, Histogram, Meter, MetricRegistry, NoopMetricRegistry, Timer}
 
 import com.thatdot.quine.graph.metrics.implicits._
-import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, defaultNamespaceId}
+import com.thatdot.quine.graph.{NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.util.SharedValve
 
 /** A MetricRegistry, wrapped with canonical accessors for common Quine metrics
@@ -25,7 +20,8 @@ final case class HostQuineMetrics(
   metricRegistry: MetricRegistry,
   omitDefaultNamespace: Boolean,
   hotNodes: HotNodeMetricsConfig = HotNodeMetricsConfig(),
-) {
+) extends IngestHostMetrics
+    with StandingQueryHostMetrics {
   import HostQuineMetrics._
 
   lazy val noOpRegistry: NoopMetricRegistry = new NoopMetricRegistry
@@ -219,74 +215,6 @@ final case class HostQuineMetrics(
 
   def shardUnlikelyUnexpectedWakeUpErrCounter(namespaceId: NamespaceId, shardName: String): Counter =
     metricRegistry.counter(metricName(namespaceId, List("shard", shardName, "unlikely", "wake-up-error")))
-
-  /** A timer tracking ingest query executions.
-    * CAUTION: Unlike the other ingest-related metrics, this timer is not paused when the ingest is completed/failed.
-    * This means its `Metered`-implementing metrics (pretty much anything with "rate" or "count" in the name) will
-    * stale once ingest has stopped. Similarly, the metric will never be removed from the registry, so it may
-    * accumulate stale data across namespace and other resets (IngestMeter is the exception to this, not the rule).
-    * This metric also uses the naming scheme consistent with other metrics, NOT the naming scheme used for ingest
-    * metrics.
-    * @see [[com.thatdot.quine.app.routes.IngestMeter]]
-    */
-  def ingestQueryTimer(namespaceId: NamespaceId, ingestName: String): Timer =
-    metricRegistry.timer(metricName(namespaceId, List(IngestMetricComponent, ingestName, "query")))
-
-  /** A timer tracking ingest record deserialization time.
-    * CAUTION: Unlike the other ingest-related metrics, this timer is not paused when the ingest is completed/failed.
-    * This means its `Metered`-implementing metrics (pretty much anything with "rate" or "count" in the name) will
-    * stale once ingest has stopped. Similarly, the metric will never be removed from the registry, so it may
-    * accumulate stale data across namespace and other resets (IngestMeter is the exception to this, not the rule).
-    * This metric also uses the naming scheme consistent with other metrics, NOT the naming scheme used for ingest
-    * metrics.
-    * @see [[com.thatdot.quine.app.routes.IngestMeter]]
-    */
-  def ingestDeserializationTimer(namespaceId: NamespaceId, ingestName: String): Timer =
-    metricRegistry.timer(metricName(namespaceId, List(IngestMetricComponent, ingestName, "deserialization")))
-
-  /** Meter of results that were produced for a named standing query on this host */
-  def standingQueryResultMeter(namespaceId: NamespaceId, sqName: String): Meter =
-    metricRegistry.meter {
-      metricName(namespaceId, List(StandingQueryMetricComponent, "results", sqName))
-    }
-
-  /** Counter of results that were dropped for a named standing query on this host */
-  def standingQueryDroppedCounter(namespaceId: NamespaceId, sqName: String): Counter =
-    metricRegistry.counter {
-      metricName(namespaceId, List(StandingQueryMetricComponent, "dropped", sqName))
-    }
-
-  /** Meter of cancellation (negative match) results enqueued for a named standing query on this host */
-  def standingQueryCancellationMeter(namespaceId: NamespaceId, sqName: String): Meter =
-    metricRegistry.meter {
-      metricName(namespaceId, List(StandingQueryMetricComponent, "cancellations", sqName))
-    }
-
-  /** Meter of results consumed (leaving the queue) for a named standing query on this host.
-    * This counts each result exactly once at the queue exit, before the BroadcastHub fans copies to outputs.
-    */
-  def standingQueryConsumptionMeter(namespaceId: NamespaceId, sqName: String): Meter =
-    metricRegistry.meter {
-      metricName(namespaceId, List(StandingQueryMetricComponent, "consumption", sqName))
-    }
-
-  /** Tracks how long SQ results spend in the result queue on this host before being accepted by each output
-    * for processing. Due to the fan-out nature of the SQ results queue, a single publish to the results queue may
-    * result in multiple measurements being counted against this timer (one for each sink on the SQ results hub, both
-    * via declared outputs and via other sinks that are dynamically added like SSE and standing.wiretap).
-    */
-  def standingQueryResultQueueTimer(namespaceId: NamespaceId, name: String): Timer =
-    metricRegistry.timer(metricName(namespaceId, List(StandingQueryMetricComponent, "queue-time", name)))
-
-  /** Histogram of size (in bytes) of persisted standing query states */
-  def standingQueryStateSize(namespaceId: NamespaceId, sqId: StandingQueryId): Histogram =
-    metricRegistry.histogram(metricName(namespaceId, List(StandingQueryMetricComponent, "states", sqId.uuid.toString)))
-
-  private val standingQueryResultHashCodeRegistry: concurrent.Map[StandingQueryId, LongAdder] =
-    new ConcurrentHashMap[StandingQueryId, LongAdder]().asScala
-
-  def standingQueryResultHashCode(standingQueryId: StandingQueryId): LongAdder =
-    standingQueryResultHashCodeRegistry.getOrElseUpdate(standingQueryId, new LongAdder)
 
   /** Histogram of size (in bytes) of persisted node snapshots */
   val snapshotSize: Histogram =

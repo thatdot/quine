@@ -151,18 +151,18 @@ trait IngestStreamState {
         switchMode -> newStatus
     }
 
-  /** Attempt to create a [[QuineIngestSource]] from configuration and
-    * stream components.
+  /** Attempt to create a [[QuineIngestSource]] from configuration and stream components.
     *
-    * If created, the existing ingestSource will exist in the
-    * ingestStreams state map.
+    * On success, the newly created source gets added to [[ingestStreams]] and `unregisteredMeter`
+    * gets registered. Fails if the namespace doesn't exist or the named source already exists.
     *
-    *  This method must be called within a synchronized since it makes
-    *  changes to the shared saved state of the ingest map (and,eventually, persistence).
+    * This method must be called within a synchronized since it makes
+    * changes to the shared saved state of the ingest map (and,eventually, persistence).
     *
-    * Fails
-    * - if the namespace doesn't exist in the state map
-    * - if the named source already exists.
+    * @param unregisteredMeter an unregistered meter which this registers once the ingest is
+    *        known to be starting. Everything below can still reject the config (or throw, since
+    *        building the ingest query parses the user's Cypher), and metrics published for an
+    *        ingest that never starts have nothing left to retire them.
     */
   def createV2IngestSource(
     name: String,
@@ -171,7 +171,7 @@ trait IngestStreamState {
     previousStatus: Option[IngestStreamStatus], // previousStatus is None if stream was not restored at all
     shouldResumeRestoredIngests: Boolean,
     metrics: IngestMetrics,
-    meter: IngestMeter,
+    unregisteredMeter: IngestMeter,
     graph: CypherOpsGraph,
     memberIdx: MemberIdx = 0,
   )(implicit
@@ -194,7 +194,7 @@ trait IngestStreamState {
           DecodedSource.apply(
             name,
             settings,
-            meter,
+            unregisteredMeter,
             graph.system,
             fileAccessPolicy,
             Some((graph.namespacePersistor, memberIdx)),
@@ -258,6 +258,9 @@ trait IngestStreamState {
             val newNamespaceIngests = ingests + (name -> streamDefWithControl)
             //TODO this is blocking in QuineEnterpriseApp
             ingestStreams += intoNamespace -> newNamespaceIngests
+
+            // Last, and only on this path: no failure is left that would have to retire what this publishes.
+            unregisteredMeter.register()
 
             quineIngestSource
           }

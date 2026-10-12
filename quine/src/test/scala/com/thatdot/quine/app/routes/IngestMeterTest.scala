@@ -48,4 +48,17 @@ class IngestMeterTest extends AnyFunSuite {
     val _ = IngestMetered.ingestMeter(defaultNamespaceId, "orders#2", member)
     assertResult(member.metricRegistry.getNames)(cluster.metricRegistry.getNames)
   }
+
+  test("removing a cluster-partition meter removes the worker's timers too") {
+    val metrics = freshMetrics
+    val meter = IngestMetered.clusterPartitionMeter(defaultNamespaceId, "orders#2", metrics)
+    // The timers a running worker registers: deserialization via its framed source, query via `DecodedSource.stream`
+    val _ = meter.unmanagedDeserializationTimer
+    val _ = metrics.ingestQueryTimer(defaultNamespaceId, "orders#2")
+    def workerMetricNames = metrics.metricRegistry.getNames.asScala.filter(_.contains("ingest.orders#2.")).toSet
+    assert(workerMetricNames.size == 4, s"expected count, bytes, deserialization and query; got $workerMetricNames")
+
+    assert(IngestMetered.removeClusterPartitionMeter(defaultNamespaceId, "orders#2", metrics))
+    assert(workerMetricNames.isEmpty, s"metrics left behind: $workerMetricNames")
+  }
 }

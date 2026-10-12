@@ -8,12 +8,12 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.stream.{BoundedSourceQueue, QueueOfferResult}
 import org.apache.pekko.{Done, NotUsed}
 
-import com.codahale.metrics.{Counter, Meter, Timer}
+import com.codahale.metrics.Metered
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.cypher.quinepattern.{QueryPlan, RuntimeMode}
-import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.graph.metrics.StandingQueryHostMetrics.StandingQueryMetrics
 import com.thatdot.quine.language.ast.BindingId
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.util.Log.implicits._
@@ -140,6 +140,27 @@ object StandingQueryPattern {
   }
 }
 
+/** What one host can report about a standing query running on it: the query itself, plus the
+  * measurements this host has taken of it.
+  *
+  * The measurements are read from the metric objects the running query holds, so a report built
+  * after the query is cancelled (and its metrics are removed from the registry) still has its
+  * final values.
+  *
+  * @param query static information about the query (this is what is persisted)
+  * @param startTime when the query was started (or restarted) running
+  * @param bufferSize how many results were accumulated in the result queue when this was read
+  * @param resultRates rates and count of results produced by the query on this host
+  * @param outputHashCode running total of result hash codes, or 0 for a query that asked for none
+  */
+final case class RunningStandingQueryStats(
+  query: StandingQueryInfo,
+  startTime: Instant,
+  bufferSize: Int,
+  resultRates: Metered,
+  outputHashCode: Long,
+)
+
 /** Information kept around about a standing query (on this host) while the query is running
   *
   * TODO: should `startTime` be the initial registration time?
@@ -148,8 +169,7 @@ object StandingQueryPattern {
   * @param query static information about the query (this is what is persisted)
   * @param resultsHub a source that lets you listen in on current results
   * @param outputTermination completes when [[resultsQueue]] completes OR when [[resultsHub]] cancels
-  * @param resultMeter metric of results coming out of the query
-  * @param droppedCounter counter of results dropped (should be zero unless something has gone wrong)
+  * @param metrics what this query measures itself with, held for as long as it runs
   * @param startTime when the query was started (or restarted) running
   */
 final class RunningStandingQuery(
@@ -157,32 +177,13 @@ final class RunningStandingQuery(
   val query: StandingQueryInfo,
   val resultsHub: Source[StandingQueryResult, NotUsed],
   outputTermination: Future[Done],
-  val queueTimer: Timer,
-  val resultMeter: Meter,
-  val cancellationMeter: Meter,
-  val droppedCounter: Counter,
+  val metrics: StandingQueryMetrics,
   val startTime: Instant,
 ) extends LazySafeLogging {
 
-  def this(
-    resultsQueue: BoundedSourceQueue[StandingQueryResult.WithQueueTimer],
-    query: StandingQueryInfo,
-    inNamespace: NamespaceId,
-    resultsHub: Source[StandingQueryResult, NotUsed],
-    outputTermination: Future[Done],
-    metrics: HostQuineMetrics,
-  ) =
-    this(
-      resultsQueue,
-      query,
-      resultsHub,
-      outputTermination,
-      resultMeter = metrics.standingQueryResultMeter(inNamespace, query.name),
-      cancellationMeter = metrics.standingQueryCancellationMeter(inNamespace, query.name),
-      droppedCounter = metrics.standingQueryDroppedCounter(inNamespace, query.name),
-      queueTimer = metrics.standingQueryResultQueueTimer(inNamespace, query.name),
-      startTime = Instant.now(),
-    )
+  /** This query's measurements, read now. */
+  def stats: RunningStandingQueryStats =
+    RunningStandingQueryStats(query, startTime, bufferCount, metrics.resultMeter, metrics.resultHashCode.sum)
 
   def terminateOutputQueue(): Future[Unit] = {
     if (!resultsQueue.isCompleted) {
@@ -197,7 +198,7 @@ final class RunningStandingQuery(
   /** Enqueue a result, returning true if the result was successfully enqueued, false otherwise
     */
   def offerResult(result: StandingQueryResult)(implicit logConfig: LogConfig): Boolean = {
-    val timerCtx = queueTimer.time()
+    val timerCtx = metrics.queueTimer.time()
 
     val success = resultsQueue.offer(result.withQueueTimer(timerCtx)) match {
       case QueueOfferResult.Enqueued =>
@@ -221,10 +222,10 @@ final class RunningStandingQuery(
         false
     }
     if (result.meta.isPositiveMatch) {
-      if (success) resultMeter.mark()
-      else droppedCounter.inc()
+      if (success) metrics.resultMeter.mark()
+      else metrics.droppedCounter.inc()
     } else {
-      if (success) cancellationMeter.mark()
+      if (success) metrics.cancellationMeter.mark()
     }
     success
   }

@@ -31,6 +31,11 @@ class PressureGauge[A](registration: Option[(PressureGaugeRegistry, GaugeKey)])
   override def createLogicAndMaterializedValue(attr: Attributes): (GraphStageLogic, PressureGauge.State) = {
     val isBackpressured = new AtomicBoolean(true)
 
+    val state = new PressureGauge.State {
+      override def isUnderPressure: Boolean = isBackpressured.get()
+      override val name: String = attr.get[Attributes.Name](Attributes.Name("pressureGauge")).n
+    }
+
     val logic = new GraphStageLogic(shape) {
       setHandler(
         in,
@@ -52,12 +57,7 @@ class PressureGauge[A](registration: Option[(PressureGaugeRegistry, GaugeKey)])
       )
 
       override def postStop(): Unit =
-        registration.foreach { case (registry, key) => registry.deregister(key) }
-    }
-
-    val state = new PressureGauge.State {
-      override def isUnderPressure: Boolean = isBackpressured.get()
-      override val name = attr.get[Attributes.Name](Attributes.Name("pressureGauge")).n
+        registration.foreach { case (registry, key) => registry.deregister(key, state) }
     }
 
     registration.foreach { case (registry, key) => registry.register(key, state) }
