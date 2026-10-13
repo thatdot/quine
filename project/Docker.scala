@@ -33,7 +33,7 @@ object Docker extends AutoPlugin {
     docker / includeNginx := true,
     // Enforce Docker image format rather than OCI format (the Podman default), enabling HEALTHCHECK
     docker / dockerBuildArguments := Map("format" -> "docker"),
-    // Default docker jar task - projects can override this to use packageObfuscatedJar
+    // Default docker jar task; in projects with DashOHelpers.settings, `assembly` obfuscates when DASHO_JAR_PATH is set
     docker / dockerJarTask := assembly.value,
     docker / dockerfile := {
       val jar: sbt.File = dockerJarTask.value
