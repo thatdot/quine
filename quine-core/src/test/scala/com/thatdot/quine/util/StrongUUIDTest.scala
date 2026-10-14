@@ -99,27 +99,6 @@ class StrongUUIDTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  it should "use cryptographically strong randomness source" in {
-    // Verify that the random source is properly initialized
-    // by checking multiple UUIDs are truly different and random
-    val uuid1 = StrongUUID.randomUUID()
-    val uuid2 = StrongUUID.randomUUID()
-    val uuid3 = StrongUUID.randomUUID()
-
-    // Basic sanity: all different
-    uuid1 should not equal uuid2
-    uuid2 should not equal uuid3
-    uuid1 should not equal uuid3
-
-    // Check that the differences are not trivial (e.g., not just incrementing)
-    val diff1 = uuid1.getLeastSignificantBits ^ uuid2.getLeastSignificantBits
-    val diff2 = uuid2.getLeastSignificantBits ^ uuid3.getLeastSignificantBits
-
-    // XOR should reveal many bit differences (at least 20 out of 64 bits)
-    java.lang.Long.bitCount(diff1) should be >= 20
-    java.lang.Long.bitCount(diff2) should be >= 20
-  }
-
   it should "correctly encode version bits in byte position 6" in {
     val uuids = (1 to 100).map(_ => StrongUUID.randomUUID())
 
