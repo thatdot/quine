@@ -110,7 +110,7 @@ object Dependencies {
   val sugarV = "2.0.6"
   val tapirV = "1.13.32"
   val ujsonCirceV = "3.3.1"
-  val circeV = "0.14.16"
+  val circeV = "0.14.17"
   val circeGenericExtrasV = "0.14.4"
   val circeOpticsV = "0.15.1"
   val webjarsLocatorV = "0.52"
