@@ -56,13 +56,6 @@ object Main extends App with LazySafeLogging {
     docsUrl = "https://quine.io/docs/",
   )
 
-  // Warn if character encoding is unexpected
-  if (Charset.defaultCharset != StandardCharsets.UTF_8) {
-    statusLines.warn(
-      log"System character encoding is ${Safe(Charset.defaultCharset)} - did you mean to specify -Dfile.encoding=UTF-8?",
-    )
-  }
-
   // Parse command line arguments.
   // On any failure, print messages and terminate process.
   val cmdArgs: CmdArgs = CmdArgs(args) match {
@@ -109,8 +102,9 @@ object Main extends App with LazySafeLogging {
       if (cmdArgs.deleteDataFile) {
         tempDataFile.deleteOnExit()
       } else {
-        // Only print the data file name when NOT DELETING the temporary file
-        statusLines.info(log"Using data path ${Safe(tempDataFile.getAbsolutePath)}")
+        // Only print the data file name when NOT DELETING the temporary file.
+        // `config` is still being built here, so the implicit `logConfig` (which reads it) cannot be used.
+        statusLines.info(log"Using data path ${Safe(tempDataFile.getAbsolutePath)}")(withWebserverOverrides.logConfig)
       }
       withWebserverOverrides.copy(
         store = PersistenceAgentType.RocksDb(
@@ -120,6 +114,13 @@ object Main extends App with LazySafeLogging {
     } else withWebserverOverrides
   }
   implicit protected def logConfig: LogConfig = config.logConfig
+
+  // Warn if character encoding is unexpected (after `config`, whose LogConfig the status line needs)
+  if (Charset.defaultCharset != StandardCharsets.UTF_8) {
+    statusLines.warn(
+      log"System character encoding is ${Safe(Charset.defaultCharset)} - did you mean to specify -Dfile.encoding=UTF-8?",
+    )
+  }
 
   // Optionally print a message on startup
   if (BuildInfo.startupMessage.nonEmpty) {
