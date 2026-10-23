@@ -149,7 +149,13 @@ class DomainIndexEventEffectTest extends AnyFunSuite with BeforeAndAfterAll with
   private def stateOf(node: QuineId): SqStateResults =
     Await.result(graph.literalOps(namespace).logState(node), awaitTimeout).sqStateResults
 
-  private def wake(node: QuineId): Unit = { val _ = stateOf(node) }
+  /** A freshly woken node can answer before its shard records it as live, and until then a cancellation sent to
+    * it is discarded as if it were asleep. So the wake is finished only once the shard lists the node as awake.
+    */
+  private def wake(node: QuineId): Unit = {
+    val _ = stateOf(node)
+    awaitCondition(s"node $node is live")(awakeNodes().contains(node))
+  }
 
   private def rowsOn(node: QuineId): List[DomainIndexEvent] =
     Option(domainIndexEvents.get(node)).fold(List.empty[DomainIndexEvent])(_.values.asScala.toList)
