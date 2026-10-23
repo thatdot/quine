@@ -631,10 +631,47 @@ final private[quine] class GraphShardActor(
       msg ?! remaining
 
     case ShuttingDownShard =>
+      // Sleeping a node persists its snapshot, so sleeping every awake node at once produces a
+      // stampede of concurrent snapshot writes that overwhelms the persistor. Non-atomic multipart
+      // writes that get starved out this way are exactly what leaves corrupt snapshots behind.
+      //
+      // Instead, cap how many sleeps are in flight at once. This handler re-fires every ~200ms (see
+      // requestShutdown), and each tick recomputes the count from scratch: a node stays in
+      // ConsideringSleep/GoingToSleep only until its write completes, at which point SleepSuccess
+      // removes it from namespacedNodes. So there is no explicit decrement -- a finished sleep simply
+      // stops being counted on the next tick, and the budget refills as writes drain. Each tick we
+      // count what's already outstanding, then initiate new Awake -> sleep transitions only up to the
+      // cap; awake nodes over the cap are left for a later tick. Non-awake nodes are always slept, to
+      // renew their ConsideringSleep deadlines while they wait.
+      var sleepsInFlight = 0
       for {
         nodes <- namespacedNodes.values
-        node <- nodes.keys
-      } sleepActor(node)
+        nodeState <- nodes.values
+      } sleepsInFlight += (nodeState match {
+        case NodeState.LiveNode(_, _, _, wakefulState) =>
+          wakefulState.get() match {
+            case _: WakefulState.ConsideringSleep | _: WakefulState.GoingToSleep => 1
+            case _: WakefulState.Awake => 0
+          }
+        case NodeState.WakingNode => 0
+      })
+      for {
+        nodes <- namespacedNodes.values
+        (node, nodeState) <- nodes
+      } {
+        val isAwake = nodeState match {
+          case NodeState.LiveNode(_, _, _, wakefulState) => wakefulState.get().isInstanceOf[WakefulState.Awake]
+          case NodeState.WakingNode => false
+        }
+        if (!isAwake) {
+          // Renew the sleep deadline of a node already on its way to sleep.
+          sleepActor(node)
+        } else if (sleepsInFlight < GraphShardActor.ShutdownMaxConcurrentSleeps) {
+          // Initiate a new sleep, counting it against this tick's in-flight budget.
+          sleepActor(node)
+          sleepsInFlight += 1
+        }
+      }
       inMemoryActorList.clear()
 
     case msg @ CancelShardShutdown(_) =>
@@ -678,6 +715,18 @@ object GraphShardActor {
     * (starting from when that message was sent).
     */
   val SleepDeadlineDelay: FiniteDuration = 3.seconds
+
+  /** Upper bound on the number of nodes a shard will have sleeping concurrently while shutting down.
+    * Sleeping a node triggers a snapshot write, so this caps how many snapshot writes are in flight at
+    * once, pacing them to the persistor's throughput instead of stampeding it (which starves out the
+    * non-atomic multipart writes that leave corrupt snapshots behind). See the `ShuttingDownShard`
+    * handler.
+    *
+    * The bound self-paces against a slow store without measuring it: a sleep is only uncounted once
+    * its write completes, so while the store is struggling the in-flight count stays high and the
+    * shard stops initiating new sleeps until writes drain.
+    */
+  val ShutdownMaxConcurrentSleeps: Int = 100
 
   sealed abstract private[graph] class LivenessStatus
   private[graph] object LivenessStatus {

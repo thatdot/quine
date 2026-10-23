@@ -460,35 +460,36 @@ abstract private[graph] class AbstractNodeActor(
     * update or sleep. A node whose state changes in a way none of those paths can see has to say so itself.
     */
   protected[this] def persistSnapshot(): Unit = if (atTime.isEmpty) {
-    val occurredAt: EventTime = tickEventSequence()
-    val snapshot = toSnapshotBytes(occurredAt)
+    val currentTime: EventTime = tickEventSequence()
+    val snapshotKeyTime = if (persistenceConfig.snapshotSingleton) EventTime.MaxValue else currentTime
+    val snapshot = toSnapshotBytes(currentTime)
     metrics.snapshotSize.update(snapshot.length)
 
-    def persistSnapshot(): Future[Unit] =
-      metrics.persistorPersistSnapshotTimer
-        .time(
-          persistor.persistSnapshot(
-            qid,
-            if (persistenceConfig.snapshotSingleton) EventTime.MaxValue else occurredAt,
-            snapshot,
-          ),
-        )
+    // Captured here, on the actor's thread: `context` must not be touched from the Future callbacks
+    // below, which run on `cypherEc`.
+    val scheduler = context.system.scheduler
 
-    def infinitePersisting(logFunc: SafeInterpolator => Unit, f: => Future[Unit]): Future[Unit] =
-      f.recoverWith { case NonFatal(e) =>
-        logFunc(log"Persisting snapshot for: $occurredAt is being retried after the error:" withException e)
-        infinitePersisting(logFunc, f)
-      }(cypherEc)
+    // Persists the snapshot, retrying as long as non-fatal exceptions occur. The retry is
+    // unconditional because nothing catches the error, and an infinite retry loop is preferable to
+    // silently diverging this node from its durable state.
+    def infinitePersisting(logFunc: SafeInterpolator => Unit): Future[Unit] =
+      metrics.persistorPersistSnapshotTimer
+        .time(persistor.persistSnapshot(qid, snapshotKeyTime, snapshot))
+        .recoverWith { case NonFatal(e) =>
+          logFunc(log"Persisting snapshot for: $currentTime is being retried after the error:" withException e)
+          // Delay before re-attempting so a persistently failing write cannot become a hot,
+          // no-backoff spin, which would itself amplify the load that caused the failure.
+          pekko.pattern.after(1.second, scheduler)(infinitePersisting(logFunc))(cypherEc)
+        }(cypherEc)
 
     graph.effectOrder match {
       case EventEffectOrder.MemoryFirst =>
-        infinitePersisting(s => log.info(s), persistSnapshot())
+        infinitePersisting(s => log.info(s))
       case EventEffectOrder.PersistorFirst =>
         // There's nothing sane to do if this fails; there's no query result to fail. Just retry forever and deadlock.
         // The important intention here is to disallow any subsequent message (e.g. query) until the persist succeeds,
         // and to disallow `runPostActions` until persistence succeeds.
-        val _ =
-          pauseMessageProcessingUntil[Unit](infinitePersisting(s => log.warn(s), persistSnapshot()), _ => (), true)
+        pauseMessageProcessingUntil[Unit](infinitePersisting(s => log.warn(s)), _ => (), true)
     }
     latestUpdateAfterSnapshot = None
   } else {

@@ -318,23 +318,32 @@ trait MultipartSnapshotPersistenceAgent {
       .map(_ => ())(ExecutionContext.parasitic)
   }
 
-  def getLatestSnapshot(
-    id: QuineId,
-    upToTime: EventTime,
-  ): Future[Option[StoredSnapshot]] =
-    getLatestMultipartSnapshot(id, upToTime).flatMap {
-      case Some(MultipartSnapshot(time, parts)) =>
-        if (validateSnapshotParts(parts))
+  /** Fetches the latest valid multipart snapshot at or before `upToTime`. Snapshots are fetched in
+    * reverse chronological order until a valid one is found.
+    */
+  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[StoredSnapshot]] = {
+    def noValidSnapshotFound(): Future[Option[StoredSnapshot]] = {
+      logger.error(safe"No valid snapshot found for node: ${Safe(id)} after skipping corrupt ones")
+      Future.successful(None)
+    }
+
+    def search(upToTime: EventTime, foundCorruptSnapshots: Boolean): Future[Option[StoredSnapshot]] =
+      getLatestMultipartSnapshot(id, upToTime).flatMap {
+        case Some(MultipartSnapshot(time, parts)) if validateSnapshotParts(parts) =>
           Future.successful(Some(StoredSnapshot(time, parts.flatMap(_.partBytes).toArray)))
-        else {
-          logger.warn(
-            safe"Failed reading multipart snapshot for id: ${Safe(id)} upToTime: ${Safe(upToTime)}; retrying with time: ${Safe(time)}",
-          )
-          getLatestSnapshot(id, time)
-        }
-      case None =>
-        Future.successful(None)
-    }(multipartSnapshotExecutionContext)
+        case Some(MultipartSnapshot(time, _)) =>
+          logger.error(safe"Corrupt multipart snapshot for node: ${Safe(id)} at time: ${Safe(time)}")
+          // A snapshot at time zero has no earlier time to search.
+          if (time > EventTime.MinValue) search(EventTime.fromRaw(time.eventTime - 1L), foundCorruptSnapshots = true)
+          else noValidSnapshotFound()
+        case None if foundCorruptSnapshots =>
+          noValidSnapshotFound()
+        case None =>
+          Future.successful(None)
+      }(multipartSnapshotExecutionContext)
+
+    search(upToTime, foundCorruptSnapshots = false)
+  }
 
   private def validateSnapshotParts(parts: Seq[MultipartSnapshotPart]): Boolean = {
     val partsLength = parts.length
