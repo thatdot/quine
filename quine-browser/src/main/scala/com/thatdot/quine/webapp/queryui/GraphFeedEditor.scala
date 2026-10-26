@@ -39,7 +39,7 @@ object GraphFeedEditor {
 
   /** What the "Run for every result" Cypher below the picker will be handed each time a
     * result reaches the picked point — the parameter shape its `$`-references have to match,
-    * and which `exampleQuerySignal` then demonstrates. Deliberately not the wording a tap
+    * and which the suggested query follows. Deliberately not the wording a tap
     * card's popup uses for the same points (`CardPopup.shapeNote`): that one explains a table
     * the reader is looking at, this one explains parameters they are about to bind.
     */
@@ -158,6 +158,9 @@ object GraphFeedEditor {
     mode: GraphFeedEditorMode,
     initialValue: Option[V2GraphFeed],
     standingQueries: Signal[Seq[V2StandingQueryInfo]],
+    // Names already taken by the graph's feeds, so a default name for a new feed never
+    // collides with one (the host refuses duplicate names on save).
+    existingNames: Set[String],
     editorConfig: EmbeddedEditorConfig,
     onSave: V2GraphFeed => Unit,
     onDelete: Option[() => Unit],
@@ -165,6 +168,9 @@ object GraphFeedEditor {
     // True while the host's save round-trip is in flight; disables the save button so a
     // double-click can't dispatch the whole-list save (and its onSaved side effects) twice.
     saving: Signal[Boolean] = Signal.fromValue(false),
+    // A host control for the leading end of the actions row (the slot Delete takes when
+    // editing), for an option that belongs next to the save button.
+    leadingAction: Option[HtmlElement] = None,
   ): HtmlElement = {
 
     val (initialName, initialDescription, initialQuery, initialEdges) =
@@ -179,7 +185,8 @@ object GraphFeedEditor {
     // Narrowed to the standing-query variant: a graph feed always draws from a standing
     // query's pipeline, never from a background-query execution (which is finite and
     // single-shot, so there'd be nothing left to feed the graph on the next page load).
-    val selectionVar: Var[Option[TapTarget.StandingQuery]] = Var(initialTarget(initialValue))
+    val initialSelection: Option[TapTarget.StandingQuery] = initialTarget(initialValue)
+    val selectionVar: Var[Option[TapTarget.StandingQuery]] = Var(initialSelection)
 
     val initialRows: Vector[EdgeRow] = initialEdges.zipWithIndex.map { case (e, i) =>
       EdgeRow(i, e.fromNode, e.toNode, e.label, normalizeDirection(e.direction))
@@ -205,7 +212,9 @@ object GraphFeedEditor {
     // transformation or an enrichment offer a point to draw from (an output with neither
     // delivers the raw match stream unchanged), but a previously saved selection stays
     // offered while editing, even if its output has since lost the step that defined it,
-    // so opening an old definition doesn't silently blank its source.
+    // so opening an old definition doesn't silently blank its source. `.distinct` on the
+    // catalog rather than the source: the source carries live stats and re-emits on every
+    // poll, the catalog does not, so the picker is left alone between real changes.
     val savedSelection: Option[TapTarget.StandingQuery] = initialTarget(initialValue)
     val catalog: Signal[Pot[Vector[TapCatalogEntry]]] = standingQueries.map { sqs =>
       Pot.Ready(
@@ -228,10 +237,11 @@ object GraphFeedEditor {
               ),
             ),
             sq.pattern.flatMap(_.query),
+            sq.pattern.flatMap(_.mode),
           )
         },
       )
-    }
+    }.distinct
 
     // The query behind the picked point's data — the standing query's match pattern for Raw,
     // its output's enrichment query for Enriched — shown under the picker as a hint at the
@@ -250,18 +260,49 @@ object GraphFeedEditor {
         } yield sel.tapPoint -> sq.queryAt(sel.tapPoint)
       }
 
-    // The example query's parameter shape follows the picked point: a raw standing-query match
-    // (and any output with neither step, which the picker folds into the raw stream) exposes
-    // result fields under `$data`, while an enriched or transformed point exposes its fields as
-    // top-level parameters. The Monaco handle has no live "set placeholder" API, so the editor
-    // is remounted when the shape flips; `.distinct` keeps that to the rare point change (not
-    // every keystroke), and the query text survives the remount via the `currentValue` binder.
-    val exampleQuerySignal: Signal[String] =
-      selectionVar.signal.map {
-        case Some(TapTarget.StandingQuery(_, TapPoint.PostEnrichment(_) | TapPoint.PreEnrichment(_))) =>
-          "MATCH (n) WHERE id(n) = $id RETURN n"
-        case _ => "MATCH (n) WHERE id(n) = $data.id RETURN n"
-      }.distinct
+    // The query to suggest for the picked point (see GraphFeedDefaults), read off the same
+    // query (text and, for a pattern, mode) the panel under the picker shows. It is offered
+    // as ghost text in the query editor, never written into the field: Tab accepts it and
+    // lands the cursor on the ID column, pre-filled when it could be inferred. Deduplicated
+    // on the derived case class before it becomes a JS object: `selectedQuery` re-emits on
+    // every selection change (a `combineWith`), including ones that derive the same
+    // suggestion, and JS objects compare by reference, so a `.distinct` after the conversion
+    // would let each re-emission through, re-triggering the ghost (a flicker, and a ghost
+    // dismissed with Escape coming back a moment later).
+    val derivedSuggestion: Signal[Option[GraphFeedDefaults.Suggestion]] =
+      selectedQuery
+        .map(_.map { case (tapPoint, queryOpt) => GraphFeedDefaults.suggestion(tapPoint, queryOpt) })
+        .distinct
+    val suggestion: Signal[Option[QuerySuggestion]] =
+      derivedSuggestion.map(_.map(derived => QuerySuggestion(derived.before, derived.fill, derived.after)))
+    // The suggestion while what is typed is still a proper prefix of it, so accepting it
+    // remains possible. Only the editor knows whether the ghost is actually drawn (the
+    // cursor must sit at the end of the buffer, and Escape dismisses it; see suggestion.ts),
+    // so nothing downstream claims grey text is on screen, only what Tab does when it shows.
+    val acceptableSuggestion: Signal[Option[GraphFeedDefaults.Suggestion]] =
+      derivedSuggestion.combineWith(queryVar.signal).map { case (derived, typed) =>
+        derived.filter(d => d.text.startsWith(typed) && typed != d.text)
+      }
+    // Whether the suggestion's ID spot came out filled, for the one-line hint under the
+    // field: a field that looks full while the save button says the query is still needed
+    // wants saying out loud, and an empty spot wants saying why it is empty. Deduplicated
+    // because queryVar emits per keystroke and the hint's `child <--` would otherwise tear
+    // down and rebuild its node on every character.
+    val idColumnKnown: Signal[Option[Boolean]] =
+      acceptableSuggestion.map(_.map(_.fill.nonEmpty)).distinct
+    // While creating, a name for the feed from the point, written into its field whenever
+    // that field is empty or still holds the previous point's default, so moving the point
+    // follows it without ever overwriting a name the user has edited.
+    val defaultName: Signal[Option[String]] =
+      selectionVar.signal.map(_.filter(_ => !isEditing).map(GraphFeedDefaults.name(_, existingNames))).distinct
+    var lastDefaultName: Option[String] = None
+    val applyDefaults: Seq[Modifier[HtmlElement]] = Seq(
+      defaultName --> { derived =>
+        val current = nameVar.now()
+        if (current.trim.isEmpty || lastDefaultName.contains(current)) nameVar.set(derived.getOrElse(""))
+        lastDefaultName = derived
+      },
+    )
 
     val edgesSignal: Signal[Vector[V2SyntheticEdge]] = edgeRowsVar.signal.map(buildEdges)
 
@@ -357,6 +398,7 @@ object GraphFeedEditor {
 
     div(
       cls := Styles.editorForm,
+      applyDefaults,
       p(
         fontSize := "0.88em",
         color := "#56618f",
@@ -419,7 +461,7 @@ object GraphFeedEditor {
             // Re-clicking the selected point keeps it selected — there is nothing to focus here.
             onFocusExisting = target => selectionVar.set(Some(target)),
             variant = SqPipelineTree.Variant.PickPoint,
-            initialSqName = savedSelection.map(_.sqName),
+            initialSqName = initialSelection.map(_.sqName),
           ),
         ),
         div(
@@ -476,13 +518,24 @@ object GraphFeedEditor {
             case None => List(rawParamsHelp, transformedParamsHelp, enrichedParamsHelp)
           },
         ),
-        child <-- exampleQuerySignal.map { example =>
-          EmbeddedQueryEditor(
-            currentValue = queryVar.signal,
-            onUpdate = v => queryVar.set(v),
-            placeholderText = example,
-            editorConfig = editorConfig,
-          )
+        EmbeddedQueryEditor(
+          currentValue = queryVar.signal,
+          onUpdate = v => queryVar.set(v),
+          placeholderText = "Cypher returning the nodes to draw",
+          editorConfig = editorConfig,
+          suggestion = suggestion,
+        ),
+        child <-- idColumnKnown.map {
+          case Some(known) =>
+            div(
+              cls := "graph-feed-suggestion-hint",
+              "When the grey text shows the suggested query, Tab accepts it and " +
+              (if (known) "selects the ID column, in case it is not the one you want."
+               else
+                 "puts the cursor where the ID column goes. Which column holds a node ID " +
+                 "could not be told from the query."),
+            )
+          case None => emptyNode
         },
       ),
       // Synthetic edges — one editable row per edge.
@@ -525,6 +578,7 @@ object GraphFeedEditor {
             button("Delete", cls := "editor-danger-action", onClick --> (_ => deleteFn()))
           }
           .getOrElse(emptyNode),
+        leadingAction.getOrElse(emptyNode),
         // While the save button is disabled, say what's still needed instead of leaving
         // a dead-looking button unexplained.
         span(

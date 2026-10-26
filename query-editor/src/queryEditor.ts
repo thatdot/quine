@@ -11,6 +11,8 @@ import "monaco-editor/editor/contrib/suggest/browser/suggestController.js"; // s
 import "monaco-editor/editor/contrib/hover/browser/hoverContribution.js"; // marker hovers (diagnostics)
 import "monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticTokens.js"; // semantic highlighting
 import "monaco-editor/editor/contrib/bracketMatching/browser/bracketMatching.js";
+import "monaco-editor/editor/contrib/inlineCompletions/browser/inlineCompletions.contribution.js"; // ghost-text suggestion
+import "monaco-editor/editor/contrib/snippet/browser/snippetController2.js"; // accepting a snippet suggestion
 
 import { CYPHER_LANGUAGE_ID, installCypherMonarchTokenizer, registerCypherLanguage } from "./cypher.js";
 import { setupDiagnosticsTracking, type EditorDiagnostic } from "./editorDiagnostics.js";
@@ -19,9 +21,11 @@ import { createLspController } from "./lspController.js";
 import { clampHeight, computeHeight, isMultiline } from "./mode.js";
 import { defineQueryEditorTheme, QUERY_EDITOR_THEME } from "./theme.js";
 import { type QueryKind } from "./queryKind.js";
+import { ghostCompletion, type QuerySuggestion } from "./suggestion.js";
 
 // Re-export so the public surface (index.ts) and consumers keep a single import.
 export type { EditorDiagnostic } from "./editorDiagnostics.js";
+export type { QuerySuggestion } from "./suggestion.js";
 
 /**
  * Options common to every editor, independent of whether the Quine language
@@ -41,6 +45,15 @@ interface QueryEditorBaseOptions {
   language?: "cypher" | "plaintext";
   /** Hint text shown while the editor is empty. */
   placeholder?: string;
+  /**
+   * A whole query to suggest, shown as ghost text after the cursor whenever
+   * what is typed so far is a prefix of it (so an empty buffer shows all of
+   * it), focused or not; Tab accepts, leaving the cursor at the suggestion's
+   * fill-in spot. Replaceable later with
+   * {@link QueryEditorHandle.setSuggestion}. While a suggestion is set the
+   * `placeholder` yields to it.
+   */
+  suggestion?: QuerySuggestion | null;
   /** Initial buffer content. Defaults to empty. */
   initialValue?: string;
   /**
@@ -174,6 +187,8 @@ export interface QueryEditorHandle {
   getValue(): string;
   /** Replace the buffer content (fires `onChange`). */
   setValue(value: string): void;
+  /** Replace the ghost-text suggestion (`null` for none); see `QueryEditorOptions.suggestion`. */
+  setSuggestion(suggestion: QuerySuggestion | null): void;
   /** Give the editor keyboard focus. */
   focus(): void;
   /** Remove keyboard focus from the editor. */
@@ -299,6 +314,11 @@ export function createQueryEditor(
       bottom: QUERY_EDITOR_VERTICAL_PADDING_PX,
     },
     ariaLabel: opts.placeholder ?? "Query editor",
+    // Ghost-text suggestion, see below. Kept on blur so it reads as part of the
+    // field rather than appearing only once the field is clicked into; not
+    // syntax-coloured, so it shows in the theme's muted ghost grey and is
+    // told apart from content at a glance.
+    inlineSuggest: { enabled: true, showToolbar: "never", keepOnBlur: true, syntaxHighlightingEnabled: false },
   });
 
   const model = editor.getModel();
@@ -453,6 +473,114 @@ export function createQueryEditor(
     }),
   );
 
+  // --- Ghost-text suggestion. Inline completion providers are registered per
+  // language, page-wide, so this one answers only for its own model. The
+  // suggestion is asked for whenever it is set and again on focus (Monaco
+  // otherwise only asks while typing, and an empty buffer never types; a
+  // dismissed ghost comes back on the next click in). Tab accepts it through
+  // the editor's own binding below: Monaco's is disabled by `tabFocusMode`.
+  // The empty-buffer placeholder is hidden while a suggestion is set, since
+  // both would render in the same place.
+  let suggestion: QuerySuggestion | null = opts.suggestion ?? null;
+  disposables.push(
+    monaco.languages.registerInlineCompletionsProvider(model.getLanguageId(), {
+      provideInlineCompletions: (candidate, position) => {
+        if (candidate.uri.toString() !== model.uri.toString()) return { items: [] };
+        const value = candidate.getValue();
+        const offset = candidate.getOffsetAt(position);
+        const ghost = ghostCompletion(value.slice(0, offset), value.slice(offset), suggestion);
+        if (ghost === null) return { items: [] };
+        return {
+          items: [
+            {
+              insertText: ghost.insertText,
+              range: new monaco.Range(
+                position.lineNumber,
+                position.column - ghost.replaceColumns,
+                position.lineNumber,
+                position.column,
+              ),
+            },
+          ],
+        };
+      },
+      disposeInlineCompletions: () => {},
+    }),
+  );
+  // The controller behind Monaco's inline completions, reached to drop a ghost
+  // that is showing: the `inlineSuggest.hide` command acts on the *focused*
+  // editor, so on an unfocused field it would leave the old ghost in place.
+  // (The trigger action, by contrast, acts on the editor it is invoked on.)
+  // This is Monaco internals, not API, so every step is optional and the call
+  // is fenced: a Monaco bump that reshapes the controller degrades to a stale
+  // ghost instead of throwing out of `setSuggestion` into the caller's observer.
+  interface InlineCompletionsControllerLike extends monaco.editor.IEditorContribution {
+    model?: { get?(): { stop?(reason: "automatic" | "explicitCancel"): void } | undefined };
+  }
+  const dropGhost = (): void => {
+    try {
+      editor
+        .getContribution<InlineCompletionsControllerLike>("editor.contrib.inlineCompletionsController")
+        ?.model?.get?.()
+        ?.stop?.("explicitCancel");
+    } catch {
+      // Leave the ghost; the next trigger replaces it.
+    }
+  };
+  const syncSuggestion = (): void => {
+    editor.updateOptions({ placeholder: suggestion !== null ? "" : opts.placeholder });
+    if (suggestion !== null) {
+      editor.trigger("suggestion", "editor.action.inlineSuggest.trigger", {});
+    }
+  };
+  disposables.push(editor.onDidFocusEditorText(syncSuggestion));
+  // Undoing an accepted suggestion restores the text but strands the editor's
+  // mode: the accept starts a snippet session (the fill-in tab stop), the undo
+  // takes the inserted text back out, and the session stays. While a session is
+  // active Monaco shows no inline completions at all — not on focus, not on an
+  // explicit trigger — and the one way out, Escape, has nothing on screen to
+  // hint at it. So every undo ends the session (a no-op when none is active,
+  // same fencing as dropGhost: `cancel` is public API on the controller, but
+  // reaching the controller by ID is not) and re-offers the ghost; whether it
+  // shows stays ghostCompletion's decision, as everywhere else.
+  interface SnippetControllerLike extends monaco.editor.IEditorContribution {
+    cancel?(resetSelection?: boolean): void;
+  }
+  disposables.push(
+    model.onDidChangeContent((e) => {
+      if (!e.isUndoing) return;
+      try {
+        editor.getContribution<SnippetControllerLike>("snippetController2")?.cancel?.();
+      } catch {
+        // Leave the session; Escape still ends it.
+      }
+      syncSuggestion();
+    }),
+  );
+  // A multi-line ghost renders its extra lines in a view zone, and Monaco does
+  // not focus the editor for a mousedown on a view zone. Without this, a click
+  // on the ghost's second or third line leaves the field unfocused and Tab
+  // moves focus instead of accepting. Treat the click as one at the end of
+  // the buffer. The default action of the mousedown is suppressed first, the
+  // way Monaco's own content clicks do: the zone is not focusable, so the
+  // default would move focus to the body again right after `focus()`.
+  disposables.push(
+    editor.onMouseDown((e) => {
+      if (e.target.type !== monaco.editor.MouseTargetType.CONTENT_VIEW_ZONE) return;
+      e.event.preventDefault();
+      const lastLine = model.getLineCount();
+      editor.setPosition({ lineNumber: lastLine, column: model.getLineMaxColumn(lastLine) });
+      editor.focus();
+    }),
+  );
+  editor.addCommand(
+    monaco.KeyCode.Tab,
+    () => {
+      editor.trigger("suggestion", "editor.action.inlineSuggest.commit", {});
+    },
+    scoped("inlineSuggestionVisible"),
+  );
+
   // --- Diagnostic-error state: listen to marker changes for this model only
   // and expose them to the consumer via `onDiagnosticsChange`.
   //
@@ -550,9 +678,10 @@ export function createQueryEditor(
     );
   }
 
-  // Initial layout + mode state.
+  // Initial layout + mode state, and the initial suggestion if one was given.
   syncMode();
   fit();
+  syncSuggestion();
 
   // Append the resize handle into the container (after the editor DOM is ready).
   container.appendChild(resizeHandle);
@@ -606,6 +735,13 @@ export function createQueryEditor(
     getValue: () => model.getValue(),
     setValue: (value: string) => {
       model.setValue(value);
+    },
+    setSuggestion: (next: QuerySuggestion | null) => {
+      suggestion = next;
+      // A ghost already showing is kept by a re-trigger, so drop it first: the
+      // provider is only asked again for a fresh request.
+      dropGhost();
+      syncSuggestion();
     },
     focus: () => {
       editor.focus();

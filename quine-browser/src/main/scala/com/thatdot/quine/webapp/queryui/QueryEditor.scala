@@ -19,6 +19,27 @@ trait EditorDiagnostic extends js.Object {
   def endColumn: Int = js.native
 }
 
+/** A whole query to suggest as ghost text, in three parts around the spot the user is expected
+  * to fill in: accepting it with Tab inserts all three and leaves the cursor on `fill`, selected.
+  * Mirrors the package's `QuerySuggestion` interface.
+  */
+trait QuerySuggestion extends js.Object {
+  def before: String
+  def fill: String
+  def after: String
+}
+
+object QuerySuggestion {
+  def apply(before: String, fill: String, after: String): QuerySuggestion = {
+    val (b, f, a) = (before, fill, after)
+    new QuerySuggestion {
+      val before: String = b
+      val fill: String = f
+      val after: String = a
+    }
+  }
+}
+
 /** Options bag for [[QueryEditor.create]]. Mirrors the `QueryEditorOptions` interface of
   * `@thatdot/query-editor`.
   */
@@ -32,6 +53,12 @@ trait QueryEditorOptions extends js.Object {
 
   /** Hint text shown while the editor is empty. */
   var placeholder: js.UndefOr[String] = js.undefined
+
+  /** A query to suggest as ghost text; Tab accepts. When the ghost shows is the package's
+    * call (`QueryEditorOptions.suggestion` in queryEditor.ts). Replaceable later with
+    * [[QueryEditorHandle.setSuggestion]]. The placeholder yields to it whenever one is set.
+    */
+  var suggestion: js.UndefOr[QuerySuggestion] = js.undefined
 
   /** Initial buffer content. */
   var initialValue: js.UndefOr[String] = js.undefined
@@ -120,6 +147,9 @@ trait QueryEditorOptions extends js.Object {
 trait QueryEditorHandle extends js.Object {
   def getValue(): String = js.native
   def setValue(value: String): Unit = js.native
+
+  /** Replace the ghost-text suggestion; `null` clears it. See [[QueryEditorOptions.suggestion]]. */
+  def setSuggestion(suggestion: QuerySuggestion): Unit = js.native
   def focus(): Unit = js.native
   def blur(): Unit = js.native
 

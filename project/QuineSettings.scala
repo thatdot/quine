@@ -103,6 +103,11 @@ object QuineSettings {
       IO.delete(queryEditorNodeModules)
       queryEditorNodeModules
     },
+    // The package's TypeScript is compiled into each bundle by webpack (through the ts-loader
+    // rule in the project's common.webpack.config.js) but lives outside the project's sources,
+    // so the webpack task's up-to-date check has to watch it: otherwise a change to the package
+    // alone leaves the served bundle on the previous build.
+    webpackMonitoredDirectories += (ThisBuild / baseDirectory).value / "public" / "query-editor" / "src",
   )
 
   /* Settings for projects using vis-network (CSP-compliant peer build)

@@ -84,6 +84,10 @@ export function defineQueryEditorTheme(): void {
       // Variables: NodeVariable, Variable, PatternVariable — no rule,
       // deliberately uncolored so schema tokens pop (Neo4j principle).
     ],
-    colors: {},
+    colors: {
+      // Ghost-text suggestions (see `inlineSuggest` in queryEditor.ts): the
+      // muted grey of helper text, so a proposal never reads as typed content.
+      "editorGhostText.foreground": "#8a93b5",
+    },
   });
 }

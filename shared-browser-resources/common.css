@@ -2096,6 +2096,13 @@ table.cypher-results td, table.cypher-results th {
   font-size: 0.78rem;
   color: #8a93b5;
 }
+/* The one-line Tab hint under the feed query field, shown while the suggestion is still
+   acceptable; whether the grey text is actually drawn is the editor's own call (suggestion.ts). */
+.graph-feed-suggestion-hint {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: #8a93b5;
+}
 .editor-anchor-chip {
   display: inline-flex;
   align-items: center;
@@ -4878,6 +4885,19 @@ body.panel-dragging * {
  * tap-modal shell above; the catalog cards want more room than the tap flow does. */
 .explorer-settings-dialog {
   width: min(980px, calc(100vw - 48px));
+}
+
+/* Graph-feed dialog (query menu → "New graph feed"):
+ * the feed editor on its own, in the tap-modal shell above. Same width as the settings
+ * modal, whose Graph Feeds card hosts the same editor, and the same white fields. */
+.graph-feed-dialog {
+  width: min(980px, calc(100vw - 48px));
+}
+.graph-feed-dialog .editor-input,
+.graph-feed-dialog .editor-textarea,
+.graph-feed-dialog .form-select,
+.graph-feed-dialog .embedded-query-editor {
+  background-color: #fff;
 }
 
 /* Run-in-background dialog (query bar → ⌄ → "Run in background"): shares the tap-modal shell

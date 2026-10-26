@@ -30,6 +30,8 @@ object TopBar {
     // The signed-in user's permission set (`None` when auth is off — everything is allowed).
     // Gates the background-query write action below.
     permissions: Option[Set[String]] = None,
+    // "New graph feed" in the query menu; `None` when the user may not edit explorer settings.
+    onNewGraphFeed: Option[() => Unit] = None,
   ): HtmlElement = {
     // Starting a background query is `GraphWrite` server-side (a background query is a Cypher
     // query, which may mutate) — a stricter gate than reading the graph.
@@ -57,6 +59,7 @@ object TopBar {
         onOpenTapModal = onOpenTapModal,
         onRunInBackground = onRunInBackground,
         backgroundQueriesEnabled = backgroundQueriesEnabled,
+        onNewGraphFeed = onNewGraphFeed,
       ),
       navButtons,
       // Node/edge counters no longer live here (design doc §5 / Lane D): they now render as the

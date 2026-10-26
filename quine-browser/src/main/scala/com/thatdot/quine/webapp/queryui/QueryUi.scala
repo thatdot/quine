@@ -198,27 +198,42 @@ object QueryUi {
     val canEditExplorerSettings: Boolean =
       props.permissions.forall(perms => Set("StoredQueryWrite", "NodeAppearanceWrite").subsetOf(perms))
     val settingsModalOpenVar: Var[Boolean] = Var(false)
+    // Requests to open the standalone graph-feed dialog (GraphFeedModal) on a new feed
+    // editor, from the query menu's "New graph feed". Only offered where the dialog is
+    // mounted, i.e. to users who may edit explorer settings, since a feed is a shared
+    // setting.
+    val feedEditorRequests = new EventBus[GraphFeedEditorMode]
+    val openFeedEditor: Option[() => Unit] =
+      Option.when(canEditExplorerSettings)(() => feedEditorRequests.emit(GraphFeedEditorMode.Creating))
     // Per-browser "show in graph menu" preference for graph feeds: which ones get a pill
     // in the canvas's bottom-left menu (GraphFeedChips). Shared between the settings
     // modal (where the preference is set) and the chips (which it filters).
     val graphMenuPrefs = new GraphMenuPrefs(props.dataService.currentNamespaceSignal.map(_.namespaceId))
+    // `.distinct` here, not upstream: the standing-query signal carries live stats
+    // (each entry's `rates.count` and `oneMinute` move on every poll, and `raw` holds the
+    // whole payload), so it re-emits on each tick however it is deduplicated. The catalog
+    // has no stats, so an unchanged catalog is an equal value and the pickers built on it
+    // are left alone between real changes.
     val tapCatalogSignal: Signal[Pot[Vector[TapCatalogEntry]]] =
       if (canReadStandingQueries)
-        props.dataService.standingQueriesSignal.map(
-          _.map(sqs =>
-            sqs
-              .map(sq =>
-                TapCatalogEntry(
-                  sq.name,
-                  sq.outputs.map(o =>
-                    TapOutput(o.name, o.hasEnrichment, o.hasTransformation, o.enrichmentQuery, o.transformationType),
+        props.dataService.standingQueriesSignal
+          .map(
+            _.map(sqs =>
+              sqs
+                .map(sq =>
+                  TapCatalogEntry(
+                    sq.name,
+                    sq.outputs.map(o =>
+                      TapOutput(o.name, o.hasEnrichment, o.hasTransformation, o.enrichmentQuery, o.transformationType),
+                    ),
+                    sq.pattern.flatMap(_.query),
+                    sq.pattern.flatMap(_.mode),
                   ),
-                  sq.pattern.flatMap(_.query),
-                ),
-              )
-              .toVector,
-          ),
-        )
+                )
+                .toVector,
+            ),
+          )
+          .distinct
       else Val(Pot.Empty)
     // One-shot resolution of the query behind a tap target's data (design doc: "render the
     // standing query / enrichment query in the tap card too"), read off the catalog at open
@@ -2979,6 +2994,7 @@ object QueryUi {
           // from it), so the "Run in background" row is offered only when one is present.
           backgroundQueriesEnabled = props.documentationV2Url.nonEmpty,
           permissions = props.permissions,
+          onNewGraphFeed = openFeedEditor,
         )
       } else emptyNode,
       // Canvas region: everything below the TopBar (VisNetwork plus every overlay anchored to
@@ -3145,6 +3161,27 @@ object QueryUi {
           dataService = props.dataService,
           editorConfig = editorConfig,
           menuPrefs = graphMenuPrefs,
+        )
+      else emptyNode,
+      // Standalone graph-feed dialog (query menu → "New graph feed"): just the feed editor,
+      // without the rest of the settings modal.
+      // Same viewport-level fixed overlay and the same permission gate as the settings
+      // modal, for the same reasons.
+      if (canEditExplorerSettings)
+        GraphFeedModal(
+          requests = feedEditorRequests.events,
+          dataService = props.dataService,
+          editorConfig = editorConfig,
+          onSaved = (feed, drawing) =>
+            toastVar.set(
+              Some(
+                ToastMessage(
+                  if (drawing) s"""Feed "${feed.name}" saved (shared with everyone) and drawing on your graph"""
+                  else s"""Feed "${feed.name}" saved (shared with everyone)""",
+                  ToastVariant.Success,
+                ),
+              ),
+            ),
         )
       else emptyNode,
       // WiretapStore lifecycle + tap-query dispatch host. Mounted as long as QueryUi is

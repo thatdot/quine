@@ -38,6 +38,11 @@ final case class TapCatalogEntry(
     * transformation reshapes that data but issues no query of its own).
     */
   patternQuery: Option[String] = None,
+  /** The standing query's mode as the API spells it (`"DISTINCT_ID"`, `"MULTIPLE_VALUES"`,
+    * `"QUINE_PATTERN"`), when known. It says what shape the pattern's results take, which the
+    * pattern text alone does not (see [[TapPointQuery.DistinctIdMode]]).
+    */
+  patternMode: Option[String] = None,
 ) {
 
   /** The query behind the data `tapPoint` observes on this standing query: the match pattern
@@ -47,9 +52,9 @@ final case class TapCatalogEntry(
     */
   def queryAt(tapPoint: TapPoint): Option[TapPointQuery] = tapPoint match {
     case TapPoint.Raw =>
-      patternQuery.map(TapPointQuery(_))
+      patternQuery.map(TapPointQuery(_, patternMode = patternMode))
     case TapPoint.PreEnrichment(out) =>
-      patternQuery.map(TapPointQuery(_, outputs.find(_.name == out).flatMap(_.transformationType)))
+      patternQuery.map(TapPointQuery(_, outputs.find(_.name == out).flatMap(_.transformationType), patternMode))
     case TapPoint.PostEnrichment(out) =>
       outputs.find(_.name == out).flatMap(_.enrichmentQuery).map(TapPointQuery(_))
   }
@@ -62,5 +67,21 @@ final case class TapCatalogEntry(
   * @param transformation For transformed taps this is "InlineData" (because that's the
   *                       only transformation defined today), for raw or enriched taps
   *                       this is `None`.
+  * @param patternMode    For raw or transformed taps the standing query's mode, when known
+  *                       (see [[TapCatalogEntry.patternMode]]); for enriched taps `None`,
+  *                       since the query there is the enrichment, not the pattern.
   */
-final case class TapPointQuery(query: String, transformation: Option[String] = None)
+final case class TapPointQuery(
+  query: String,
+  transformation: Option[String] = None,
+  patternMode: Option[String] = None,
+)
+
+object TapPointQuery {
+
+  /** The pattern mode whose result shape the server fixes; the rule lives in quine-core's
+    * `GraphQueryPattern` (`DistinctIdMustId` and friends), and what it licenses is spelled
+    * out where it is leaned on, `ReturnClauseIdInference.distinctId`.
+    */
+  val DistinctIdMode: String = "DISTINCT_ID"
+}

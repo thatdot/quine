@@ -239,10 +239,15 @@ object QuineApiClient {
       }
     }
 
-  /** Polled feed of standing queries for the given graph namespace. */
+  /** Polled feed of standing queries for the given graph namespace, in name order. The
+    * server's list comes back in a different order on each call, so without sorting here
+    * every poll would be a new value to the `.distinct` downstream and the lists built from
+    * it would re-render with their rows moved about.
+    */
   def standingQueries(graphName: String, routes: ClientRoutes): Feed[Seq[V2StandingQueryInfo]] =
     poll(
-      fetchV2[V2Page[V2StandingQueryInfo]](s"api/v2/graph/$graphName/standingQueries", routes).map(_.items),
+      fetchV2[V2Page[V2StandingQueryInfo]](s"api/v2/graph/$graphName/standingQueries", routes)
+        .map(_.items.sortBy(_.name)),
       StreamsPollIntervalMs,
     )
 

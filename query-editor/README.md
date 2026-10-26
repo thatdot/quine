@@ -52,6 +52,9 @@ import { createQueryEditor } from "@thatdot/query-editor";
 const editor = createQueryEditor(containerElement, {
   placeholder: "Query returning nodes",     // optional
   initialValue: "",                         // optional
+  suggestion: {                             // optional ghost text, Tab accepts, cursor lands on `fill`
+    before: "MATCH (n) WHERE id(n) = $data.", fill: "id", after: " RETURN n",
+  },
   maxHeightPx: 384,                         // optional growth cap
   historyStorageKey: "my-app.query-history",// optional localStorage key
   onRunGraph: (query) => { /* run, render as graph */ },
@@ -67,6 +70,7 @@ const editor = createQueryEditor(containerElement, {
 
 editor.getValue();
 editor.setValue("MATCH (n) RETURN n");
+editor.setSuggestion(null);   // replace or clear the ghost-text suggestion
 editor.focus();
 editor.runGraph();        // record history + fire onRunGraph
 editor.runTable();        // record history + fire onRunTable

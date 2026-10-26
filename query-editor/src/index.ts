@@ -6,6 +6,7 @@ export {
   type QueryEditorHandle,
   type QueryEditorOptions,
   type QueryKind,
+  type QuerySuggestion,
 } from "./queryEditor.js";
 export { CYPHER_LANGUAGE_ID } from "./cypher.js";
 export { QUERY_EDITOR_THEME } from "./theme.js";

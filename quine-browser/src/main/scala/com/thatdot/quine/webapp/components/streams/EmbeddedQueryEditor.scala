@@ -1,6 +1,7 @@
 package com.thatdot.quine.webapp.components.streams
 
 import scala.scalajs.js
+import scala.scalajs.js.JSConverters._
 
 import com.raquo.laminar.api.L._
 
@@ -14,6 +15,7 @@ import com.thatdot.quine.webapp.queryui.{
   QueryEditor,
   QueryEditorHandle,
   QueryEditorOptions,
+  QuerySuggestion,
 }
 
 /** A form-friendly wrapper around the `@thatdot/query-editor` Monaco editor, for Cypher fields in
@@ -59,12 +61,17 @@ object EmbeddedQueryEditor {
     placeholderText: String,
     editorConfig: EmbeddedEditorConfig,
     bufferLanguage: BufferLanguage = BufferLanguage.Cypher,
+    // A whole query to offer as ghost text that Tab accepts, when the host can propose one;
+    // see [[QuerySuggestion]]. Follows the signal, so the offer tracks the host's state.
+    suggestion: Signal[Option[QuerySuggestion]] = Signal.fromValue(None),
   ): HtmlElement = {
     // Mutable mirror of the buffer's current value, needed inside the editor's JS callbacks and
     // kept in sync by the binder + onChange below. Seeded from the form state so the initial
     // mount has the right content.
     var editorHandle: Option[QueryEditorHandle] = None
     var latestQuery: String = ""
+    // Same mirror for the suggestion: the editor takes it at creation and by a setter after.
+    var latestSuggestion: Option[QuerySuggestion] = None
 
     // Full list of LSP diagnostics on the editor's model, fed by `onDiagnosticsListChange`, and
     // whether the diagnostics panel is expanded (toggled by clicking the status bar).
@@ -102,6 +109,10 @@ object EmbeddedQueryEditor {
 
     host.amend(
       currentValue --> externalQueryObserver,
+      suggestion --> { next =>
+        latestSuggestion = next
+        editorHandle.foreach(_.setSuggestion(next.orNull))
+      },
       onMountCallback { _ =>
         // QuinePattern language-server mode. StreamsPage is V2-only, so the route is always the V2
         // LSP path; lspWebSocketUrl honors `serverUrl`. When off, the field stays on Monarch-only
@@ -118,6 +129,7 @@ object EmbeddedQueryEditor {
             embedded = true
             placeholder = placeholderText
             initialValue = latestQuery
+            this.suggestion = latestSuggestion.orUndefined
             onChange = ((value: String) => if (value != latestQuery) onUpdate(value)): js.Function1[String, Unit]
             onDiagnosticsListChange = (
               (arr: js.Array[EditorDiagnostic]) =>

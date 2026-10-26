@@ -392,6 +392,7 @@ object ExplorerSettingsModal {
             mode = mode,
             initialValue = priorName.flatMap(name => dataVar.now().find(_.name == name)),
             standingQueries = standingQueries,
+            existingNames = dataVar.now().iterator.map(_.name).toSet,
             editorConfig = editorConfig,
             onSave = { newGraphFeed =>
               if (canMutate()) {

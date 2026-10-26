@@ -51,6 +51,7 @@ object MonacoQueryInput {
     onBookmark: () => Unit,
     onOpenTapModal: () => Unit,
     onRunInBackground: () => Unit = () => (),
+    onNewGraphFeed: Option[() => Unit] = None,
   ): HtmlElement = {
     // Mutable mirrors of reactive state needed inside the editor's JS callbacks (Signals expose
     // no current-value accessor). They are kept in sync by binders on the root element below.
@@ -223,6 +224,7 @@ object MonacoQueryInput {
         // diagnostics: the server compiles the query when it accepts the request, so a stale
         // marker shouldn't stop the dialog from even opening.
         runInBackgroundDisabled = query.map(_.trim.isEmpty),
+        onNewGraphFeed = onNewGraphFeed,
       )
 
     // The element the editor is mounted into. The package drives its height (auto-grow with

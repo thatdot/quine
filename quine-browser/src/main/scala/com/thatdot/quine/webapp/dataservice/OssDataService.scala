@@ -477,19 +477,19 @@ class OssDataService(protected val clientRoutes: ClientRoutes, protected val use
 
     // The server's tap-query list for the current namespace, tagged with the namespace it
     // belongs to (so one graph's opt-ins are never reconciled against another's list).
-    // Always polled (when readable): the wanted set is the opt-in set intersected with the
-    // server list, which must stay current as definitions are added, edited, or dropped.
+    // Two constraints hold the reconcile below sound. Read off the shared `graphFeedsSignal`
+    // (polled, and refetched by every save), never a second poll of its own, so a reconcile
+    // never sees a list older than the latest save (a separate poll pruned an opt-in made
+    // right after saving its feed). Driven by the list's emissions with the namespace
+    // sampled at that moment, never a combine of the two: a combine also fires on a
+    // namespace switch while the list is still the previous graph's, and the list only ever
+    // emits for the namespace it was fetched for, so sampling at emission can't mismatch.
+    // A stale list during a refetch still counts as loaded (its last known value); a
+    // namespace switch resets it to nothing.
     private val tapListSignal: Signal[Option[(String, Vector[V2GraphFeed])]] =
-      currentNamespaceSignal
-        .flatMapSwitch { ns =>
-          if (canReadGraphFeeds)
-            QuineApiClient
-              .graphFeeds(ns.namespaceId, clientRoutes)
-              .values
-              .map(graphFeeds => Option(ns.namespaceId -> graphFeeds))
-              .startWith(None)
-          else Val(None)
-        }
+      graphFeedsSignal
+        .withCurrentValueOf(currentNamespaceSignal)
+        .map { case (pot, ns) => pot.toOption.map(graphFeeds => ns.namespaceId -> graphFeeds) }
 
     enabledIntentVar.signal
       .combineWith(tapListSignal)

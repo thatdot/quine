@@ -42,6 +42,8 @@ object QueryMenuButton {
     * @param showRunInBackground whether to show the "Run in background" row at all (hidden on
     *                           hosts that don't offer background queries, or for a read-only role).
     * @param runInBackgroundDisabled greys that row (empty buffer).
+    * @param onNewGraphFeed "New graph feed" one-shot action; opens the host's feed editor.
+    *                       `None` hides the row, for a user who may not edit explorer settings.
     */
   def apply(
     label: String,
@@ -55,6 +57,7 @@ object QueryMenuButton {
     onRunInBackground: () => Unit = () => (),
     showRunInBackground: Signal[Boolean] = Signal.fromValue(false),
     runInBackgroundDisabled: Signal[Boolean] = Signal.fromValue(false),
+    onNewGraphFeed: Option[() => Unit] = None,
   ): HtmlElement = {
     val menuOpenVar: Var[Boolean] = Var(false)
     var rootEl: Option[dom.html.Element] = None
@@ -127,7 +130,7 @@ object QueryMenuButton {
               multilineItem { () => closeMenu(); onMultiline() },
               bookmarkItem { () => closeMenu(); onBookmark() },
               tapModalItem { () => closeMenu(); onOpenTapModal() },
-            )
+            ) ++ onNewGraphFeed.map(open => graphFeedItem { () => closeMenu(); open() })
         },
       ),
     )
@@ -138,7 +141,7 @@ object QueryMenuButton {
       cls := QueryMenuStyles.menuItem,
       onClick --> (_ => onClick0()),
       span(cls := QueryMenuStyles.menuItemIcon, i(cls := "ion-play")),
-      span(cls := QueryMenuStyles.menuItemLabel, "Run as text query"),
+      span(cls := QueryMenuStyles.menuItemLabel, "Run as Text Query"),
       span(cls := QueryMenuStyles.menuItemHint, "Shift+Click / Ctrl+Shift+↵"),
     )
 
@@ -147,7 +150,7 @@ object QueryMenuButton {
       cls := QueryMenuStyles.menuItem,
       onClick --> (_ => onClick0()),
       span(cls := QueryMenuStyles.menuItemIcon, i(cls := "ion-ios-list")),
-      span(cls := QueryMenuStyles.menuItemLabel, "Multi-line editing"),
+      span(cls := QueryMenuStyles.menuItemLabel, "Multi-line Editing"),
       span(cls := QueryMenuStyles.menuItemHint, "⇧↵ for newline"),
     )
 
@@ -156,7 +159,7 @@ object QueryMenuButton {
       cls := QueryMenuStyles.menuItem,
       onClick --> (_ => onClick0()),
       span(cls := QueryMenuStyles.menuItemIcon, i(cls := "ion-star")),
-      span(cls := QueryMenuStyles.menuItemLabel, "Bookmark as sample query"),
+      span(cls := QueryMenuStyles.menuItemLabel, "Bookmark as Sample Query"),
     )
 
   private def tapModalItem(onClick0: () => Unit): HtmlElement =
@@ -165,6 +168,17 @@ object QueryMenuButton {
       onClick --> (_ => onClick0()),
       span(cls := QueryMenuStyles.menuItemIcon, i(cls := "ion-radio-waves")),
       span(cls := QueryMenuStyles.menuItemLabel, "Standing Query Results Inspection"),
+    )
+
+  /** Directly under the inspection row: a feed is the "keep drawing these" counterpart of
+    * inspecting a point, and the editor it opens picks the point on the same diagram.
+    */
+  private def graphFeedItem(onClick0: () => Unit): HtmlElement =
+    div(
+      cls := QueryMenuStyles.menuItem,
+      onClick --> (_ => onClick0()),
+      span(cls := QueryMenuStyles.menuItemIcon, i(cls := "ion-ios-pulse")),
+      span(cls := QueryMenuStyles.menuItemLabel, "New Graph Feed"),
     )
 
   private def runInBackgroundItem(
@@ -179,7 +193,7 @@ object QueryMenuButton {
       // is open, and a stale enabled state would dispatch a run of nothing.
       onClick.compose(_.sample(disabled)) --> { isDisabled => if (!isDisabled) onClick0() },
       span(cls := QueryMenuStyles.menuItemIcon, i(cls := "ion-clock")),
-      span(cls := QueryMenuStyles.menuItemLabel, "Run in background"),
+      span(cls := QueryMenuStyles.menuItemLabel, "Run in Background"),
     )
 }
 
