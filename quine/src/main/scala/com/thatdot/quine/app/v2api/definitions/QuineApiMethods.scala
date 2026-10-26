@@ -65,15 +65,17 @@ object ProductVersion {
 
 object ApplicationApiMethods {
 
-  /** How a caller enumerates ONE namespace's ingest streams for the snapshot. Same shape as
-    * [[IngestStreamState.getV2IngestStreams]] applied to one namespace with no member filter.
+  /** How a caller enumerates every ingest running on this host, in every namespace, for the snapshot.
+    *
+    * The caller enumerates rather than the snapshot walking `graph.getNamespaces`: a hot spare runs
+    * cluster-ingest partitions in namespaces its namespace cache never learns.
     *
     * IMPORTANT: implementations must enumerate the LOCAL host's ingests only. QuineEnterpriseApp's
     * `getV2IngestStreams` override routes through the cluster interface, so passing it here from the
     * per-member backpressure callback would nest a cluster-wide broadcast inside the broadcast and
     * attribute every member's ingests to every host's snapshot.
     */
-  type LocalIngestEnumeration = NamespaceId => Future[Seq[LocalIngest]]
+  type LocalIngestEnumeration = () => Future[Seq[LocalIngest]]
 
   /** One locally-running ingest, as the backpressure snapshot needs to see it.
     *
@@ -84,6 +86,7 @@ object ApplicationApiMethods {
     * name), so a slice's stage states are still findable. For a local ingest the two are equal.
     */
   final case class LocalIngest(
+    namespace: NamespaceId,
     memberIdx: Option[MemberIdx],
     displayName: String,
     metricsName: String,
@@ -150,27 +153,20 @@ object ApplicationApiMethods {
     val ingestsF: Future[Seq[IngestSnapshot]] = listLocalIngests match {
       case None => Future.successful(Seq.empty)
       case Some(listIngests) =>
-        implicit val ec: ExecutionContext = graph.nodeDispatcherEC
-        Future
-          .traverse(graph.getNamespaces.toSeq) { nsId =>
-            listIngests(nsId).map { streams =>
-              val ns = nsId.name
-              streams.map { entry =>
-                val info = entry.info
-                IngestSnapshot(
-                  name = entry.displayName,
-                  namespace = ns,
-                  sourceType = info.settings.source.getClass.getSimpleName.stripSuffix("$"),
-                  status = info.status.toString.toUpperCase,
-                  rateLimit = info.settings.maxPerSecond,
-                  rate = info.stats.rates.oneMinute,
-                  totalCount = info.stats.ingestedCount,
-                  stages = ingestStages(ns, entry.metricsName),
-                )
-              }
-            }
-          }
-          .map(_.flatten)
+        listIngests().map(_.map { entry =>
+          val info = entry.info
+          val ns = entry.namespace.name
+          IngestSnapshot(
+            name = entry.displayName,
+            namespace = ns,
+            sourceType = info.settings.source.getClass.getSimpleName.stripSuffix("$"),
+            status = info.status.toString.toUpperCase,
+            rateLimit = info.settings.maxPerSecond,
+            rate = info.stats.rates.oneMinute,
+            totalCount = info.stats.ingestedCount,
+            stages = ingestStages(ns, entry.metricsName),
+          )
+        })(graph.nodeDispatcherEC)
     }
 
     // ── Standing queries ──
@@ -271,10 +267,10 @@ object ApplicationApiMethods {
 
     // Authoritative graph list — the same source and naming the standing-query enumeration above uses,
     // so idle graphs (no ingests, no standing queries) still reach the diagram rather than being
-    // implied only by the pipelines that happen to be running in them.
-    val namespaces: Seq[String] = graph.getNamespaces.toSeq.map(_.name).sorted
-
+    // implied only by the pipelines that happen to be running in them. A hot spare's cache lacks the
+    // graphs its partitions run in, so those come from the ingests themselves.
     ingestsF.map { ingests =>
+      val namespaces: Seq[String] = (graph.getNamespaces.map(_.name) ++ ingests.map(_.namespace)).toSeq.distinct.sorted
       BackpressureSnapshot(
         timestamp = java.time.Instant.now(),
         host = hostInfo,
@@ -366,13 +362,16 @@ trait ApplicationApiMethods {
     // method with a cluster broadcast and supplies its own local enumeration per member.
     val listLocalIngests: Option[ApplicationApiMethods.LocalIngestEnumeration] = app match {
       case iss: IngestStreamState =>
-        Some(ns =>
-          iss
-            .getV2IngestStreams(ns, None)
-            .map(_.map { case (idx, name, info) =>
-              ApplicationApiMethods.LocalIngest(idx, name, name, info)
-            })(ExecutionContext.parasitic),
-        )
+        Some { () =>
+          implicit val ec: ExecutionContext = graph.nodeDispatcherEC
+          Future
+            .traverse(graph.getNamespaces.toSeq) { ns =>
+              iss
+                .getV2IngestStreams(ns, None)
+                .map(_.map { case (idx, name, info) => ApplicationApiMethods.LocalIngest(ns, idx, name, name, info) })
+            }
+            .map(_.flatten)
+        }
       case _ => None
     }
 
