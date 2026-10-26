@@ -64,7 +64,17 @@ object CreateStandingQueryForm {
       // Pattern / outputs / options / ... — all schema-driven.
       renderedSchema match {
         case Some(schema) =>
-          SchemaFormRenderer.render(schema, spec, Nil, formState, editorConfig, isRequired = true)
+          // Novelty destinations get their assists beneath the fields they fill in; the standing query
+          // doesn't exist yet, so there are no live results to sample.
+          val assists = NoveltyAssists(None, formState, editorConfig.serverUrl.getOrElse(""))
+          SchemaFormRenderer.render(
+            schema,
+            spec,
+            Nil,
+            formState,
+            editorConfig.copy(fieldAddons = assists),
+            isRequired = true,
+          )
         case None =>
           div(
             cls := "alert alert-warning",

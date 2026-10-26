@@ -263,6 +263,8 @@ object IngestSource {
   implicit lazy val reactiveStreamIngestDecoder: Decoder[ReactiveStreamIngest] = deriveConfiguredDecoder
   implicit lazy val webSocketFileUploadEncoder: Encoder[WebSocketFileUpload] = deriveConfiguredEncoder
   implicit lazy val webSocketFileUploadDecoder: Decoder[WebSocketFileUpload] = deriveConfiguredDecoder
+  implicit lazy val quineIngestEncoder: Encoder[QuineIngest] = deriveConfiguredEncoder
+  implicit lazy val quineIngestDecoder: Decoder[QuineIngest] = deriveConfiguredDecoder
   implicit lazy val stdInputIngestEncoder: Encoder[StdInputIngest] = deriveConfiguredEncoder
   implicit lazy val stdInputIngestDecoder: Decoder[StdInputIngest] = deriveConfiguredDecoder
   implicit lazy val numberIteratorIngestEncoder: Encoder[NumberIteratorIngest] = deriveConfiguredEncoder
@@ -336,6 +338,7 @@ private object IngestSourcePreservingCodecs {
     implicit val kafkaIngestEncoder: Encoder[KafkaIngest] = deriveConfiguredEncoder
     implicit val reactiveStreamIngestEncoder: Encoder[ReactiveStreamIngest] = deriveConfiguredEncoder
     implicit val webSocketFileUploadEncoder: Encoder[WebSocketFileUpload] = deriveConfiguredEncoder
+    implicit val quineIngestEncoder: Encoder[QuineIngest] = deriveConfiguredEncoder
     implicit val deltaSharingAuthEncoder: Encoder[DeltaSharingAuth] = deriveConfiguredEncoder
     implicit val deltaSharingCdfIngestEncoder: Encoder[DeltaSharingCdfIngest] = deriveConfiguredEncoder
 
@@ -417,6 +420,11 @@ case class ReactiveStreamIngest(
   url: String,
   port: Int,
 ) extends IngestSource
+
+/** Standing query results pushed by Quine's Novelty output; see [[sources.QuineSource]]. Novelty only. */
+case class QuineIngest() extends IngestSource {
+  def format: IngestFormat = StreamingFormat.JsonFormat
+}
 
 @title("WebSocket File Upload")
 @description("Streamed file upload via WebSocket protocol.")

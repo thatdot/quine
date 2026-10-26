@@ -111,7 +111,7 @@ object SchemaFormRenderer {
           case _ =>
             node.typ match {
               case Some("object") => obj
-              case Some("array") => renderArray(node, spec, path, stateVar, editorConfig, depth)
+              case Some("array") => renderArray(node, spec, path, stateVar, editorConfig, depth, isRequired)
               case Some("string") if node.`enum`.exists(_.nonEmpty) => renderEnum(node, path, stateVar, isRequired)
               case Some("string") =>
                 renderString(node, path, stateVar, editorConfig, isRequired, descriptionOverride, placeholderOverride)
@@ -520,6 +520,9 @@ object SchemaFormRenderer {
     isLeaf && hasNoChildren && isNotLongText
   }
 
+  /** @param schemaName the schema the fields belong to, if known; with `path`, what the form's
+    *                   [[EmbeddedEditorConfig.fieldAddons]] are asked about for each field
+    */
   private def renderFieldList(
     fields: List[(String, SchemaNode)],
     requiredFields: Set[String],
@@ -529,11 +532,14 @@ object SchemaFormRenderer {
     stateVar: Var[Json],
     editorConfig: EmbeddedEditorConfig,
     depth: Int,
+    schemaName: Option[String],
   ): HtmlElement =
     div(
       cls := "row g-2",
       fields.map { case (propName, propSchema) =>
-        val colClass = if (isSimpleField(propSchema, spec)) "col-lg-6" else "col-12"
+        val addon = schemaName.flatMap(editorConfig.fieldAddons.forField(_, propName, path))
+        // A field with a control beneath it takes the full width, so the control sits under it.
+        val colClass = if (isSimpleField(propSchema, spec) && addon.isEmpty) "col-lg-6" else "col-12"
         div(
           cls := colClass,
           render(
@@ -548,6 +554,7 @@ object SchemaFormRenderer {
             hints.descriptions.get(propName),
             hints.placeholders.get(propName),
           ),
+          addon.getOrElse(emptyNode),
         )
       },
     )
@@ -580,19 +587,22 @@ object SchemaFormRenderer {
 
     val (primary, optional) = ordered.partition { case (name, schema) =>
       val resolved = OpenApiParser.resolveNode(schema, spec.schemas)
-      // `promote` forces into primary regardless of required/default.
+      // `promote` forces into primary regardless of required/default. An array with a minimum
+      // number of items must be filled in, so it is primary too: the spec can't be relied on to
+      // list it as required, since tapir treats collections as optional unless told otherwise.
       hints.promote.contains(name) ||
-      (requiredFields.contains(name) && resolved.default.isEmpty)
+      (requiredFields.contains(name) && resolved.default.isEmpty) ||
+      resolved.minItems.exists(_ > 0)
     }
 
     if (optional.isEmpty)
       // All fields are required — render flat
-      renderFieldList(primary, requiredFields, hints, spec, path, stateVar, editorConfig, depth)
+      renderFieldList(primary, requiredFields, hints, spec, path, stateVar, editorConfig, depth, schemaName)
     else {
       // Some or all fields are optional — collapse them into "More Options"
       val advancedExpanded = Var(false)
       div(
-        renderFieldList(primary, requiredFields, hints, spec, path, stateVar, editorConfig, depth),
+        renderFieldList(primary, requiredFields, hints, spec, path, stateVar, editorConfig, depth, schemaName),
         div(
           cls := "mt-3 pt-2 border-top",
           div(
@@ -604,7 +614,7 @@ object SchemaFormRenderer {
           ),
           div(
             display <-- advancedExpanded.signal.map(if (_) "block" else "none"),
-            renderFieldList(optional, requiredFields, hints, spec, path, stateVar, editorConfig, depth),
+            renderFieldList(optional, requiredFields, hints, spec, path, stateVar, editorConfig, depth, schemaName),
           ),
         ),
       )
@@ -618,7 +628,25 @@ object SchemaFormRenderer {
     stateVar: Var[Json],
     editorConfig: EmbeddedEditorConfig,
     depth: Int,
+    isRequired: Boolean,
   ): HtmlElement = {
+    // Minimum number of items this array must hold (from the schema's `minItems`). A positive
+    // minimum means the field is marked required, shows that many boxes from the start (eagerly
+    // seeded below), and no box can be removed while only `minItems` remain — so a non-empty array
+    // (e.g. a `NonEmptyList`, or the Novelty destination's `endpoints`) always has at least one box
+    // the user must fill. `minItems` is relied on rather than `isRequired`, since the spec doesn't
+    // list a plain list with a minimum as required.
+    val minItems: Int = node.minItems.getOrElse(0)
+
+    // Eagerly seed up to `minItems` empty slots at construction (mirrors renderString's eager
+    // default init), so the boxes are present as soon as the field is shown.
+    if (minItems > 0) {
+      val current = SchemaFormState.getAt(stateVar.now(), path).flatMap(_.asArray).getOrElse(Vector.empty)
+      if (current.size < minItems)
+        stateVar.update(
+          SchemaFormState.setAt(_, path, Json.fromValues(current ++ Vector.fill(minItems - current.size)(Json.Null))),
+        )
+    }
     // We intentionally avoid `splitSeq` here. Keying by positional index causes
     // splitSeq to recycle a deleted item's DOM (and its local Vars — expanded
     // state, union selectors, etc.) for the item that shifts into that index.
@@ -633,7 +661,7 @@ object SchemaFormRenderer {
 
     div(
       cls := "mb-2",
-      renderLabel(node, path),
+      renderLabel(node, path, isRequired = isRequired || minItems > 0),
       children <-- arrayLenSignal.map { n =>
         (0 until n).toList.map { idx =>
           div(
@@ -654,17 +682,20 @@ object SchemaFormRenderer {
                   renderString(SchemaNode(), path :+ idx.toString, stateVar, editorConfig, isRequired = false)
               },
             ),
-            button(
-              cls := "btn btn-sm btn-ghost-danger ms-1",
-              typ := "button",
-              i(cls := "cil-trash"),
-              onClick --> { _ =>
-                stateVar.update { json =>
-                  val arr = SchemaFormState.getAt(json, path).flatMap(_.asArray).getOrElse(Vector.empty)
-                  SchemaFormState.setAt(json, path, Json.fromValues(arr.patch(idx, Nil, 1)))
-                }
-              },
-            ),
+            // Removable only down to `minItems`; the required minimum of boxes can't be deleted.
+            if (n > minItems)
+              button(
+                cls := "btn btn-sm btn-ghost-danger ms-1",
+                typ := "button",
+                i(cls := "cil-trash"),
+                onClick --> { _ =>
+                  stateVar.update { json =>
+                    val arr = SchemaFormState.getAt(json, path).flatMap(_.asArray).getOrElse(Vector.empty)
+                    SchemaFormState.setAt(json, path, Json.fromValues(arr.patch(idx, Nil, 1)))
+                  }
+                },
+              )
+            else emptyNode,
           )
         }
       },

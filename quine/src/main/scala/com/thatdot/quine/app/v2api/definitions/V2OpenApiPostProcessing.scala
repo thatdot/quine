@@ -8,16 +8,17 @@ import com.thatdot.api.v2.ProductVersion
   * V2 spec. Every builder of a published document (OSS / Enterprise / Novelty
   * generators and the live `/openapi.json` endpoint) runs this as its final step:
   *   - [[CustomMethod.rewriteOpenAPI]] — rewrite AIP-136 colon-verb path templates
-  *   - [[experimentalSchemas]] — drop experimental ingest sources
+  *   - [[experimentalSchemas]] — drop ingest sources no product advertises
   *   - [[ProductApiVisibility.show]] — drop what belongs to other products
   */
 object V2OpenApiPostProcessing {
 
-  /** Component-schema names of experimental ingest sources. They are wired into the API, so they can be created and
-    * run, but are not yet ready to advertise to users: the runtime still accepts them, and only the published spec
-    * leaves them out (along with schemas only they reach; see [[ApiSchemaPruning]]).
+  /** Component-schema names of ingest sources no product advertises. They are wired into the API, so they can be
+    * created and run, but the published spec leaves them out (along with schemas only they reach; see
+    * [[ApiSchemaPruning]]): `DeltaSharingCdf` is experimental, not yet ready to advertise to users, and `Quine` is only
+    * ever created by Quine Enterprise on Novelty, for a Novelty output, never by hand.
     */
-  val experimentalSchemas: Set[String] = Set("DeltaSharingCdf")
+  val experimentalSchemas: Set[String] = Set("DeltaSharingCdf", "Quine")
 
   def apply(raw: OpenAPI, product: ProductVersion): OpenAPI = {
     val withoutExperimental = ApiSchemaPruning.prune(CustomMethod.rewriteOpenAPI(raw), experimentalSchemas, Map.empty)

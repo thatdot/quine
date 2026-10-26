@@ -9,7 +9,7 @@ import scala.util.{Failure, Success, Try}
 import cats.data.NonEmptyList
 import io.circe.Json
 import sttp.tapir.CodecFormat.TextPlain
-import sttp.tapir.{Codec, DecodeResult, Schema}
+import sttp.tapir.{Codec, DecodeResult, Schema, Validator}
 
 import com.thatdot.api.v2.codec.DurationFormat
 
@@ -29,8 +29,20 @@ object ThirdPartySchemas {
 
   /** Schemas for `cats` data types */
   object cats {
+
+    /** A `NonEmptyList[A]` is, by construction, a non-empty array — the decoder already rejects an
+      * empty or missing one. The schema says so: the `minSize(1)` validator publishes `minItems: 1`,
+      * and the schema is not optional, so a `NonEmptyList` field is listed as `required` (tapir treats
+      * every collection as optional by default; an `Option[NonEmptyList[A]]` field is still optional).
+      * Docs, schema-driven form rendering, and runtime then agree. This only documents
+      * already-enforced constraints, so it is not a behavioral change for API consumers.
+      */
     implicit def nonEmptyListSchema[A](implicit inner: Schema[A]): Schema[NonEmptyList[A]] =
-      Schema.schemaForIterable[A, List].map(list => NonEmptyList.fromList(list))(_.toList)
+      Schema
+        .schemaForIterable[A, List]
+        .validate(Validator.minSize(1))
+        .map(list => NonEmptyList.fromList(list))(_.toList)
+        .copy(isOptional = false)
   }
 
   /** Schemas for Circe types */

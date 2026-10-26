@@ -1,12 +1,14 @@
 package com.thatdot.quine.app.v2api.converters
 
 import scala.concurrent.Future
+import scala.util.Try
 
 import org.apache.pekko.actor.ActorSystem
 
 import com.thatdot.api.v2.{outputs => CoreApiOutputs}
 import com.thatdot.outputs2.DataFoldableSink
 import com.thatdot.outputs2.kafka.KafkaExtensionProvider
+import com.thatdot.quine.app.model.outputs2.destination.{NoveltyDestinationSupport, NoveltyStreamSettings}
 import com.thatdot.quine.app.model.{outputs2 => OutputModels}
 import com.thatdot.quine.app.v2api.definitions.outputs.MirrorOfCore
 import com.thatdot.quine.app.v2api.definitions.query.{standing => ApiStanding}
@@ -49,6 +51,20 @@ object Api2ToOutputs2 {
       ),
     )
 
+  private def noveltyStreamSettings(
+    n: ApiOutput.QuineDestinationSteps.Novelty,
+    ownerId: String,
+  ): NoveltyStreamSettings =
+    NoveltyStreamSettings(
+      ownerId = ownerId,
+      endpoints = n.endpoints,
+      model = n.model,
+      scoreEdgeLabel = n.scoreEdgeLabel,
+      parallelism = n.parallelism,
+      shouldRetry = n.shouldRetry,
+      auth = n.auth,
+    )
+
   /** Convenience method for converting [[ApiOutput.QuineDestinationSteps]] to
     * [[CoreApiOutputs.DestinationSteps]] when there exists an "equivalent" core type
     * that the local API type is meant to "mirror".
@@ -89,11 +105,35 @@ object Api2ToOutputs2 {
     graph: CypherOpsGraph,
     protobufSchemaCache: ProtobufSchemaCache,
     kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
+    noveltyDestinationSupport: NoveltyDestinationSupport,
   ): Future[DataFoldableSink] = steps match {
     case x: ApiOutput.QuineDestinationSteps.CypherQuery =>
       Future.successful(apply(x))
     case x: ApiOutput.QuineDestinationSteps.Slack =>
       Future.successful(apply(x)(graph.system))
+    case x: ApiOutput.QuineDestinationSteps.Novelty =>
+      // Enterprise-only: the destination is supplied by the capability, so the OSS build has nothing
+      // to construct even on a path that bypasses QuineApiMethods.validateWorkflow (which gives the
+      // clean 400).
+      noveltyDestinationSupport match {
+        case NoveltyDestinationSupport.Available(build) =>
+          // The owner id is assigned once, where the output is created, so that every host builds this
+          // destination with the same id; an output without one never went through that path.
+          x.ownerId match {
+            case Some(ownerId) =>
+              Future.fromTry(
+                Try(OutputModels.QuineDestinationSteps.WithDataFoldable(build(noveltyStreamSettings(x, ownerId)))),
+              )
+            case None =>
+              Future.failed(
+                new IllegalArgumentException(
+                  "This Novelty output has no owner id; Novelty outputs must be created through the v2 API.",
+                ),
+              )
+          }
+        case NoveltyDestinationSupport.Unavailable =>
+          Future.failed(new NoveltyDestinationSupport.UnavailableException)
+      }
     case x: ApiOutput.QuineDestinationSteps with MirrorOfCore =>
       CoreConvert.Api2ToOutputs2.apply(quineDestinationStepsToCoreDestinationSteps(x))(
         graph = graph,

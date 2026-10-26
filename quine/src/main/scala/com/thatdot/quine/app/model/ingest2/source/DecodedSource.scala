@@ -23,6 +23,7 @@ import org.apache.pekko.{Done, NotUsed, stream}
 
 import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
+import io.circe.Json
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.convert.{Api2ToAws, Api2ToOutputs2}
@@ -101,6 +102,14 @@ abstract class DecodedSource(val meter: IngestMeter) {
     * When `Some(flow)`, the flow is applied after graph writes.
     */
   def ack: Option[Flow[Frame, Done, NotUsed]] = None
+
+  /** Where to send each record's replies, if this source answers the producer that sent a record.
+    * When `Some(sink)`, the ingest runner sends each processed record's replies (one per observation
+    * its transformation yields) paired with the record's frame, so the source can tell which producer
+    * each belongs to. The sink may backpressure, which slows the ingest. When `None`, nothing is
+    * replied.
+    */
+  def replies: Option[Sink[(Json, Frame), NotUsed]] = None
 
   def onTermination(): Unit = ()
 
@@ -935,6 +944,8 @@ object DecodedSource extends LazySafeLogging {
           certTokenAcquirer = certTokenAcquirer,
           cursorScope = sourceCursorScope,
         )(system).decodedSource.valid
+      case QuineIngest() =>
+        QuineSource(meter)(Materializer.matFromSystem(system)).valid
       case WebSocketFileUpload(format) =>
         val decoding = FileSource.decodingFoldableFrom(format, meter, Int.MaxValue)
 

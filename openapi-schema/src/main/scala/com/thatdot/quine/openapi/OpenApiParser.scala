@@ -76,6 +76,7 @@ object OpenApiParser {
           }
         },
       items = cursor.downField("items").focus.map(parseSchemaNode),
+      minItems = cursor.downField("minItems").focus.flatMap(_.asNumber).flatMap(_.toInt),
       oneOf = cursor
         .downField("oneOf")
         .focus

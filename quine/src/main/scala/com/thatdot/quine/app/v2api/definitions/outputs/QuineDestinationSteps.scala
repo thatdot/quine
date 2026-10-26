@@ -4,8 +4,8 @@ import scala.concurrent.duration._
 
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
-import sttp.tapir.Schema
-import sttp.tapir.Schema.annotations.{default, description, encodedExample, title}
+import sttp.tapir.Schema.annotations.{customise, default, description, encodedExample, title, validate}
+import sttp.tapir.{Schema, Validator}
 
 import com.thatdot.api.codec.SecretCodecs._
 import com.thatdot.api.schema.SecretSchemas._
@@ -14,8 +14,9 @@ import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, f
 import com.thatdot.api.v2.outputs.DestinationSteps.KafkaPropertyValue
 import com.thatdot.api.v2.outputs.{DestinationSteps, Format, OutputFormat}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.scala.finiteDurationSchema
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion, SaslJaasConfig}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, ProductSpecific, SaslJaasConfig}
 import com.thatdot.common.security.Secret
+import com.thatdot.quine.app.model.outputs2.destination.NoveltyAuth
 
 /** The Quine-local ADT for result destinations. Note that it includes both "copies" of ADT values defined also in
   * [[DestinationSteps]] <em>and</em> unique ADT values that are supported in Quine but not necessarily other products.
@@ -197,6 +198,105 @@ object QuineDestinationSteps {
     interval: FiniteDuration = 20.seconds,
   ) extends QuineDestinationSteps
 
+  @title("Stream to Novelty")
+  @customise(ProductSpecific.enterpriseOnly)
+  @description(
+    "Streams each standing-query result to a Novelty instance for scoring and writes each score back into " +
+    "the graph. A score is stored on the node `idFrom(<score prefix>, <model, lowercased>, observation)`, with label " +
+    "`NoveltyScore` and, as properties, every field of Novelty's scored result except `tag` (`score`, `observation`, " +
+    "`totalObsScore`, `probability`, `uniqueness`, `infoContent`, `sequence`, and `mostNovelComponent` as a map). The score prefix is set cluster-wide by `quine.novelty.score-prefix` " +
+    "(default `novelty-score`). The same observation scored against the same model always maps to the " +
+    "same node, so its latest score overwrites the previous one. When the scored result carries a tag that " +
+    "is a node id (as returned by `strId(n)`), an edge labelled `scoreEdgeLabel` is added from that node " +
+    "to the score node. Observations are " +
+    "load-balanced across the configured `endpoints` (independent Novelty instances); the connection " +
+    "carries backpressure end-to-end.",
+  )
+  final case class Novelty(
+    @description(
+      "Novelty base URLs, e.g. `http://host:8382`. Each is an independent Novelty instance; observations " +
+      "are load-balanced across them. At least one is required.",
+    )
+    @encodedExample("http://localhost:8382")
+    @validate(Validator.minSize[String, List](1))
+    endpoints: List[String],
+    @description(
+      "Novelty model (namespace) to score against. Created on each endpoint if it doesn't exist there yet; it is " +
+      "never deleted. Model names are case-insensitive.",
+    )
+    @encodedExample("default")
+    model: String,
+    @description(
+      "Optional name of a transformation (registered on Novelty) that maps each result into an observation; " +
+      "applied on the Novelty side. Ignored when `transformationFunction` is set.",
+    )
+    transformation: Option[String] = None,
+    @description(
+      "Optional inline JavaScript transformation that maps each result into an observation, applied on the " +
+      "Novelty side as part of the ingest Quine manages there for this output. Takes precedence over `transformation`, so no transformation " +
+      "need be pre-registered on Novelty. Example: `that => ({ observation: [String(that.data.num)], tag: that.data.id })`, " +
+      "where the standing query returns `strId(n) AS id` so the tag links the score to that node.",
+    )
+    transformationFunction: Option[String] = None,
+    @description(
+      "Record format of `transformationFunction`'s output: `TAGGED` (returns `{observation, tag}`) or `BARE` " +
+      "(returns a bare array of strings). Required when `transformationFunction` is set, and only allowed then.",
+    )
+    @encodedExample("TAGGED")
+    transformationFormat: Option[NoveltyRecordFormat] = None,
+    @description(
+      "Label of the edge added from a tagged node to its score node, when the tag is a node id.",
+    )
+    @default("HAS_NOVELTY_SCORE")
+    scoreEdgeLabel: String = "HAS_NOVELTY_SCORE",
+    @description("Maximum number of scores to write to the graph at once.")
+    @default(com.thatdot.quine.routes.IngestRoutes.defaultWriteParallelism)
+    parallelism: Int = com.thatdot.quine.routes.IngestRoutes.defaultWriteParallelism,
+    @description(
+      "Whether score writes that raise a potentially-recoverable error should be retried (at-least-once).",
+    )
+    @default(true)
+    shouldRetry: Boolean = true,
+    @description(
+      "Optional OAuth authentication to Novelty, by client secret or certificate. Used only when Novelty has " +
+      "auth enabled, both for the scoring connections and for managing this output's ingest on Novelty, which " +
+      "includes creating the model if it is missing (so the client needs permission to create models). A token " +
+      "is reused until shortly before it expires.",
+    )
+    auth: Option[NoveltyAuth] = None,
+    @description(
+      "Identifies this output to Novelty: the Novelty ingest that serves it is named from this id. " +
+      "Assigned by Quine when the output is created; any value supplied in a request is replaced.",
+    )
+    ownerId: Option[String] = None,
+  ) extends QuineDestinationSteps
+
+  object Novelty {
+    implicit val encoder: Encoder[Novelty] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[Novelty] = deriveConfiguredDecoder
+    implicit lazy val schema: Schema[Novelty] = Schema.derived
+  }
+
+  /** What a Novelty output's inline transformation function returns for each result. */
+  sealed abstract class NoveltyRecordFormat(val name: String)
+  object NoveltyRecordFormat {
+
+    /** `{observation, tag}`: each score comes back with its tag. */
+    case object Tagged extends NoveltyRecordFormat("TAGGED")
+
+    /** A bare array of strings: the observation alone. */
+    case object Bare extends NoveltyRecordFormat("BARE")
+
+    val values: Seq[NoveltyRecordFormat] = Seq(Tagged, Bare)
+
+    implicit val encoder: Encoder[NoveltyRecordFormat] = Encoder.encodeString.contramap(_.name)
+    implicit val decoder: Decoder[NoveltyRecordFormat] = Decoder.decodeString.emap { name =>
+      values.find(_.name == name).toRight(s"`transformationFormat` must be `TAGGED` or `BARE`, but was `$name`.")
+    }
+    implicit lazy val schema: Schema[NoveltyRecordFormat] =
+      Schema.derivedEnumeration[NoveltyRecordFormat](encode = Some(_.name))
+  }
+
   implicit val encoder: Encoder[QuineDestinationSteps] = deriveConfiguredEncoder
   implicit val decoder: Decoder[QuineDestinationSteps] = deriveConfiguredDecoder
   implicit lazy val schema: Schema[QuineDestinationSteps] = Schema.derived
@@ -215,6 +315,9 @@ object QuineDestinationSteps {
     implicit val kafkaEncoder: Encoder[Kafka] = deriveConfiguredEncoder
     implicit val kinesisEncoder: Encoder[Kinesis] = deriveConfiguredEncoder
     implicit val snsEncoder: Encoder[SNS] = deriveConfiguredEncoder
+    // Novelty's `auth` carries Secrets (client secret / keystore password) — preserve through persistence.
+    implicit val noveltyAuthEncoder: Encoder[NoveltyAuth] = NoveltyAuth.preservingEncoder
+    implicit val noveltyEncoder: Encoder[Novelty] = deriveConfiguredEncoder
     deriveConfiguredEncoder
   }
 }

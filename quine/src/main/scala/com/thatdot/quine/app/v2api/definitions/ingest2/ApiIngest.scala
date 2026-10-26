@@ -850,6 +850,13 @@ object ApiIngest {
       responseFormat: Option[String] = None,
     ) extends IngestSource
 
+    @title("Quine")
+    @description(
+      "Standing query results pushed by Quine Enterprise's Novelty output, scored, and returned to the " +
+      "connection that sent them. Only available on Novelty, where Quine creates and manages these ingests.",
+    )
+    final case class Quine() extends IngestSource
+
     implicit val encoder: Encoder[IngestSource] = deriveConfiguredEncoder
     implicit val decoder: Decoder[IngestSource] = deriveConfiguredDecoder
     implicit lazy val schema: Schema[IngestSource] = Schema.derived

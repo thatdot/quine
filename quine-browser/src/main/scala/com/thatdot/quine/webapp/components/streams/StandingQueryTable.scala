@@ -243,6 +243,7 @@ object StandingQueryTable {
                 outputSchema = outputSchema,
                 state = outputFormState,
                 editorConfig = editorConfig,
+                wiretap = wiretap,
                 onSubmit = body => onAddOutput(name, body),
                 onComplete = { () =>
                   outputFormState.reset()

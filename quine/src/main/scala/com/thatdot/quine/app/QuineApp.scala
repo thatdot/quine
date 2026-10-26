@@ -35,6 +35,7 @@ import com.thatdot.quine.app.model.jobs.{
   JobService,
   JobWork,
 }
+import com.thatdot.quine.app.model.outputs2.destination.NoveltyDestinationSupport
 import com.thatdot.quine.app.model.outputs2.query.standing.{TapBus, TapContext}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
@@ -122,7 +123,8 @@ final class QuineApp(
       "local",
       backgroundQueryRegistry,
       tapBus,
-      steps => Api2ToOutputs2.apply(steps)(graph, protobufSchemaCache, kafkaExtensions),
+      steps =>
+        Api2ToOutputs2.apply(steps)(graph, protobufSchemaCache, kafkaExtensions, NoveltyDestinationSupport.Unavailable),
     )
 
   /** Single-host scheduler for jobs; doubles as the [[JobService]]. Started in [[loadAppData]]. */
@@ -276,15 +278,19 @@ final class QuineApp(
             implicit val ec: ExecutionContext = graph.nodeDispatcherEC
             Future
               .traverse(standingQueryDefinition.outputs.toVector) { apiWorkflow =>
-                ApiToStanding(apiWorkflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).map {
-                  workflowInterpreter =>
-                    implicit val tapCtx: TapContext =
-                      TapContext(tapBus, queryName, apiWorkflow.name.value, inNamespace)
-                    apiWorkflow.name.value -> Flow[StandingQueryResult]
-                      .via(workflowInterpreter.flow(graph)(logConfig, tapCtx))
-                      .viaMat(KillSwitches.single)(Keep.right)
-                      .map(_ => SqResultsExecToken(s"SQ: ${apiWorkflow.name} in: $inNamespace"))
-                      .to(graph.masterStream.standingOutputsCompletionSink)
+                ApiToStanding(apiWorkflow, inNamespace)(
+                  graph,
+                  protobufSchemaCache,
+                  kafkaExtensions,
+                  NoveltyDestinationSupport.Unavailable,
+                ).map { workflowInterpreter =>
+                  implicit val tapCtx: TapContext =
+                    TapContext(tapBus, queryName, apiWorkflow.name.value, inNamespace)
+                  apiWorkflow.name.value -> Flow[StandingQueryResult]
+                    .via(workflowInterpreter.flow(graph)(logConfig, tapCtx))
+                    .viaMat(KillSwitches.single)(Keep.right)
+                    .map(_ => SqResultsExecToken(s"SQ: ${apiWorkflow.name} in: $inNamespace"))
+                    .to(graph.masterStream.standingOutputsCompletionSink)
                 }
               }
               .map(_.toMap)
@@ -588,20 +594,24 @@ final class QuineApp(
         if (outputs.contains(outputName)) {
           Future.successful(StandingQueryInterfaceV2.Result.AlreadyExists(outputName))
         } else {
-          ApiToStanding(workflow, inNamespace)(graph, protobufSchemaCache, kafkaExtensions).flatMap {
-            workflowInterpreter =>
-              implicit val tapCtx: TapContext =
-                TapContext(tapBus, queryName, outputName, inNamespace)
-              val killSwitch =
-                sqResultsHub
-                  .viaMat(KillSwitches.single)(Keep.right)
-                  .via(workflowInterpreter.flow(graph)(logConfig, tapCtx))
-                  .map(_ => SqResultsExecToken(s"SQ: $outputName in: $inNamespace"))
-                  .to(graph.masterStream.standingOutputsCompletionSink)
-                  .run()
+          ApiToStanding(workflow, inNamespace)(
+            graph,
+            protobufSchemaCache,
+            kafkaExtensions,
+            NoveltyDestinationSupport.Unavailable,
+          ).flatMap { workflowInterpreter =>
+            implicit val tapCtx: TapContext =
+              TapContext(tapBus, queryName, outputName, inNamespace)
+            val killSwitch =
+              sqResultsHub
+                .viaMat(KillSwitches.single)(Keep.right)
+                .via(workflowInterpreter.flow(graph)(logConfig, tapCtx))
+                .map(_ => SqResultsExecToken(s"SQ: $outputName in: $inNamespace"))
+                .to(graph.masterStream.standingOutputsCompletionSink)
+                .run()
 
-              putOutputs(inNamespace, queryName, sqId, outputs + (outputName -> OutputTarget.V2(workflow, killSwitch)))
-              storeStandingQueryOutputs2().map(_ => StandingQueryInterfaceV2.Result.Success)(ExecutionContext.parasitic)
+            putOutputs(inNamespace, queryName, sqId, outputs + (outputName -> OutputTarget.V2(workflow, killSwitch)))
+            storeStandingQueryOutputs2().map(_ => StandingQueryInterfaceV2.Result.Success)(ExecutionContext.parasitic)
           }(graph.nodeDispatcherEC)
         }
       optionFut.getOrElse(Future.successful(StandingQueryInterfaceV2.Result.NotFound(queryName)))
@@ -1348,22 +1358,36 @@ final class QuineApp(
             .traverse(queriesWithResultHubs.toVector) { case (queryName, sqId, outputToWorkflowDef, resultHub) =>
               Future
                 .traverse(outputToWorkflowDef.toVector) { case (outputName, workflowDef) =>
-                  ApiToStanding(workflowDef, ns)(graph, protobufSchemaCache, kafkaExtensions).map {
-                    workflowInterpreter =>
-                      implicit val tapCtx: TapContext =
-                        TapContext(tapBus, queryName, outputName, ns)
-                      val killSwitch =
-                        resultHub
-                          .viaMat(KillSwitches.single)(Keep.right)
-                          .via(workflowInterpreter.flow(graph)(logConfig, tapCtx))
-                          .map(_ => SqResultsExecToken(s"SQ: $outputName in: $ns"))
-                          .to(graph.masterStream.standingOutputsCompletionSink)
-                          .run()
-                      outputName -> OutputTarget.V2(workflowDef, killSwitch)
+                  ApiToStanding(workflowDef, ns)(
+                    graph,
+                    protobufSchemaCache,
+                    kafkaExtensions,
+                    NoveltyDestinationSupport.Unavailable,
+                  ).map { workflowInterpreter =>
+                    implicit val tapCtx: TapContext =
+                      TapContext(tapBus, queryName, outputName, ns)
+                    val killSwitch =
+                      resultHub
+                        .viaMat(KillSwitches.single)(Keep.right)
+                        .via(workflowInterpreter.flow(graph)(logConfig, tapCtx))
+                        .map(_ => SqResultsExecToken(s"SQ: $outputName in: $ns"))
+                        .to(graph.masterStream.standingOutputsCompletionSink)
+                        .run()
+                    Option(outputName -> OutputTarget.V2(workflowDef, killSwitch))
+                  }.recover {
+                    // An output stored by Quine Enterprise (a Novelty output) cannot run here; skip it
+                    // rather than fail restoring every other output.
+                    case _: NoveltyDestinationSupport.UnavailableException =>
+                      logger.error(
+                        safe"Not restoring output ${Safe(outputName)} of standing query ${Safe(queryName)} in " +
+                        safe"namespace ${Safe(ns.name)}: it uses the Novelty output destination, which is only " +
+                        safe"available in Quine Enterprise",
+                      )
+                      None
                   }
                 }
                 .map { outputNameToV2TargetPairs =>
-                  val outputsMap = outputNameToV2TargetPairs.toMap
+                  val outputsMap = outputNameToV2TargetPairs.flatten.toMap
                   queryName -> (sqId, outputsMap)
                 }
             }

@@ -438,6 +438,8 @@ object IngestToApi {
       Api.IngestSource.ReactiveStream(apply(format), url, port)
     case WebSocketFileUpload(format) =>
       Api.WebSocketFileUpload(apply(format))
+    case QuineIngest() =>
+      Api.IngestSource.Quine()
     case src: DeltaSharingCdfIngest =>
       Api.IngestSource.DeltaSharingCdf(
         endpoint = src.endpoint,

@@ -19,6 +19,7 @@ import org.scalatest.time.{Millis, Seconds, Span}
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.outputs2.kafka.KafkaExtensionProvider
 import com.thatdot.quine.app.model.jobs._
+import com.thatdot.quine.app.model.outputs2.destination.NoveltyDestinationSupport
 import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
 import com.thatdot.quine.app.v2api.converters.Api2ToOutputs2
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
@@ -56,7 +57,8 @@ class JobSchedulerTest extends AnyFunSuite with BeforeAndAfterAll with Eventuall
     "test-host",
     registry,
     new LocalTapBus,
-    steps => Api2ToOutputs2.apply(steps)(graph, protobufSchemaCache, kafkaExtensions),
+    steps =>
+      Api2ToOutputs2.apply(steps)(graph, protobufSchemaCache, kafkaExtensions, NoveltyDestinationSupport.Unavailable),
   )
   private def newScheduler() = new JobScheduler(graph, JobWork.executorFor(runner), registry)
 

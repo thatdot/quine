@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.v2api.definitions
 
-import java.util.Properties
+import java.util.{Properties, UUID}
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -24,7 +24,8 @@ import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.model.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.app.model.ingest2.source.QuineValueIngestQuery
-import com.thatdot.quine.app.model.ingest2.{KafkaIngest, V2IngestEntities}
+import com.thatdot.quine.app.model.ingest2.{KafkaIngest, QuineIngest, V2IngestEntities}
+import com.thatdot.quine.app.model.outputs2.destination.NoveltyEndpoints
 import com.thatdot.quine.app.model.outputs2.query.{AllNodeScanException, CypherQuery => CypherQueryModel}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.v2api.converters._
@@ -546,9 +547,53 @@ trait QuineApiMethods
         Future.successful(
           validateCypherQuery(cq.query, cq.parameter, cq.allowAllNodeScan).map(NonEmptyList.one),
         )
+      case n: QuineDestinationSteps.Novelty =>
+        Future.successful(
+          NonEmptyList.fromList(
+            validateNoveltyConnection(n) ++ validateNoveltyScoreGraph(n) ++ validateNoveltyTransformation(n),
+          ),
+        )
       case f: Format =>
         validateProtobufSchema(f.format)
       case _ => Future.successful(None)
+    }
+
+  /** Give every Novelty destination in `workflow` a fresh owner id, replacing any supplied in the
+    * request. Done once, here where the output is created, before the workflow is sent to every
+    * host and persisted, so all hosts share the id and it survives restarts.
+    */
+  private def assignNoveltyOwnerIds(
+    workflow: ApiStanding.StandingQueryResultWorkflow,
+  ): ApiStanding.StandingQueryResultWorkflow =
+    workflow.copy(destinations = workflow.destinations.map {
+      case novelty: QuineDestinationSteps.Novelty => novelty.copy(ownerId = Some(UUID.randomUUID().toString))
+      case other => other
+    })
+
+  /** What the destination needs to reach Novelty at all: at least one endpoint, each an http(s)
+    * URL, and a model to score against. Checked here as well as in the API schema, since recipes
+    * reach this point without the schema's checks.
+    */
+  private def validateNoveltyConnection(novelty: QuineDestinationSteps.Novelty): List[ErrorString] =
+    Option.when(novelty.endpoints.isEmpty)("`endpoints` must list at least one Novelty URL.").toList ++
+    novelty.endpoints.flatMap(NoveltyEndpoints.invalidBaseUrl).map(e => s"`endpoints`: $e") ++
+    NoveltyEndpoints.invalidModel(novelty.model).toList
+
+  /** The edge label names every edge the destination writes, so it may not be blank; score writes
+    * need a positive parallelism.
+    */
+  private def validateNoveltyScoreGraph(novelty: QuineDestinationSteps.Novelty): List[ErrorString] =
+    Option.when(novelty.scoreEdgeLabel.trim.isEmpty)("`scoreEdgeLabel` must not be empty.").toList ++
+    Option.when(novelty.parallelism <= 0)("`parallelism` must be positive.").toList
+
+  /** An inline transformation must declare its record format, since the function's output cannot
+    * be interpreted without it; a record format describes only an inline transformation.
+    */
+  private def validateNoveltyTransformation(novelty: QuineDestinationSteps.Novelty): List[ErrorString] =
+    (novelty.transformationFunction, novelty.transformationFormat) match {
+      case (Some(_), None) => List("`transformationFormat` is required when `transformationFunction` is set.")
+      case (None, Some(_)) => List("`transformationFormat` is only allowed when `transformationFunction` is set.")
+      case _ => Nil
     }
 
   private def validateEnrichmentQuery(
@@ -562,13 +607,25 @@ trait QuineApiMethods
 
   private def validateWorkflow(
     workflow: ApiStanding.StandingQueryResultWorkflow,
-  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] =
+  )(implicit ec: ExecutionContext): Future[Option[NonEmptyList[ErrorString]]] = {
+    // The Novelty output destination is Quine Enterprise only. It lives in the shared (sealed)
+    // `QuineDestinationSteps` ADT, so it's rejected here on non-Enterprise products rather than being
+    // absent from the type.
+    val enterpriseOnlyErrors: Option[NonEmptyList[ErrorString]] =
+      if (productVersion == ProductVersion.Enterprise) None
+      else
+        NonEmptyList.fromList(
+          workflow.destinations.toList.collect { case _: QuineDestinationSteps.Novelty =>
+            "The Novelty output destination is only available in Quine Enterprise."
+          }.distinct,
+        )
     Future
       .sequence(workflow.destinations.toList.map(validateDestinationSteps))
       .map { destinationErrors =>
         val allErrors = destinationErrors.foldLeft(Option.empty[NonEmptyList[ErrorString]])(_ |+| _)
-        allErrors |+| validateEnrichmentQuery(workflow)
+        allErrors |+| validateEnrichmentQuery(workflow) |+| enterpriseOnlyErrors
       }
+  }
 
   /** Validate DLQ Kafka destinations for an ingest configuration.
     * Checks connectivity to bootstrap servers for any Kafka DLQ destinations.
@@ -603,6 +660,8 @@ trait QuineApiMethods
         KafkaSettingsValidator
           .checkBootstrapConnectivity(k.bootstrapServers, KafkaConnectivityTimeout)
           .map(_.map(errors => errors.map(e => s"Kafka ingest source: $e")))
+      case _: QuineIngest =>
+        Future.successful(Some(NonEmptyList.one("The Quine ingest source is only available on Novelty.")))
       case _ => Future.successful(None)
     }
 
@@ -626,7 +685,7 @@ trait QuineApiMethods
 
           case None =>
             app
-              .addStandingQueryOutputV2(name, outputName, namespaceId, workflow)
+              .addStandingQueryOutputV2(name, outputName, namespaceId, assignNoveltyOwnerIds(workflow))
               .map {
                 case StandingQueryInterfaceV2.Result.Success =>
                   Right(())
@@ -750,7 +809,7 @@ trait QuineApiMethods
               Future.successful(Left(asBadRequest(BadRequest.ofErrorStrings(errors.toList))))
             case None =>
               app
-                .addStandingQueryV2(name, namespaceId, sq)
+                .addStandingQueryV2(name, namespaceId, sq.copy(outputs = sq.outputs.map(assignNoveltyOwnerIds)))
                 .flatMap {
                   case StandingQueryInterfaceV2.Result.AlreadyExists(_) =>
                     Future.successful(Left(asBadRequest(s"There is already a Standing Query named '$name'")))

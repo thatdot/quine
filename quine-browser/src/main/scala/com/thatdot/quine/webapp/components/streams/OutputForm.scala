@@ -7,6 +7,7 @@ import io.circe.Json
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import com.thatdot.quine.openapi._
+import com.thatdot.quine.webapp.dataservice.WiretapService
 
 /** Inline form for adding a new output to a standing query. Rendered within the
   * expanded row of the Standing Queries table so the add-output experience stays
@@ -42,6 +43,7 @@ object OutputForm {
     outputSchema: Option[SchemaNode],
     state: State,
     editorConfig: EmbeddedEditorConfig,
+    wiretap: WiretapService,
     onSubmit: Json => Future[Either[String, Json]],
     onComplete: () => Unit,
     onCancel: () => Unit,
@@ -76,7 +78,21 @@ object OutputForm {
       // directly instead of being wrapped in the optional-object "Include ..." toggle.
       renderedSchema match {
         case Some(schema) =>
-          SchemaFormRenderer.render(schema, spec, Nil, state.formState, editorConfig, isRequired = true)
+          // Novelty destinations get their assists beneath the fields they fill in; this standing query
+          // exists, so its live results can be sampled.
+          val assists = NoveltyAssists(
+            Some(NoveltySampleGenerate.LiveSample(sqName, wiretap)),
+            state.formState,
+            editorConfig.serverUrl.getOrElse(""),
+          )
+          SchemaFormRenderer.render(
+            schema,
+            spec,
+            Nil,
+            state.formState,
+            editorConfig.copy(fieldAddons = assists),
+            isRequired = true,
+          )
         case None =>
           div(cls := "alert alert-warning", "Output schema not found in API spec.")
       },

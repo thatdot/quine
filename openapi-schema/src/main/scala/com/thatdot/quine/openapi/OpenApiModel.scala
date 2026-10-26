@@ -21,6 +21,7 @@ final case class SchemaNode(
   required: Option[Set[String]] = None,
   additionalProperties: Option[Either[Boolean, SchemaNode]] = None,
   items: Option[SchemaNode] = None,
+  minItems: Option[Int] = None,
   oneOf: Option[List[SchemaNode]] = None,
   allOf: Option[List[SchemaNode]] = None,
   anyOf: Option[List[SchemaNode]] = None,

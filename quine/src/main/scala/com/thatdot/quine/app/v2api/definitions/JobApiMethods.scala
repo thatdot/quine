@@ -6,11 +6,13 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
+import cats.data.NonEmptyList
 import io.circe.Json
 import shapeless.{:+:, CNil, Coproduct}
 
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound}
 import com.thatdot.quine.app.model.jobs.{BackgroundQueryRecord, ExecutionAction, Job, JobHost, JobWork}
+import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
 import com.thatdot.quine.app.v2api.endpoints.Action
 import com.thatdot.quine.app.v2api.endpoints.V2BackgroundQueryEndpointEntities.{
   BackgroundQueryDef,
@@ -82,6 +84,14 @@ trait JobApiMethods {
       BadRequest(s"Invalid query: ${e.getMessage}")
     }
 
+  /** A Novelty destination is a standing-query output only: its ingest on Novelty is created and
+    * removed with the output, so a background query has none to stream to.
+    */
+  private def validateDestinations(destinations: NonEmptyList[QuineDestinationSteps]): Option[BadRequest] =
+    destinations.find(_.isInstanceOf[QuineDestinationSteps.Novelty]).map { _ =>
+      BadRequest("The Novelty destination is only available on standing query outputs.")
+    }
+
   private def validateNamespace(namespace: NamespaceId): Option[NotFound] =
     if (namespaceExists(namespace)) None else Some(NotFound(s"Graph '${namespace.name}' not found"))
 
@@ -107,6 +117,7 @@ trait JobApiMethods {
       _ <- validateNamespace(namespace).map(asNotFound).toLeft(())
       name <- validateOptionalName(request.name, "Background query name").left.map(asBadRequest)
       _ <- validateStatusExpiry(request.statusExpiry).map(asBadRequest).toLeft(())
+      _ <- validateDestinations(request.destinations).map(asBadRequest).toLeft(())
       _ <- validateQuery(request.query, request.parameters).map(asBadRequest).toLeft(())
     } yield request.copy(name = name)
     validated match {
@@ -143,6 +154,7 @@ trait JobApiMethods {
       queryName <- validateOptionalName(action.name, "Background query name").left.map(asBadRequest)
       schedule <- request.schedule.toModel.left.map(e => asBadRequest(BadRequest(e)))
       _ <- validateStatusExpiry(action.statusExpiry).map(asBadRequest).toLeft(())
+      _ <- validateDestinations(action.destinations).map(asBadRequest).toLeft(())
       _ <- validateQuery(action.query, action.parameters).map(asBadRequest).toLeft(())
     } yield (jobName, schedule, queryName)
     validated match {

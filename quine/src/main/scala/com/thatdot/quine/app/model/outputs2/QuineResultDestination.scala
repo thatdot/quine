@@ -20,5 +20,17 @@ object QuineResultDestination {
       def allowAllNodeScan: Boolean
       def shouldRetry: Boolean
     }
+
+    /** Streams each result to one of several independent Novelty instances for scoring, then writes
+      * each score returned into the graph — a single bidirectional, backpressured flow.
+      */
+    trait NoveltyStream extends FoldableData {
+      def ownerId: String
+      def endpoints: List[String]
+      def model: String
+      def scoreEdgeLabel: String
+      def parallelism: Int
+      def shouldRetry: Boolean
+    }
   }
 }

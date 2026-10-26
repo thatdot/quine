@@ -5,6 +5,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import org.apache.pekko.dispatch.MessageDispatcher
 
 import com.thatdot.outputs2.kafka.KafkaExtensionProvider
+import com.thatdot.quine.app.model.outputs2.destination.NoveltyDestinationSupport
 import com.thatdot.quine.app.model.outputs2.query.standing
 import com.thatdot.quine.app.v2api.definitions.outputs.{MirrorOfCore, QuineDestinationSteps}
 import com.thatdot.quine.app.v2api.definitions.query.{standing => Api}
@@ -46,6 +47,7 @@ object ApiToStanding {
     graph: CypherOpsGraph,
     protobufSchemaCache: ProtobufSchemaCache,
     kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
+    noveltyDestinationSupport: NoveltyDestinationSupport,
   ): Future[standing.StandingQueryResultWorkflow] = {
     import cats.instances.future.catsStdInstancesForFuture
     implicit val ec: MessageDispatcher = graph.nodeDispatcherEC
@@ -81,6 +83,7 @@ object ApiToStanding {
     graph: CypherOpsGraph,
     protobufSchemaCache: ProtobufSchemaCache,
     kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
+    noveltyDestinationSupport: NoveltyDestinationSupport,
   ): Future[standing.StandingQuery.StandingQueryDefinition] = {
     val q = standingQueryDefinition
     val pattern = apply(q.pattern)
@@ -106,6 +109,7 @@ object ApiToStanding {
     graph: CypherOpsGraph,
     protobufSchemaCache: ProtobufSchemaCache,
     kafkaExtensions: KafkaExtensionProvider[com.thatdot.api.v2.SaslJaasConfig],
+    noveltyDestinationSupport: NoveltyDestinationSupport,
   ): Future[standing.StandingQuery.RegisteredStandingQuery] = {
     val q = registeredSQ
     implicit val ec: ExecutionContext = graph.nodeDispatcherEC

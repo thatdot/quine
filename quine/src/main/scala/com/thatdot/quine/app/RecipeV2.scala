@@ -10,6 +10,7 @@ import sttp.tapir.Schema.annotations.{default, description, title}
 
 import com.thatdot.api.v2.{AwsCredentials, AwsRegion, ResourceName}
 import com.thatdot.common.security.Secret
+import com.thatdot.quine.app.model.outputs2.destination.NoveltyAuth
 import com.thatdot.quine.app.v2api.definitions.ApiUiStyling.{GraphFeed, SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{
   IngestSource,
@@ -257,6 +258,35 @@ object RecipeV2 {
         (c.accessKeyId.subs, c.secretAccessKey.subs).mapN(AwsCredentials(_, _))
     }
 
+    implicit class SubNoveltyAuth(a: NoveltyAuth) {
+      def subs: ValidatedNel[UnboundVariableError, NoveltyAuth] = a match {
+        case cs: NoveltyAuth.ClientSecret =>
+          (cs.tokenUrl.subs, cs.clientId.subs, cs.clientSecret.subs).mapN((u, id, secret) =>
+            cs.copy(tokenUrl = u, clientId = id, clientSecret = secret),
+          )
+        case c: NoveltyAuth.Certificate =>
+          (
+            c.clientId.subs,
+            c.certFile.subs,
+            c.certFilePassword.subs,
+            c.resourceUri.subs,
+            c.discoveryUrl.subs,
+            c.caCertPath.traverse(_.subs),
+            c.caCertPassword.traverse(_.subs),
+          ).mapN((id, file, password, resource, discovery, caPath, caPassword) =>
+            c.copy(
+              clientId = id,
+              certFile = file,
+              certFilePassword = password,
+              resourceUri = resource,
+              discoveryUrl = discovery,
+              caCertPath = caPath,
+              caCertPassword = caPassword,
+            ),
+          )
+      }
+    }
+
     implicit class SubRegion(r: AwsRegion) {
       def subs: ValidatedNel[UnboundVariableError, AwsRegion] =
         r.region.subs.map(AwsRegion(_))
@@ -313,6 +343,10 @@ object RecipeV2 {
           cq.query.subs.map(q => cq.copy(query = q))
         case sl: QuineDestinationSteps.Slack =>
           sl.hookUrl.subs.map(u => sl.copy(hookUrl = u))
+        case n: QuineDestinationSteps.Novelty =>
+          (n.endpoints.traverse(_.subs), n.model.subs, n.auth.traverse(_.subs)).mapN((e, m, a) =>
+            n.copy(endpoints = e, model = m, auth = a),
+          )
         case other => Validated.valid(other)
       }
 

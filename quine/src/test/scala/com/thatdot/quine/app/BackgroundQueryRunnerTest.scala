@@ -19,6 +19,7 @@ import sttp.ws.WebSocketFrame
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.outputs2.kafka.KafkaExtensionProvider
 import com.thatdot.quine.app.model.jobs._
+import com.thatdot.quine.app.model.outputs2.destination.NoveltyDestinationSupport
 import com.thatdot.quine.app.model.outputs2.query.standing.{LocalTapBus, TapBus}
 import com.thatdot.quine.app.v2api.converters.Api2ToOutputs2
 import com.thatdot.quine.app.v2api.definitions.outputs.QuineDestinationSteps
@@ -49,7 +50,8 @@ class BackgroundQueryRunnerTest extends AnyFunSuite with BeforeAndAfterAll with 
     "test-host",
     registry,
     tapBus,
-    steps => Api2ToOutputs2.apply(steps)(graph, protobufSchemaCache, kafkaExtensions),
+    steps =>
+      Api2ToOutputs2.apply(steps)(graph, protobufSchemaCache, kafkaExtensions, NoveltyDestinationSupport.Unavailable),
   )
 
   /** Convenience: stream to `Drop` unless a test needs to observe the destination. */

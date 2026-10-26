@@ -86,4 +86,31 @@ class GenerateOpenApiTestV2 extends AnyFunSuite with Matchers {
     json should include("Avro")
     json should include("Parquet")
   }
+
+  test("The Enterprise-only Novelty destination is hidden from the OSS spec, leaving no dangling refs") {
+    import io.circe.syntax._
+    import sttp.apispec.openapi.circe._
+
+    val docs = new GenerateOpenApiV2.QuineOssV2OpenApiDocsImpl
+    val schemas = docs.api.components.toList.flatMap(_.schemas.keys).toSet
+    // The member and the schemas reachable only through it are gone.
+    schemas should contain noneOf ("Novelty", "NoveltyAuth", "NoveltyRecordFormat", "ClientSecret", "Certificate")
+
+    val json = docs.api.asJson.noSpaces
+    val refs = "#/components/schemas/([^\"]+)".r.findAllMatchIn(json).map(_.group(1)).toSet
+    refs.diff(schemas) shouldBe empty
+  }
+
+  test("A NonEmptyList field is required and has at least one item") {
+    import io.circe.syntax._
+    import sttp.apispec.openapi.circe._
+
+    val docs = new GenerateOpenApiV2.QuineOssV2OpenApiDocsImpl
+    val workflow = docs.api.asJson.hcursor
+      .downField("components")
+      .downField("schemas")
+      .downField("StandingQueryResultWorkflow")
+    workflow.downField("required").as[List[String]].toOption.getOrElse(Nil) should contain("destinations")
+    workflow.downField("properties").downField("destinations").get[Int]("minItems") shouldBe Right(1)
+  }
 }

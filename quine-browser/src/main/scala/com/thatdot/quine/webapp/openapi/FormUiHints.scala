@@ -20,7 +20,8 @@ import com.thatdot.quine.openapi.UiHintsSource
   *   - `hide`    : field names to omit from the rendered form. A hidden field the server still
   *                 needs must be supplied by the form that owns it — `BackgroundQuery.namespace`
   *                 is hidden here and filled from the Streams page's graph selector by
-  *                 `CreateJobForm`.
+  *                 `CreateJobForm`. `Novelty.ownerId` is hidden because Quine assigns it when the
+  *                 output is created, replacing any value sent.
   *   - `labels`       : per-field human-facing label, overriding the schema's title.
   *   - `descriptions` : per-field help text, overriding the schema's `description`. Use this to
   *                      keep the form terse while the API reference (the schema) stays thorough.
@@ -43,6 +44,11 @@ object FormUiHints {
       |  "StandingQueryDefinition": {
       |    "order": ["name", "pattern", "outputs", "includeCancellations", "inputBufferSize"],
       |    "promote": ["outputs"]
+      |  },
+      |  "Novelty": {
+      |    "hide": ["ownerId"],
+      |    "order": ["endpoints", "model", "transformationFunction", "transformationFormat"],
+      |    "promote": ["transformationFunction", "transformationFormat"]
       |  },
       |  "Cypher": {
       |    "order": ["query", "mode"],
