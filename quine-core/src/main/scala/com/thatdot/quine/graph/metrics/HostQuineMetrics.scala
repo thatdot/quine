@@ -329,6 +329,7 @@ object HostQuineMetrics {
     */
   val ClusterIngestMetricComponent = "cluster-ingest"
   val StandingQueryMetricComponent = "standing-queries"
+  val LlmMetricComponent = "llm"
 
   sealed trait MessagingMetric {
     def markLocal(): Unit

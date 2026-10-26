@@ -15,6 +15,7 @@ import sttp.ws.WebSocketFrame
 
 import com.thatdot.api.v2.QueryWebSocketProtocol._
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.quine.exceptions.ExternalServiceException
 import com.thatdot.quine.graph.GraphNotReadyException
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.model.Milliseconds
@@ -79,6 +80,8 @@ object V2QueryWebSocketFlow extends LazySafeLogging {
     def serverExceptionMessage(throwable: Throwable): String =
       throwable match {
         case qce: CypherException => qce.pretty
+        // Readable, and the failures meter and LlmFallback's warn already record it, so skip the catch-all's log
+        case ese: ExternalServiceException => ese.getMessage
         case gnr: GraphNotReadyException => gnr.getMessage
         case are: ArithmeticException => are.getMessage
         case iae: IllegalArgumentException => iae.getMessage

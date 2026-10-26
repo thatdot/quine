@@ -134,6 +134,9 @@ sealed abstract class Query[+Start <: Location] extends Product with Serializabl
     */
   def canContainAllNodeScan: Boolean
 
+  /** Can any procedure call in this query send data to a language model? `false` means none does. */
+  def canCallLlm: Boolean = children.exists(_.canCallLlm)
+
   /** substitute all parameters in this query and all descendants
     * @param parameters a [[Parameters]] providing parameters used by [[Expr.Parameter]]s in this query.
     * @return a copy of this query all provided parameters substituted
@@ -1015,6 +1018,7 @@ object Query {
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = procedure.isIdempotent && arguments.forall(_.isPure)
     def canContainAllNodeScan: Boolean = procedure.canContainAllNodeScan
+    override def canCallLlm: Boolean = procedure.canCallLlm
     def substitute(parameters: Map[Expr.Parameter, Value]): ProcedureCall =
       copy(arguments = arguments.map(_.substitute(parameters)))
     def children: Seq[Query[Location]] = Seq.empty

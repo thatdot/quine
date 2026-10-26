@@ -178,6 +178,8 @@ object ProcedureRegistry {
     ProcedureSignature("standing.wiretap", Vector("data" -> Type.Any, "meta" -> Type.Any)),
     ProcedureSignature("parseProtobuf", Vector("value" -> Type.Any)),
     ProcedureSignature("toProtobuf", Vector("protoBytes" -> Type.Any)),
+    ProcedureSignature("llm.prompt", Vector("response" -> Type.Any)),
+    ProcedureSignature("llm.decide", Vector("answers" -> Type.Any)),
   )
 
   private val byLowerCaseName: concurrent.Map[String, ProcedureSignature] =

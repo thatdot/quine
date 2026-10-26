@@ -17,6 +17,7 @@ import io.circe.Json
 import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.common.logging.Pretty.PrettyHelper
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.exceptions.ExternalServiceException
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.gremlin._
@@ -266,8 +267,19 @@ trait QueryUiRoutesImpl
           case Failure(err) => Failure(err)
         }(ExecutionContext.parasitic)
 
+    // Unavailable becomes a 503 with the message; BadResponse stays a failed future, pekko-http's 500
+    def catchServiceUnavailable[A](
+      futA: Future[Either[ClientErrors, A]],
+    ): Future[Either[Either[ClientErrors, A], String]] =
+      futA
+        .map(Left(_): Either[Either[ClientErrors, A], String])(ExecutionContext.parasitic)
+        .recover {
+          case ese: ExternalServiceException if ese.failure == ExternalServiceException.Failure.Unavailable =>
+            Right(ese.getMessage)
+        }(ExecutionContext.parasitic)
+
     cypherPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
-      graph.requiredGraphIsReadyFuture {
+      catchServiceUnavailable(graph.requiredGraphIsReadyFuture {
         val ns = namespaceFromParam(namespaceParam)
         ifNamespaceFound(ns)(catchCypherException {
           val (columns, results, isReadOnly, _) =
@@ -278,10 +290,10 @@ trait QueryUiRoutesImpl
             .runWith(Sink.seq)
             .map(CypherQueryResult(columns, _))(ExecutionContext.parasitic)
         })
-      }
+      })
     } ~
     cypherNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
-      graph.requiredGraphIsReadyFuture {
+      catchServiceUnavailable(graph.requiredGraphIsReadyFuture {
         val ns = namespaceFromParam(namespaceParam)
         ifNamespaceFound(ns)(catchCypherException {
           val (results, isReadOnly, _) =
@@ -291,10 +303,10 @@ trait QueryUiRoutesImpl
             .named(s"cypher-nodes-query-atTime-${atTime.fold("none")(_.millis.toString)}")
             .runWith(Sink.seq)
         })
-      }
+      })
     } ~
     cypherEdgesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
-      graph.requiredGraphIsReadyFuture {
+      catchServiceUnavailable(graph.requiredGraphIsReadyFuture {
         val ns = namespaceFromParam(namespaceParam)
         ifNamespaceFound(ns)(catchCypherException {
           val (results, isReadOnly, _) =
@@ -304,7 +316,7 @@ trait QueryUiRoutesImpl
             .named(s"cypher-edges-query-atTime-${atTime.fold("none")(_.millis.toString)}")
             .runWith(Sink.seq)
         })
-      }
+      })
     }
   }
 

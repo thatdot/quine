@@ -14,8 +14,13 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, oneOfBody, statusCode}
 
-import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
-import com.thatdot.api.v2.ErrorResponseHelpers.{badRequestError, notFoundError, serverError}
+import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError, ServiceUnavailable}
+import com.thatdot.api.v2.ErrorResponseHelpers.{
+  badRequestError,
+  externalServiceUnavailableError,
+  notFoundError,
+  serverError,
+}
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.{circeConfig, tapirConfig}
 import com.thatdot.api.v2.V2EndpointDefinitions
 import com.thatdot.api.v2.schema.ThirdPartySchemas.circe.{mapStringJsonSchema, seqSeqJsonSchema}
@@ -126,7 +131,7 @@ trait V2CypherEndpoints
   val cypher: Endpoint[
     Unit,
     (NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery),
-    Either[ServerError, Either[BadRequest, NotFound]],
+    Either[ServerError, Either[BadRequest, Either[NotFound, ServiceUnavailable]]],
     TCypherQueryResult,
     Any,
   ] = cypherColonVerb("query")
@@ -137,17 +142,19 @@ trait V2CypherEndpoints
     .in(timeoutParameter)
     .in(queryBody)
     .post
-    .errorOut(badRequestError("Invalid Query"))
-    .errorOutEither(notFoundError("Graph not found."))
+    .errorOut(notFoundError("Graph not found."))
+    .errorOutEither(externalServiceUnavailableError("A service called by the query is unavailable"))
+    .errorOutEither(badRequestError("Invalid Query"))
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .errorOutEither(serverError())
     .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[TCypherQueryResult])
 
   private val cypherLogic: ((NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery)) => Future[
-    Either[Either[ServerError, Either[BadRequest, NotFound]], TCypherQueryResult],
+    Either[Either[ServerError, Either[BadRequest, Either[NotFound, ServiceUnavailable]]], TCypherQueryResult],
   ] = { case (namespaceId, atTime, timeout, query) =>
-    recoverServerErrorEither(
+    recoverServerErrorEitherWithServerError(
       appMethods
         .cypherPost(
           atTime,
@@ -162,7 +169,7 @@ trait V2CypherEndpoints
     Unit,
     Unit,
     (NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery),
-    Either[ServerError, Either[BadRequest, NotFound]],
+    Either[ServerError, Either[BadRequest, Either[NotFound, ServiceUnavailable]]],
     TCypherQueryResult,
     Any,
     Future,
@@ -171,7 +178,7 @@ trait V2CypherEndpoints
   val cypherNodes: Endpoint[
     Unit,
     (NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery),
-    Either[ServerError, Either[BadRequest, NotFound]],
+    Either[ServerError, Either[BadRequest, Either[NotFound, ServiceUnavailable]]],
     Seq[TUiNode],
     Any,
   ] = cypherColonVerb("queryNodes")
@@ -185,8 +192,10 @@ trait V2CypherEndpoints
     .in(timeoutParameter)
     .in(queryBody)
     .post
-    .errorOut(badRequestError("Invalid Query"))
-    .errorOutEither(notFoundError("Graph not found."))
+    .errorOut(notFoundError("Graph not found."))
+    .errorOutEither(externalServiceUnavailableError("A service called by the query is unavailable"))
+    .errorOutEither(badRequestError("Invalid Query"))
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .errorOutEither(serverError())
     .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Ok))
@@ -200,10 +209,10 @@ trait V2CypherEndpoints
       TCypherQuery,
     ),
   ) => Future[Either[
-    Either[ServerError, Either[BadRequest, NotFound]],
+    Either[ServerError, Either[BadRequest, Either[NotFound, ServiceUnavailable]]],
     Seq[TUiNode],
   ]] = { case (namespaceId, atTime, timeout, query) =>
-    recoverServerErrorEither(
+    recoverServerErrorEitherWithServerError(
       appMethods
         .cypherNodesPost(atTime, timeout, namespaceId, query),
     )((inp: Seq[TUiNode]) => identity(inp))
@@ -213,7 +222,7 @@ trait V2CypherEndpoints
     Unit,
     Unit,
     (NamespaceId, Option[Milliseconds], FiniteDuration, TCypherQuery),
-    Either[ServerError, Either[BadRequest, NotFound]],
+    Either[ServerError, Either[BadRequest, Either[NotFound, ServiceUnavailable]]],
     Seq[TUiNode],
     Any,
     Future,
@@ -222,7 +231,7 @@ trait V2CypherEndpoints
   val cypherEdges: Endpoint[
     Unit,
     (NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery),
-    Either[ServerError, Either[BadRequest, NotFound]],
+    Either[ServerError, Either[BadRequest, Either[NotFound, ServiceUnavailable]]],
     Seq[TUiEdge],
     Any,
   ] = cypherColonVerb("queryEdges")
@@ -236,17 +245,19 @@ trait V2CypherEndpoints
     .in(timeoutParameter)
     .in(queryBody)
     .post
-    .errorOut(badRequestError("Invalid Query"))
-    .errorOutEither(notFoundError("Graph not found."))
+    .errorOut(notFoundError("Graph not found."))
+    .errorOutEither(externalServiceUnavailableError("A service called by the query is unavailable"))
+    .errorOutEither(badRequestError("Invalid Query"))
+    .mapErrorOut(err => err.swap)(err => err.swap)
     .errorOutEither(serverError())
     .mapErrorOut(err => err.swap)(err => err.swap)
     .out(statusCode(StatusCode.Ok))
     .out(jsonBody[Seq[TUiEdge]])
 
   val cypherEdgesLogic: ((NamespaceId, Option[AtTime], FiniteDuration, TCypherQuery)) => Future[
-    Either[Either[ServerError, Either[BadRequest, NotFound]], Seq[TUiEdge]],
+    Either[Either[ServerError, Either[BadRequest, Either[NotFound, ServiceUnavailable]]], Seq[TUiEdge]],
   ] = { case (namespaceId, atTime, timeout, query) =>
-    recoverServerErrorEither(
+    recoverServerErrorEitherWithServerError(
       appMethods
         .cypherEdgesPost(
           atTime,
@@ -261,7 +272,7 @@ trait V2CypherEndpoints
     Unit,
     Unit,
     (NamespaceId, Option[Milliseconds], FiniteDuration, TCypherQuery),
-    Either[ServerError, Either[BadRequest, NotFound]],
+    Either[ServerError, Either[BadRequest, Either[NotFound, ServiceUnavailable]]],
     Seq[TUiEdge],
     Any,
     Future,

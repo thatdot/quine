@@ -1101,6 +1101,8 @@ object CypherDoWhen extends UserDefinedProcedure {
   val canContainUpdates = true
   val isIdempotent = false
   val canContainAllNodeScan = false
+  // The query text is a runtime string, so static analysis cannot see whether it calls a model
+  override val canCallLlm = true
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector(
       "condition" -> Type.Bool,
@@ -1161,6 +1163,8 @@ object CypherDoIt extends UserDefinedProcedure {
   val canContainUpdates = true
   val isIdempotent = false
   val canContainAllNodeScan = false
+  // The query text is a runtime string, so static analysis cannot see whether it calls a model
+  override val canCallLlm = true
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("cypher" -> Type.Str, "params" -> Type.Map),
     outputs = Vector("value" -> Type.Map),
@@ -1206,6 +1210,8 @@ object CypherDoCase extends UserDefinedProcedure {
   val canContainUpdates = true
   val isIdempotent = false
   val canContainAllNodeScan = false
+  // The query text is a runtime string, so static analysis cannot see whether it calls a model
+  override val canCallLlm = true
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("conditionals" -> Type.ListOfAnything, "elseQuery" -> Type.Str, "params" -> Type.Map),
     outputs = Vector("value" -> Type.Map),
@@ -1275,6 +1281,8 @@ object CypherRunTimeboxed extends UserDefinedProcedure {
   val canContainUpdates = true
   val isIdempotent = false
   val canContainAllNodeScan = false
+  // The query text is a runtime string, so static analysis cannot see whether it calls a model
+  override val canCallLlm = true
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("cypher" -> Type.Str, "params" -> Type.Map, "timeout" -> Type.Integer),
     outputs = Vector("value" -> Type.Map),

@@ -4,6 +4,7 @@ import scala.util.control.NoStackTrace
 
 import com.thatdot.quine.exceptions.{
   DuplicateIngestException,
+  ExternalServiceException,
   FileIngestPathUnresolvable,
   FileIngestSecurityException,
   IngestSourceFormatException,
@@ -109,6 +110,7 @@ object QuineError {
     case e: FileIngestPathUnresolvable => Some(e)
     case e: IngestSourceFormatException => Some(e)
     case e: NodeStoppedWhilePausedException => Some(e)
+    case e: ExternalServiceException => Some(e)
     case _ => None
   }
 }

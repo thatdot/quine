@@ -218,6 +218,7 @@ object Main extends App with LazySafeLogging {
     tapBus = new LocalTapBus,
     recipe = recipe,
     recipeCanonicalName = recipe.flatMap(_ => cmdArgs.recipe.flatMap(RecipeV1.getCanonicalName)),
+    llmConfig = config.llm,
   )
 
   // Initialize the namespaces and apply migrations

@@ -1,15 +1,19 @@
 package com.thatdot.quine.app.util
 
+import scala.annotation.tailrec
 import scala.concurrent.Future
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.event.Logging
+import org.apache.pekko.stream.RestartSettings
+import org.apache.pekko.stream.scaladsl.{RestartSource, Source}
 
 import org.apache.pekko
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
+import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.{ExternalServiceUnavailable, RetriableQueryFailure}
+import com.thatdot.quine.exceptions.ExternalServiceException
 import com.thatdot.quine.graph.behavior.NodeStoppedWhilePausedException
 import com.thatdot.quine.graph.cypher.Location
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
@@ -32,19 +36,49 @@ import com.thatdot.quine.util.Log.implicits._
   *                            For example, "ingest-stream-wikipediaAuthorsIngest"
   * @param startupRetryDelay   how long to wait before retrying a failed query when the failure occurred before the
   *                            query interpreter started
+  * @param unavailableMinBackoff wait before the first retry after an external service the query called was
+  *                              unavailable, doubled with jitter on each further one; tests shorten it
+  * @param unavailableMaxBackoff ceiling on that wait; tests shorten it
   */
 final case class AtLeastOnceCypherQuery(
   query: cypher.CompiledQuery[Location.External],
   cypherParameterName: String,
   debugName: String = "unnamed",
   startupRetryDelay: FiniteDuration = 100.millis,
+  unavailableMinBackoff: FiniteDuration = 1.second,
+  unavailableMaxBackoff: FiniteDuration = 30.seconds,
 )(implicit logConfig: LogConfig)
     extends LazySafeLogging {
+
+  /** Backoff between reruns while an external service the query called is unavailable. The number of runs is
+    * unbounded, since a cap would end the stream during a long real outage, the case this exists for.
+    */
+  private val unavailableBackoff: RestartSettings =
+    RestartSettings(unavailableMinBackoff, unavailableMaxBackoff, randomFactor = 0.2)
+      // Without this the backoff never grows: the count resets once a failure lands past maxRestartsWithin, which
+      // defaults to minBackoff, and every llm failure takes longer (LlmHttp retries, a request timeout)
+      .withMaxRestarts(Int.MaxValue, 5.minutes)
+      // Pekko's warn logs the failure unredacted, and it may hold response-body bytes; the warn below replaces it
+      .withLogSettings(RestartSettings.createLogSettings(Logging.DebugLevel))
+      .withRestartOn {
+        case e @ ExternalServiceUnavailable(_) =>
+          // The only warn a single-profile llm outage gets: LlmFallback warns only when moving between profiles,
+          // and LlmHttp logs a transport failure at debug and a failed status not at all. The message may embed
+          // response-body bytes, so it rides in the exception, never as Safe text.
+          logger.warn(
+            log"${Safe(debugName)} is waiting for an external service, retrying with backoff" withException e,
+          )
+          true
+        case _ => false
+      }
 
   /** Runs a compiled Cypher query with simple retry logic, ensuring that ephemeral failures such as temporary network
     * outages (@see [[RetriableQueryFailure]]) don't cause the query to fail entirely. However, side effects as a
     * result of running [[query]] may have happened multiple times, such as creation of nodes. Use this with caution for
     * non-idempotent queries.
+    *
+    * Two retry layers: a [[RetriableQueryFailure]] reruns the query at once, an [[ExternalServiceUnavailable]] reruns
+    * it with fresh per-record backoff, and must stay out of [[RetriableQueryFailure]], which would retry it undelayed.
     *
     * @param value the query input to be passed to the Cypher interpreter as a parameter (as [[cypherParameterName]])
     * @return a Source that will yield a stream ending with one full set of results for [[query]] given [[value]] bound
@@ -83,21 +117,25 @@ final case class AtLeastOnceCypherQuery(
       }
     }
 
-    bestEffortSource
-      .recoverWithRetries(
-        attempts = -1, // retry forever, relying on the relayAsk (used in the Cypher interpreter) to slow down attempts
-        { case RetriableQueryFailure(e) =>
-          logger.whenDebugEnabled {
-            lazy val queryStr = query.queryText.fold("")(q => s"""Query: "$q".""")
-            logger.debug(
-              log"""Suppressed ${Safe(e.getClass.getSimpleName)} during execution of query:
-                   |${Safe(debugName)}, retrying now. Ingested item: $value.${Safe(queryStr)}
-                   |""".cleanLines withException e,
-            )
-          }
-          bestEffortSource
-        },
-      )
+    def retriedSource: Source[Vector[cypher.Value], NotUsed] =
+      bestEffortSource
+        .recoverWithRetries(
+          attempts =
+            -1, // retry forever, relying on the relayAsk (used in the Cypher interpreter) to slow down attempts
+          { case RetriableQueryFailure(e) =>
+            logger.whenDebugEnabled {
+              lazy val queryStr = query.queryText.fold("")(q => s"""Query: "$q".""")
+              logger.debug(
+                log"""Suppressed ${Safe(e.getClass.getSimpleName)} during execution of query:
+                     |${Safe(debugName)}, retrying now. Ingested item: $value.${Safe(queryStr)}
+                     |""".cleanLines withException e,
+              )
+            }
+            bestEffortSource
+          },
+        )
+
+    RestartSource.onFailuresWithBackoff(unavailableBackoff)(() => retriedSource)
   }.named(s"at-least-once-cypher-query-$debugName")
 }
 
@@ -138,7 +176,27 @@ object AtLeastOnceCypherQuery {
       case _: org.apache.pekko.stream.RemoteStreamRefActorTerminatedException => Some(e)
       case _: org.apache.pekko.stream.StreamRefSubscriptionTimeoutException => Some(e)
       case _: org.apache.pekko.stream.InvalidSequenceNumberException => Some(e)
+      // An ExternalServiceException is deliberately absent, see ExternalServiceUnavailable
       case _ => None
+    }
+  }
+
+  /** An Unavailable [[ExternalServiceException]], searched down the cause chain since nothing guarantees it arrives
+    * unwrapped; the first one found decides, so a `BadResponse` wrapping an `Unavailable` does not match.
+    */
+  object ExternalServiceUnavailable {
+
+    def unapply(e: Throwable): Option[ExternalServiceException] = {
+      @tailrec
+      def go(t: Throwable, depth: Int): Option[ExternalServiceException] = t match {
+        case _ if depth > 8 => None
+        case ese: ExternalServiceException =>
+          if (ese.failure == ExternalServiceException.Failure.Unavailable) Some(ese) else None
+        case _ =>
+          val cause = t.getCause
+          if (cause == null || (cause eq t)) None else go(cause, depth + 1)
+      }
+      go(e, 0)
     }
   }
 }

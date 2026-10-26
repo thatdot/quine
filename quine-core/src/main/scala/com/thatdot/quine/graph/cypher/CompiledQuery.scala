@@ -26,6 +26,9 @@ final case class CompiledQuery[+Start <: Location](
   /** Can the query contain a full node scan? */
   def canContainAllNodeScan: Boolean = query.canContainAllNodeScan
 
+  /** Can any procedure call in the query send data to a language model? `false` means none does. */
+  def canCallLlm: Boolean = query.canCallLlm
+
   /** Ordered variables returned by the query */
   def columns: Vector[Symbol] = query.columns match {
     case Columns.Specified(cols) => cols

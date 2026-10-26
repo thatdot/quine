@@ -12,6 +12,7 @@ import pureconfig.generic.semiauto.{deriveConvert, deriveEnumerationConvert}
 import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
 
 import com.thatdot.common.logging.Log.{LogConfig, RedactHide, RedactMethod}
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceConfig, PersistenceSchedule}
 import com.thatdot.quine.util.Config._
 import com.thatdot.quine.util.{Host, Port}
@@ -46,6 +47,11 @@ trait PureconfigInstances {
 
   implicit val logConfigConvert: ConfigConvert[LogConfig] =
     deriveConvert[LogConfig]
+
+  // Secrets read as plain strings and write as their redacted `toString`, so a dumped config never
+  // shows the value. HOCON `${?SOME_ENV_VAR}` substitution is how a key stays out of the file.
+  implicit val secretConvert: ConfigConvert[Secret] =
+    ConfigConvert[String].xmap(Secret(_), _.toString)
 
   implicit val symbolConvert: ConfigConvert[Symbol] =
     ConfigConvert[String].xmap(Symbol(_), _.name)

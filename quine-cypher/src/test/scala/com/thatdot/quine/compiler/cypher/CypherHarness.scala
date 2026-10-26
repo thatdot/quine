@@ -75,6 +75,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     * @param expectedCannotFail
     * @param expectedIsIdempotent
     * @param expectedCanContainAllNodeScan
+    * @param expectedCanCallLlm
     * @param parameters query parameters
     * @param ordered whether the order of the output rows matters
     * @param skip should the test be skipped
@@ -88,6 +89,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     expectedCannotFail: Boolean = false,
     expectedIsIdempotent: Boolean = true,
     expectedCanContainAllNodeScan: Boolean = false,
+    expectedCanCallLlm: Boolean = false,
     parameters: Map[String, cypher.Value] = Map.empty,
     ordered: Boolean = true,
     skip: Boolean = false,
@@ -123,6 +125,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
           queryResults.compiled.query.canContainAllNodeScan == expectedCanContainAllNodeScan,
           "canContainAllNodeScan must match",
         )
+        assert(queryResults.compiled.query.canCallLlm == expectedCanCallLlm, "canCallLlm must match")
       }
     }
 
@@ -211,6 +214,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     * @param expectedCannotFail
     * @param expectedIsIdempotent
     * @param expectedCanContainAllNodeScan
+    * @param expectedCanCallLlm
     */
   final def testQueryStaticAnalysis(
     queryText: String,
@@ -218,6 +222,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     expectedCannotFail: Boolean,
     expectedIsIdempotent: Boolean,
     expectedCanContainAllNodeScan: Boolean,
+    expectedCanCallLlm: Boolean = false,
     skip: Boolean = false,
   )(implicit
     pos: Position,
@@ -231,6 +236,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
         query.canContainAllNodeScan == expectedCanContainAllNodeScan,
         "canContainAllNodeScan must match",
       )
+      assert(query.canCallLlm == expectedCanCallLlm, "canCallLlm must match")
     }
 
     if (skip)

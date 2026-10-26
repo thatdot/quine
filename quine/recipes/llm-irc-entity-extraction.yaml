@@ -1,0 +1,355 @@
+version: 2
+title: IRC Message LLM Entity Extraction
+contributor: https://github.com/rrwright
+summary: Classify IRC chat lines with a decision model, escalate the uncertain ones to a chat model, and build a graph.
+description: >
+  Reads newline-delimited JSON IRC messages. For each one the ingest creates an IrcMessage node plus
+  an IrcUser (author), IrcChannel, and IrcServer, then calls `llm.decide` with two typed questions:
+  does the message refer to a data breach (a yes-or-no question answered with a probability), and
+  which language is it written in (a choice). Messages the decision model is sure about are labeled
+  from its answer alone. Messages in the uncertain band are marked for review, and a standing query
+  escalates each of those to `llm.prompt` with an entity-extraction prompt and a JSON schema. Every
+  extracted entity (mentioned users, companies, agencies, locations, web and onion pages, crypto
+  addresses, breach indicators) becomes its own idFrom-keyed, labeled node linked to the message.
+
+  Model endpoints come from system config under `quine.llm`: a `decision` profile for `llm.decide`
+  and a `completion` profile for `llm.prompt`, each named in `quine.llm.default-profiles`. See
+  the `llm` block in the documented configuration for an example. Thresholds live in the Cypher
+  below; the procedures only return probabilities.
+
+  The completion profile's model matters here: the extraction prompt demands a strict JSON object
+  with fourteen required fields, and small models often miss that schema (yielding null, so the
+  message stays marked for review), fill the entity lists with nothing, or misjudge the breach
+  question. A stronger reasoning model such as `bonsai-2:9b` (`ollama pull bonsai-2:9b`) gets all
+  three right far more often. Reasoning models think before answering, so give them a `max-tokens`
+  budget that covers the thinking, and run them on the plain prompt-and-validate path rather than
+  provider-enforced structured output, which can send the thinking into a loop.
+
+ingestStreams:
+  - name: irc-ndjson
+    source:
+      type: File
+      # Newline-delimited JSON with `server`, `channel`, `nickname`, `userUUID`, and `message`
+      # fields per line. Point this at your own export; the file is not part of the repository.
+      path: irc-messages.ndjson
+      format:
+        type: JsonL
+      # Uncomment to cap records while testing.
+      # limit: 25
+    # Calls above a profile's `max-concurrent-requests` wait in a per-profile queue, so this can
+    # exceed that setting; the queue rejects calls only when it is 128 deep per concurrency slot.
+    parallelism: 8
+    query: |
+      MATCH (message), (author), (channel), (server)
+        WHERE id(message) = idFrom("irc_message", $that.userUUID, $that.message)
+          AND id(author)  = idFrom("irc_user", $that.nickname)
+          AND id(channel) = idFrom("irc_channel", $that.server, $that.channel)
+          AND id(server)  = idFrom("irc_server", $that.server)
+      CALL llm.decide(
+        {nickname: $that.nickname, message: $that.message},
+        {
+          breach: {type: "yes-no",
+                   instructions: "Does the message discuss, or claim possession of data resulting from, a data breach?"},
+          language: {type: "choice",
+                     instructions: "The language the message is written in",
+                     options: ["English", "Russian", "Chinese", "Spanish", "German", "Portuguese", "Other"]}
+        }
+      ) YIELD answers
+      WITH message, author, channel, server, answers.breach.probability AS breachProbability, answers.language.choice AS language
+      SET message.contents = $that.message,
+          message.nickname = $that.nickname,
+          message.channel = $that.channel,
+          message.server = $that.server,
+          message.originalLanguage = language,
+          message.breachProbability = breachProbability,
+          message.refersToThreatActivity = breachProbability >= 0.85,
+          message.needsReview = breachProbability >= 0.25 AND breachProbability < 0.85,
+          message: IrcMessage,
+          author.nickname = $that.nickname,
+          author: IrcUser,
+          channel.name = $that.channel,
+          channel: IrcChannel,
+          server.name = $that.server,
+          server: IrcServer
+      CREATE (author)-[:SENT_MESSAGE]->(message)
+      CREATE (channel)-[:CONTAINS_MESSAGE]->(message)
+      CREATE (server)-[:CONTAINS_CHANNEL]->(channel)
+
+standingQueries:
+  - name: review-uncertain-messages
+    pattern:
+      type: Cypher
+      query: >
+        MATCH (m:IrcMessage)
+        WHERE m.needsReview = true
+        RETURN DISTINCT id(m) AS id
+    outputs:
+      - name: extract-entities-with-llm-prompt
+        resultEnrichment:
+          query: |
+            // Anchor on the message alone: the standing query fires on the needsReview write, which
+            // can land before the message's SENT_MESSAGE half-edge is visible, so a MATCH through
+            // the author here silently finds nothing and the escalation is lost (DistinctId mode
+            // fires once per id, so it never retries). The nickname is read off the message instead.
+            MATCH (message) WHERE id(message) = $that.data.id
+            CALL llm.prompt(
+              'You are analyzing a single message from an IRC chat forum. The message is provided in the data block as a JSON object with two fields: nickname (the account that posted it) and message (the text to analyze). Base your analysis only on the message text. Write an English summary of what the message is about, translating first if it is not written in English. Identify any other IRC usernames referenced in the message, removing any leading @ or : characters, and never list the posting account itself among them. Use canonical names for any companies, government agencies, or other individuals referenced or alluded to. List any physical locations such as countries, addresses, or places of business. List any web URLs, Tor onion URLs, and cryptocurrency addresses; if credentials accompany a URL, include the username and password unchanged. Finally, judge whether the message discusses, or claims possession of data resulting from, a data breach; if so, explain your reasoning and report unchanged any file names or asset names associated with that breach.',
+              {nickname: message.nickname, message: message.contents},
+              {randomizeSchemaKeys: false, schema: {
+                 type: 'object', additionalProperties: false,
+                 required: ['mentionedIrcUsernames','companies','governmentAgencies','physicalLocations','webUrls',
+                            'onionUrls','cryptocurrencyAddresses','mentionsCredentials','credentialUsername',
+                            'credentialPassword','englishSummaryOfMessage','refersToDataBreach',
+                            'dataBreachJustification','dataBreachAssetFileNameOrURL'],
+                 properties: {
+                   mentionedIrcUsernames: {type:'array', items:{type:'string'}},
+                   companies: {type:'array', items:{type:'string'}},
+                   governmentAgencies: {type:'array', items:{type:'string'}},
+                   physicalLocations: {type:'array', items:{type:'string'}},
+                   webUrls: {type:'array', items:{type:'string'}},
+                   onionUrls: {type:'array', items:{type:'string'}},
+                   cryptocurrencyAddresses: {type:'array', items:{type:'string'}},
+                   mentionsCredentials: {type:'boolean'},
+                   credentialUsername: {type:'string'},
+                   credentialPassword: {type:'string'},
+                   englishSummaryOfMessage: {type:'string'},
+                   refersToDataBreach: {type:'boolean'},
+                   dataBreachJustification: {type:'string'},
+                   dataBreachAssetFileNameOrURL: {type:'array', items:{type:'string'}}
+                 }
+              }}
+            ) YIELD response
+            // A null response means the model's output failed the schema. Keep the message marked
+            // for review and leave the stage-one threat judgment alone, so a failed extraction
+            // stays visible instead of reading as a confident "no threat".
+            SET message.needsReview = response IS NULL,
+                message.reviewedByPrompt = response IS NOT NULL,
+                message.englishSummaryOfMessage = response.englishSummaryOfMessage,
+                message.refersToThreatActivity = CASE
+                  WHEN response IS NULL THEN message.refersToThreatActivity
+                  ELSE response.refersToDataBreach END,
+                message.dataBreachJustification = response.dataBreachJustification,
+                message.mentionsCredentials = response.mentionsCredentials
+            WITH response AS that, message
+            CALL {
+              WITH that, message
+              UNWIND coalesce(that.mentionedIrcUsernames, []) AS u
+              MATCH (mentioned) WHERE id(mentioned) = idFrom("irc_user", u)
+              SET mentioned.nickname = u, mentioned: IrcUser
+              CREATE (message)-[:MESSAGE_MENTIONED]->(mentioned)
+            }
+            CALL {
+              WITH that, message
+              UNWIND coalesce(that.companies, []) AS c
+              MATCH (company) WHERE id(company) = idFrom("company", c)
+              SET company.name = c, company: Company
+              CREATE (message)-[:MENTIONS_COMPANY]->(company)
+            }
+            CALL {
+              WITH that, message
+              UNWIND coalesce(that.governmentAgencies, []) AS a
+              MATCH (agency) WHERE id(agency) = idFrom("agency", a)
+              SET agency.name = a, agency: Agency
+              CREATE (message)-[:MENTIONS_AGENCY]->(agency)
+            }
+            CALL {
+              WITH that, message
+              UNWIND coalesce(that.physicalLocations, []) AS l
+              MATCH (location) WHERE id(location) = idFrom("physical_location", l)
+              SET location.physicalLocation = l, location: PhysicalLocation
+              CREATE (message)-[:MENTIONS_PHYSICAL_LOCATION]->(location)
+            }
+            CALL {
+              WITH that, message
+              UNWIND coalesce(that.webUrls, []) + coalesce(that.onionUrls, []) AS url
+              MATCH (page) WHERE id(page) = idFrom("webpage", url)
+              SET page.url = url, page: Webpage
+              CREATE (message)-[:MESSAGE_MENTIONED_URL]->(page)
+            }
+            CALL {
+              WITH that, message
+              UNWIND coalesce(that.cryptocurrencyAddresses, []) AS addr
+              MATCH (address) WHERE id(address) = idFrom("eth_address", toLower(addr))
+              SET address.address = addr, address: EthAddress
+              CREATE (message)-[:MESSAGE_ETH_ADDRESS]->(address)
+            }
+            CALL {
+              WITH that, message
+              UNWIND coalesce(that.dataBreachAssetFileNameOrURL, []) AS ind
+              MATCH (indicator) WHERE id(indicator) = idFrom("databreach", ind)
+              SET indicator.filenameOrUrl = ind, indicator: ThreatIndicator
+              CREATE (message)-[:MENTIONS_THREAT_INDICATOR]->(indicator)
+            }
+            RETURN id(message) AS reviewed
+        destinations:
+          - type: Drop
+
+nodeAppearances:
+  - predicate:
+      dbLabel: IrcMessage
+      propertyKeys: []
+      knownValues:
+        refersToThreatActivity: true
+    icon: ion-document-text
+    color: '#ff0000'
+    label:
+      type: Property
+      key: contents
+      prefix: ''
+  - predicate:
+      dbLabel: IrcMessage
+      propertyKeys: []
+      knownValues:
+        needsReview: true
+    icon: ion-document-text
+    color: '#ffa500'
+    label:
+      type: Property
+      key: contents
+      prefix: ''
+  - predicate:
+      dbLabel: IrcMessage
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-document-text
+    label:
+      type: Property
+      key: contents
+      prefix: ''
+  - predicate:
+      dbLabel: IrcUser
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-person
+    label:
+      type: Property
+      key: nickname
+      prefix: ''
+  - predicate:
+      dbLabel: IrcChannel
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-bluetooth
+    label:
+      type: Property
+      key: name
+      prefix: ''
+  - predicate:
+      dbLabel: IrcServer
+      propertyKeys: []
+      knownValues: {}
+    icon: 💻
+    label:
+      type: Property
+      key: name
+      prefix: ''
+  - predicate:
+      dbLabel: Company
+      propertyKeys: []
+      knownValues: {}
+    icon: 💼
+    label:
+      type: Property
+      key: name
+      prefix: ''
+  - predicate:
+      dbLabel: Agency
+      propertyKeys: []
+      knownValues: {}
+    icon: 🏢
+    label:
+      type: Property
+      key: name
+      prefix: ''
+  - predicate:
+      dbLabel: PhysicalLocation
+      propertyKeys: []
+      knownValues: {}
+    icon: 📍
+    label:
+      type: Property
+      key: physicalLocation
+      prefix: ''
+  - predicate:
+      dbLabel: Webpage
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-ios-world-outline
+    color: '#ff0000'
+    label:
+      type: Property
+      key: url
+      prefix: ''
+  - predicate:
+      dbLabel: EthAddress
+      propertyKeys: []
+      knownValues: {}
+    icon: 💰
+    label:
+      type: Property
+      key: address
+      prefix: ''
+  - predicate:
+      dbLabel: ThreatIndicator
+      propertyKeys: []
+      knownValues: {}
+    icon: 🎯
+    color: '#ff0000'
+    label:
+      type: Property
+      key: filenameOrUrl
+      prefix: ''
+
+quickQueries:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Adjacent Nodes
+      querySuffix: MATCH (n)--(m) RETURN DISTINCT m
+      sort: NODE
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Refresh
+      querySuffix: RETURN n
+      sort: NODE
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Local Properties
+      querySuffix: RETURN id(n), properties(n)
+      sort: TEXT
+  - predicate:
+      dbLabel: IrcUser
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Sent Messages
+      querySuffix: MATCH (n)-[:SENT_MESSAGE]->(m:IrcMessage) RETURN m
+      sort: NODE
+  - predicate:
+      dbLabel: IrcMessage
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Mentioned Entities
+      querySuffix: MATCH (n)-->(o) WHERE NOT ("IrcChannel" IN labels(o) OR "IrcServer" IN labels(o)) RETURN DISTINCT o
+      sort: NODE
+
+sampleQueries:
+  - name: Messages that reference threat activity
+    query: MATCH (m:IrcMessage) WHERE m.refersToThreatActivity = true RETURN m LIMIT 25
+  - name: Messages still waiting for review by the chat model
+    query: MATCH (m:IrcMessage) WHERE m.needsReview = true RETURN m LIMIT 25
+  - name: Messages with extracted entities
+    query: MATCH (m:IrcMessage)-->(o) WHERE NOT ("IrcChannel" IN labels(o) OR "IrcServer" IN labels(o)) RETURN m, o LIMIT 50
+
+statusQuery:
+  cypherQuery: >
+    MATCH (m:IrcMessage)
+    RETURN count(m) AS messages,
+           sum(CASE WHEN m.refersToThreatActivity = true THEN 1 ELSE 0 END) AS threatMessages,
+           sum(CASE WHEN m.needsReview = true THEN 1 ELSE 0 END) AS awaitingReview

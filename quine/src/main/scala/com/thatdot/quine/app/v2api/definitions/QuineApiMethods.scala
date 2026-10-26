@@ -401,6 +401,7 @@ trait ApplicationApiMethods {
     QueryEffects(
       isReadOnly = compiled.isReadOnly,
       canContainAllNodeScan = compiled.canContainAllNodeScan,
+      canCallLlm = compiled.canCallLlm,
     )
   }
 

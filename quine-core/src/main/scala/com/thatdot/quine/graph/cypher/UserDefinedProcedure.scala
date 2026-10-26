@@ -31,6 +31,9 @@ trait UserDefinedProcedure {
   /** Can the procedure cause a full node scan? */
   def canContainAllNodeScan: Boolean
 
+  /** Can the procedure send data to a language model? `false` means it definitely does not. */
+  def canCallLlm: Boolean = false
+
   /** How to call the UDP
     *
     * @note each vector in the output must have the size equal to `outputColumns`

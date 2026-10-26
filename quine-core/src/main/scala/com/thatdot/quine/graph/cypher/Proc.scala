@@ -34,6 +34,9 @@ sealed abstract class Proc {
   /** Can the procedure cause a full node scan? */
   def canContainAllNodeScan: Boolean
 
+  /** Can the procedure send data to a language model? `false` means it definitely does not. */
+  def canCallLlm: Boolean = false
+
   /** Is the procedure a VOID procedure? */
   def isVoid = outputColumns.variables.isEmpty
 
@@ -291,6 +294,7 @@ object Proc {
     def outputColumns = underlying.outputColumns
     def canContainUpdates: Boolean = underlying.canContainUpdates
     def canContainAllNodeScan: Boolean = underlying.canContainAllNodeScan
+    override def canCallLlm: Boolean = underlying.canCallLlm
 
     def isIdempotent: Boolean = underlying.isIdempotent
 

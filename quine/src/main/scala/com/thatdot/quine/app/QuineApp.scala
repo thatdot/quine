@@ -21,7 +21,8 @@ import cats.syntax.all._
 import com.thatdot.api.{v2 => Api2}
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.security.Secret
-import com.thatdot.quine.app.config.FileAccessPolicy
+import com.thatdot.quine.app.config.{FileAccessPolicy, LlmConfig}
+import com.thatdot.quine.app.llm.{LlmClients, LlmDecide, LlmPrompt}
 import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.model.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.model.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
@@ -80,6 +81,7 @@ final class QuineApp(
   val tapBus: TapBus,
   recipe: Option[Recipe] = None,
   recipeCanonicalName: Option[String] = None,
+  llmConfig: LlmConfig = LlmConfig(),
 )(implicit val logConfig: LogConfig)
     extends BaseApp(graph)
     with AdministrationRoutesState
@@ -1298,6 +1300,9 @@ final class QuineApp(
     registerUserDefinedProcedure(
       new CypherStandingWiretap((queryName, namespace) => getStandingQueryId(queryName, namespace)),
     )
+    val llmClients = LlmClients.fromConfig(llmConfig, Metrics)(graph.system, logConfig)
+    registerUserDefinedProcedure(new LlmPrompt(llmClients))
+    registerUserDefinedProcedure(new LlmDecide(llmClients))
 
     val standingQueryOutputsFut = {
       import Secret.Unsafe._

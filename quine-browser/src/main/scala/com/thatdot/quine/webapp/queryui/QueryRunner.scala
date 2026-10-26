@@ -109,7 +109,9 @@ object QueryRunner {
         case QueryLanguage.Gremlin =>
           routes.gremlinNodesPost((atTime, None, namespace, GremlinQuery(query))).future
         case QueryLanguage.Cypher =>
-          routes.cypherNodesPost((atTime, None, namespace, CypherQuery(query))).future
+          collapseServiceUnavailable(
+            routes.cypherNodesPost((atTime, None, namespace, CypherQuery(query))).future,
+          )
       }).map(Some(_))
 
     def runEdgeQuery(
@@ -123,7 +125,9 @@ object QueryRunner {
         case QueryLanguage.Gremlin =>
           routes.gremlinEdgesPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
         case QueryLanguage.Cypher =>
-          routes.cypherEdgesPost((atTime, None, namespace, CypherQuery(query, parameters))).future
+          collapseServiceUnavailable(
+            routes.cypherEdgesPost((atTime, None, namespace, CypherQuery(query, parameters))).future,
+          )
       }).map(Some(_))
 
     def supportsGremlin: Boolean = true
@@ -135,7 +139,12 @@ object QueryRunner {
       atTime: Option[Long],
     )(onBatch: CypherQueryResult => Unit): RunningQuery.Rest[Option[Unit]] =
       RunningQuery.Rest(
-        restTextResults(routes.cypherPost((atTime, None, namespace, CypherQuery(query, parameters))).future, onBatch),
+        restTextResults(
+          collapseServiceUnavailable(
+            routes.cypherPost((atTime, None, namespace, CypherQuery(query, parameters))).future,
+          ),
+          onBatch,
+        ),
       )
 
     def runGremlinTextQuery(
@@ -425,6 +434,17 @@ object QueryRunner {
   // ── Helpers shared by the implementations ──
 
   private def gremlinUnsupportedInV2: Exception = new Exception("Gremlin is not supported in APIv2")
+
+  /** The v1 cypher endpoints answer 503 with a message when the query called a service outside
+    * Quine that is unavailable; show it like any other query error.
+    */
+  private def collapseServiceUnavailable[A](
+    fut: Future[Either[Either[Invalid, Option[A]], String]],
+  )(implicit ec: ExecutionContext): Future[Either[Invalid, Option[A]]] =
+    fut.map {
+      case Left(result) => result
+      case Right(unavailableMessage) => Left(Invalid(Seq(unavailableMessage)))
+    }
 
   private def invalidToException(invalid: Invalid): Exception = new Exception(invalid.errors mkString "\n")
 

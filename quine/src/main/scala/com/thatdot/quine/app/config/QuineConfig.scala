@@ -39,6 +39,7 @@ final case class QuineConfig(
   defaultApiVersion: String = "v2",
   logConfig: LogConfig = LogConfig.permissive,
   fileIngest: FileIngestConfig = FileIngestConfig(),
+  llm: LlmConfig = LlmConfig(),
 ) extends BaseConfig {
 
   def configVal: Config = ConfigWriter[QuineConfig].to(this).asInstanceOf[ConfigObject].toConfig

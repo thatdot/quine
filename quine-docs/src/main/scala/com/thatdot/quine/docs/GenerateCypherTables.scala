@@ -7,6 +7,7 @@ import scala.annotation.nowarn
 
 import org.pegdown.PegDownProcessor
 
+import com.thatdot.quine.app.llm.{LlmClients, LlmDecide, LlmPrompt}
 import com.thatdot.quine.app.model.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.compiler.cypher.CypherStandingWiretap
 import com.thatdot.quine.graph.cypher.{BuiltinFunc, Func, Proc, UserDefinedFunction, UserDefinedProcedure}
@@ -140,6 +141,8 @@ object GenerateCypherTables extends App {
       new CypherParseProtobuf(ProtobufSchemaCache.Blocking: @nowarn) ::
       new CypherToProtobuf(ProtobufSchemaCache.Blocking: @nowarn) ::
       (new CypherStandingWiretap((_, _) => None) ::
+      new LlmPrompt(LlmClients.empty) ::
+      new LlmDecide(LlmClients.empty) ::
       Proc.userDefinedProcedures.values.toList).sortBy(_.name),
     ),
   )

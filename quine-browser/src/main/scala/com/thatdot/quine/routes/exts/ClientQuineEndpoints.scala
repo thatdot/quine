@@ -47,5 +47,7 @@ trait ClientQuineEndpoints
     }
   }
 
-  val ServiceUnavailable: StatusCode = 503
+  // A def, as endpoints4s declares every status code: endpoint vals in traits initialized before
+  // this one read it during construction, and would capture 0 from a val
+  def ServiceUnavailable: StatusCode = 503
 }

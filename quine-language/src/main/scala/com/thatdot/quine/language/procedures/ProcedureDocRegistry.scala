@@ -65,6 +65,7 @@ object ProcedureDocRegistry {
 
   private val proceduresReference = "https://quine.io/reference/cypher/cypher-procedures/"
   private val reifyTimeReference = "https://quine.io/reference/cypher/reify-time/"
+  private val llmProceduresReference = "https://quine.io/learn/llm/llm-procedures/"
 
   /** A compatibility stub's documentation: Quine accepts the call so external tools written
     * for Neo4j keep working, but the procedure always yields no rows.
@@ -364,6 +365,32 @@ object ProcedureDocRegistry {
         "schema at `schemaUrl`. Yields `null` when the value is not serializable as the requested type. The " +
         "inverse of `parseProtobuf`.",
       docsUrl = proceduresReference,
+    ),
+    ProcedureDoc(
+      name = "llm.prompt",
+      signature = "llm.prompt(prompt :: STRING, data :: ANY?, options :: MAP?) :: (response :: ANY)",
+      description = "Sends `prompt` to the completion model configured under `llm`, and yields the completion. " +
+        "`data` (any value) is fenced as untrusted content the model must analyze and not obey. Options: " +
+        "`profile` (a name under `llm.profiles`), `schema` (a JSON schema the answer must match; the parsed " +
+        "value is yielded, or `null` when the answer does not conform), `randomizeSchemaKeys` (suffix schema keys " +
+        "with a per-call nonce). Omit `data` or `options`, or pass null, to leave them out; a null option value " +
+        "means that option's default. The response is untrusted output: validate it before acting on it.",
+      docsUrl = llmProceduresReference,
+    ),
+    ProcedureDoc(
+      name = "llm.decide",
+      signature = "llm.decide(state :: ANY, questions :: MAP, options :: MAP?) :: (answers :: MAP)",
+      description = "Asks the decision model configured under `llm` typed questions about `state` and yields " +
+        "a map from question id to its answer. Each question is `{type: \"yes-no\", instructions, options?}` " +
+        "(yes or no; `options` may describe `true` and `false`), `{type: \"choice\", instructions, options}` " +
+        "(a list of labels, or a map from label to a description of what counts as that option, null for none), " +
+        "or `{type: \"score\", instructions, options}` (ordered levels). `instructions` and each description may " +
+        "be a string, a map, or a list. Each answer carries `type` and its answer field (`probability`, `choice`, " +
+        "or `score`); a choice or score answer adds `probabilities` keyed by label and `confidence`, while a " +
+        "yes-no answer is its probability alone, which already carries the uncertainty. Thresholds are the " +
+        "query's business. Omit the third argument, or pass null, to leave it out; a null option value means " +
+        "that option's default. Options: `profile`.",
+      docsUrl = llmProceduresReference,
     ),
   )
 

@@ -341,6 +341,17 @@ object ErrorResponseHelpers extends LazySafeLogging {
           .description(ErrorText.serviceUnavailableDescription(possibleReasons: _*))
       }
 
+  /** 503 for an outside service down for an unknown time: unlike [[serviceUnavailableError]], no `Retry-After`. */
+  def externalServiceUnavailableError(possibleReasons: String*)(implicit
+    enc: Encoder[ErrorResponse.ServiceUnavailable],
+    dec: Decoder[ErrorResponse.ServiceUnavailable],
+    sch: Schema[ErrorResponse.ServiceUnavailable],
+  ): EndpointOutput[ErrorResponse.ServiceUnavailable] =
+    statusCode(StatusCode.ServiceUnavailable).and {
+      jsonBody[ErrorResponse.ServiceUnavailable]
+        .description(ErrorText.externalServiceUnavailableDescription(possibleReasons: _*))
+    }
+
   def unauthorizedError(possibleReasons: String*)(implicit
     enc: Encoder[ErrorResponse.Unauthorized],
     dec: Decoder[ErrorResponse.Unauthorized],
@@ -438,6 +449,17 @@ object ErrorText {
       |
       |""".stripMargin
 
+  private val externalServiceUnavailableDoc =
+    """Service Unavailable
+      |
+      |  The request was well-formed, but a service it calls outside Quine is temporarily unable
+      |  to serve it. Nothing about the request needs to change: the same request may succeed
+      |  when the service recovers.
+      |
+      |  %s
+      |
+      |""".stripMargin
+
   private val forbiddenDoc =
     s"""Forbidden
        |
@@ -467,6 +489,9 @@ object ErrorText {
 
   def serviceUnavailableDescription(messages: String*): String =
     buildErrorMessage(serviceUnavailableDoc, messages)
+
+  def externalServiceUnavailableDescription(messages: String*): String =
+    buildErrorMessage(externalServiceUnavailableDoc, messages)
 
   def unauthorizedErrorDescription(messages: String*): String =
     buildErrorMessage(unauthorizedDoc, messages)

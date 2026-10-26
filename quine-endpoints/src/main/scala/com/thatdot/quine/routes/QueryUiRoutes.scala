@@ -144,8 +144,8 @@ trait QueryUiRoutes
 
   val gremlinLanguageUrl = "https://tinkerpop.apache.org/gremlin.html"
   val cypherLanguageUrl = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
-  // Inner Option is to represent namespace not found
-  val cypherPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Option[CypherQueryResult]]] =
+  // Inner Option is namespace not found; outer Right is a 503 from an unavailable service outside Quine
+  val cypherPost: Endpoint[QueryInputs[CypherQuery], Either[Either[ClientErrors, Option[CypherQueryResult]], String]] =
     endpoint(
       request = post(
         url = query / "cypher" /? (atTime & reqTimeout & namespace),
@@ -163,6 +163,13 @@ trait QueryUiRoutes
               ),
             ),
           ),
+        )
+        .orElse(
+          serviceUnavailable(
+            entity = textResponse,
+            docs =
+              Some("The query called a service outside Quine that is unavailable; the same query may succeed later"),
+          ),
         ),
       docs = EndpointDocs()
         .withSummary(Some("Cypher Query"))
@@ -170,8 +177,9 @@ trait QueryUiRoutes
         .withTags(List(cypherTag)),
     )
 
-  // Inner Option is to represent namespace not found
-  val cypherNodesPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Option[Seq[UiNode[Id]]]]] =
+  // Inner Option is namespace not found; outer Right is a 503 from an unavailable service outside Quine
+  val cypherNodesPost
+    : Endpoint[QueryInputs[CypherQuery], Either[Either[ClientErrors, Option[Seq[UiNode[Id]]]], String]] =
     endpoint(
       request = post(
         url = query / "cypher" / "nodes" /? (atTime & reqTimeout & namespace),
@@ -184,7 +192,14 @@ trait QueryUiRoutes
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
       ),
       response = customBadRequest("runtime error in the query")
-        .orElse(wheneverFound(ok(jsonResponse[Seq[UiNode[Id]]]))),
+        .orElse(wheneverFound(ok(jsonResponse[Seq[UiNode[Id]]])))
+        .orElse(
+          serviceUnavailable(
+            entity = textResponse,
+            docs =
+              Some("The query called a service outside Quine that is unavailable; the same query may succeed later"),
+          ),
+        ),
       docs = EndpointDocs()
         .withSummary(Some("Cypher Query Return Nodes"))
         .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
@@ -192,8 +207,9 @@ trait QueryUiRoutes
         .withTags(List(cypherTag)),
     )
 
-  // Inner Option is to represent namespace not found
-  val cypherEdgesPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Option[Seq[UiEdge[Id]]]]] =
+  // Inner Option is namespace not found; outer Right is a 503 from an unavailable service outside Quine
+  val cypherEdgesPost
+    : Endpoint[QueryInputs[CypherQuery], Either[Either[ClientErrors, Option[Seq[UiEdge[Id]]]], String]] =
     endpoint(
       request = post(
         url = query / "cypher" / "edges" /? (atTime & reqTimeout & namespace),
@@ -206,7 +222,14 @@ trait QueryUiRoutes
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
       ),
       response = customBadRequest("runtime error in the query")
-        .orElse(wheneverFound(ok(jsonResponse[Seq[UiEdge[Id]]]))),
+        .orElse(wheneverFound(ok(jsonResponse[Seq[UiEdge[Id]]])))
+        .orElse(
+          serviceUnavailable(
+            entity = textResponse,
+            docs =
+              Some("The query called a service outside Quine that is unavailable; the same query may succeed later"),
+          ),
+        ),
       docs = EndpointDocs()
         .withSummary(Some("Cypher Query Return Edges"))
         .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.

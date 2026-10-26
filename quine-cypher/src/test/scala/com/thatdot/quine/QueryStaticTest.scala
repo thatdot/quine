@@ -2,6 +2,7 @@ package com.thatdot.quine
 
 import com.thatdot.quine.compiler.cypher.{
   CypherHarness,
+  MyLlmCall,
   MyReverse,
   MyUnwind,
   registerUserDefinedFunction,
@@ -158,4 +159,70 @@ class QueryStaticTest extends CypherHarness("query-static-tests") {
       expectedCanContainAllNodeScan = false,
     )
   }
+
+  describe("canCallLlm, through every query node that can hold a procedure call") {
+
+    registerUserDefinedProcedure(MyUnwind)
+    registerUserDefinedProcedure(MyLlmCall)
+
+    testQueryStaticAnalysis(
+      queryText = "CALL myunwind([1]) YIELD unwound RETURN unwound",
+      expectedIsReadOnly = true,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = false,
+      expectedCanCallLlm = false,
+    )
+    testQueryStaticAnalysis(
+      queryText = "CALL myllmcall('x') YIELD response RETURN response",
+      expectedIsReadOnly = true,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = false,
+      expectedCanCallLlm = true,
+    )
+    testQueryStaticAnalysis(
+      queryText = "RETURN 'y' AS response UNION CALL myllmcall('x') YIELD response RETURN response",
+      expectedIsReadOnly = true,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = false,
+      expectedCanCallLlm = true,
+    )
+    testQueryStaticAnalysis(
+      queryText = "CALL { CALL myllmcall('x') YIELD response RETURN response } RETURN response",
+      expectedIsReadOnly = true,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = false,
+      expectedCanCallLlm = true,
+    )
+    testQueryStaticAnalysis(
+      queryText = "CALL myllmcall('x') YIELD response RETURN count(response) AS n",
+      expectedIsReadOnly = true,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = false,
+      expectedCanCallLlm = true,
+    )
+    testQueryStaticAnalysis(
+      queryText = "UNWIND ['a', 'b'] AS prompt CALL myllmcall(prompt) YIELD response RETURN response",
+      expectedIsReadOnly = true,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = false,
+      expectedCanCallLlm = true,
+    )
+    // The string is opaque to static analysis, so the flag comes from cypher.doIt itself
+    testQueryStaticAnalysis(
+      queryText =
+        """CALL cypher.doIt("CALL myllmcall('x') YIELD response RETURN response", {}) YIELD value RETURN value""",
+      expectedIsReadOnly = false,
+      expectedCannotFail = false,
+      expectedIsIdempotent = false,
+      expectedCanContainAllNodeScan = false,
+      expectedCanCallLlm = true,
+    )
+  }
+
 }

@@ -60,21 +60,32 @@ trait V2QuerySchemas
 }
 
 trait ErrorResponses extends Endpoints with V2QuerySchemas with JsonEntitiesFromSchemas {
+
+  /** 503, which the endpoints4s algebra does not name; concrete interpreters supply it, as
+    * [[com.thatdot.quine.routes.exts.QuineEndpoints]] declares the same member.
+    */
+  def ServiceUnavailable: StatusCode
+
   def convertV2ErrorResponseToClientErrors(
-    errorResponse: Either[Either[V2ErrorResponse, V2ErrorResponse], String],
+    errorResponse: Either[Either[Either[V2ErrorResponse, V2ErrorResponse], String], V2ErrorResponse],
   ): ClientErrors =
     errorResponse match {
-      case Left(eitherV2ErrorResponse) => Invalid(Seq(eitherV2ErrorResponse.merge.error.message))
-      case Right(errorMsg) => Invalid(Seq(errorMsg))
+      case Left(Left(eitherV2ErrorResponse)) => Invalid(Seq(eitherV2ErrorResponse.merge.error.message))
+      case Left(Right(errorMsg)) => Invalid(Seq(errorMsg))
+      case Right(serviceUnavailable) => Invalid(Seq(serviceUnavailable.error.message))
     }
 
   def convertClientErrorsToV2ErrorResponse(
     clientErrors: ClientErrors,
-  ): Either[Either[V2ErrorResponse, V2ErrorResponse], String] =
+  ): Either[Either[Either[V2ErrorResponse, V2ErrorResponse], String], V2ErrorResponse] =
     clientErrors match {
       case Invalid(errors) =>
         Left(
-          Left(V2ErrorResponse(V2ErrorBody(code = 400, status = "INVALID_ARGUMENT", message = errors.mkString("; ")))),
+          Left(
+            Left(
+              V2ErrorResponse(V2ErrorBody(code = 400, status = "INVALID_ARGUMENT", message = errors.mkString("; "))),
+            ),
+          ),
         )
     }
 
@@ -82,6 +93,7 @@ trait ErrorResponses extends Endpoints with V2QuerySchemas with JsonEntitiesFrom
     response(statusCode = BadRequest, entity = jsonResponse[V2ErrorResponse])
       .orElse(response(statusCode = Unauthorized, entity = jsonResponse[V2ErrorResponse]))
       .orElse(response(statusCode = InternalServerError, entity = textResponse))
+      .orElse(response(statusCode = ServiceUnavailable, entity = jsonResponse[V2ErrorResponse]))
       .xmap[ClientErrors](convertV2ErrorResponseToClientErrors)(convertClientErrorsToV2ErrorResponse)
 }
 

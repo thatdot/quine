@@ -9,6 +9,7 @@ import org.apache.pekko.util.{ByteString, ByteStringBuilder, Timeout}
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.BuildInfo
 import com.thatdot.quine.compiler.cypher
+import com.thatdot.quine.exceptions.ExternalServiceException
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
@@ -147,6 +148,15 @@ object Protocol extends LazySafeLogging {
             )
             .recover {
               case err: CypherException =>
+                Failure(
+                  Map(
+                    "message" -> Expr.Str(err.getMessage),
+                    "code" -> Expr.Str(err.getClass.getName),
+                  ),
+                )
+              // A query step called a service outside Quine and the service failed it: an answer
+              // for this query, not a fault of the connection, so the session stays open
+              case err: ExternalServiceException =>
                 Failure(
                   Map(
                     "message" -> Expr.Str(err.getMessage),

@@ -892,3 +892,31 @@ object MyUnwind extends UserDefinedProcedure {
       case _ => throw wrongSignature(arguments)
     }
 }
+
+/** Stands in for a procedure that sends data to a language model, so the flag is tested without the app module */
+object MyLlmCall extends UserDefinedProcedure {
+  val name = "myllmcall"
+  val canContainUpdates = false
+  val isIdempotent = true
+  val canContainAllNodeScan = false
+  override val canCallLlm = true
+  val signature: cypher.UserDefinedProcedureSignature = cypher.UserDefinedProcedureSignature(
+    arguments = Vector("prompt" -> cypher.Type.Str),
+    outputs = Vector("response" -> cypher.Type.Str),
+    description = "Echo the prompt",
+  )
+
+  def call(
+    context: cypher.QueryContext,
+    arguments: Seq[cypher.Value],
+    location: cypher.ProcedureExecutionLocation,
+  )(implicit
+    parameters: cypher.Parameters,
+    timeout: pekko.util.Timeout,
+    logConfig: LogConfig,
+  ): pekko.stream.scaladsl.Source[Vector[cypher.Value], _] =
+    arguments match {
+      case Seq(prompt: Expr.Str) => pekko.stream.scaladsl.Source.single(Vector(prompt))
+      case _ => throw wrongSignature(arguments)
+    }
+}
