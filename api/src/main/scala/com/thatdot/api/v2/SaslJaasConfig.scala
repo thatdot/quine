@@ -3,6 +3,7 @@ package com.thatdot.api.v2
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.tapir.Schema
+import sttp.tapir.Schema.annotations.customise
 
 import com.thatdot.api.codec.SecretCodecs
 import com.thatdot.api.codec.SecretCodecs._
@@ -211,6 +212,7 @@ object OAuthBearerLogin {
   *                         truststore applies (`-Djavax.net.ssl.trustStore=…`).
   * @param caCertPassword   Optional password for the truststore named by [[caCertPath]]
   */
+@customise(ProductSpecific.enterpriseOnly)
 final case class OAuthBearerAssertionLogin(
   clientId: String,
   certFile: String,

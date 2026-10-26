@@ -12,7 +12,7 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationEncoder,
 }
 import io.circe.{Decoder, Encoder}
-import sttp.tapir.Schema.annotations.{default, description, encodedExample, title, validate}
+import sttp.tapir.Schema.annotations.{customise, default, description, encodedExample, title, validate}
 import sttp.tapir.{Schema, ValidationResult, Validator}
 
 import com.thatdot.api.codec.SecretCodecs
@@ -26,7 +26,7 @@ import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{charsetDecoder, charsetEnc
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.scala.{finiteDurationDecoder, finiteDurationEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.{charsetSchema, instantSchema}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.scala.finiteDurationSchema
-import com.thatdot.api.v2.{AwsCredentials, AwsRegion, RatesSummary, ResourceName, SaslJaasConfig}
+import com.thatdot.api.v2.{AwsCredentials, AwsRegion, ProductSpecific, RatesSummary, ResourceName, SaslJaasConfig}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.{routes => V1}
 
@@ -103,7 +103,9 @@ object ApiIngest {
     @description("Error message about the ingest, if any.") message: Option[String],
     @description("Configuration of the ingest stream.") settings: Oss.QuineIngestConfiguration,
     @description("Statistics on progress of running ingest stream") stats: IngestStreamStats,
-    @description("Index of the cluster member running this ingest stream, if applicable.") memberIdx: Option[Int] = None,
+    @description("Index of the cluster member running this ingest stream.")
+    @customise(ProductSpecific.enterpriseOnly)
+    memberIdx: Option[Int] = None,
   )
 
   object IngestStreamInfoWithName {
@@ -751,8 +753,9 @@ object ApiIngest {
       @title("OAuth Certificate Authentication")
       @description(
         "Certificate-based OAuth (private_key_jwt). Signs a JWT with a private key from a " +
-        "keystore and exchanges it for an access token. Requires Quine Enterprise.",
+        "keystore and exchanges it for an access token.",
       )
+      @customise(ProductSpecific.enterpriseOnly)
       case class CertificateAuth(
         @description("OAuth client ID registered with the IdP.")
         clientId: String,

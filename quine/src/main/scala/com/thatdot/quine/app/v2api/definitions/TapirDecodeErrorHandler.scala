@@ -11,7 +11,7 @@ import sttp.tapir.server.model.ValuedEndpointOutput
 import sttp.tapir.{DecodeResult, headers, statusCode, stringBody}
 
 import com.thatdot.api.v2.schema.TapirJsonConfig.jsonBody
-import com.thatdot.api.v2.{ErrorDetail, ErrorResponse, TypeDiscriminatorConfig}
+import com.thatdot.api.v2.{ErrorDetail, ErrorResponse, FieldViolationsException, TypeDiscriminatorConfig}
 
 trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
 
@@ -43,10 +43,12 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
     *      help hint pointing at the `type` discriminator.
     *   2. Circe `JsonDecodeException` with `CNil` in the default message (JSON
     *      body): same `type`-field hint, default message is sufficient.
-    *   3. Any other decode error with a usable `getMessage` (e.g. invalid namespace,
+    *   3. [[FieldViolationsException]] (e.g. a field another product owns): a
+    *      BadRequest listing every problem, each naming its field.
+    *   4. Any other decode error with a usable `getMessage` (e.g. invalid namespace,
     *      invalid QuineId, bad edge direction): include the exception message in
     *      the response body.
-    *   4. Otherwise: dispatch on the status code Tapir picked
+    *   5. Otherwise: dispatch on the status code Tapir picked
     *      (400 → BadRequest, 404 → NotFound, 500 → ServerError; fall back to the
     *      default handler for anything else we haven't modelled).
     */
@@ -75,13 +77,17 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
               Some("unknown or unsupported one of selection (check the 'type' field)"),
             )
 
-          // 3. Non-Circe decode errors with a descriptive exception message
+          // 3. Refusals listing every problem, each naming its field (e.g. fields another product owns)
+          case DecodeResult.Error(_, violations: FieldViolationsException) =>
+            fieldViolationsResponse(headers, violations)
+
+          // 4. Non-Circe decode errors with a descriptive exception message
           //    (e.g., invalid namespace, invalid QuineId, bad edge direction)
           case DecodeResult.Error(_, ex) if ex.getMessage != null =>
             val failureSource = DefaultDecodeFailureHandler.FailureMessages.failureSourceMessage(ctx.failingInput)
             decodeFailureResponse(headers, s"$failureSource: ${ex.getMessage}")
 
-          // 4. Otherwise: dispatch on the status code Tapir picked
+          // 5. Otherwise: dispatch on the status code Tapir picked
           case _ =>
             code match {
               case StatusCode.BadRequest => decodeFailureResponse(headers, defaultMsg)
@@ -106,6 +112,15 @@ trait TapirDecodeErrorHandler extends TypeDiscriminatorConfig {
     ValuedEndpointOutput(
       statusCode(StatusCode.BadRequest).and(headers).and(jsonBody[ErrorResponse.BadRequest]),
       (headerList, ErrorResponse.BadRequest(m, help.map(ErrorDetail.Help(_)).toList)),
+    )
+
+  private def fieldViolationsResponse(
+    headerList: List[Header],
+    violations: FieldViolationsException,
+  ): ValuedEndpointOutput[_] =
+    ValuedEndpointOutput(
+      statusCode(StatusCode.BadRequest).and(headers).and(jsonBody[ErrorResponse.BadRequest]),
+      (headerList, violations.toBadRequest),
     )
 
   private def serverErrorFailureResponse(

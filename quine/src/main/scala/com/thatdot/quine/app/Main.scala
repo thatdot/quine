@@ -19,6 +19,7 @@ import ch.qos.logback.classic.LoggerContext
 import org.slf4j.LoggerFactory
 import pureconfig.ConfigSource
 
+import com.thatdot.api.v2.ProductVersion
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, SafeLogger}
 import com.thatdot.quine.app.config.errors.ErrorFormatterConfig
 import com.thatdot.quine.app.config.{
@@ -78,9 +79,10 @@ object Main extends App with LazySafeLogging {
   // If there's a recipe URL or file path, block and read it, apply substitutions, and fail fast.
   // Uses RecipeLoader to support both V1 and V2 recipes.
   val recipe: Option[Recipe] = cmdArgs.recipe.map { (recipeIdentifyingString: String) =>
-    RecipeLoader.getAndSubstituteAny(recipeIdentifyingString, cmdArgs.recipeValues) valueOr { messages =>
-      messages foreach Console.err.println
-      sys.exit(1)
+    RecipeLoader.getAndSubstituteAny(recipeIdentifyingString, cmdArgs.recipeValues, ProductVersion.Oss) valueOr {
+      messages =>
+        messages foreach Console.err.println
+        sys.exit(1)
     }
   }
 

@@ -18,6 +18,7 @@ import io.circe.generic.extras.semiauto._
 import io.circe.{Decoder, DecodingFailure, Json}
 import org.snakeyaml.engine.v2.api.YamlUnicodeReader
 
+import com.thatdot.api.v2.{ProductSpecific, ProductVersion}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef._
 import com.thatdot.quine.routes._
@@ -59,13 +60,17 @@ object Recipe {
     def iconImage: Option[String] = recipe.iconImage
   }
 
-  /** Get a recipe (V1 or V2) by URL, file path, or canonical name */
-  def get(recipeIdentifyingString: String): Either[Seq[String], Recipe] =
-    RecipeLoader.getAny(recipeIdentifyingString)
+  /** Get a recipe (V1 or V2) by URL, file path, or canonical name, for a product to run */
+  def get(recipeIdentifyingString: String, product: ProductVersion): Either[Seq[String], Recipe] =
+    RecipeLoader.getAny(recipeIdentifyingString, product)
 
-  /** Get a recipe and apply variable substitutions */
-  def getAndSubstitute(recipeIdentifyingString: String, values: Map[String, String]): Either[Seq[String], Recipe] =
-    RecipeLoader.getAndSubstituteAny(recipeIdentifyingString, values)
+  /** Get a recipe and apply variable substitutions, for a product to run */
+  def getAndSubstitute(
+    recipeIdentifyingString: String,
+    values: Map[String, String],
+    product: ProductVersion,
+  ): Either[Seq[String], Recipe] =
+    RecipeLoader.getAndSubstituteAny(recipeIdentifyingString, values, product)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,9 +93,18 @@ object RecipeLoader {
   def parseV1(json: Json): Either[Seq[String], RecipeV1] =
     RecipeV1.fromJson(json).leftMap(_.toList.map(showError.show))
 
-  /** Parse JSON as V2 recipe */
-  def parseV2(json: Json): Either[Seq[String], RecipeV2.Recipe] =
-    RecipeV2.Recipe.decoder.decodeAccumulating(json.hcursor).toEither.leftMap(_.toList.map(showError.show))
+  /** Parse JSON as V2 recipe, refusing anything in it that `product` does not support (see [[ProductSpecific]]) */
+  def parseV2(json: Json, product: ProductVersion): Either[Seq[String], RecipeV2.Recipe] =
+    RecipeV2.Recipe.decoder
+      .decodeAccumulating(json.hcursor)
+      .toEither
+      .leftMap(_.toList.map(showError.show))
+      .flatMap { recipe =>
+        ProductSpecific
+          .validate(recipe, product)
+          .toLeft(recipe)
+          .leftMap(refusal => refusal.summary +: refusal.violations.map(v => s"${v.field}: ${v.description}"))
+      }
 
   /** Resolve a recipe identifying string to a URL */
   def resolveToUrl(recipeIdentifyingString: String): Either[Seq[String], URL] =
@@ -135,8 +149,8 @@ object RecipeLoader {
       }
       .flatten
 
-  /** Get a recipe (V1 or V2) with automatic version detection */
-  def getAny(recipeIdentifyingString: String): Either[Seq[String], Recipe] =
+  /** Get a recipe (V1 or V2) with automatic version detection, for a product to run */
+  def getAny(recipeIdentifyingString: String, product: ProductVersion): Either[Seq[String], Recipe] =
     for {
       url <- resolveToUrl(recipeIdentifyingString)
       json <- loadJson(url)
@@ -148,16 +162,20 @@ object RecipeLoader {
             _ <- RecipeV1.validateRecipeCurrentVersion(r)
           } yield Recipe.V1(r)
         case 2 =>
-          parseV2(json).map(Recipe.V2(_))
+          parseV2(json, product).map(Recipe.V2(_))
         case other =>
           Left(Seq(s"Unsupported recipe version: $other. Supported versions are 1 and 2."))
       }
     } yield recipe
 
-  /** Get a recipe and apply variable substitutions */
-  def getAndSubstituteAny(recipeIdentifyingString: String, values: Map[String, String]): Either[Seq[String], Recipe] =
+  /** Get a recipe and apply variable substitutions, for a product to run */
+  def getAndSubstituteAny(
+    recipeIdentifyingString: String,
+    values: Map[String, String],
+    product: ProductVersion,
+  ): Either[Seq[String], Recipe] =
     for {
-      recipe <- getAny(recipeIdentifyingString)
+      recipe <- getAny(recipeIdentifyingString, product)
       substituted <- recipe match {
         case Recipe.V1(r) =>
           RecipeV1

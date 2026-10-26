@@ -299,6 +299,7 @@ lazy val `api`: Project = project
     libraryDependencies ++= Seq(
       "com.thatdot" %% "quine-security" % quineCommonV,
       "com.softwaremill.sttp.tapir" %% "tapir-core" % tapirV,
+      "com.softwaremill.sttp.tapir" %% "tapir-apispec-docs" % tapirV, // For schema docs extensions (ApiProduct)
       "com.softwaremill.sttp.tapir" %% "tapir-json-circe" % tapirV,
       "io.circe" %% "circe-core" % circeV,
       "io.circe" %% "circe-generic-extras" % circeGenericExtrasV,

@@ -2,12 +2,13 @@ package com.thatdot.quine.app.v2api
 
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.api.v2.ProductVersion
 import com.thatdot.common.logging.Log._
 import com.thatdot.quine.app.QuineApp
 import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
 import com.thatdot.quine.app.model.jobs.JobHost
 import com.thatdot.quine.app.model.outputs2.query.standing.TapBus
-import com.thatdot.quine.app.v2api.definitions.{ProductVersion, QuineApiMethods}
+import com.thatdot.quine.app.v2api.definitions.QuineApiMethods
 import com.thatdot.quine.graph.GraphService
 class OssApiMethods(
   val graph: GraphService,

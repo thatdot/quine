@@ -12,7 +12,7 @@ import org.scalatest.concurrent.Eventually
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.{BeforeAndAfterAll, EitherValues}
 
-import com.thatdot.api.v2.ResourceName
+import com.thatdot.api.v2.{ProductVersion, ResourceName}
 import com.thatdot.common.logging.Log.{LogConfig, SafeLogger}
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.config.{FileAccessPolicy, QuineConfig, ResolutionMode}
@@ -65,12 +65,12 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
 
   private def rn(s: String): ResourceName = ResourceName(s).fold(err => fail(err), identity)
 
-  def parseV2Yaml(s: String): Either[Seq[String], RecipeV2.Recipe] =
+  def parseV2Yaml(s: String, product: ProductVersion = ProductVersion.Oss): Either[Seq[String], RecipeV2.Recipe] =
     io.circe.yaml.v12.parser
       .parse(s)
       .left
       .map(e => Seq(showError.show(e)))
-      .flatMap(RecipeLoader.parseV2)
+      .flatMap(RecipeLoader.parseV2(_, product))
 
   test("recipe v2 parsing test") {
     val yaml = """
@@ -173,6 +173,31 @@ class RecipeV2Test extends AnyFunSuite with EitherValues with BeforeAndAfterAll 
     v2Recipes.foreach { case (p, content) =>
       assert(parseV2Yaml(content).isRight, s"Shipped V2 recipe $p failed to parse: ${parseV2Yaml(content)}")
     }
+  }
+
+  test("a v2 recipe using options of another product is refused, naming each field, only where unsupported") {
+    val yaml =
+      """version: 2
+        |title: enterprise-kafka
+        |ingestStreams:
+        |  - source:
+        |      type: Kafka
+        |      format:
+        |        type: Json
+        |      topics: [orders]
+        |      bootstrapServers: localhost:9092
+        |      saslJaasConfig:
+        |        type: OAuthBearerAssertionLogin
+        |        clientId: quine
+        |        certFile: /certs/client.p12
+        |        certFilePassword: keystore
+        |        resourceUri: api://kafka
+        |        discoveryUrl: https://idp.example.com/.well-known/openid-configuration
+        |    query: "CREATE ($that)"
+        |""".stripMargin
+    val refusal = parseV2Yaml(yaml, ProductVersion.Oss).left.value
+    assert(refusal.contains("ingestStreams[0].source.saslJaasConfig: Not supported in Quine."), refusal)
+    assert(parseV2Yaml(yaml, ProductVersion.Enterprise).isRight)
   }
 
   test("applySubstitution - literal string unchanged") {

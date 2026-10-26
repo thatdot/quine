@@ -16,12 +16,18 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.api.v2.{ResourceName, TypeDiscriminatorConfig}
+import com.thatdot.api.v2.{ErrorDetail, ErrorResponse, OAuthBearerAssertionLogin, ResourceName, TypeDiscriminatorConfig}
+import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.config.{FileAccessPolicy, QuineConfig, ResolutionMode}
 import com.thatdot.quine.app.model.outputs2.query.standing.LocalTapBus
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.IngestSource.Kinesis.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ingest2.ApiIngest.{Oss, RecordDecodingType}
-import com.thatdot.quine.app.v2api.definitions.ingest2.{ApiIngest => Api}
+import com.thatdot.quine.app.v2api.definitions.ingest2.{
+  ApiIngest => Api,
+  DeadLetterQueueOutput,
+  DeadLetterQueueSettings,
+  OutputFormat,
+}
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQuery.StandingQueryDefinition
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.Cypher
 import com.thatdot.quine.app.v2api.definitions.query.standing.StandingQueryPattern.StandingQueryMode.MultipleValues
@@ -158,6 +164,51 @@ class EndpointValidationSpec
     postRawString(url, bodyWithUnknownField) ~> routes ~> check {
       status.intValue() shouldEqual 400
       responseAs[String] should include("notARealField")
+    }
+  }
+
+  "An ingest using Quine Enterprise options" should "fail with 400 naming every such field" in {
+    val url = s"$graphBaseUrl/ingests"
+    val assertionLogin = OAuthBearerAssertionLogin(
+      clientId = "quine",
+      certFile = "/certs/client.p12",
+      certFilePassword = Secret("keystore"),
+      resourceUri = "api://kafka",
+      discoveryUrl = "https://idp.example.com/.well-known/openid-configuration",
+    )
+    val kafka = kafkaGen.sample.getOrElse(fail("no Kafka source generated")).copy(saslJaasConfig = Some(assertionLogin))
+    val deadLetterQueue = DeadLetterQueueOutput.Kafka(
+      topic = "dead-letters",
+      bootstrapServers = "localhost:9092",
+      saslJaasConfig = Some(assertionLogin),
+      outputFormat = OutputFormat.JSON(),
+    )
+    val config = Oss.QuineIngestConfiguration(
+      name = ResourceName.unsafeFromString("test-enterprise-options"),
+      source = kafka,
+      query = "CREATE ($that)",
+      onRecordError = Api.OnRecordErrorHandler(
+        deadLetterQueueSettings = DeadLetterQueueSettings(List(deadLetterQueue)),
+      ),
+    )
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(10.seconds.dilated)
+    post(url, config) ~> routes ~> check {
+      status.intValue() shouldEqual 400
+      val error = io.circe.parser
+        .decode[ErrorResponse.BadRequest](responseAs[String])
+        .fold(e => fail(s"Not a BadRequest body: $e"), identity)
+      error.message should include("Quine does not support")
+      error.details shouldBe List(
+        ErrorDetail.BadRequest(
+          List(
+            ErrorDetail.FieldViolation("source.saslJaasConfig", "Not supported in Quine."),
+            ErrorDetail.FieldViolation(
+              "onRecordError.deadLetterQueueSettings.destinations[0].saslJaasConfig",
+              "Not supported in Quine.",
+            ),
+          ),
+        ),
+      )
     }
   }
 

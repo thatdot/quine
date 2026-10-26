@@ -8,13 +8,14 @@ import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
 import shapeless.{:+:, CNil, Coproduct}
 import sttp.model.StatusCode
-import sttp.tapir.Schema.annotations.{description, title}
+import sttp.tapir.Schema.annotations.{customise, description, title}
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Endpoint, Schema, emptyOutputAs, statusCode}
 
 import com.thatdot.api.v2.ErrorResponse.{ServerError, ServiceUnavailable}
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
+import com.thatdot.api.v2.ProductSpecific
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.instantSchema
@@ -46,9 +47,11 @@ object V2AdministrationEndpointEntities {
     @description("Webserver port.") port: Int,
     @description("OS process ID.") pid: Long,
     @description(
-      "Cluster position of the host this snapshot describes. Absent in OSS mode, and on a " +
-      "host that is not currently positioned in the cluster (e.g. a hot spare).",
-    ) memberIdx: Option[Int],
+      "Cluster position of the host this snapshot describes. Absent on a host that is not " +
+      "currently positioned in the cluster (e.g. a hot spare).",
+    )
+    @customise(ProductSpecific.enterpriseOnly)
+    memberIdx: Option[Int],
   )
   object HostInfo {
     implicit val encoder: Encoder[HostInfo] = deriveEncoder
@@ -79,7 +82,8 @@ object V2AdministrationEndpointEntities {
   }
 
   @title("Cluster info")
-  @description("Cluster topology and health. Absent in OSS mode.")
+  @description("Cluster topology and health.")
+  @customise(ProductSpecific.enterpriseOnly)
   final case class ClusterInfo(
     @description("Cluster name.") name: String,
     @description("Whether the cluster is fully operational.") fullyUp: Boolean,
@@ -220,7 +224,7 @@ object V2AdministrationEndpointEntities {
   final case class BackpressureSnapshot(
     @description("Timestamp of this snapshot.") timestamp: java.time.Instant,
     @description("Identity of the Quine host serving this snapshot.") host: HostInfo,
-    @description("Cluster topology and health. Absent in OSS mode.") cluster: Option[ClusterInfo],
+    @description("Cluster topology and health.") cluster: Option[ClusterInfo],
     @description(
       "Every graph (namespace) on this host, including those with no active ingests or " +
       "standing queries — so idle graphs still appear in the diagram.",
@@ -288,7 +292,8 @@ object V2AdministrationEndpointEntities {
   }
 
   @title("Cluster Summary")
-  @description("Cluster formation settings. Only present on Quine Enterprise.")
+  @description("Cluster formation settings.")
+  @customise(ProductSpecific.enterpriseOnly)
   final case class ClusterSummary(
     @description("Configured name of the cluster.") name: String,
     @description("Configured target size of the cluster.") targetSize: Int,
@@ -300,7 +305,8 @@ object V2AdministrationEndpointEntities {
   }
 
   @title("Bolt Summary")
-  @description("Bolt protocol endpoint settings. Only present on Quine Enterprise.")
+  @description("Bolt protocol endpoint settings.")
+  @customise(ProductSpecific.enterpriseOnly)
   final case class BoltSummary(
     @description("Whether the Bolt endpoint is enabled.") enabled: Boolean,
     @description("Bind address of the Bolt endpoint.") address: String,
@@ -330,8 +336,8 @@ object V2AdministrationEndpointEntities {
     @description("Types of the configured metrics reporters, e.g. \"jmx\", \"influxdb\".")
     metricsReporterTypes: List[String],
     @description("Default API version used by this instance.") defaultApiVersion: String,
-    @description("Cluster formation summary. Only present on Quine Enterprise.") cluster: Option[ClusterSummary],
-    @description("Bolt endpoint summary. Only present on Quine Enterprise.") bolt: Option[BoltSummary],
+    @description("Cluster formation summary.") cluster: Option[ClusterSummary],
+    @description("Bolt endpoint summary.") bolt: Option[BoltSummary],
   )
   object SystemConfigView {
     implicit val encoder: Encoder[SystemConfigView] = deriveEncoder

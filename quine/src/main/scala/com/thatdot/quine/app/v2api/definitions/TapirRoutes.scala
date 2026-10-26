@@ -45,7 +45,7 @@ abstract class TapirRoutes extends FailFastCirceSupport with TypeDiscriminatorCo
         apiInfo,
       )
       .copy(tags = globalTags, servers = List(Server(openApiServerUrl)))
-    V2OpenApiPostProcessing(raw)
+    V2OpenApiPostProcessing(raw, appMethods.productVersion)
   }
 
   protected def v2DocsRoute(ingestOnly: Boolean): Route =

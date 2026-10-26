@@ -4,8 +4,9 @@ import scala.annotation.nowarn
 
 import sttp.apispec.openapi.{OpenAPI, Server}
 import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
-import sttp.tapir.{EndpointInput, header}
+import sttp.tapir.{AnyEndpoint, EndpointInput, header}
 
+import com.thatdot.api.v2.ProductVersion
 import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.v2api.definitions.{CommonParameters, CustomMethod, V2OpenApiPostProcessing}
 import com.thatdot.quine.app.v2api.endpoints.Visibility
@@ -23,6 +24,9 @@ trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
       "appMethods should not be accessed during OpenAPI docs generation - " +
       "if you see this error, an endpoint definition is accessing appMethods directly",
     )
+
+  /** Stated here, since `appMethods` is unavailable during docs generation. */
+  override protected def productVersion: ProductVersion = ProductVersion.Oss
 
   def memberIdxParameter: EndpointInput[Option[Int]] =
     header[Option[Int]]("Quine-Member-Idx").schema(_.hidden(true))
@@ -45,15 +49,16 @@ trait QuineOssV2OpenApiDocs extends V2OssEndpointProvider {
     }
   }
 
-  val api: OpenAPI = {
-    val visibleEndpoints = allRawEndpoints
-      .filterNot(_.attribute(Visibility.attributeKey).contains(Visibility.Hidden))
-      .map(_.endpoint)
+  /** The endpoints this document describes. */
+  lazy val documentedEndpoints: List[AnyEndpoint] = allRawEndpoints
+    .filterNot(_.attribute(Visibility.attributeKey).contains(Visibility.Hidden))
+    .map(_.endpoint)
 
+  val api: OpenAPI = {
     val raw = OpenAPIDocsInterpreter()
-      .toOpenAPI(visibleEndpoints, V2ApiInfo.info)
+      .toOpenAPI(documentedEndpoints, V2ApiInfo.info)
       .copy(tags = V2ApiInfo.globalTags, servers = List(Server("/")))
 
-    V2OpenApiPostProcessing(raw)
+    V2OpenApiPostProcessing(raw, productVersion)
   }
 }

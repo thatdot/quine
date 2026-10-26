@@ -3,13 +3,13 @@ package com.thatdot.quine.app.v2api.definitions
 import scala.concurrent.{ExecutionContext, Future}
 
 import com.thatdot.api.v2.ErrorResponse.ServerError
-import com.thatdot.api.v2.{TypeDiscriminatorConfig, V2EndpointDefinitions}
+import com.thatdot.api.v2.{ProductRestrictedBodies, ProductVersion, TypeDiscriminatorConfig}
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.QuineIdProvider
 
 /** Component definitions for Tapir quine endpoints. */
 trait V2QuineEndpointDefinitions
-    extends V2EndpointDefinitions
+    extends ProductRestrictedBodies
     with TypeDiscriminatorConfig
     with CommonParameters
     with ParallelismParameter
@@ -18,6 +18,8 @@ trait V2QuineEndpointDefinitions
   val appMethods: QuineApiMethods
 
   lazy val idProvider: QuineIdProvider = appMethods.graph.idProvider
+
+  override protected def productVersion: ProductVersion = appMethods.productVersion
 
   def ifNamespaceFound[A](namespaceId: NamespaceId)(
     ifFound: => Future[Either[ServerError, A]],

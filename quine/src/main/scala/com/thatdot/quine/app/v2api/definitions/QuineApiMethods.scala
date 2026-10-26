@@ -14,9 +14,9 @@ import cats.data.{EitherT, NonEmptyList}
 import cats.implicits._
 import shapeless.{:+:, CNil, Coproduct}
 
-import com.thatdot.api.v2.ErrorDetail
 import com.thatdot.api.v2.ErrorResponse.{BadRequest, NotFound, ServerError}
 import com.thatdot.api.v2.outputs.{Format, OutputFormat}
+import com.thatdot.api.v2.{ErrorDetail, ProductVersion}
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
@@ -53,15 +53,6 @@ import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo, routes => V1}
-
-sealed trait ProductVersion
-object ProductVersion {
-  case object Novelty extends ProductVersion
-
-  case object Oss extends ProductVersion
-
-  case object Enterprise extends ProductVersion
-}
 
 object ApplicationApiMethods {
 

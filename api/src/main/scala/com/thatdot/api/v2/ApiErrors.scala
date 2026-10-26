@@ -53,6 +53,26 @@ object ErrorDetail {
     implicit lazy val schema: Schema[ErrorInfo] = Schema.derived
   }
 
+  /** Every problem found in the fields of a request, modelled on `google.rpc.BadRequest`. Not to be confused with
+    * [[ErrorResponse.BadRequest]], the 400 response that carries it.
+    */
+  final case class BadRequest(fieldViolations: List[FieldViolation]) extends ErrorDetail
+  object BadRequest {
+    implicit lazy val schema: Schema[BadRequest] = Schema.derived
+  }
+
+  /** One problem with one field of a request, modelled on `google.rpc.BadRequest.FieldViolation`.
+    *
+    * @param field       path to the field within the request body, in AIP-161 form, e.g. `destinations[1].name`
+    * @param description what is wrong with the field
+    */
+  final case class FieldViolation(field: String, description: String)
+  object FieldViolation {
+    implicit lazy val schema: Schema[FieldViolation] = Schema.derived
+    implicit val encoder: Encoder[FieldViolation] = deriveConfiguredEncoder
+    implicit val decoder: Decoder[FieldViolation] = deriveConfiguredDecoder
+  }
+
   /** Convenience: classify a `BadRequest` as a Cypher syntax/compilation error. */
   val cypherError: ErrorInfo = ErrorInfo(reason = "CYPHER_ERROR")
 
@@ -151,6 +171,10 @@ object ErrorResponse {
       case head :: tail => BadRequest(head, tail.map(ErrorDetail.Help(_)))
     }
 
+    /** A refusal that lists every problem found, each naming its field. */
+    def ofFieldViolations(message: String, violations: List[ErrorDetail.FieldViolation]): BadRequest =
+      BadRequest(message, List(ErrorDetail.BadRequest(violations)))
+
     private def toBody(e: BadRequest): ErrorBody = ErrorBody(httpCode, canonicalStatus, e.message, e.details)
     implicit val encoder: Encoder[BadRequest] = envelopeEncoder(toBody)
     implicit val decoder: Decoder[BadRequest] = envelopeDecoder(httpCode, BadRequest(_, _))
@@ -231,6 +255,16 @@ object ErrorResponse {
   }
 }
 
+/** Refuses a request while it is decoded, with every problem found in its fields. The V2 decode failure handler turns
+  * it into an [[ErrorResponse.BadRequest]] listing them (see [[ErrorResponse.BadRequest.ofFieldViolations]]).
+  */
+final class FieldViolationsException(val summary: String, val violations: List[ErrorDetail.FieldViolation])
+    extends IllegalArgumentException(
+      (summary :: violations.map(v => s"${v.field}: ${v.description}")).mkString("\n"),
+    ) {
+  def toBadRequest: ErrorResponse.BadRequest = ErrorResponse.BadRequest.ofFieldViolations(summary, violations)
+}
+
 object ErrorResponseHelpers extends LazySafeLogging {
 
   /** Default error catching for server logic. The correlation ID is now a structured
@@ -246,9 +280,13 @@ object ErrorResponseHelpers extends LazySafeLogging {
     )
   }
 
-  /** Convert IllegalArgumentException to BadRequest with the exception's message */
-  def toBadRequest(e: IllegalArgumentException): ErrorResponse.BadRequest =
-    ErrorResponse.BadRequest(e.getMessage)
+  /** Convert IllegalArgumentException to BadRequest with the exception's message, keeping the field violations of a
+    * [[FieldViolationsException]]
+    */
+  def toBadRequest(e: IllegalArgumentException): ErrorResponse.BadRequest = e match {
+    case violations: FieldViolationsException => violations.toBadRequest
+    case _ => ErrorResponse.BadRequest(e.getMessage)
+  }
 
   def serverError(possibleReasons: String*)(implicit
     enc: Encoder[ErrorResponse.ServerError],

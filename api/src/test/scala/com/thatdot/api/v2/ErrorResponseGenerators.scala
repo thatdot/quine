@@ -23,7 +23,13 @@ object ErrorResponseGenerators {
       metadata <- metadataMap
     } yield ErrorDetail.ErrorInfo(reason, domain, metadata)
 
-    val errorDetail: Gen[ErrorDetail] = Gen.oneOf(help, requestInfo, errorInfo)
+    val fieldViolation: Gen[ErrorDetail.FieldViolation] =
+      Gen.zip(nonEmptyAlphaNumStr, nonEmptyAlphaNumStr).map { case (f, d) => ErrorDetail.FieldViolation(f, d) }
+
+    val badRequestDetail: Gen[ErrorDetail.BadRequest] =
+      Gen.choose(1, 3).flatMap(Gen.listOfN(_, fieldViolation)).map(ErrorDetail.BadRequest(_))
+
+    val errorDetail: Gen[ErrorDetail] = Gen.oneOf(help, requestInfo, errorInfo, badRequestDetail)
 
     val detailList: Gen[List[ErrorDetail]] =
       smallPosNum.flatMap(n => Gen.listOfN(n, errorDetail)).map(_.take(3))
