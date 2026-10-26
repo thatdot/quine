@@ -500,7 +500,7 @@ class CardsStoreTest extends AnyFunSuite with Matchers with OptionValues with Lo
     val restored = restoreOne(snap)
 
     restored match {
-      case AdhocCard(_, query, _, Some(outcome), _, _) =>
+      case AdhocCard(_, query, _, Some(outcome), _, _, _) =>
         query shouldBe "MATCH (n) RETURN n"
         outcome.outcome shouldBe a[ResultOutcome.EmptyResult]
       case other => fail(s"expected an adhoc card with an outcome, got $other")

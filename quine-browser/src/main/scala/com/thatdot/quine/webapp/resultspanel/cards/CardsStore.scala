@@ -133,8 +133,8 @@ final class CardsStore(
     */
   private def cardRenderKey(c: Card): Any = {
     val kindKey: Any = c match {
-      case AdhocCard(_, query, language, outcome, editAssociated, _) =>
-        (query, language, outcome.map(o => (o.runId, o.revision)), editAssociated)
+      case AdhocCard(_, query, language, outcome, editAssociated, _, titleOverride) =>
+        (query, language, outcome.map(o => (o.runId, o.revision)), editAssociated, titleOverride)
       case TapTableCard(_, target, entry, _, stopped, hasSampleLimit, _) => (target, entry, stopped, hasSampleLimit)
     }
     (c.id, kindKey)
@@ -353,7 +353,7 @@ final class CardsStore(
 
   private def reRun(id: CardId): Unit =
     findNow(id).foreach {
-      case AdhocCard(_, query, language, _, _, _) =>
+      case AdhocCard(_, query, language, _, _, _, _) =>
         // Associate only once the host accepts the run: an aborted submission (blank
         // query, pending-query alert) must not leave a dangling association that the
         // user's next unrelated query would then route into this card. Safe after the
@@ -418,7 +418,7 @@ final class CardsStore(
       }
     case CardCommand.EditQuery(id) =>
       findNow(id).foreach {
-        case AdhocCard(_, query, _, _, _, _) =>
+        case AdhocCard(_, query, _, _, _, _, _) =>
           onEditQuery.onNext(query)
           associateForEdit(id)
         case _: TapTableCard =>
@@ -655,7 +655,9 @@ final class CardsStore(
   def closeAllCards(): Unit = cardsVar.now().map(_.id).foreach(closeCard)
 
   /** Refresh an existing adhoc card in place with a new/refined result, recording the
-    * language the run actually used. This is the association's one consumption point:
+    * language the run actually used. The card takes the content's quick-query name; content
+    * without one keeps the card's title override if the query is unchanged (e.g. a Re-run) and clears
+    * it otherwise. This is the association's one consumption point:
     * `editAssociated` is cleared here so the "next run updates this card" promise
     * (design doc §3) is one-shot rather than sticking to the card for the rest of the
     * session.
@@ -681,6 +683,8 @@ final class CardsStore(
           language = content.language,
           outcome = Some(content),
           editAssociated = false,
+          titleOverride =
+            content.queryName.orElse(adhoc.titleOverride.filter(_ => adhoc.query.trim == content.queryEcho.trim)),
         )
       // A run never targets a tap card — `onLiveEmission` only ever resolves an adhoc one.
       case tt: TapTableCard => tt
@@ -746,7 +750,7 @@ final class CardsStore(
         }
         matching.foreach(c => expand(c.id))
         val targetId = matching.orElse(associated).map(_.id).getOrElse {
-          val card = AdhocCard.fresh(freshId(), content.queryEcho, content.language)
+          val card = AdhocCard.fresh(freshId(), content.queryEcho, content.language, content.queryName)
           cardsVar.update(_ :+ card)
           expand(card.id)
           card.id

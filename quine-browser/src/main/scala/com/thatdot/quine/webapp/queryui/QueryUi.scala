@@ -9,13 +9,11 @@ import scala.util.{Failure, Random, Success}
 
 import cats.data.Validated
 import com.raquo.laminar.api.L._
-import endpoints4s.Invalid
 import io.circe.Json
 import org.scalajs.dom
 import org.scalajs.dom.{document, window}
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
-import com.thatdot.api.v2.QueryWebSocketProtocol.QueryInterpreter
 import com.thatdot.quine.Util.escapeHtml
 import com.thatdot.quine.openapi.ParsedSpec
 import com.thatdot.quine.routes._
@@ -90,6 +88,12 @@ object QueryUi {
     isQueryBarVisible: Boolean = true,
     showEdgeLabels: Boolean = true,
     showHostInTooltip: Boolean = true,
+    /** `None` enables the node properties popup's Edit button. `Some(reason)` disables it and
+      * shows `reason` as the button's tooltip.
+      */
+    nodePropertiesEditDisabled: Option[String] = None,
+    /** Whether result cards show the `Edit ↑` button, which copies a card's query into the query bar. */
+    resultCardEditVisible: Boolean = true,
     initialAtTime: Option[Long] = None,
     initialLayout: NetworkLayout = NetworkLayout.Graph,
     edgeQueryLanguage: QueryLanguage = QueryLanguage.Cypher,
@@ -116,7 +120,7 @@ object QueryUi {
 
   case class State(
     query: String,
-    pendingTextQueries: Set[QueryId],
+    pendingTextQueries: Set[RunningQuery.WebSocket[_]],
     queryBarColor: Option[String],
     sampleQueries: Vector[SampleQuery],
     history: History[QueryUiEvent],
@@ -165,7 +169,7 @@ object QueryUi {
     val toastVar = Var(Option.empty[ToastMessage])
     val resultsVar = Var(Option.empty[ResultsContent])
     // Ephemeral result-count overlay (design doc §5): one event per completed query, never
-    // for errors. Emitted from submitQuery's Success branches below.
+    // for errors. Emitted when runTextQueryIntoCard / runNodeQueryOntoCanvas succeed.
     val resultCountBus = new EventBus[ResultCountEvent]
     val bookmarkDraftVar: Var[Option[SampleQueryDraft]] = Var(None)
 
@@ -249,11 +253,11 @@ object QueryUi {
     // (design doc §3). Tap cards are created by the tap modal below via
     // addTapTableCard; tap lifecycle effects (close/stop/restart/go-live)
     // are wired to the same PanelTapSubscriptions/WiretapService the old drawer used.
-    // `submitQuery` is defined later in this method (it needs many locals declared in between,
-    // e.g. wsClients/textQuery/nodeQuery), so `onReRun` can't reference it directly here without
+    // `runTextQueryIntoCard` is defined later in this method (it needs many locals declared in between,
+    // e.g. wsClients/getWebSocketClient), so `onReRun` can't reference it directly here without
     // a forward-reference compile error — it goes through this mutable forwarding cell instead,
-    // assigned once `submitQuery` exists (just before the cardsStore/tapModal wiring is used).
-    // Returns whether the run was actually accepted (false on submitQuery's early-outs:
+    // assigned once `runTextQueryIntoCard` exists (just before the cardsStore/tapModal wiring is used).
+    // Returns whether the run was actually accepted (false on runTextQueryIntoCard's early-outs:
     // blank query, pending text query) so `CardsStore.reRun` only claims the edit
     // association for runs that will really produce content.
     var submitQueryRef: (String, QueryLanguage) => Boolean = (_, _) => false
@@ -892,7 +896,7 @@ object QueryUi {
                   // `snapshot.resultsEntries` is deliberately ignored (the field remains in the
                   // snapshot format for compatibility): the surface that displayed restored
                   // results history is gone, and re-running the entries registered invisible
-                  // pending text queries that blocked submitQuery. The card system's own
+                  // pending text queries that blocked new runs. The card system's own
                   // persistence below is the replacement.
                   resultsCollapsedVar.set(snapshot.resultsCollapsed)
                   restoreCards(snapshot.cards, snapshot.expandedCardIdx)
@@ -937,8 +941,6 @@ object QueryUi {
           .map { case (clusterId, pos) => clusterId -> ((pos.x, pos.y)) }
           .toMap
       }
-
-    def selectedInterpreter: QueryInterpreter = QueryInterpreter.Cypher
 
     // --- WebSocket client management ---
 
@@ -1353,606 +1355,454 @@ object QueryUi {
 
     // --- Query logic ---
 
-    def invalidToException(invalid: Invalid): Exception = new Exception(invalid.errors mkString "\n")
+    lazy val queryRunner: QueryRunner = props.queryMethod match {
+      case QueryMethod.Restful => new QueryRunner.RestV1(props.routes)
+      case QueryMethod.RestfulV2 => new QueryRunner.RestV2(props.routes)
+      case QueryMethod.WebSocket => new QueryRunner.WebSocketV1(getWebSocketClient)
+      case QueryMethod.WebSocketV2 => new QueryRunner.WebSocketV2(getWebSocketClientV2)
+    }
 
-    def mergeEndpointErrorsIntoFuture[A](fut: Future[Either[endpoints4s.Invalid, Option[A]]]): Future[A] =
-      fut.flatMap { either =>
-        Future.fromTry {
-          either.left
-            .map(invalidToException)
-            .flatMap(_.toRight(new NoSuchElementException()))
-            .toTry
+    // ── Query UI helpers: each applies one UI side effect around a query's Future ──
+
+    /** Method syntax for the query UI helpers that wrap a query's Future. */
+    implicit class QueryFutureUiOps[A](fut: Future[A]) {
+
+      /** Counts this future as a running query (by incrementing [[State.runningQueryCount]] and asynchronously
+        * decrementing it when this future completes). Returns this same future.
+        */
+      def countedAsRunningQuery: Future[A] = {
+        stateVar.update(s => s.copy(runningQueryCount = s.runningQueryCount + 1))
+        fut.onComplete(_ => stateVar.update(s => s.copy(runningQueryCount = s.runningQueryCount - 1)))
+        fut
+      }
+
+      /** Arranges for the query input box to show the outcome of this future: on success outcome, the
+        * input briefly flashes the color chosen by `successColor` (or doesn't change if it picks `None`);
+        * on failure outcome, the query input turns red until the next submission. Returns this same future.
+        */
+      def withQueryBarColorChange(successColor: A => Option[String]): Future[A] = {
+        fut.onComplete {
+          case Success(value) =>
+            successColor(value).foreach { color =>
+              stateVar.update(_.copy(queryBarColor = Some(color)))
+              window.setTimeout(() => stateVar.update(_.copy(queryBarColor = None)), 750)
+            }
+          case Failure(_) =>
+            stateVar.update(_.copy(queryBarColor = Some(Styles.queryResultError)))
         }
+        fut
       }
+    }
 
-    def nodeQuery(
-      query: String,
-      namespace: NamespaceParameter,
-      atTime: Option[Long],
-      language: QueryLanguage,
-      parameters: Map[String, Json],
-    ): Future[Option[Seq[UiNode[String]]]] =
-      props.queryMethod match {
-        case QueryMethod.Restful =>
-          mergeEndpointErrorsIntoFuture(language match {
-            case QueryLanguage.Gremlin =>
-              props.routes.gremlinNodesPost((atTime, None, namespace, GremlinQuery(query))).future
-            case QueryLanguage.Cypher =>
-              props.routes.cypherNodesPost((atTime, None, namespace, CypherQuery(query))).future
-          }).map(Some(_))
+    /** Method syntax for the query UI helpers that wrap a [[RunningQuery]]. */
+    implicit class RunningQueryUiOps[A](running: RunningQuery[A]) {
 
-        case QueryMethod.RestfulV2 =>
-          mergeEndpointErrorsIntoFuture(language match {
-            case QueryLanguage.Gremlin =>
-              Future.successful(Left(Invalid(Seq("Gremlin is not supported in APIv2"))))
-            case QueryLanguage.Cypher =>
-              props.routes.cypherNodesPostV2((atTime, None, namespace, CypherQuery(query))).future
-          }).map(Some(_))
-
-        case QueryMethod.WebSocket =>
-          val nodeCallback = new QueryCallbacks.CollectNodesToFuture()
-          val streamingQuery = StreamingQuery(query, parameters, language, atTime, None, Some(100))
-          for {
-            client <- getWebSocketClient(namespace)
-            _ <- Future.fromTry(client.query(streamingQuery, nodeCallback).toTry)
-            results <- nodeCallback.future
-          } yield results
-
-        case QueryMethod.WebSocketV2 =>
-          val cb = new V2QueryCallbacks.CollectNodesToFuture()
-          val interpreter = selectedInterpreter
-          val sq =
-            V2StreamingQuery(query, parameters, interpreter = interpreter, atTime = atTime, maxResultBatch = Some(100))
-          for {
-            client <- getWebSocketClientV2(namespace)
-            _ <- Future.fromTry(client.query(sq, cb).toTry)
-            results <- cb.future
-          } yield results.map(_.map(n => UiNode(n.id, n.hostIndex, n.label, n.properties)))
+      /** Returns `running`, after registering it as a pending text query until it completes. The
+        * top bar's cancel button cancels pending text queries, and [[rejectIfTextQueryPending]]
+        * refuses new submissions while any exist. Only WebSocket queries can be cancelled, so
+        * REST queries are returned without being registered.
+        */
+      def trackPendingTextQuery: RunningQuery[A] = {
+        running match {
+          case ws: RunningQuery.WebSocket[A] =>
+            stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries + ws))
+            ws.future.onComplete(_ => stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries - ws)))
+          case _: RunningQuery.Rest[A] => ()
+        }
+        running
       }
+    }
 
-    def edgeQuery(
-      query: String,
-      atTime: Option[Long],
-      namespace: NamespaceParameter,
-      language: QueryLanguage,
-      parameters: Map[String, Json],
-    ): Future[Option[Seq[UiEdge[String]]]] =
-      props.queryMethod match {
-        case QueryMethod.Restful =>
-          mergeEndpointErrorsIntoFuture(language match {
-            case QueryLanguage.Gremlin =>
-              props.routes.gremlinEdgesPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
-            case QueryLanguage.Cypher =>
-              props.routes.cypherEdgesPost((atTime, None, namespace, CypherQuery(query, parameters))).future
-          }).map(Some(_))
-
-        case QueryMethod.RestfulV2 =>
-          mergeEndpointErrorsIntoFuture(language match {
-            case QueryLanguage.Gremlin =>
-              Future.successful(Left(Invalid(Seq("Gremlin is not supported in APIv2"))))
-            case QueryLanguage.Cypher =>
-              props.routes.cypherEdgesPostV2((atTime, None, namespace, CypherQuery(query, parameters))).future
-          }).map(Some(_))
-
-        case QueryMethod.WebSocket =>
-          val edgeCallback = new QueryCallbacks.CollectEdgesToFuture()
-          val streamingQuery = StreamingQuery(query, parameters, language, atTime, None, Some(100))
-          for {
-            client <- getWebSocketClient(namespace)
-            _ <- Future.fromTry(client.query(streamingQuery, edgeCallback).toTry)
-            results <- edgeCallback.future
-          } yield results
-
-        case QueryMethod.WebSocketV2 =>
-          val cb = new V2QueryCallbacks.CollectEdgesToFuture()
-          val interpreter = selectedInterpreter
-          val sq =
-            V2StreamingQuery(query, parameters, interpreter = interpreter, atTime = atTime, maxResultBatch = Some(100))
-          for {
-            client <- getWebSocketClientV2(namespace)
-            _ <- Future.fromTry(client.query(sq, cb).toTry)
-            results <- cb.future
-          } yield results.map(_.map(e => UiEdge(e.from, e.edgeType, e.to, e.isDirected)))
-      }
-
-    def textQuery(
-      query: String,
-      atTime: Option[Long],
-      namespace: NamespaceParameter,
-      language: QueryLanguage,
-      parameters: Map[String, Json],
-      updateResults: Either[Seq[Json], CypherQueryResult] => Unit,
-    ): Future[Option[Unit]] =
-      (props.queryMethod, language) match {
-        case (QueryMethod.Restful, QueryLanguage.Gremlin) =>
-          val gremlinResults =
-            props.routes.gremlinPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
-          mergeEndpointErrorsIntoFuture(gremlinResults).map { results =>
-            updateResults(Left(results))
-            Some(())
-          }
-
-        case (QueryMethod.Restful, QueryLanguage.Cypher) =>
-          val cypherResults =
-            props.routes.cypherPost((atTime, None, namespace, CypherQuery(query, parameters))).future
-          mergeEndpointErrorsIntoFuture(cypherResults).map { results =>
-            updateResults(Right(results))
-            Some(())
-          }
-
-        case (QueryMethod.RestfulV2, QueryLanguage.Gremlin) =>
-          Future.successful(Some(()))
-
-        case (QueryMethod.RestfulV2, QueryLanguage.Cypher) =>
-          val cypherResults =
-            props.routes.cypherPostV2((atTime, None, namespace, CypherQuery(query, parameters))).future
-          mergeEndpointErrorsIntoFuture(cypherResults).map { results =>
-            updateResults(Right(results))
-            Some(())
-          }
-
-        case (QueryMethod.WebSocket, _) =>
-          val result = Promise[Option[Unit]]()
-
-          val textCallback: QueryCallbacks = language match {
-            case QueryLanguage.Gremlin =>
-              new QueryCallbacks.NonTabularCallbacks {
-                private var buffered = Seq.empty[Json]
-                private var cancelled = false
-
-                def onNonTabularResults(batch: Seq[Json]): Unit = {
-                  buffered ++= batch
-                  updateResults(Left(buffered))
-                }
-                def onError(message: String): Unit = {
-                  result.tryFailure(new Exception(message))
-                  ()
-                }
-                def onComplete(): Unit = {
-                  result.trySuccess(if (cancelled) None else Some(()))
-                  ()
-                }
-
-                def onQueryStart(
-                  isReadOnly: Boolean,
-                  canContainAllNodeScan: Boolean,
-                  columns: Option[Seq[String]],
-                ): Unit = ()
-
-                def onQueryCancelOk(): Unit = cancelled = true
-                def onQueryCancelError(message: String): Unit = ()
-              }
-
-            case QueryLanguage.Cypher =>
-              new QueryCallbacks.TabularCallbacks {
-                private var buffered = Seq.empty[Seq[Json]]
-                private var cancelled = false
-
-                def onTabularResults(columns: Seq[String], batch: Seq[Seq[Json]]): Unit = {
-                  buffered ++= batch
-                  updateResults(Right(CypherQueryResult(columns, buffered)))
-                }
-                def onError(message: String): Unit = {
-                  result.tryFailure(new Exception(message))
-                  ()
-                }
-                def onComplete(): Unit = {
-                  result.trySuccess(if (cancelled) None else Some(()))
-                  ()
-                }
-
-                def onQueryStart(
-                  isReadOnly: Boolean,
-                  canContainAllNodeScan: Boolean,
-                  columns: Option[Seq[String]],
-                ): Unit =
-                  for (cols <- columns)
-                    updateResults(Right(CypherQueryResult(cols, buffered)))
-
-                def onQueryCancelOk(): Unit = cancelled = true
-                def onQueryCancelError(message: String): Unit = ()
-              }
-          }
-          val streamingQuery = StreamingQuery(query, parameters, language, atTime, Some(1000), Some(100))
-          for {
-            client <- getWebSocketClient(namespace)
-            queryId <- Future.fromTry(client.query(streamingQuery, textCallback).toTry)
-            _ = {
-              stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries + queryId))
-              result.future.onComplete { _ =>
-                stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries - queryId))
-              }
-            }
-            results <- result.future
-          } yield results
-
-        case (QueryMethod.WebSocketV2, _) =>
-          val result = Promise[Option[Unit]]()
-
-          val textCallback = new V2QueryCallbacks.TextCallbacks {
-            private var buffered = Seq.empty[Seq[Json]]
-            private var cancelled = false
-
-            override def onTabularResults(columns: Seq[String], batch: Seq[Seq[Json]]): Unit = {
-              buffered ++= batch
-              updateResults(Right(CypherQueryResult(columns, buffered)))
-            }
-            def onError(message: String): Unit = {
-              result.tryFailure(new Exception(message))
-              ()
-            }
-            def onComplete(): Unit = {
-              result.trySuccess(if (cancelled) None else Some(()))
-              ()
-            }
-
-            def onQueryStart(
-              isReadOnly: Boolean,
-              canContainAllNodeScan: Boolean,
-              columns: Option[Seq[String]],
-            ): Unit =
-              for (cols <- columns)
-                updateResults(Right(CypherQueryResult(cols, buffered)))
-
-            def onQueryCancelOk(): Unit = cancelled = true
-            def onQueryCancelError(message: String): Unit = ()
-          }
-          val interpreter = selectedInterpreter
-          val sq = V2StreamingQuery(
-            query,
-            parameters,
-            interpreter = interpreter,
-            atTime = atTime,
-            maxResultBatch = Some(1000),
-            resultsWithinMillis = Some(100),
-          )
-          for {
-            client <- getWebSocketClientV2(namespace)
-            queryId <- Future.fromTry(client.query(sq, textCallback).toTry)
-            _ = {
-              stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries + queryId))
-              result.future.onComplete { _ =>
-                stateVar.update(s => s.copy(pendingTextQueries = s.pendingTextQueries - queryId))
-              }
-            }
-            results <- result.future
-          } yield results
-      }
-
-    lazy val ObserveStandingQuery = "(?:OBSERVE|observe) [\"']?(.*)[\"']?".r
-
-    /** Submit a query and load its results into the graph (or render them in the bottom bar
-      * for text queries). The returned Future resolves once the query has finished applying
-      * its results (or fails on error). Useful for callers that need to chain follow-up work
-      * after the graph is updated, like overlaying synthetic edges.
-      */
-    /** `None` when the submission was rejected without starting a run (blank query, a
-      * pending text query already in flight) — callers that claim per-run state (e.g. a
-      * card's edit association) must not do so in that case; `Some` completes when the
-      * accepted run finishes.
-      */
-    def submitQuery(
-      uiQueryType: UiQueryType,
-      queryOverride: Option[String] = None,
-      namespaceOverride: Option[NamespaceParameter] = None,
-      parameters: Map[String, Json] = Map.empty,
-    ): Option[Future[Unit]] = {
-      val state = stateVar.now()
-      val namespace = namespaceOverride.getOrElse(state.namespace)
-
-      val query = queryOverride.getOrElse(state.query) match {
-        case ObserveStandingQuery(sqName) =>
-          val amendedQuery = s"CALL standing.wiretap({ name: '$sqName' })"
-          stateVar.update(_.copy(query = amendedQuery))
-          amendedQuery
-        case other =>
-          other
-      }
-      if (query.isBlank) return None
-
-      val language = guessQueryLanguage(query)
-
-      if (state.pendingTextQueries.nonEmpty) {
+    /** Returns true, after alerting the user, if a pending text query exists. */
+    def rejectIfTextQueryPending(): Boolean =
+      if (stateVar.now().pendingTextQueries.isEmpty) false
+      else {
         window.alert(
           """You have a pending text query. You must cancel it before issuing another query.
             |Pending queries can be cancelled by clicking on the spinning loader in the top right.
             |""".stripMargin,
         )
-        return None
+        true
       }
 
-      val done = Promise[Unit]()
+    /** After the user confirms, cancels every pending text query (see [[trackPendingTextQuery]]).
+      * Over REST, alerts the user that queries can't be cancelled instead.
+      */
+    def cancelPendingTextQueries(): Unit =
+      props.queryMethod match {
+        case QueryMethod.WebSocket | QueryMethod.WebSocketV2 =>
+          val pending = stateVar.now().pendingTextQueries
+          if (pending.nonEmpty && window.confirm(s"Cancel ${pending.size} running query execution(s)?"))
+            pending.foreach(_.cancel())
+        case QueryMethod.Restful | QueryMethod.RestfulV2 =>
+          window.alert("You cannot cancel queries when issuing queries through the REST api")
+      }
 
-      stateVar.update(s =>
-        s.copy(
-          foundNodesCount = None,
-          foundEdgesCount = None,
-          queryBarColor = None,
-          runningQueryCount = s.runningQueryCount + 1,
-        ),
-      )
-      resultsVar.set(None)
+    /** After the user confirms, cancels every query running over the current namespace's
+      * WebSocket connection, including canvas queries that aren't pending text queries.
+      */
+    def cancelAllRunningQueries(): Unit = {
+      val cancellers = queryRunner.activeQueryCancellers(stateVar.now().namespace)
+      if (cancellers.nonEmpty && window.confirm(s"Cancel ${cancellers.size} running query execution(s)?"))
+        cancellers.foreach(_())
+    }
 
-      uiQueryType match {
-        case UiQueryType.Text | UiQueryType.SideEffectsText =>
-          // SideEffectsText intentionally never populates the result panel — the query returns no
-          // rows by design (only the query-bar color flash signals completion). Plain Text renders
-          // its results in the panel as usual.
-          var lastResultCount: Int = 0
-          // One run identity for every emission of this submission; the revision bump per
-          // batch is what lets downstream `.distinctBy((runId, revision))` see new batches
-          // without deep-comparing the growing result buffer.
-          val runId = ResultsContent.nextRunId()
-          var revision: Int = 0
-          def updateResults(result: Either[Seq[Json], CypherQueryResult]): Unit =
-            if (uiQueryType == UiQueryType.Text) {
-              val outcome = result match {
-                case Left(values) => ResultOutcome.TextResults(values)
-                case Right(results) => ResultOutcome.Tabular(results)
-              }
-              lastResultCount = result match {
-                case Left(values) => values.size
-                case Right(results) => results.results.size
-              }
-              revision += 1
-              resultsVar.set(Some(ResultsContent(outcome, query, language, runId, revision)))
-            }
+    // ── Query runs: each sends one query and routes its results to one part of the UI ──
 
-          textQuery(query, state.atTime, namespace, language, parameters, updateResults).onComplete {
+    /** Prepares the UI for a run of `query` and returns true, unless `query` is blank or a pending
+      * text query is in flight; then returns false (after alerting the user, in the pending
+      * case) without changing anything. Preparing clears the current live results, the canvas's
+      * found-node/edge counts and the query bar's color.
+      */
+    def beginRun(query: String): Boolean =
+      if (query.isBlank || rejectIfTextQueryPending()) false
+      else {
+        stateVar.update(_.copy(foundNodesCount = None, foundEdgesCount = None, queryBarColor = None))
+        resultsVar.set(None)
+        true
+      }
+
+    /** Given a query, returns the language to run it as. Runners that can't run Gremlin run every
+      * query as Cypher, so a Cypher query the guess misses (e.g. one starting with a comment)
+      * still runs.
+      */
+    def runLanguage(query: String): QueryLanguage =
+      if (queryRunner.supportsGremlin) guessQueryLanguage(query) else QueryLanguage.Cypher
+
+    /** Runs a text query against `namespace` at the current time, and shows its results in a
+      * card, updating the card as batches arrive. `OBSERVE <name>` runs a wiretap of the standing
+      * query `<name>`. Prepares the UI first (see [[beginRun]]). When the query finishes, flashes
+      * the query bar and shows the result-count overlay; if it fails, shows an error toast.
+      *
+      * If `queryName` is given (the name of a quick query), the card shows it as its title in
+      * place of the query text.
+      *
+      * Returns `None` when the run was rejected without starting (see [[beginRun]]) — callers
+      * that claim per-run state (e.g. a card's edit association) must not do so in that case.
+      * Otherwise returns a Future that completes when the query finishes.
+      */
+    def runTextQueryIntoCard(
+      rawQuery: String,
+      namespace: NamespaceParameter = stateVar.now().namespace,
+      parameters: Map[String, Json] = Map.empty,
+      queryName: Option[String] = None,
+    ): Option[Future[Unit]] = {
+      val query = expandObserveShorthand(rawQuery)
+      if (!beginRun(query)) return None
+      val language = runLanguage(query)
+      val atTime = stateVar.now().atTime
+      // One run identity for every emission of this submission; the revision bump per
+      // batch is what lets downstream `.distinctBy((runId, revision))` see new batches
+      // without deep-comparing the growing result buffer.
+      val runId = ResultsContent.nextRunId()
+      var revision: Int = 0
+      var lastResultCount: Int = 0
+      def showBatch(outcome: ResultOutcome, resultCount: Int): Unit = {
+        lastResultCount = resultCount
+        revision += 1
+        resultsVar.set(Some(ResultsContent(outcome, query, language, runId, revision, queryName)))
+      }
+      val running: RunningQuery[Option[Unit]] = language match {
+        case QueryLanguage.Cypher =>
+          queryRunner.runCypherTextQuery(query, parameters, namespace, atTime)(r =>
+            showBatch(ResultOutcome.Tabular(r), r.results.size),
+          )
+        case QueryLanguage.Gremlin =>
+          queryRunner.runGremlinTextQuery(query, parameters, namespace, atTime)(v =>
+            showBatch(ResultOutcome.TextResults(v), v.size),
+          )
+      }
+
+      Some(
+        running.trackPendingTextQuery.future.countedAsRunningQuery
+          .withQueryBarColorChange(outcome =>
+            Some(if (outcome.isEmpty) Styles.queryResultEmpty else Styles.queryResultSuccess),
+          )
+          .transform {
             case Success(outcome) =>
-              // Text: a query that returned nothing gets the distinct empty state. SideEffectsText:
-              // leave the panel unpopulated (it stays None from submit-start).
-              if (uiQueryType == UiQueryType.Text && outcome.isEmpty)
+              // A cancelled query gets the distinct empty state.
+              if (outcome.isEmpty)
                 resultsVar.update {
                   case Some(c) => Some(c.copy(outcome = ResultOutcome.toEmpty(c.outcome), revision = c.revision + 1))
                   case None =>
-                    Some(ResultsContent(ResultOutcome.EmptyResult(wasTabular = true, Nil), query, language, runId))
+                    Some(
+                      ResultsContent(
+                        ResultOutcome.EmptyResult(wasTabular = true, Nil),
+                        query,
+                        language,
+                        runId,
+                        queryName = queryName,
+                      ),
+                    )
                 }
-              // SideEffectsText flashes grey (ran cleanly, no rows by design); Text flashes grey when
-              // empty, green otherwise.
-              val outcomeColor =
-                if (uiQueryType == UiQueryType.SideEffectsText) Styles.queryResultEmpty
-                else if (outcome.isEmpty) Styles.queryResultEmpty
-                else Styles.queryResultSuccess
-              stateVar.update(s =>
-                s.copy(
-                  queryBarColor = Some(outcomeColor),
-                  runningQueryCount = s.runningQueryCount - 1,
-                ),
-              )
-              window.setTimeout(
-                () => stateVar.update(_.copy(queryBarColor = None)),
-                750,
-              )
               // Ephemeral result-count overlay trigger (design doc §5): fires the indicator's
-              // fade-in, which then displays the live canvas node/edge counters — Text only —
-              // SideEffectsText returns no rows by design and doesn't populate the results
-              // surface either.
-              if (uiQueryType == UiQueryType.Text)
-                resultCountBus.emit(ResultCountEvent(lastResultCount, nodeCount = None))
-              done.success(())
-              ()
-
+              // fade-in, which then displays the live canvas node/edge counters.
+              resultCountBus.emit(ResultCountEvent(lastResultCount, nodeCount = None))
+              Success(())
             case Failure(err) =>
               showQueryError(Option(err.getMessage).getOrElse(""))
-              stateVar.update(s =>
-                s.copy(
-                  queryBarColor = Some(Styles.queryResultError),
-                  runningQueryCount = s.runningQueryCount - 1,
-                ),
-              )
-              done.failure(err)
+              Failure(err)
+          },
+      )
+    }
+
+    /** Runs a text query against the current namespace and time for its side effects only: its
+      * results are discarded, and only the query bar's color flash signals completion.
+      * `OBSERVE <name>` runs a wiretap of the standing query `<name>`. Prepares the UI first (see
+      * [[beginRun]]). If the query fails, shows an error toast.
+      *
+      * Returns `None` when the run was rejected without starting (see [[beginRun]]). Otherwise
+      * returns a Future that completes when the query finishes.
+      */
+    def runSideEffectsQuery(rawQuery: String): Option[Future[Unit]] = {
+      val query = expandObserveShorthand(rawQuery)
+      if (!beginRun(query)) return None
+      val language = runLanguage(query)
+      val state = stateVar.now()
+      val running: RunningQuery[Option[Unit]] = language match {
+        case QueryLanguage.Cypher => queryRunner.runCypherTextQuery(query, Map.empty, state.namespace, state.atTime)()
+        case QueryLanguage.Gremlin => queryRunner.runGremlinTextQuery(query, Map.empty, state.namespace, state.atTime)()
+      }
+      Some(
+        running.trackPendingTextQuery.future.countedAsRunningQuery
+          .withQueryBarColorChange(_ => Some(Styles.queryResultEmpty))
+          .transform {
+            case Success(_) => Success(())
+            case Failure(err) =>
+              showQueryError(Option(err.getMessage).getOrElse(""))
+              Failure(err)
+          },
+      )
+    }
+
+    /** Runs a Cypher query against the current namespace and time, and shows its results (or its
+      * error) in the node-properties popup at DOM position (`x`, `y`). The popup's header shows
+      * the icon `iconCode` in `iconColor` (an empty `iconCode` shows a plain dot). Prepares the
+      * UI first, and does nothing more if the run is rejected (see [[beginRun]]).
+      */
+    def runTextQueryIntoPopup(
+      x: Double,
+      y: Double,
+      iconCode: String,
+      iconColor: String,
+      cypherQuery: String,
+    ): Unit = {
+      if (!beginRun(cypherQuery)) return
+      val state = stateVar.now()
+
+      def showPopup(content: NodePopupContent): Unit =
+        nodePopupVar.set(Some(NodePopupState(x, y, content, iconCode, iconColor)))
+
+      queryRunner
+        .runCypherTextQuery(cypherQuery, Map.empty, state.namespace, state.atTime) { r =>
+          showPopup(NodePropertiesPopup.parseCypherContent(r))
+        }
+        .trackPendingTextQuery
+        .future
+        .countedAsRunningQuery
+        .withQueryBarColorChange(outcome =>
+          Some(if (outcome.isEmpty) Styles.queryResultEmpty else Styles.queryResultSuccess),
+        )
+        .failed
+        .foreach(err => showPopup(NodePopupContent.Fallback(pre(cls := "wrap", err.getMessage))))
+    }
+
+    /** Runs a query whose results are nodes against `namespace` at the current time, then a
+      * second query for the edges between those nodes and the nodes already on the canvas, and
+      * adds both to the canvas as one undoable history step. `OBSERVE <name>` runs a wiretap of
+      * the standing query `<name>`. Prepares the UI first (see [[beginRun]]).
+      *
+      * When `explodeFromId` is set, the results explode out from that node, and when
+      * `syntheticEdgeLabel` is also set, synthetic edges with that label are drawn from that node
+      * to every result. Asks the user how many nodes to draw if there are more than the
+      * configured limit. If the query fails, shows an error toast.
+      *
+      * Returns `None` when the run was rejected without starting (see [[beginRun]]). Otherwise
+      * returns a Future that completes once the canvas is updated.
+      */
+    def runNodeQueryOntoCanvas(
+      rawQuery: String,
+      namespace: NamespaceParameter = stateVar.now().namespace,
+      parameters: Map[String, Json] = Map.empty,
+      explodeFromId: Option[String] = None,
+      syntheticEdgeLabel: Option[String] = None,
+    ): Option[Future[Unit]] = {
+      val query = expandObserveShorthand(rawQuery)
+      if (!beginRun(query)) return None
+      val language = runLanguage(query)
+      val atTime = stateVar.now().atTime
+      val nodesEdgesFut = for {
+        rawNodesOpt <- queryRunner.runNodeQuery(query, language, parameters, namespace, atTime)
+        dedupedNodesOpt = rawNodesOpt.map { rawNodes =>
+          val dedupedIds = mutable.Set.empty[String]
+          rawNodes.filter(n => dedupedIds.add(n.id))
+        }
+
+        nodes = dedupedNodesOpt match {
+          case Some(dedupedNodes) if dedupedNodes.length > props.nodeResultSizeLimit =>
+            val limitedCount: Option[Int] = Option(
+              window.prompt(
+                s"You are about to render ${dedupedNodes.length} nodes.\nHow many do you want to render?",
+                dedupedNodes.length.toString,
+              ),
+            ).map(_.toInt)
+            stateVar.update(s => s.copy(foundNodesCount = limitedCount))
+            limitedCount.fold(Seq.empty[UiNode[String]])(dedupedNodes.take(_))
+
+          case Some(dedupedNodes) =>
+            stateVar.update(s => s.copy(foundNodesCount = Some(dedupedNodes.length)))
+            dedupedNodes
+
+          case None =>
+            Nil
+        }
+
+        newNodes = nodes.map(_.id).toSet
+        edgesOpt <-
+          if (newNodes.isEmpty) {
+            Future.successful(Some(Nil))
+          } else {
+            val edgeQueryStr = props.edgeQueryLanguage match {
+              case QueryLanguage.Gremlin =>
+                """g.V(new).bothE().dedup().where(_.and(
+                | _.outV().strId().is(within(all)),
+                | _.inV().strId().is(within(all))))""".stripMargin
+
+              case QueryLanguage.Cypher =>
+                """UNWIND $new AS newId
+                |CALL getFilteredEdges(newId, [], [], $all) YIELD edge
+                |RETURN DISTINCT edge AS e""".stripMargin
+            }
+            val existingNodes = props.graphData.nodeSet.getIds().map(_.toString).toVector
+            val queryParameters = Map(
+              "new" -> Json.fromValues(newNodes.map(Json.fromString)),
+              "all" -> Json.fromValues((existingNodes ++ newNodes).map(Json.fromString)),
+            )
+            queryRunner.runEdgeQuery(edgeQueryStr, props.edgeQueryLanguage, queryParameters, namespace, atTime)
+          }
+        edges = edgesOpt match {
+          case Some(edges) =>
+            if (rawNodesOpt.nonEmpty) stateVar.update(s => s.copy(foundEdgesCount = Some(edges.length)))
+            edges
+          case None =>
+            Nil
+        }
+      } yield (nodes, edges, rawNodesOpt.fold(nodes.length)(_.length))
+
+      Some(nodesEdgesFut.countedAsRunningQuery.withQueryBarColorChange(_ => None).transform {
+        case Success((nodes, edges, rawResultCount)) =>
+          val syntheticEdges = (explodeFromId, syntheticEdgeLabel) match {
+            case (Some(fromId), Some(edgeLabel)) => nodes.map(n => UiEdge(fromId, edgeLabel, n.id))
+            case _ => Seq.empty
           }
 
-        case popup: UiQueryType.TextPopup =>
-          val (popupX, popupY) = (popup.x, popup.y)
+          val (newNodes, existingNodes) = nodes.partition(n => props.graphData.nodeSet.get(n.id) == null)
+          val nodesToUpdate = existingNodes.filter { (node: UiNode[String]) =>
+            val currentNode: vis.Node = props.graphData.nodeSet.get(node.id).merge
+            val currentUiNode = currentNode.asInstanceOf[QueryUiVisNodeExt].uiNode
+            node != currentUiNode
+          }
 
-          def updateResults(result: Either[Seq[Json], CypherQueryResult]): Unit =
-            nodePopupVar.set(
+          val addEvent = QueryUiEvent.Add(
+            newNodes,
+            edges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
+            nodesToUpdate,
+            syntheticEdges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
+            explodeFromId,
+          )
+
+          if (addEvent.nonEmpty) {
+            updateHistory(hist => Some(hist.observe(addEvent)))
+          }
+          // Ephemeral result-count overlay trigger (design doc §5): fires the indicator's
+          // fade-in on completion. The event payload itself isn't rendered — the indicator
+          // shows the live canvas node/edge counters (stateVar.foundNodesCount/
+          // foundEdgesCount, updated just above via updateHistory/the addEvent) — but is
+          // kept for now as a record of what this query actually produced.
+          resultCountBus.emit(
+            ResultCountEvent(
+              rawResultCount,
+              nodeCount = if (nodes.length == rawResultCount) None else Some(nodes.length),
+            ),
+          )
+          Success(())
+
+        case Failure(err) =>
+          val message = Option(err.getMessage).filter(_.nonEmpty).getOrElse("Cannot connect to server")
+          // A valid query that simply returns non-node values fails the node/graph run
+          // with a TypeMismatch (thrown server-side in QueryUiCypherApiMethods when a node
+          // query yields a non-node result). Rather than surface that raw type error, tell
+          // the user the query is fine and offer to re-run it as a text/table query — the
+          // same "Run as text query" path adhoc cards use.
+          //
+          // Anchored to the stable prefix of `CypherException.pretty`'s output
+          // (`productPrefix + "Error " + positionStr + getMessage`): `TypeMismatch`'s
+          // `getMessage` is "Expected type(s) $expectedTys but got value ..." and this
+          // throw site (`QueryUiCypherApiMethods.queryCypherNodes`) always passes
+          // `expected = Seq(CypherType.Node)` and no `position`, so `positionStr` is
+          // empty — the full prefix is always exactly this literal.
+          if (message.startsWith("TypeMismatchError Expected type(s) Node but got value"))
+            toastVar.set(
               Some(
-                NodePopupState(
-                  popupX,
-                  popupY,
-                  NodePropertiesPopup.parseContent(result),
-                  popup.iconCode,
-                  popup.iconColor,
+                ToastMessage(
+                  "This query is valid but returns values that aren't nodes. " +
+                  "Run it as a text query to see the results.",
+                  ToastVariant.Info,
+                  Some(
+                    ToastAction(
+                      "Run as text query",
+                      () => runTextQueryIntoCard(query, namespace, parameters).foreach(_ => ()),
+                    ),
+                  ),
                 ),
               ),
             )
-
-          textQuery(query, state.atTime, namespace, language, parameters, updateResults).onComplete {
-            case Success(outcome) =>
-              val outcomeColor = if (outcome.isEmpty) Styles.queryResultEmpty else Styles.queryResultSuccess
-              stateVar.update(s =>
-                s.copy(
-                  queryBarColor = Some(outcomeColor),
-                  runningQueryCount = s.runningQueryCount - 1,
-                ),
-              )
-              window.setTimeout(
-                () => stateVar.update(_.copy(queryBarColor = None)),
-                750,
-              )
-              ()
-
-            case Failure(err) =>
-              stateVar.update(s =>
-                s.copy(
-                  queryBarColor = Some(Styles.queryResultError),
-                  runningQueryCount = s.runningQueryCount - 1,
-                ),
-              )
-              nodePopupVar.set(
-                Some(
-                  NodePopupState(
-                    popupX,
-                    popupY,
-                    NodePopupContent.Fallback(pre(cls := "wrap", err.getMessage)),
-                    popup.iconCode,
-                    popup.iconColor,
-                  ),
-                ),
-              )
-          }
-
-        case UiQueryType.Node | (_: UiQueryType.NodeFromId) =>
-          val nodesEdgesFut = for {
-            rawNodesOpt <- nodeQuery(query, namespace, state.atTime, language, parameters)
-            dedupedNodesOpt = rawNodesOpt.map { rawNodes =>
-              val dedupedIds = mutable.Set.empty[String]
-              rawNodes.filter(n => dedupedIds.add(n.id))
-            }
-
-            nodes = dedupedNodesOpt match {
-              case Some(dedupedNodes) if dedupedNodes.length > props.nodeResultSizeLimit =>
-                val limitedCount: Option[Int] = Option(
-                  window.prompt(
-                    s"You are about to render ${dedupedNodes.length} nodes.\nHow many do you want to render?",
-                    dedupedNodes.length.toString,
-                  ),
-                ).map(_.toInt)
-                stateVar.update(s => s.copy(foundNodesCount = limitedCount))
-                limitedCount.fold(Seq.empty[UiNode[String]])(dedupedNodes.take(_))
-
-              case Some(dedupedNodes) =>
-                stateVar.update(s => s.copy(foundNodesCount = Some(dedupedNodes.length)))
-                dedupedNodes
-
-              case None =>
-                Nil
-            }
-
-            newNodes = nodes.map(_.id).toSet
-            edgesOpt <-
-              if (newNodes.isEmpty) {
-                Future.successful(Some(Nil))
-              } else {
-                val edgeQueryStr = props.edgeQueryLanguage match {
-                  case QueryLanguage.Gremlin =>
-                    """g.V(new).bothE().dedup().where(_.and(
-                    | _.outV().strId().is(within(all)),
-                    | _.inV().strId().is(within(all))))""".stripMargin
-
-                  case QueryLanguage.Cypher =>
-                    """UNWIND $new AS newId
-                    |CALL getFilteredEdges(newId, [], [], $all) YIELD edge
-                    |RETURN DISTINCT edge AS e""".stripMargin
-                }
-                val existingNodes = props.graphData.nodeSet.getIds().map(_.toString).toVector
-                val queryParameters = Map(
-                  "new" -> Json.fromValues(newNodes.map(Json.fromString)),
-                  "all" -> Json.fromValues((existingNodes ++ newNodes).map(Json.fromString)),
-                )
-                edgeQuery(edgeQueryStr, state.atTime, namespace, props.edgeQueryLanguage, queryParameters)
-              }
-            edges = edgesOpt match {
-              case Some(edges) =>
-                if (rawNodesOpt.nonEmpty) stateVar.update(s => s.copy(foundEdgesCount = Some(edges.length)))
-                edges
-              case None =>
-                Nil
-            }
-          } yield (nodes, edges, rawNodesOpt.fold(nodes.length)(_.length))
-
-          nodesEdgesFut.onComplete {
-            case Success((nodes, edges, rawResultCount)) =>
-              val (syntheticEdges, explodeFromIdOpt) = uiQueryType match {
-                case UiQueryType.NodeFromId(explodeFromId, Some(syntheticEdgeLabel)) =>
-                  nodes.map(n => UiEdge(explodeFromId, syntheticEdgeLabel, n.id)) -> Some(explodeFromId)
-                case UiQueryType.NodeFromId(explodeFromId, None) =>
-                  (Seq.empty, Some(explodeFromId))
-                case UiQueryType.Node | UiQueryType.Text | UiQueryType.SideEffectsText |
-                    UiQueryType.TextPopup(_, _, _, _) =>
-                  (Seq.empty, None)
-              }
-
-              val (newNodes, existingNodes) = nodes.partition(n => props.graphData.nodeSet.get(n.id) == null)
-              val nodesToUpdate = existingNodes.filter { (node: UiNode[String]) =>
-                val currentNode: vis.Node = props.graphData.nodeSet.get(node.id).merge
-                val currentUiNode = currentNode.asInstanceOf[QueryUiVisNodeExt].uiNode
-                node != currentUiNode
-              }
-
-              val addEvent = QueryUiEvent.Add(
-                newNodes,
-                edges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
-                nodesToUpdate,
-                syntheticEdges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
-                explodeFromIdOpt,
-              )
-
-              if (addEvent.nonEmpty) {
-                updateHistory(hist => Some(hist.observe(addEvent)))
-              }
-              stateVar.update(s => s.copy(runningQueryCount = s.runningQueryCount - 1))
-              // Ephemeral result-count overlay trigger (design doc §5): fires the indicator's
-              // fade-in on completion. The event payload itself isn't rendered — the indicator
-              // shows the live canvas node/edge counters (stateVar.foundNodesCount/
-              // foundEdgesCount, updated just above via updateHistory/the addEvent) — but is
-              // kept for now as a record of what this query actually produced.
-              resultCountBus.emit(
-                ResultCountEvent(
-                  rawResultCount,
-                  nodeCount = if (nodes.length == rawResultCount) None else Some(nodes.length),
-                ),
-              )
-              done.success(())
-
-            case Failure(err) =>
-              val message = Option(err.getMessage).filter(_.nonEmpty).getOrElse("Cannot connect to server")
-              stateVar.update(s =>
-                s.copy(
-                  queryBarColor = Some(Styles.queryResultError),
-                  runningQueryCount = s.runningQueryCount - 1,
-                ),
-              )
-              // A valid query that simply returns non-node values fails the node/graph run
-              // with a TypeMismatch (thrown server-side in QueryUiCypherApiMethods when a node
-              // query yields a non-node result). Rather than surface that raw type error, tell
-              // the user the query is fine and offer to re-run it as a text/table query — the
-              // same "Run as text query" path adhoc cards use.
-              //
-              // Anchored to the stable prefix of `CypherException.pretty`'s output
-              // (`productPrefix + "Error " + positionStr + getMessage`): `TypeMismatch`'s
-              // `getMessage` is "Expected type(s) $expectedTys but got value ..." and this
-              // throw site (`QueryUiCypherApiMethods.queryCypherNodes`) always passes
-              // `expected = Seq(CypherType.Node)` and no `position`, so `positionStr` is
-              // empty — the full prefix is always exactly this literal.
-              if (message.startsWith("TypeMismatchError Expected type(s) Node but got value"))
-                toastVar.set(
-                  Some(
-                    ToastMessage(
-                      "This query is valid but returns values that aren't nodes. " +
-                      "Run it as a text query to see the results.",
-                      ToastVariant.Info,
-                      Some(
-                        ToastAction(
-                          "Run as text query",
-                          () =>
-                            submitQuery(UiQueryType.Text, Some(query), namespaceOverride, parameters)
-                              .foreach(_ => ()),
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-              else
-                showQueryError(message)
-              done.failure(err)
-          }
-      }
-      Some(done.future)
+          else
+            showQueryError(message)
+          Failure(err)
+      })
     }
-    // Now that submitQuery exists, point the forwarding cell cardsStore's onReRun uses at the
+
+    // ── Submission ──
+
+    lazy val ObserveStandingQuery = "(?:OBSERVE|observe) [\"']?(.*)[\"']?".r
+
+    /** Given a query, returns the query that actually runs: `OBSERVE <name>` becomes a wiretap
+      * of the standing query `<name>`, and every other query is returned unchanged.
+      */
+    def expandObserveShorthand(query: String): String = query match {
+      case ObserveStandingQuery(sqName) => s"CALL standing.wiretap({ name: '$sqName' })"
+      case other => other
+    }
+
+    /** Runs the query currently in the query bar, routing its results to the part of the UI that
+      * `uiQueryType` names: a card (`Text`), nowhere (`SideEffectsText`), or the canvas (`Node` /
+      * `NodeFromId`). An `OBSERVE <name>` shorthand in the bar is replaced there by the query it
+      * expands to. Returns what the run function returns.
+      */
+    def submitQueryBar(uiQueryType: UiQueryType): Option[Future[Unit]] = {
+      val barQuery = stateVar.now().query
+      val query = expandObserveShorthand(barQuery)
+      if (query != barQuery) stateVar.update(_.copy(query = query))
+      uiQueryType match {
+        case UiQueryType.Text => runTextQueryIntoCard(query)
+        case UiQueryType.SideEffectsText => runSideEffectsQuery(query)
+        case UiQueryType.Node => runNodeQueryOntoCanvas(query)
+        case UiQueryType.NodeFromId(fromId, edgeLabel) =>
+          runNodeQueryOntoCanvas(query, explodeFromId = Some(fromId), syntheticEdgeLabel = edgeLabel)
+      }
+    }
+
+    // Now that runTextQueryIntoCard exists, point the forwarding cell cardsStore's onReRun uses at the
     // real thing — adhoc cards' Re-run always runs as a text/table query (design doc §3: "Adhoc
     // cards are always run as text/table queries"), same path "Run as text query" uses.
-    submitQueryRef = (query, _language) => submitQuery(UiQueryType.Text, Some(query), None, Map.empty).isDefined
+    submitQueryRef = (query, _language) => runTextQueryIntoCard(query).isDefined
 
     /** Run the tap query's Cypher to populate the graph, then overlay any configured synthetic
       * edges by reading their endpoint IDs out of the wiretap message.
       *
       * For each spec, `fromNode` / `toNode` are dot-paths into the wiretap message JSON
-      * (today the only supported `nodeIdsFrom`). We chain on `submitQuery`'s completion so
+      * (today the only supported `nodeIdsFrom`). We chain on `runNodeQueryOntoCanvas`'s completion so
       * the synthetic edges land after the query's nodes/edges — vis-network would handle the
       * other ordering too, but this keeps the visual transition crisp.
       */
@@ -1962,7 +1812,7 @@ object QueryUi {
       syntheticEdgeSpecs: Vector[V2ApiTypes.V2SyntheticEdge],
       parameters: Map[String, Json],
     ): Unit = {
-      val graphFut = submitQuery(UiQueryType.Node, queryOverride = Some(query), parameters = parameters)
+      val graphFut = runNodeQueryOntoCanvas(query, parameters = parameters)
         .getOrElse(Future.successful(()))
       if (syntheticEdgeSpecs.nonEmpty) {
         graphFut.foreach { _ =>
@@ -2280,18 +2130,10 @@ object QueryUi {
                 nodePopupVar.set(None)
                 contextMenuVar.set(Some(ContextMenuState(bx, by, buildContextMenu(nodeId, selectedIds, bx, by))))
               })
-              val propertiesQuery =
+              val propsQuery =
                 V2QuickQuery("Get Node Details", "RETURN n", V2QuerySort.Text, None).fullQuery(startingNodes)
-              nodePopupRefreshVar.set(Some { (rx, ry) =>
-                val _ = submitQuery(
-                  UiQueryType.TextPopup(rx, ry, iconCode, iconColor),
-                  queryOverride = Some(propertiesQuery),
-                )
-              })
-              val _ = submitQuery(
-                UiQueryType.TextPopup(cx, cy, iconCode, iconColor),
-                queryOverride = Some(propertiesQuery),
-              )
+              nodePopupRefreshVar.set(Some((rx, ry) => runTextQueryIntoPopup(rx, ry, iconCode, iconColor, propsQuery)))
+              runTextQueryIntoPopup(cx, cy, iconCode, iconColor, propsQuery)
             },
           )
         }
@@ -2328,17 +2170,25 @@ object QueryUi {
         val quickQuerySection = MenuSection(
           "Quick Queries",
           matchedQueries.toVector.map { qq =>
-            val queryType = qq.sort match {
-              case V2QuerySort.Text => UiQueryType.Text
-              case V2QuerySort.Node if startingNodes.size == 1 => UiQueryType.NodeFromId(uiNode.id, qq.edgeLabel)
-              case V2QuerySort.Node => UiQueryType.Node
-            }
             MenuAction(
               name = qq.name,
               action = () => {
-                stateVar.update(_.copy(query = qq.fullQuery(startingNodes)))
+                val query = qq.fullQuery(startingNodes)
+                stateVar.update(_.copy(query = query))
                 contextMenuVar.set(None)
-                val _ = submitQuery(queryType)
+                // The card title names the starting nodes by their canvas labels, so that the same
+                // quick query run on different nodes yields distinguishable cards.
+                val nodeLabels = startingNodes.map { id =>
+                  val startingVisNode: vis.Node = props.graphData.nodeSet.get(id).merge
+                  appearanceFor(startingVisNode.asInstanceOf[QueryUiVisNodeExt].uiNode)._1
+                }
+                val _ = qq.sort match {
+                  case V2QuerySort.Text =>
+                    runTextQueryIntoCard(query, queryName = Some(s"${qq.name} · ${nodeLabels.mkString(", ")}"))
+                  case V2QuerySort.Node if startingNodes.size == 1 =>
+                    runNodeQueryOntoCanvas(query, explodeFromId = Some(uiNode.id), syntheticEdgeLabel = qq.edgeLabel)
+                  case V2QuerySort.Node => runNodeQueryOntoCanvas(query)
+                }
               },
             )
           },
@@ -2511,21 +2361,23 @@ object QueryUi {
       if (nodeIds.isEmpty) return
       val idList = nodeIds.map(id => s""""$id"""").mkString("[", ",", "]")
       val query = s"UNWIND $idList AS nId MATCH (n) WHERE strId(n) = nId RETURN n"
-      nodeQuery(query, namespace, atTime, QueryLanguage.Cypher, Map.empty).onComplete {
-        case Success(Some(freshNodes)) =>
-          import js.JSConverters._
-          props.graphData.nodeSet.update(freshNodes.map(nodeUi2Vis(_, None)).toJSArray)
-          freshNodes.foreach { fresh =>
-            val existing = props.graphData.nodeSet.get(fresh.id)
-            if (existing != null)
-              existing.asInstanceOf[js.Dynamic].uiNode = fresh.asInstanceOf[js.Any]
-          }
-          reapplyAppearances()
-        case Success(None) =>
-          dom.console.warn("[Explorer] Node property refetch returned no results")
-        case Failure(err) =>
-          dom.console.warn(s"[Explorer] Failed to refetch node properties: ${err.getMessage}")
-      }
+      queryRunner
+        .runNodeQuery(query, QueryLanguage.Cypher, Map.empty, namespace, atTime)
+        .onComplete {
+          case Success(Some(freshNodes)) =>
+            import js.JSConverters._
+            props.graphData.nodeSet.update(freshNodes.map(nodeUi2Vis(_, None)).toJSArray)
+            freshNodes.foreach { fresh =>
+              val existing = props.graphData.nodeSet.get(fresh.id)
+              if (existing != null)
+                existing.asInstanceOf[js.Dynamic].uiNode = fresh.asInstanceOf[js.Any]
+            }
+            reapplyAppearances()
+          case Success(None) =>
+            dom.console.warn("[Explorer] Node property refetch returned no results")
+          case Failure(err) =>
+            dom.console.warn(s"[Explorer] Failed to refetch node properties: ${err.getMessage}")
+        }
     }
 
     // --- Checkpoint navigation ---
@@ -2783,11 +2635,7 @@ object QueryUi {
                           resultsCollapsedVar.set(false)
                           // Run the initial query the first time a namespace is opened
                           if (props.initialQuery.nonEmpty) {
-                            val _ = submitQuery(
-                              UiQueryType.Node,
-                              queryOverride = Some(props.initialQuery),
-                              namespaceOverride = Some(namespace),
-                            )
+                            val _ = runNodeQueryOntoCanvas(props.initialQuery, namespace)
                           }
                         } finally restoringVar.set(false)
                     }
@@ -2795,30 +2643,6 @@ object QueryUi {
                 }
             }
         }
-      }
-    }
-
-    def cancelQueries(queryIds: Option[Iterable[QueryId]] = None): Unit = {
-      val namespace = stateVar.now().namespace
-      props.queryMethod match {
-        case QueryMethod.WebSocket =>
-          getWebSocketClient(namespace).value.flatMap(_.toOption).foreach { (client: WebSocketQueryClient) =>
-            val queries = queryIds.getOrElse(client.activeQueries.keys).toList
-            if (queries.nonEmpty && window.confirm(s"Cancel ${queries.size} running query execution(s)?")) {
-              queries.foreach(queryId => client.cancelQuery(queryId))
-            }
-          }
-
-        case QueryMethod.WebSocketV2 =>
-          getWebSocketClientV2(namespace).value.flatMap(_.toOption).foreach { (client: V2WebSocketQueryClient) =>
-            val queries = queryIds.getOrElse(client.activeQueries.keys).toList
-            if (queries.nonEmpty && window.confirm(s"Cancel ${queries.size} running query execution(s)?")) {
-              queries.foreach(queryId => client.cancelQuery(queryId))
-            }
-          }
-
-        case QueryMethod.Restful | QueryMethod.RestfulV2 =>
-          window.alert("You cannot cancel queries when issuing queries through the REST api")
       }
     }
 
@@ -2936,7 +2760,7 @@ object QueryUi {
       props.refreshSignal
         .map(_ --> { _ =>
           if (props.initialQuery.nonEmpty) {
-            val _ = submitQuery(UiQueryType.Node, queryOverride = Some(props.initialQuery))
+            val _ = runNodeQueryOntoCanvas(props.initialQuery)
           }
         })
         .getOrElse(emptyMod),
@@ -2986,7 +2810,7 @@ object QueryUi {
             case _ => ()
           }
           if (props.initialQuery.nonEmpty) {
-            val _ = submitQuery(UiQueryType.Node)
+            val _ = submitQueryBar(UiQueryType.Node)
           }
         }
       },
@@ -3038,9 +2862,9 @@ object QueryUi {
           queryBarColor = stateVar.signal.map(_.queryBarColor),
           sampleQueries = stateVar.signal.map(_.sampleQueries),
           submitButton = (uiQueryType: UiQueryType) => {
-            val _ = submitQuery(uiQueryType)
+            val _ = submitQueryBar(uiQueryType)
           },
-          cancelButton = () => cancelQueries(Some(stateVar.now().pendingTextQueries)),
+          cancelButton = () => cancelPendingTextQueries(),
           // baseUrlOpt is ClientRoutes' effective base URL (empty ⇒ same origin); MonacoQueryInput
           // derives the LSP WebSocket URL from it via lspWebSocketUrl.
           serverUrl = props.routes.baseUrlOpt,
@@ -3182,7 +3006,7 @@ object QueryUi {
                 queryCount > 0 &&
                 (props.queryMethod == QueryMethod.WebSocket || props.queryMethod == QueryMethod.WebSocketV2)
               )
-                Some(() => cancelQueries())
+                Some(() => cancelAllRunningQueries())
               else None,
             )
         },
@@ -3212,18 +3036,13 @@ object QueryUi {
         // Node properties popup
         child <-- nodePopupVar.signal.map {
           case Some(state) =>
-            val canWrite = props.permissions match {
-              case Some(perms) => Set("GraphWrite").subsetOf(perms)
-              case None => true
-            }
             NodePropertiesPopup(
               state,
               closePopup = () => nodePopupVar.set(None),
-              submitQuery =
-                query => submitQuery(UiQueryType.Node, queryOverride = Some(query)).getOrElse(Future.successful(())),
+              submitQuery = query => runNodeQueryOntoCanvas(query).getOrElse(Future.successful(())),
               onBack = (bx, by) => nodePopupBackVar.now().fold(nodePopupVar.set(None))(_(bx, by)),
               onRefreshProperties = (rx, ry) => nodePopupRefreshVar.now().foreach(_(rx, ry)),
-              canWrite = canWrite,
+              editDisabled = props.nodePropertiesEditDisabled,
             )
           case None => emptyNode
         },
@@ -3241,6 +3060,7 @@ object QueryUi {
         CardPopup(
           cardsStore.expandedCard,
           cardsStore.dispatch,
+          editVisible = props.resultCardEditVisible,
         ),
         // Bottom-left graph-feed pills: the live on/off switch for each feed the
         // user keeps in their graph menu (see GraphFeedChips). Mounted unconditionally:
@@ -3349,6 +3169,8 @@ object QueryUi {
     queryBarTrailing: Option[HtmlElement] = None,
     invalidatedNamespaces: Option[EventStream[NamespaceParameter]] = None,
     documentationV2Url: Option[String] = None,
+    nodePropertiesEditDisabled: Option[String] = None,
+    resultCardEditVisible: Boolean = true,
   ): HtmlElement = {
     val nodeSet = options.visNodeSet.getOrElse(new vis.DataSet(js.Array[vis.Node]()))
     val edgeSet = options.visEdgeSet.getOrElse(new vis.DataSet(js.Array[vis.Edge]()))
@@ -3370,6 +3192,8 @@ object QueryUi {
         isQueryBarVisible = options.isQueryBarVisible.getOrElse(true),
         showEdgeLabels = options.showEdgeLabels.getOrElse(true),
         showHostInTooltip = options.showHostInTooltip.getOrElse(true),
+        nodePropertiesEditDisabled = nodePropertiesEditDisabled,
+        resultCardEditVisible = resultCardEditVisible,
         initialAtTime = options.queryHistoricalTime.toOption.map(_.toLong),
         initialLayout = options.layout.getOrElse("graph").toLowerCase match {
           case "tree" => NetworkLayout.Tree

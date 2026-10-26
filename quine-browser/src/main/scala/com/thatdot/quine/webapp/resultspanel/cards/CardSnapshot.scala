@@ -79,6 +79,7 @@ final case class CardSnapshot(
   query: String,
   language: String, // "cypher" | "gremlin"
   outcome: Option[CardOutcomeSnapshot],
+  queryName: Option[String],
   // tap kinds
   sqName: String,
   tapPoint: String, // "raw" | "post:<output>"
@@ -210,19 +211,21 @@ object CardSnapshot {
       query = "",
       language = encodeLanguage(QueryLanguage.Cypher),
       outcome = None,
+      queryName = None,
       sqName = "",
       tapPoint = "",
       tapQueryText = None,
       tapQueryTransformation = None,
     )
     c match {
-      case AdhocCard(_, query, language, outcome, _, _) =>
+      case AdhocCard(_, query, language, outcome, _, _, titleOverride) =>
         Some(
           base.copy(
             kind = KindAdhoc,
             query = query,
             language = encodeLanguage(language),
             outcome = outcome.map(content => encodeOutcome(content.outcome)),
+            queryName = titleOverride,
           ),
         )
       case TapTableCard(_, TapTarget.StandingQuery(sqName, tapPoint), entry, query, stopped, hasSampleLimit, _) =>
@@ -312,7 +315,7 @@ object CardSnapshot {
         val outcome = snap.outcome
           .map(o => ResultsContent(decodeOutcome(o), snap.query, language, ResultsContent.nextRunId()))
           .orElse(Some(ResultsContent(ResultOutcome.Restored(None), snap.query, language, ResultsContent.nextRunId())))
-        Some(AdhocCard(id, snap.query, language, outcome, editAssociated = false, viewer))
+        Some(AdhocCard(id, snap.query, language, outcome, editAssociated = false, viewer, snap.queryName))
       case KindTapTable =>
         val query = snap.tapQueryText.map(TapPointQuery(_, snap.tapQueryTransformation))
         // A restored tap-table stream is a frozen placeholder until the host swaps a

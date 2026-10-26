@@ -115,6 +115,9 @@ object ResultsCommand {
   * whole growing buffer once per batch). Consumers asking "did the shown content
   * change?" compare `(runId, revision)` instead of deep-comparing the outcome payload,
   * which grows with the result and would make each comparison O(rows).
+  *
+  * `queryName` is the name of the quick query that produced the content, if any; an adhoc
+  * card shows it as its title in place of the query text.
   */
 final case class ResultsContent(
   outcome: ResultOutcome,
@@ -122,6 +125,7 @@ final case class ResultsContent(
   language: QueryLanguage,
   runId: Long,
   revision: Int = 0,
+  queryName: Option[String] = None,
 )
 
 object ResultsContent {

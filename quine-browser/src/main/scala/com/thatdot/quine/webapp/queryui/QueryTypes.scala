@@ -19,13 +19,6 @@ object UiQueryType {
     */
   final case object SideEffectsText extends UiQueryType
 
-  /** Query is text; results render in the node-properties popup near DOM coordinates (x, y).
-    * `iconCode`/`iconColor` carry the source node's graph icon (empty code = no custom icon)
-    * so the popup header can mirror it. Currently only driven by the "View properties" action —
-    * non-node result shapes fall back to a raw results table.
-    */
-  final case class TextPopup(x: Double, y: Double, iconCode: String = "", iconColor: String = "") extends UiQueryType
-
   /** Query is for nodes/edges, and results should be spread across the canvas */
   case object Node extends UiQueryType
 

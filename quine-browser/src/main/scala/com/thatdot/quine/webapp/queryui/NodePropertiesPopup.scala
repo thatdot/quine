@@ -142,10 +142,12 @@ object NodePropertiesPopup {
   private def unexpectedShape: NodePopupContent =
     NodePopupContent.Fallback(div("No node properties to display."))
 
-  /** Parses a `CypherQueryResult` into structured popup content, or a fallback notice when it isn't node-shaped. */
-  def parseContent(result: Either[Seq[Json], CypherQueryResult]): NodePopupContent =
+  /** Parses a Cypher query's result into structured popup content, or a fallback notice when it
+    * isn't node-shaped.
+    */
+  def parseCypherContent(result: CypherQueryResult): NodePopupContent =
     result match {
-      case Right(CypherQueryResult(Seq("n"), resultRows)) =>
+      case CypherQueryResult(Seq("n"), resultRows) =>
         resultRows.headOption
           .flatMap { row =>
             for {
@@ -162,9 +164,7 @@ object NodePropertiesPopup {
           }
           .getOrElse(unexpectedShape)
 
-      case Right(_) => unexpectedShape
-
-      case Left(_) => unexpectedShape
+      case _ => unexpectedShape
     }
 
   /* ========================================================================
@@ -890,7 +890,7 @@ object NodePropertiesPopup {
     submitQuery: String => Future[Unit],
     onBack: (Double, Double) => Unit,
     onRefreshProperties: (Double, Double) => Unit,
-    canWrite: Boolean,
+    editDisabled: Option[String],
   ): HtmlElement = {
     var popupEl: Option[dom.html.Div] = None
     // Fires when the popup scrolls or is dragged; inline value overlays subscribe
@@ -1016,11 +1016,11 @@ object NodePropertiesPopup {
                   button(
                     tpe := "button",
                     cls := s"${Styles.nodePropertiesBtn} ${Styles.nodePropertiesBtn}--secondary",
-                    disabled := !canWrite,
-                    title := (if (canWrite) "" else "Not authorized to WRITE to graph"),
+                    disabled := editDisabled.isDefined,
+                    title := editDisabled.getOrElse(""),
                     icon("cil-pencil"),
                     span("Edit"),
-                    onClick.stopPropagation --> { _ => if (canWrite) modeVar.set(Mode.Edit) },
+                    onClick.stopPropagation --> { _ => if (editDisabled.isEmpty) modeVar.set(Mode.Edit) },
                   )
                 case Mode.Edit =>
                   button(

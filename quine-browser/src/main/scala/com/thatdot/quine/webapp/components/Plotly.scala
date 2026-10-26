@@ -23,7 +23,6 @@ object Plotly {
     * @param style optional inline styles for the container
     * @param useResizeHandler if true, attach a ResizeObserver to resize on container changes
     * @param onClick handler for plotly_click events
-    * @param onSunburstClick handler for plotly_sunburstclick events
     */
   final case class Props(
     data: js.Array[js.Object],
@@ -32,7 +31,6 @@ object Plotly {
     style: js.Object = js.Dynamic.literal(),
     useResizeHandler: Boolean = false,
     onClick: js.UndefOr[js.Function1[js.Any, Unit]] = js.undefined,
-    onSunburstClick: js.UndefOr[js.Function1[js.Any, Unit]] = js.undefined,
   )
 
   private val responsiveConfig: js.Object = js.Dynamic.literal(responsive = true)
@@ -51,14 +49,12 @@ object Plotly {
     * @param layout plotly layout configuration
     * @param config optional plotly config (responsive=true is always added)
     * @param onClick handler for plotly_click events
-    * @param onSunburstClick handler for plotly_sunburstclick events
     */
   def apply(
     data: js.Array[js.Object],
     layout: js.Object,
     config: js.UndefOr[js.Object] = js.undefined,
     onClick: Option[js.Function1[js.Any, Unit]] = None,
-    onSunburstClick: Option[js.Function1[js.Any, Unit]] = None,
   ): HtmlElement = {
     val mergedConfig = mergeConfig(config)
 
@@ -71,7 +67,6 @@ object Plotly {
         PlotlyJS.newPlot(el, data, layout, mergedConfig)
         val plotlyEl = el.asInstanceOf[PlotlyElement]
         onClick.foreach(h => plotlyEl.on("plotly_click", h))
-        onSunburstClick.foreach(h => plotlyEl.on("plotly_sunburstclick", h))
         resizeObserver = Some(attachResizeObserver(el))
       },
       onUnmountCallback { el =>
@@ -130,12 +125,8 @@ object Plotly {
     val plotlyEl = el.asInstanceOf[js.Dynamic]
     // Remove previous listeners to avoid duplicates on re-render
     plotlyEl.removeAllListeners("plotly_click")
-    plotlyEl.removeAllListeners("plotly_sunburstclick")
     props.onClick.foreach { handler =>
       plotlyEl.on("plotly_click", handler)
-    }
-    props.onSunburstClick.foreach { handler =>
-      plotlyEl.on("plotly_sunburstclick", handler)
     }
   }
 

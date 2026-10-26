@@ -31,6 +31,7 @@ sealed abstract class Card {
 /** @param editAssociated When true, the next query executed from the main query bar
   *                       updates this card instead of spawning a new one. This becomes
   *                       true after the user clicks `Edit ↑`.
+  * @param titleOverride  The displayed title of the card, if supplied.
   */
 final case class AdhocCard(
   id: CardId,
@@ -39,14 +40,15 @@ final case class AdhocCard(
   outcome: Option[ResultsContent],
   editAssociated: Boolean,
   viewer: ViewerState,
+  titleOverride: Option[String],
 ) extends Card {
-  val title: String = query.trim.replaceAll("\\s+", " ")
+  val title: String = titleOverride.getOrElse(query.trim.replaceAll("\\s+", " "))
 }
 
 object AdhocCard {
 
   /** A fresh adhoc card for a just-submitted query, before its first result arrives. */
-  def fresh(id: CardId, query: String, language: QueryLanguage): AdhocCard =
+  def fresh(id: CardId, query: String, language: QueryLanguage, titleOverride: Option[String]): AdhocCard =
     AdhocCard(
       id = id,
       query = query,
@@ -54,6 +56,7 @@ object AdhocCard {
       outcome = None,
       editAssociated = false,
       viewer = ViewerState.initial,
+      titleOverride = titleOverride,
     )
 }
 

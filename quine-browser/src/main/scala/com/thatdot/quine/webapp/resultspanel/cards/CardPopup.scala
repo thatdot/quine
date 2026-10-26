@@ -51,6 +51,7 @@ object CardPopup {
   def apply(
     expanded: Signal[Option[Card]],
     dispatch: Observer[CardCommand],
+    editVisible: Boolean = true,
   ): HtmlElement = {
     val heightVar = Var(initialHeightPx)
     // Which card's query strip is open, by id — held here (not inside the frame) because
@@ -84,7 +85,7 @@ object CardPopup {
         }
       },
       child <-- shownVar.signal.map {
-        case Some(card) => frame(card, heightVar, queryOpenForVar, dispatch)
+        case Some(card) => frame(card, heightVar, queryOpenForVar, dispatch, editVisible)
         case None => emptyNode
       },
     )
@@ -95,6 +96,7 @@ object CardPopup {
     heightVar: Var[Double],
     queryOpenForVar: Var[Option[CardId]],
     dispatch: Observer[CardCommand],
+    editVisible: Boolean,
   ): HtmlElement = {
     val vd = dispatch.contramap[ViewerCommand](cmd => CardCommand.OnViewer(card.id, cmd))
     val reads = ViewerReads.of(card.viewer)
@@ -106,7 +108,7 @@ object CardPopup {
       width := "100%",
       height := "100%",
       grabRail(heightVar),
-      header(card, reads, vd, dispatch),
+      header(card, reads, vd, dispatch, editVisible),
       queryStrip(card, queryOpenForVar),
       errorStrip(card),
       div(
@@ -217,6 +219,7 @@ object CardPopup {
     reads: ViewerReads,
     vd: Observer[ViewerCommand],
     cd: Observer[CardCommand],
+    editVisible: Boolean,
   ): HtmlElement =
     div(
       cls := CardStyles.popupHeader,
@@ -227,7 +230,7 @@ object CardPopup {
         cls := CardStyles.popupActions,
         card match {
           case _: AdhocCard =>
-            Seq[Modifier[HtmlElement]](editButton(card, cd), reRunButton(card, cd))
+            Seq[Modifier[HtmlElement]](if (editVisible) editButton(card, cd) else emptyNode, reRunButton(card, cd))
           case tt: TapTableCard =>
             Seq[Modifier[HtmlElement]](streamActions(tt, cd))
         },
@@ -280,7 +283,7 @@ object CardPopup {
     * render key, so a mode flip rebuilds this frame.
     */
   private def statusSegment(card: Card): HtmlElement = card match {
-    case AdhocCard(_, _, _, outcomeOpt, _, _) =>
+    case AdhocCard(_, _, _, outcomeOpt, _, _, _) =>
       span(
         cls := CardStyles.popupMeta,
         outcomeOpt.map(_.outcome) match {
@@ -449,7 +452,7 @@ object CardPopup {
   ): HtmlElement = {
     val emptyTabular = ResultOutcome.Tabular(CypherQueryResult(Seq.empty, Seq.empty))
     card match {
-      case AdhocCard(_, _, _, Some(content), _, _) =>
+      case AdhocCard(_, _, _, Some(content), _, _, _) =>
         div(cls := CardStyles.popupExportWrap, ViewerControls(content.outcome, reads, vd))
       case _: TapTableCard =>
         div(cls := CardStyles.popupExportWrap, ViewerControls(emptyTabular, reads, vd))
@@ -463,7 +466,7 @@ object CardPopup {
     reads: ViewerReads,
     vd: Observer[ViewerCommand],
   ): HtmlElement = card match {
-    case AdhocCard(_, _, _, outcomeOpt, _, _) => AdhocCardBody(outcomeOpt, reads, vd)
+    case AdhocCard(_, _, _, outcomeOpt, _, _, _) => AdhocCardBody(outcomeOpt, reads, vd)
     case TapTableCard(_, _, entry, _, _, hasSampleLimit, _) =>
       TapCardBodies.tapTable(reads, entry, hasSampleLimit, vd)
   }

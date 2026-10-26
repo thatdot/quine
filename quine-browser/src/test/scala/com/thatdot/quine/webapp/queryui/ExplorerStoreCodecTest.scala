@@ -68,6 +68,7 @@ class ExplorerStoreCodecTest extends AnyFunSuite with Matchers with EitherValues
     query = "MATCH (n) RETURN n",
     language = "cypher",
     outcome = None,
+    queryName = None,
     sqName = "",
     tapPoint = "",
     tapQueryText = None,
