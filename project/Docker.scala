@@ -21,6 +21,9 @@ object Docker extends AutoPlugin {
     val dockerVolume = SettingKey[File]("docker-volume", "Path to where the app should save its data")
     val includeNginx = docker / settingKey[Boolean]("Whether to install and use nginx in app container")
     val dockerJarTask = docker / taskKey[File]("The JAR file to include in the Docker image")
+    val dockerDistDir = docker / taskKey[Option[File]](
+      "Staged distribution with <name>.jar and lib/, copied to /opt/<name>/ in two layers; None for a self-contained JAR",
+    )
     val dockerStage = docker / taskKey[File]("Stage docker context without building the image")
   }
   import autoImport.*
@@ -33,12 +36,17 @@ object Docker extends AutoPlugin {
     docker / includeNginx := true,
     // Enforce Docker image format rather than OCI format (the Podman default), enabling HEALTHCHECK
     docker / dockerBuildArguments := Map("format" -> "docker"),
-    // Default docker jar task; in projects with DashOHelpers.settings, `assembly` obfuscates when DASHO_JAR_PATH is set
+    // Quine OSS ships its fat `assembly` JAR; `ThinDist.settings` sets `dockerDistDir` for the commercial products
     docker / dockerJarTask := assembly.value,
+    docker / dockerDistDir := None,
     docker / dockerfile := {
-      val jar: sbt.File = dockerJarTask.value
-
-      val jarPath = "/" + jar.name
+      val product = name.value
+      val dist: Option[sbt.File] = dockerDistDir.value
+      val assemblyJar: sbt.File = dockerJarTask.value
+      val jar: sbt.File = dist.fold(assemblyJar)(_ / s"$product.jar")
+      val lib: Option[sbt.File] = dist.map(_ / "lib")
+      val appDir = if (dist.isDefined) s"/opt/$product" else ""
+      val jarPath = s"$appDir/${jar.name}"
       val jmxPrometheusJarName = "jmx_prometheus_javaagent.jar"
       val temp = IO.createTemporaryDirectory
       val jmxPrometheusFile: sbt.File = temp / "jmx_prometheus_javaagent.jar"
@@ -66,6 +74,8 @@ object Docker extends AutoPlugin {
         expose(7626, 8080)
         env("QUINE_DATA", dockerVolume.value.getPath)
         volume("$QUINE_DATA")
+        // Dependencies first, so a first-party change invalidates only the product JAR's layer
+        lib.foreach(copy(_, s"$appDir/lib"))
         copy(jar, jarPath)
         copy(jmxPrometheusFile, jmxPrometheusJarName)
         copy(exporterYamlFile, exporterYamlPath)
