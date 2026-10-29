@@ -2,7 +2,7 @@ import scala.concurrent.duration.*
 import scala.sys.process.*
 
 import sbt.*
-import sbt.Keys.{baseDirectory, name, streams, target, version}
+import sbt.Keys.{name, streams, target, version}
 import sbt.io.IO
 import sbtassembly.AssemblyKeys.assembly
 import sbtassembly.AssemblyPlugin
@@ -19,7 +19,6 @@ object Docker extends AutoPlugin {
     // See https://github.com/marcuslonnberg/sbt-docker#pushing-an-image
     val dockerTags = SettingKey[Seq[String]]("docker-tags", "The tag names to push the docker image under")
     val dockerVolume = SettingKey[File]("docker-volume", "Path to where the app should save its data")
-    val includeNginx = docker / settingKey[Boolean]("Whether to install and use nginx in app container")
     val dockerJarTask = docker / taskKey[File]("The JAR file to include in the Docker image")
     val dockerDistDir = docker / taskKey[Option[File]](
       "Staged distribution with <name>.jar and lib/, copied to /opt/<name>/ in two layers; None for a self-contained JAR",
@@ -33,7 +32,6 @@ object Docker extends AutoPlugin {
     docker / imageNames := dockerTags.value.map(t =>
       ImageName(namespace = Some("thatdot"), repository = name.value, tag = Some(t)),
     ),
-    docker / includeNginx := true,
     // Enforce Docker image format rather than OCI format (the Podman default), enabling HEALTHCHECK
     docker / dockerBuildArguments := Map("format" -> "docker"),
     // Quine OSS ships its fat `assembly` JAR; `ThinDist.settings` sets `dockerDistDir` for the commercial products
@@ -80,42 +78,16 @@ object Docker extends AutoPlugin {
         copy(jmxPrometheusFile, jmxPrometheusJarName)
         copy(exporterYamlFile, exporterYamlPath)
       }
-      // Do not include NGINX for Quine OSS
-      if (includeNginx.value && name.value != "quine") {
-        val quinePlusRootDir = baseDirectory.value.getParentFile
-        val initScriptName = "init-quine.sh"
-        val initScript = quinePlusRootDir / s"docker/$initScriptName"
-        val initScriptDest = s"/$initScriptName"
-        val nginxConfName = "nginx.conf.template"
-        val nginxConf = quinePlusRootDir / s"docker/$nginxConfName"
-        val nginxDest = s"/etc/nginx/$nginxConfName"
-        val uid = 777
-        val permissionsFix = s""" chown -R $uid:0 /var/log/nginx \\
-                                | && chmod -R g+w /var/log/nginx \\
-                                | && chown -R $uid:0 /var/lib/nginx \\
-                                | && chmod -R g+w /var/lib/nginx \\
-                                | && chown -R $uid:0 /etc/nginx \\
-                                | && chmod -R g+w /etc/nginx""".stripMargin
-        base
-          .runRaw("apt-get update; apt-get install -y nginx")
-          .runRaw("rm /etc/nginx/sites-enabled/default")
-          .runRaw(permissionsFix)
-          .copy(initScript, initScriptDest)
-          .copy(nginxConf, nginxDest)
-          .entryPoint(initScriptDest)
-          .env("QUINE_JAR", jarPath)
-      } else {
-        base
-          .entryPoint(
-            "java",
-            "-XX:+AlwaysPreTouch",
-            "-XX:+UseParallelGC",
-            "-XX:InitialRAMPercentage=40.0",
-            "-XX:MaxRAMPercentage=80.0",
-            "-jar",
-            jarPath,
-          )
-      }
+      base
+        .entryPoint(
+          "java",
+          "-XX:+AlwaysPreTouch",
+          "-XX:+UseParallelGC",
+          "-XX:InitialRAMPercentage=40.0",
+          "-XX:MaxRAMPercentage=80.0",
+          "-jar",
+          jarPath,
+        )
     },
     dockerStage := {
       val log = streams.value.log
