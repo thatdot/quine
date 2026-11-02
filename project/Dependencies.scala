@@ -79,7 +79,7 @@ object Dependencies {
   val pprintV = "0.9.6"
   val protobufV = "4.36.2"
   val protobufCommonV = "2.14.2"
-  val pureconfigV = "0.17.10"
+  val pureconfigV = "0.17.11"
   val antlr4RuntimeV = "4.13.2"
   // Code-completion candidate collection on ANTLR parser ATNs; its ANTLR version must stay
   // in lockstep with antlr4RuntimeV (antlr4-c3-java 1.2.0 is built against ANTLR 4.13.2).
