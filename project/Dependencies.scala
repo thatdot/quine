@@ -8,7 +8,7 @@ object Dependencies {
   val apacheCommonsCsvV = "1.14.1"
   val avroV = "1.12.2"
   // On update, check whether jacksonOverrideV override is removable
-  val awsSdkV = "2.55.8"
+  val awsSdkV = "2.55.9"
   // On update, check whether nettyOverrideV or wireOverrideV are removable
   val amazonGlueV = "1.1.27"
   val betterMonadicForV = "0.3.1"
@@ -19,9 +19,9 @@ object Dependencies {
   val coreuiIconsV = "3.0.1"
   val fontsourceInterV = "5.2.8"
   val fontsourceJetBrainsMonoV = "5.2.8"
-  val caffeineV = "3.2.4"
+  val caffeineV = "3.3.1"
   // On update check whether hdrhistographOverrideV is removable
-  val cassandraClientV = "4.19.3"
+  val cassandraClientV = "4.19.4"
   val catsV = "2.13.0"
   val catsEffectV = "3.7.1"
   val circeYamlV = "0.16.1"
@@ -30,7 +30,7 @@ object Dependencies {
   val commonsIoV = "2.21.0"
   val cronUtilsV = "9.2.1"
   val dropwizardMetricsV = "4.2.40"
-  val embeddedCassandraV = "5.0.3"
+  val embeddedCassandraV = "5.0.4"
   val endpoints4sDefaultV = "1.13.0"
   val endpoints4sCirceV = "2.7.0"
   val endpoints4sHttpServerV = "2.1.0"
@@ -50,7 +50,7 @@ object Dependencies {
   val laminarV = "17.2.1"
   val waypointV = "10.0.0-M7"
   // Keep in sync with the version kafka-clients (kafkaClientsV) depends on
-  val lz4JavaV = "1.11.1"
+  val lz4JavaV = "1.11.4"
   // On update, check whether net.jpountz.lz4:lz4 exclusion in quine-mapdb-persistor is removable
   val mapDbV = "3.1.0"
   val metricsInfluxdbV = "1.1.0"
@@ -58,7 +58,7 @@ object Dependencies {
   val openApiCirceYamlV = "0.11.10"
   val openCypherV = "9.2.3"
   val parquet4sCoreV = "2.23.0"
-  val deltaKernelV = "4.0.0"
+  val deltaKernelV = "4.0.1"
   // 3.4.3 fixes the native HDFS client CVE-2025-27821 and ships patched commons-lang3 3.18.0
   // (so no commons-lang3 suppression is needed). We pull Hadoop only so parquet4s can read local
   // Parquet files; HDFS and the native client are never exercised.
@@ -157,7 +157,7 @@ object Dependencies {
   val okhttpOverrideV = "5.3.2"
 
   /** Parent: [[amazonKinesisClientV]] */
-  val opentelemetryOverrideV = "1.66.0"
+  val opentelemetryOverrideV = "1.67.0"
 
   /** Parent: [[cassandraClientV]] */
   val hdrhistographOverrideV = "2.2.2"
