@@ -123,7 +123,6 @@ lazy val `quine-serialization`: Project = project
       "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
-      // Glue->AWS Netty Client->Netty, which has some CVEs. Glue 1.1.27 has vulnerable Netty; override to safe AWS SDK.
       "software.amazon.awssdk" % "netty-nio-client" % awsSdkV,
       "org.apache.avro" % "avro" % avroV,
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,

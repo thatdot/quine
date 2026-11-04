@@ -10,7 +10,7 @@ object Dependencies {
   // On update, check whether jacksonOverrideV override is removable
   val awsSdkV = "2.55.9"
   // On update, check whether nettyOverrideV or wireOverrideV are removable
-  val amazonGlueV = "1.1.27"
+  val amazonGlueV = "2.0.1"
   val betterMonadicForV = "0.3.1"
   val boopickleV = "1.5.0"
   val bootstrapV = "5.3.6"
@@ -151,8 +151,8 @@ object Dependencies {
   /** Parent: [[awsSdkV]] */
   val jacksonOverrideV = "2.22.4"
 
-  /** Parent: [[amazonGlueV]] */
-  val wireOverrideV = "6.4.7"
+//  /** Parent: [[amazonGlueV]] */
+//  val wireOverrideV = "6.4.7"
 
   val okhttpOverrideV = "5.3.2"
 
@@ -171,10 +171,10 @@ object Dependencies {
     // Overriding only wire-compiler and wire-schema should be sufficient to transitively override
     // the rest of the wire dependencies, but wire-runtime and wire-runtime-jvm are the specific
     // projects with CVEs, so we'll list them too just to be explicit.
-    "com.squareup.wire" % "wire-compiler" % wireOverrideV,
-    "com.squareup.wire" % "wire-schema" % wireOverrideV,
-    "com.squareup.wire" % "wire-runtime" % wireOverrideV,
-    "com.squareup.wire" % "wire-runtime-jvm" % wireOverrideV,
+//    "com.squareup.wire" % "wire-compiler" % wireOverrideV,
+//    "com.squareup.wire" % "wire-schema" % wireOverrideV,
+//    "com.squareup.wire" % "wire-runtime" % wireOverrideV,
+//    "com.squareup.wire" % "wire-runtime-jvm" % wireOverrideV,
     "com.squareup.okhttp3" % "okhttp" % okhttpOverrideV,
     "io.opentelemetry" % "opentelemetry-api" % opentelemetryOverrideV,
     "org.hdrhistogram" % "HdrHistogram" % hdrhistographOverrideV,
