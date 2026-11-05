@@ -501,13 +501,15 @@ abstract private[graph] class AbstractNodeActor(
     * @param event the event to apply
     */
   protected[this] def applyPropertyEffect(event: PropertyEvent): Unit = event match {
+    case PropertySet(key, value) if properties.get(key).contains(value) =>
+      logger.error(log"Node $qid skipped setting property $key to $value because this new value equals the old value.")
     case PropertySet(key, value) =>
       if (value.deserializedReady && value == PropertyValue(QuineValue.Null)) {
         // Should be impossible. If it's not, we'd like to know and fix it.
-        logger.warn(safe"Setting a null property on key: ${Safe(key.name)}. This should have been a property removal.")
+        logger.warn(log"Setting property $key to null on node $qid. This should have been a property removal.")
       }
       val oldValue = properties.get(key)
-      metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
+      if (oldValue.isEmpty) metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
       properties = properties + (key -> value)
       // State notification for property change
       handleGraphEvent(cypher.quinepattern.GraphEvent.PropertyChanged(key, oldValue, Some(value)))
@@ -517,6 +519,8 @@ abstract private[graph] class AbstractNodeActor(
         val newLabels = extractLabelsFromProperty(Some(value))
         handleGraphEvent(cypher.quinepattern.GraphEvent.LabelsChanged(oldLabels, newLabels))
       }
+    case PropertyRemoved(key, _) if !properties.contains(key) =>
+      logger.error(log"Node $qid skipped removing property $key, which it does not have.")
     case PropertyRemoved(key, _) =>
       val oldPropValue = properties.get(key)
       metrics.nodePropertyCounter(namespace).decrement(previousCount = properties.size)

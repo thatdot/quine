@@ -124,6 +124,8 @@ abstract class SynchronousEdgeProcessor(
 
     val oldSize = edgeCollection.size
     event match {
+      case _ if !edgeEventHasEffect(event) =>
+        logger.error(log"Node $qid skipped applying an edge event that would change nothing: $event")
       case EdgeEvent.EdgeAdded(edge) =>
         edgeCollection.addEdge(edge)
         if (oldSize > 7 && isPowerOfTwo(oldSize)) costToSleep.incrementAndGet()
