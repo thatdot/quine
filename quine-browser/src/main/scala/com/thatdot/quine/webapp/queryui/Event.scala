@@ -126,31 +126,81 @@ trait QueryUiVisEdgeExt extends com.thatdot.visnetwork.Edge {
   val isSyntheticEdge: Boolean
 }
 
+/** Encodes the displayed graph as a JSON-LD 1.1 document.
+  *
+  * Each node becomes a node object in `@graph`:
+  *  - its ID becomes the IRI `urn:quine:node:<percent-encoded id>`
+  *  - its display label becomes its `rdfs:label`, a human-readable name rather than a class,
+  *    since the display label is free-form text (joined node labels, an `ID: …` placeholder,
+  *    or a product-specific caption) that can't be reliably split back into node labels
+  *  - each property and each outgoing edge becomes a key, expanded against [[Vocab]]
+  *
+  * Property keys and edge types are percent-encoded, so names containing `:`, `@`,
+  * spaces, etc. still expand to a single vocabulary IRI rather than being read as keywords
+  * or absolute IRIs. A property and an edge type with the same name share one predicate.
+  *
+  * Undirected edges are emitted in both directions, since RDF has no undirected edges.
+  * Property values that are scalars become plain literals, arrays of scalars become ordered
+  * `@list`s, and anything else (objects, nested arrays, `null`) becomes a `@json` literal, so
+  * nothing is dropped or reinterpreted as graph structure on expansion.
+  */
 object GraphJsonLdSchema {
-  import io.circe.syntax._
+  import scala.scalajs.js.URIUtils.encodeURIComponent
+
+  val Vocab = "https://quine.io/ns#"
+  val NodeIriPrefix = "urn:quine:node:"
+  val RdfsNamespace = "http://www.w3.org/2000/01/rdf-schema#"
+
+  def nodeIri(id: String): String = NodeIriPrefix + encodeURIComponent(id)
+
+  private def term(name: String): String = encodeURIComponent(name)
+
+  private def isPlainScalar(json: Json): Boolean = json.isString || json.isNumber || json.isBoolean
+
+  private def encodeValue(json: Json): Json =
+    if (isPlainScalar(json)) json
+    else
+      json.asArray match {
+        case Some(elems) if elems.forall(isPlainScalar) => Json.obj("@list" -> Json.fromValues(elems))
+        case _ => Json.obj("@value" -> json, "@type" -> Json.fromString("@json"))
+      }
 
   def encodeAsJsonLd(nodes: Seq[UiNode[String]], edges: Seq[UiEdge[String]]): String = {
-    val nodesJson = nodes.map { node =>
-      Json.obj(
-        "id" -> node.id.asJson,
-        "label" -> node.label.asJson,
-        "properties" -> node.properties.asJson,
-      )
+    val outgoing: Map[String, Seq[(String, String)]] = edges
+      .flatMap { edge =>
+        val forward = edge.from -> (edge.edgeType -> edge.to)
+        if (edge.isDirected) Seq(forward) else Seq(forward, edge.to -> (edge.edgeType -> edge.from))
+      }
+      .distinct
+      .groupMap(_._1)(_._2)
+
+    def nodeObject(id: String, node: Option[UiNode[String]]): Json = {
+      val propertyEntries = node.toSeq.flatMap(_.properties.toSeq.map { case (k, v) => term(k) -> encodeValue(v) })
+      val edgeEntries = outgoing.getOrElse(id, Seq.empty).map { case (edgeType, to) =>
+        term(edgeType) -> Json.obj("@id" -> Json.fromString(nodeIri(to)))
+      }
+      val predicates = (propertyEntries ++ edgeEntries).groupMap(_._1)(_._2).toSeq.sortBy(_._1).map {
+        case (key, Seq(single)) => key -> single
+        case (key, values) => key -> Json.fromValues(values)
+      }
+      // Percent-encoded user keys can never contain the `:` of this compact IRI, so it can't collide
+      val labelEntry = node.map(_.label).filter(_.nonEmpty).map(label => "rdfs:label" -> Json.fromString(label))
+      Json.fromFields(Seq("@id" -> Json.fromString(nodeIri(id))) ++ labelEntry ++ predicates)
     }
 
-    val edgesJson = edges.map { edge =>
-      Json.obj(
-        "from" -> edge.from.asJson,
-        "to" -> edge.to.asJson,
-        "edgeType" -> edge.edgeType.asJson,
-        "isDirected" -> edge.isDirected.asJson,
-      )
-    }
+    val nodesById = nodes.map(n => n.id -> n).toMap
+    // Edge sources missing from the node set still need a subject to hang their edges on
+    val edgeOnlySources = outgoing.keys.filterNot(nodesById.contains).toSeq.sorted
+    val graph = nodes.map(n => nodeObject(n.id, Some(n))) ++ edgeOnlySources.map(nodeObject(_, None))
 
     Json
       .obj(
-        "nodes" -> nodesJson.asJson,
-        "edges" -> edgesJson.asJson,
+        "@context" -> Json.obj(
+          "@version" -> Json.fromDoubleOrNull(1.1),
+          "@vocab" -> Json.fromString(Vocab),
+          "rdfs" -> Json.fromString(RdfsNamespace),
+        ),
+        "@graph" -> Json.fromValues(graph),
       )
       .spaces2
   }
