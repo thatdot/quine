@@ -113,12 +113,6 @@ final case class HostQuineMetrics(
   private def historyMetricName(procedureName: String): String =
     procedureName.stripPrefix("history.").replace('.', '-')
 
-  /** @param context the context for which this timer is being used -- for
-    *                example, "ingest-XYZ-deduplication" or "http-webpage-serve"
-    */
-  def cacheTimer(context: String): Timer =
-    metricRegistry.timer(MetricRegistry.name("cache", context, "insert"))
-
   def shardNodeEvictionsMeter(namespaceId: NamespaceId, shardName: String): Meter =
     (if (enableDebugMetrics) metricRegistry else noOpRegistry).meter(
       metricName(namespaceId, List("shard", shardName, "nodes-evicted")),

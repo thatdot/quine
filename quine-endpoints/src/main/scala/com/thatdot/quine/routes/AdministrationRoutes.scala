@@ -297,7 +297,7 @@ trait AdministrationRoutes
                 |
                 | Gauges
                 | - `memory.heap.*`: JVM heap usage
-                | - `memory.total`: JVM combined memory usage
+                | - `memory.total.*`: JVM combined memory usage
                 | - `shared.valve.ingest`: Number of current requests to slow ingest for another part of Quine to catch up
                 | - `dgn-reg.count`: Number of in-memory registered DomainGraphNodes
                 |""".stripMargin,

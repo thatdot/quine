@@ -43,7 +43,7 @@ object NoveltyAuth {
   @title("Certificate")
   @description(
     "OAuth2 private_key_jwt: sign a JWT client assertion with a private key from a keystore and exchange " +
-    "it for an access token (the same mechanism as Kafka OAuth / Delta Sharing certificate auth).",
+    "it for an access token (the same mechanism as Kafka OAuth certificate auth).",
   )
   final case class Certificate(
     @description("OAuth client ID registered with the IdP.")
