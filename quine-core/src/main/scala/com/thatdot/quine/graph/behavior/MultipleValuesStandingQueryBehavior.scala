@@ -10,6 +10,7 @@ import org.apache.pekko.actor.Actor
 
 import com.thatdot.common.logging.Log.{ActorSafeLogging, LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.graph.StandingQueryOpsGraph.StandingQueryPartNotFoundException
 import com.thatdot.quine.graph.StandingQueryWatchableEventIndex.{EventSubscriber, StandingQueryWithId}
 import com.thatdot.quine.graph.cypher.{
   MultipleValuesInitializationEffects,
@@ -167,7 +168,8 @@ trait MultipleValuesStandingQueryBehavior
     @throws[NoSuchElementException]("When a MultipleValuesStandingQueryPartId is not known to this graph")
     def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
       graph.standingQueries(namespace).get.getStandingQueryPart(queryPartId)
-    // TODO: Would be better to replace `.get` here ^^ but it actually works since both throw the same exception.
+    // TODO: Replace `.get` here ^^. An absent namespace throws `NoSuchElementException`, and an absent part throws
+    //       `StandingQueryPartNotFoundException`, which is not a `NoSuchElementException`.
 
     def createSubscription(onNode: QuineId, query: MultipleValuesStandingQuery): Unit = {
       val subscriber =
@@ -347,6 +349,137 @@ trait MultipleValuesStandingQueryBehavior
     persisted.getOrElse(Future.unit)
   }
 
+  /** Create, and start tracking, a state for a query part this node is hearing about for the first time.
+    *
+    * The state resolves its query from this member's index of standing queries, which may no longer hold it, such as
+    * when the query was cancelled after this message was sent. The query is resolved before the state is recorded,
+    * because a recorded state without its query breaks everything that later reads it, a restarted actor included.
+    *
+    * @return the new subscription and its state, or [[None]] if this member does not have the standing query
+    */
+  private def trackNewState(
+    subscriber: MultipleValuesStandingQuerySubscriber,
+    query: MultipleValuesStandingQuery,
+    combinedId: (StandingQueryId, MultipleValuesStandingQueryPartId),
+  ): Option[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)] = {
+    // This node is becoming aware of this SQ state for the first time, so create a state to track the query and an
+    // empty subscription to that state, and have that kick off any side effects so that it will eventually produce
+    // results (eg, if registering a SubscribeAcrossEdge, and there are edges matching its pattern, it should issue
+    // subscriptions across the pattern-matching edges)
+    val sqState = query.createState()
+    // NB this subscription must have an empty set of subscribers to start with. This serves two purposes:
+    // - First, it avoids duplicate events being sent by onNodeEvents and the readResults-then-send later
+    // - Second, it ensures that the "perform side effects necessary when adding a subscriber" if-block in
+    //   `subscribeTo` gets executed
+    val subscription =
+      MultipleValuesStandingQueryPartSubscription(query.queryPartId, subscriber.globalId, mutable.Set.empty)
+    Try(sqState.rehydrate(subscription)) match {
+      case Failure(_: StandingQueryPartNotFoundException) =>
+        // A hub still holding a cancelled query sends one of these per new matching edge until its
+        // next wake, so logging above debug would flood the log after a single cancel.
+        log.debug(
+          log"""Not registering standing query part: ${Safe(query.queryPartId)} of standing query:
+               |${Safe(subscriber.globalId)} on node: $qid, because that standing query is not registered on this
+               |member. It was cancelled, or this member has not yet added it.""".cleanLines,
+        )
+        None
+      case Failure(other) => throw other
+      case Success(_) =>
+        relocateStandingQueryBookkeeping(subscriber.globalId, query.queryPartId, sqState)
+        multipleValuesStandingQueries += combinedId -> (subscription -> sqState)
+        sqState.onInitialize(subscription)
+        val canInform: Set[WatchableEventType] = sqState.initialEventTypes(graph.labelsProperty).toSet
+        sqState.relevantEventTypes(graph.labelsProperty).foreach { (eventType: WatchableEventType) =>
+          // Describe the node's current state only for the categories the state says it can learn something from,
+          // and do not ask for a description otherwise: producing one is what reads the node's edges, which on
+          // the nodes this matters for is the whole cost. Then deliver it a page at a time: a node with a million
+          // matching edges would otherwise hold a million events at once to describe itself.
+          if (canInform.contains(eventType))
+            watchableEventIndex
+              .registerStandingQuery(EventSubscriber(combinedId), eventType, properties, edges)
+              .grouped(MultipleValuesStandingQueryBehavior.initialEventPageSize)
+              .foreach(page => sqState.onNodeEvents(page, subscription))
+          else watchableEventIndex.registerStandingQuery(EventSubscriber(combinedId), eventType)
+        }
+        Some(subscription -> sqState)
+    }
+  }
+
+  /** Add a subscriber to a state this node tracks, give it the state's current results, and save the state. */
+  private def subscribeTo(
+    subscriber: MultipleValuesStandingQuerySubscriber,
+    query: MultipleValuesStandingQuery,
+    subscription: MultipleValuesStandingQueryPartSubscription,
+    sqState: MultipleValuesStandingQueryState,
+  ): Unit = {
+    // TODO: don't ignore the persistenceEffects Future!
+    def addToNodeSubscriberSet(): Future[Unit] =
+      // Updates the subscribers set in-place (within `multipleValuesStandingQueries`), returning true iff
+      // the subscriber is new
+      if (subscription.subscribers.add(subscriber)) {
+        // If the new subscriber is the end-user, shim in a MultipleValuesResultsReporter to deduplicate and manage
+        // result groups for this query state
+        subscriber match {
+          case NodeSubscriber(_, _, queryId) => require(subscription.forQuery != queryId)
+          case GlobalSubscriber(_) =>
+            graph
+              .standingQueries(namespace)
+              .flatMap(_.runningStandingQuery(subscriber.globalId))
+              .foreach { sq =>
+                if (!multipleValuesResultReporters.contains(subscriber.globalId)) {
+                  multipleValuesResultReporters +=
+                    subscriber.globalId -> new MultipleValuesResultsReporter(sq, Seq.empty)
+                }
+              }
+        }
+
+        // Regardless of whether we were already tracking the state, give the new subscriber the
+        // currently-calculable results. Only the new subscriber: the others already have this group, and for a
+        // state whose answer depends on the subscriber, this group is not theirs to receive.
+        val maybeResultGroup: Option[Seq[QueryContext]] = sqState.readResultsFor(subscriber, subscription)
+        maybeResultGroup.foreach(subscription.reportUpdatedResultsTo(subscriber, _))
+
+        // finally, save the updated state (including the new subscription)
+        persistMultipleValuesStandingQueryState(
+          subscriber.globalId,
+          query.queryPartId,
+          Some(subscription -> sqState),
+        )
+      } else Future.unit
+
+    @unused val persistenceEffects: Future[Unit] = sqState match {
+      case reciprocal: cypher.EdgeSubscriptionReciprocalState if reciprocal.subscriberStore.isDefined =>
+        subscriber match {
+          case nodeSubscriber @ NodeSubscriber(subscribingNode, _, forPart)
+              if reciprocal.externalSubscriberForQuery.forall(_ == forPart) =>
+            require(subscription.forQuery != forPart)
+            val isFirstRecorded = reciprocal.externalSubscriberForQuery.isEmpty
+            reciprocal.externalSubscriberForQuery = Some(forPart)
+            // A blind write, with no was-it-new gate: recording a subscriber twice records the same row, and
+            // answering one twice hands it the level it already has.
+            reciprocal.subscriberStore.get.add(subscribingNode)
+            val maybeResultGroup: Option[Seq[QueryContext]] = sqState.readResultsFor(nodeSubscriber, subscription)
+            maybeResultGroup.foreach(subscription.reportUpdatedResultsTo(nodeSubscriber, _))
+            // The blob records which part the recorded subscribers are answered as, set once by the first of
+            // them. Every subscriber after that changes nothing the blob carries, which is the point of the
+            // store.
+            if (isFirstRecorded)
+              persistMultipleValuesStandingQueryState(
+                subscriber.globalId,
+                query.queryPartId,
+                Some(subscription -> sqState),
+              )
+            else Future.unit
+          case _ =>
+            // A subscriber the store cannot record is held in the node's subscriber set beside the store:
+            // correct, merely unshared. That means a global subscriber, or one citing a different query part than
+            // the recorded ones, which is possible only for a hand-built query.
+            addToNodeSubscriberSet()
+        }
+      case _ => addToNodeSubscriberSet()
+    }
+  }
+
   /** Process a query command to create/remove a standing query or to report/invalidate a result
     *
     * @param command standing query command to process
@@ -358,7 +491,7 @@ trait MultipleValuesStandingQueryBehavior
         : Option[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)] =
         multipleValuesStandingQueries.get(combinedId)
 
-      val (subscription, sqState) = alreadyTrackingState
+      alreadyTrackingState
         .map { case tup @ (_, oldState) =>
           // Found a state already being tracked for this query. If the query is different, log a warning about the
           // collision. A state that resolves no query (an edge subscription reciprocal, which every node across a
@@ -374,104 +507,8 @@ trait MultipleValuesStandingQueryBehavior
             )
           tup
         }
-        .getOrElse {
-          // This node is becoming aware of this SQ state for the first time, so create a state to track the query and an
-          // empty subscription to that state, and have that kick off any side effects so that it will eventually produce
-          // results (eg, if registering a SubscribeAcrossEdge, and there are edges matching its pattern, it should issue
-          // subscriptions across the pattern-matching edges)
-          val sqState = query.createState()
-          relocateStandingQueryBookkeeping(subscriber.globalId, query.queryPartId, sqState)
-          // NB this subscription must have an empty set of subscribers to start with. This serves two purposes:
-          // - First, it avoids duplicate events being sent by onNodeEvents and the readResults-then-send later
-          // - Second, it ensures that the "perform side effects necessary when adding a subscriber" if-block
-          //   below gets executed
-          val subscription =
-            MultipleValuesStandingQueryPartSubscription(query.queryPartId, subscriber.globalId, mutable.Set.empty)
-          multipleValuesStandingQueries += combinedId -> (subscription -> sqState)
-          sqState.rehydrate(subscription)
-          sqState.onInitialize(subscription)
-          val canInform: Set[WatchableEventType] = sqState.initialEventTypes(graph.labelsProperty).toSet
-          sqState.relevantEventTypes(graph.labelsProperty).foreach { (eventType: WatchableEventType) =>
-            // Describe the node's current state only for the categories the state says it can learn something from,
-            // and do not ask for a description otherwise: producing one is what reads the node's edges, which on
-            // the nodes this matters for is the whole cost. Then deliver it a page at a time: a node with a million
-            // matching edges would otherwise hold a million events at once to describe itself.
-            if (canInform.contains(eventType))
-              watchableEventIndex
-                .registerStandingQuery(EventSubscriber(combinedId), eventType, properties, edges)
-                .grouped(MultipleValuesStandingQueryBehavior.initialEventPageSize)
-                .foreach(page => sqState.onNodeEvents(page, subscription))
-            else watchableEventIndex.registerStandingQuery(EventSubscriber(combinedId), eventType)
-          }
-          subscription -> sqState
-        }
-
-      // TODO: don't ignore the persistenceEffects Future!
-      def addToNodeSubscriberSet(): Future[Unit] =
-        // Updates the subscribers set in-place (within `multipleValuesStandingQueries`), returning true iff
-        // the subscriber is new
-        if (subscription.subscribers.add(subscriber)) {
-          // If the new subscriber is the end-user, shim in a MultipleValuesResultsReporter to deduplicate and manage
-          // result groups for this query state
-          subscriber match {
-            case NodeSubscriber(_, _, queryId) => require(subscription.forQuery != queryId)
-            case GlobalSubscriber(_) =>
-              graph
-                .standingQueries(namespace)
-                .flatMap(_.runningStandingQuery(subscriber.globalId))
-                .foreach { sq =>
-                  if (!multipleValuesResultReporters.contains(subscriber.globalId)) {
-                    multipleValuesResultReporters +=
-                      subscriber.globalId -> new MultipleValuesResultsReporter(sq, Seq.empty)
-                  }
-                }
-          }
-
-          // Regardless of whether we were already tracking the state, give the new subscriber the
-          // currently-calculable results. Only the new subscriber: the others already have this group, and for a
-          // state whose answer depends on the subscriber, this group is not theirs to receive.
-          val maybeResultGroup: Option[Seq[QueryContext]] = sqState.readResultsFor(subscriber, subscription)
-          maybeResultGroup.foreach(subscription.reportUpdatedResultsTo(subscriber, _))
-
-          // finally, save the updated state (including the new subscription)
-          persistMultipleValuesStandingQueryState(
-            subscriber.globalId,
-            query.queryPartId,
-            Some(subscription -> sqState),
-          )
-        } else Future.unit
-
-      @unused val persistenceEffects: Future[Unit] = sqState match {
-        case reciprocal: cypher.EdgeSubscriptionReciprocalState if reciprocal.subscriberStore.isDefined =>
-          subscriber match {
-            case nodeSubscriber @ NodeSubscriber(subscribingNode, _, forPart)
-                if reciprocal.externalSubscriberForQuery.forall(_ == forPart) =>
-              require(subscription.forQuery != forPart)
-              val isFirstRecorded = reciprocal.externalSubscriberForQuery.isEmpty
-              reciprocal.externalSubscriberForQuery = Some(forPart)
-              // A blind write, with no was-it-new gate: recording a subscriber twice records the same row, and
-              // answering one twice hands it the level it already has.
-              reciprocal.subscriberStore.get.add(subscribingNode)
-              val maybeResultGroup: Option[Seq[QueryContext]] = sqState.readResultsFor(nodeSubscriber, subscription)
-              maybeResultGroup.foreach(subscription.reportUpdatedResultsTo(nodeSubscriber, _))
-              // The blob records which part the recorded subscribers are answered as, set once by the first of
-              // them. Every subscriber after that changes nothing the blob carries, which is the point of the
-              // store.
-              if (isFirstRecorded)
-                persistMultipleValuesStandingQueryState(
-                  subscriber.globalId,
-                  query.queryPartId,
-                  Some(subscription -> sqState),
-                )
-              else Future.unit
-            case _ =>
-              // A subscriber the store cannot record is held in the node's subscriber set beside the store:
-              // correct, merely unshared. That means a global subscriber, or one citing a different query part than
-              // the recorded ones, which is possible only for a hand-built query.
-              addToNodeSubscriberSet()
-          }
-        case _ => addToNodeSubscriberSet()
-      }
+        .orElse(trackNewState(subscriber, query, combinedId))
+        .foreach { case (subscription, sqState) => subscribeTo(subscriber, query, subscription, sqState) }
 
     /** This protocol is only _initiated_ when an edge is removed, causing the tree of subqueries to become selectively
       * irrelevant and worth cleaning up. Messages will either be sent from a node to itself (to expire state locally),
