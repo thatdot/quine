@@ -17,8 +17,15 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
   test("empty input settings map accepted") {
     assert(KafkaSettingsValidator.validateInput(Map()).isEmpty)
   }
-  test("final empty input settings map accepted") {
-    assert(KafkaSettingsValidator.validateInput(Map(), assumeConfigIsFinal = true).isEmpty)
+  test("final input settings map with only bootstrap servers accepted") {
+    assert(
+      KafkaSettingsValidator
+        .validateInput(Map("bootstrap.servers" -> "localhost:9092"), assumeConfigIsFinal = true)
+        .isEmpty,
+    )
+  }
+  test("final empty input settings map rejected for missing bootstrap servers") {
+    assert(KafkaSettingsValidator.validateInput(Map(), assumeConfigIsFinal = true).isDefined)
   }
 
   test("Unrecognized input setting disallowed") {
