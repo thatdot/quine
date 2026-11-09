@@ -234,16 +234,16 @@ final class BackpressureStore {
       def levelAgg(f: V2IngestStages => Option[String]): Aggregated[PressureLevel] =
         worstLevelAcross(perHost.flatMap { case (host, series) =>
           series.last._2
-            .filter(_.status == "RUNNING")
+            .filter(_.status == IngestStatus.Running)
             .flatMap(e => f(e.stages))
             .map(PressureLevel.fromWire)
             .maxOption
             .map(host -> _)
         })
 
-      // Config fields are uniform across a name; take the lowest member's (perHost follows the sorted
-      // scope).
-      val repr = perHost.head._2.last._2.head
+      // Config fields are uniform across a name; take the first entry that carries them. A host
+      // reporting a partition it is not running sends an empty source type.
+      val repr = latestEntries.find(_.sourceType.nonEmpty).getOrElse(latestEntries.head)
       // The rate is summed across members, so the limit must be too, or the card compares a
       // cluster-wide throughput against a single member's cap ("2/s of 1/s"). Each entry throttles
       // itself independently, so the effective cap is the sum of theirs. If any is unthrottled the
@@ -260,6 +260,7 @@ final class BackpressureStore {
         rate = rate,
         totalCount = totalCount,
         members = perHost.flatMap(_._1.memberIdx).sorted,
+        partitions = latestEntries.flatMap(e => e.partition.map(PartitionEntry(_, e.status))).sortBy(_.index),
         source = levelAgg(st => Some(st.source)),
         preGraphWrite = levelAgg(st => Some(st.preGraphWrite)),
         postGraphWrite =
@@ -469,21 +470,24 @@ object BackpressureStore {
     Aggregated(if (per.isEmpty) PressureLevel.Flowing else per.map(_._2).max, per)
 
   /** What one card says when the entries collapsed into it disagree, most alarming first. A failed
-    * slice must not hide behind three running ones, and a still-running slice must not hide behind
-    * three that finished, so RUNNING outranks COMPLETED while everything abnormal outranks both. An
-    * unrecognized status sorts behind every known one, so a status added server-side cannot
-    * displace FAILED here.
+    * partition must not hide behind three running ones, and a still-running one must not hide behind
+    * three that finished, so RUNNING outranks COMPLETED while everything abnormal outranks both. A
+    * stuck partition (STALLED, UNAVAILABLE, BLOCKED) outranks a paused one, since it is the condition
+    * the card exists to show. An unrecognized status sorts behind every known one, so a status added
+    * server-side cannot displace FAILED here.
     */
-  private val StatusPrecedence: Vector[String] =
-    Vector("FAILED", "TERMINATED", "RESTORED", "PAUSED", "RUNNING", "COMPLETED")
+  private val StatusPrecedence: Vector[IngestStatus] = {
+    import IngestStatus._
+    Vector(Failed, Terminated, Stalled, Unavailable, Blocked, Restored, Paused, Running, Completed, Unknown)
+  }
 
-  private def worstStatus(statuses: Seq[String]): String =
+  private def worstStatus(statuses: Seq[IngestStatus]): IngestStatus =
     statuses
       .minByOption { s =>
         val i = StatusPrecedence.indexOf(s)
         if (i < 0) Int.MaxValue else i
       }
-      .getOrElse("RUNNING")
+      .getOrElse(IngestStatus.Running)
 
   /** The rate from the two most recent cumulative readings of one series on one host:
     * `(last - prev) / elapsed`. This is the most responsive rate the data supports — one poll

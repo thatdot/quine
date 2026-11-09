@@ -1,6 +1,7 @@
 package com.thatdot.quine.webapp.dataservice
 
 import com.thatdot.quine.webapp.dataservice.BackpressureService.Scope
+import com.thatdot.quine.webapp.v2api.V2ApiTypes.IngestStatus
 
 /** Backpressure severity. Ordered, so combining across cluster members is `max` — the worst member
   * wins. Summing or averaging would let one saturated member of N sink below the diagram's
@@ -78,7 +79,7 @@ final case class IngestView(
   name: String,
   namespace: String,
   sourceType: String,
-  status: String,
+  status: IngestStatus,
   rateLimit: Option[Int],
   /** Summed across the members that run this ingest — each member's rate differenced from its own
     * counters first (see [[BackpressureStore]]).
@@ -87,12 +88,18 @@ final case class IngestView(
   totalCount: Long,
   /** Members running this ingest, ascending. Empty on OSS, which has no members. */
   members: Seq[Int],
+  /** For a cluster ingest, each partition's latest status by index, ascending. A partition being
+    * handed between hosts appears once per host still reporting it. Empty for an ordinary ingest.
+    */
+  partitions: Seq[PartitionEntry],
   source: Aggregated[PressureLevel],
   preGraphWrite: Aggregated[PressureLevel],
   postGraphWrite: Option[Aggregated[PressureLevel]],
 ) {
-  def isRunning: Boolean = status == "RUNNING"
+  def isRunning: Boolean = status == IngestStatus.Running
 }
+
+final case class PartitionEntry(index: Int, status: IngestStatus)
 
 final case class QueueView(
   bufferCount: Int,

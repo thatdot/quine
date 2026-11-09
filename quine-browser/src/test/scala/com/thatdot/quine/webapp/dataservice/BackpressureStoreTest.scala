@@ -48,11 +48,12 @@ class BackpressureStoreTest extends AnyFunSuite with Matchers with OptionValues 
   private def ingest(
     name: String,
     totalCount: Long,
-    status: String = "RUNNING",
+    status: IngestStatus = IngestStatus.Running,
     source: String = "FLOWING",
     namespace: String = "default",
     rateLimit: Option[Int] = None,
     serverRate: Double = 0.0,
+    partition: Option[Int] = None,
   ) =
     V2IngestSnapshot(
       name = name,
@@ -63,6 +64,7 @@ class BackpressureStoreTest extends AnyFunSuite with Matchers with OptionValues 
       rate = serverRate,
       totalCount = totalCount,
       stages = V2IngestStages(source = source, preGraphWrite = "FLOWING", postGraphWrite = None),
+      partition = partition,
     )
 
   private def snap(
@@ -112,6 +114,44 @@ class BackpressureStoreTest extends AnyFunSuite with Matchers with OptionValues 
     d.state.combined shouldBe PressureLevel.Backpressured
     // ...and we can say WHICH member, which is the entire point.
     d.state.membersWhere(_ != PressureLevel.Flowing) shouldBe Seq(1)
+  }
+
+  test("a cluster ingest's one stuck partition colours the card and is named by index") {
+    val store = new BackpressureStore
+    // One cluster ingest, four partitions across two members. Partition 2 is alive and finishing
+    // nothing; the other three are flowing.
+    def poll(ts: Double, n: Long): Seq[V2BackpressureSnapshot] = Seq(
+      snap(h0, ts, ingests = Seq(ingest("orders", n, partition = Some(0)), ingest("orders", n, partition = Some(1)))),
+      snap(
+        h1,
+        ts,
+        ingests = Seq(
+          ingest("orders", 7, status = IngestStatus.Stalled, partition = Some(2)),
+          ingest("orders", n, partition = Some(3)),
+        ),
+      ),
+    )
+    store.record(poll(T0, 0))
+    store.record(poll(T0 + 10000, 100))
+
+    val card = store.view(Scope.Cluster).value.ingests.loneElement
+    // Three running partitions must not hide the stuck one.
+    card.status shouldBe IngestStatus.Stalled
+    card.partitions shouldBe Seq(
+      PartitionEntry(0, IngestStatus.Running),
+      PartitionEntry(1, IngestStatus.Running),
+      PartitionEntry(2, IngestStatus.Stalled),
+      PartitionEntry(3, IngestStatus.Running),
+    )
+    card.members shouldBe Seq(0, 1)
+    // The flowing partitions' throughput is still the card's: 300 records over 10s.
+    card.rate shouldBe 30.0
+  }
+
+  test("an ordinary ingest has no partitions") {
+    val store = new BackpressureStore
+    store.record(Seq(snap(h0, T0, ingests = Seq(ingest("a", 0)))))
+    store.view(Scope.Cluster).value.ingests.loneElement.partitions shouldBe Seq.empty
   }
 
   test("rates are differenced per host and only then summed across the cluster") {
@@ -284,23 +324,23 @@ class BackpressureStoreTest extends AnyFunSuite with Matchers with OptionValues 
       snap(
         h0,
         ts,
-        ingests = Seq(ingest("sliced", 10), ingest("sliced", 10, status = "FAILED"), ingest("sliced", 10)),
+        ingests = Seq(ingest("sliced", 10), ingest("sliced", 10, status = IngestStatus.Failed), ingest("sliced", 10)),
       ),
     )
     store.record(poll(T0))
     store.record(poll(T0 + 5000))
 
-    store.view(Scope.Cluster).value.ingests.loneElement.status shouldBe "FAILED"
+    store.view(Scope.Cluster).value.ingests.loneElement.status shouldBe IngestStatus.Failed
   }
 
   test("a slice that has finished does not stop the card reading as running") {
     val store = new BackpressureStore
     def poll(ts: Double) =
-      Seq(snap(h0, ts, ingests = Seq(ingest("sliced", 10, status = "COMPLETED"), ingest("sliced", 10))))
+      Seq(snap(h0, ts, ingests = Seq(ingest("sliced", 10, status = IngestStatus.Completed), ingest("sliced", 10))))
     store.record(poll(T0))
     store.record(poll(T0 + 5000))
 
-    store.view(Scope.Cluster).value.ingests.loneElement.status shouldBe "RUNNING"
+    store.view(Scope.Cluster).value.ingests.loneElement.status shouldBe IngestStatus.Running
   }
 
   test("a slice arriving on a host does not manufacture a throughput spike") {
@@ -445,13 +485,15 @@ class BackpressureStoreTest extends AnyFunSuite with Matchers with OptionValues 
     val store = new BackpressureStore
     // A stopped stream's source gauge is never pulled, so it sits at its initial "backpressured"
     // value. Reporting that as a bottleneck would be a lie: the ingest is not stuck, it is stopped.
-    store.record(Seq(snap(h0, T0, ingests = Seq(ingest("a", 5, status = "PAUSED", source = "BACKPRESSURED")))))
     store.record(
-      Seq(snap(h0, T0 + 5000, ingests = Seq(ingest("a", 5, status = "PAUSED", source = "BACKPRESSURED")))),
+      Seq(snap(h0, T0, ingests = Seq(ingest("a", 5, status = IngestStatus.Paused, source = "BACKPRESSURED")))),
+    )
+    store.record(
+      Seq(snap(h0, T0 + 5000, ingests = Seq(ingest("a", 5, status = IngestStatus.Paused, source = "BACKPRESSURED")))),
     )
 
     val p = store.view(Scope.Cluster).value.ingests.loneElement
-    p.status shouldBe "PAUSED"
+    p.status shouldBe IngestStatus.Paused
     // No RUNNING member contributes a level, so the reduction is empty and reads as Flowing.
     p.source.combined shouldBe PressureLevel.Flowing
     p.source.perHost shouldBe empty

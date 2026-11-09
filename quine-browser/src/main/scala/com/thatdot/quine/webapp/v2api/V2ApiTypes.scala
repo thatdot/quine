@@ -396,15 +396,45 @@ object V2ApiTypes {
       } yield V2IngestStages(source, preGraphWrite, postGraphWrite)
   }
 
+  /** An ingest's lifecycle status, or a cluster-ingest partition's run state, as the backpressure
+    * snapshot reports it.
+    */
+  sealed abstract class IngestStatus(val wire: String)
+  object IngestStatus {
+    case object Running extends IngestStatus("RUNNING")
+    case object Paused extends IngestStatus("PAUSED")
+    case object Completed extends IngestStatus("COMPLETED")
+    case object Terminated extends IngestStatus("TERMINATED")
+    case object Failed extends IngestStatus("FAILED")
+    case object Restored extends IngestStatus("RESTORED")
+    case object Stalled extends IngestStatus("STALLED")
+    case object Blocked extends IngestStatus("BLOCKED")
+    case object Unavailable extends IngestStatus("UNAVAILABLE")
+    case object Unknown extends IngestStatus("UNKNOWN")
+
+    /** A status word this build does not know, kept so it is still shown: a snapshot with one
+      * unfamiliar ingest is still worth rendering, and the server owns this vocabulary.
+      */
+    final case class Other(word: String) extends IngestStatus(word)
+
+    val known: Seq[IngestStatus] =
+      Seq(Running, Paused, Completed, Terminated, Failed, Restored, Stalled, Blocked, Unavailable, Unknown)
+    private val byWire: Map[String, IngestStatus] = known.map(s => s.wire -> s).toMap
+
+    def fromWire(s: String): IngestStatus = byWire.getOrElse(s, Other(s))
+  }
+
   final case class V2IngestSnapshot(
     name: String,
     namespace: String,
     sourceType: String,
-    status: String,
+    status: IngestStatus,
     rateLimit: Option[Int],
     rate: Double,
     totalCount: Long,
     stages: V2IngestStages,
+    /** The index of a cluster-ingest partition; absent for an ordinary ingest. */
+    partition: Option[Int],
   )
   object V2IngestSnapshot {
     implicit val decoder: Decoder[V2IngestSnapshot] = (c: HCursor) =>
@@ -412,12 +442,13 @@ object V2ApiTypes {
         name <- c.downField("name").as[String]
         namespace <- c.downField("namespace").as[String]
         sourceType <- c.downField("sourceType").as[String]
-        status <- c.downField("status").as[String]
+        status <- c.downField("status").as[String].map(IngestStatus.fromWire)
         rateLimit <- c.downField("rateLimit").as[Option[Int]]
         rate <- c.downField("rate").as[Double]
         totalCount <- c.downField("totalCount").as[Long]
         stages <- c.downField("stages").as[V2IngestStages]
-      } yield V2IngestSnapshot(name, namespace, sourceType, status, rateLimit, rate, totalCount, stages)
+        partition <- c.get[Option[Int]]("partition")
+      } yield V2IngestSnapshot(name, namespace, sourceType, status, rateLimit, rate, totalCount, stages, partition)
   }
 
   final case class V2SqQueue(

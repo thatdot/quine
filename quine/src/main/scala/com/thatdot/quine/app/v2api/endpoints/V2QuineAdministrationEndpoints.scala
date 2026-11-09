@@ -17,6 +17,7 @@ import com.thatdot.api.v2.ErrorResponse.{ServerError, ServiceUnavailable}
 import com.thatdot.api.v2.ErrorResponseHelpers.serverError
 import com.thatdot.api.v2.ProductSpecific
 import com.thatdot.api.v2.TypeDiscriminatorConfig.instances.circeConfig
+import com.thatdot.api.v2.codec.ScreamingSnakeEnum
 import com.thatdot.api.v2.codec.ThirdPartyCodecs.jdk.{instantDecoder, instantEncoder}
 import com.thatdot.api.v2.schema.ThirdPartySchemas.jdk.instantSchema
 import com.thatdot.common.quineid.QuineId
@@ -126,15 +127,48 @@ object V2AdministrationEndpointEntities {
 
   @title("Ingest snapshot")
   @description("Backpressure and throughput state for a single ingest stream.")
+  /** What one entry of the backpressure snapshot is doing: an ordinary ingest's lifecycle status, or
+    * a cluster-ingest partition's run state.
+    */
+  sealed abstract class IngestSnapshotStatus
+  object IngestSnapshotStatus {
+    case object Running extends IngestSnapshotStatus
+    case object Paused extends IngestSnapshotStatus
+    case object Completed extends IngestSnapshotStatus
+    case object Terminated extends IngestSnapshotStatus
+    case object Failed extends IngestSnapshotStatus
+    case object Restored extends IngestSnapshotStatus
+    case object Stalled extends IngestSnapshotStatus
+    case object Blocked extends IngestSnapshotStatus
+    case object Unavailable extends IngestSnapshotStatus
+    case object Unknown extends IngestSnapshotStatus
+
+    val values: Seq[IngestSnapshotStatus] =
+      Seq(Running, Paused, Completed, Terminated, Failed, Restored, Stalled, Blocked, Unavailable, Unknown)
+
+    implicit val encoder: Encoder[IngestSnapshotStatus] = ScreamingSnakeEnum.encoder
+    implicit val decoder: Decoder[IngestSnapshotStatus] = ScreamingSnakeEnum.decoder(values)
+    implicit lazy val schema: Schema[IngestSnapshotStatus] = ScreamingSnakeEnum.schema(values)
+  }
+
   final case class IngestSnapshot(
     @description("Ingest stream name.") name: String,
     @description("Namespace.") namespace: String,
     @description("Source type (e.g. 'NumberIterator', 'Kafka', 'ServerSentEvent').") sourceType: String,
-    @description("Ingest status: RUNNING, PAUSED, COMPLETED, TERMINATED, FAILED, RESTORED.") status: String,
+    @description(
+      "Ingest status: RUNNING, PAUSED, COMPLETED, TERMINATED, FAILED, RESTORED. A cluster-ingest " +
+      "partition also reports STALLED (alive, reading records and finishing none), BLOCKED (its " +
+      "valve is closed while the ingest is not paused), UNAVAILABLE (not running, being retried) " +
+      "or UNKNOWN (its status read did not answer in time).",
+    ) status: IngestSnapshotStatus,
     @description("Configured rate limit (events/sec). Null means unlimited.") rateLimit: Option[Int],
     @description("Current throughput in events/sec (1-minute EWMA).") rate: Double,
     @description("Total items ingested.") totalCount: Long,
     @description("Per-stage backpressure state.") stages: IngestStages,
+    @description(
+      "For one partition of a cluster-wide ingest, its index; the ingest's partitions all report " +
+      "under the ingest's name, one entry each. Absent for an ordinary ingest.",
+    ) partition: Option[Int] = None,
   )
   object IngestSnapshot {
     implicit val encoder: Encoder[IngestSnapshot] = deriveEncoder

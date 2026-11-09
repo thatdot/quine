@@ -69,21 +69,57 @@ object ApplicationApiMethods {
     */
   type LocalIngestEnumeration = () => Future[Seq[LocalIngest]]
 
-  /** One locally-running ingest, as the backpressure snapshot needs to see it.
+  /** One ingest running on this host, as the backpressure snapshot needs to see it.
     *
     * Two names, because they answer different questions. `displayName` is the logical stream the
-    * dashboard groups by, so a cluster ingest's slices roll up into the one stream they are.
+    * dashboard groups by, so a cluster ingest's partitions roll up into the one stream they are.
     * `metricsName` is the per-worker identity the pressure gauges were registered under
     * ([[com.thatdot.quine.app.model.ingest2.source.DecodedSource]] keys them by the source's own
-    * name), so a slice's stage states are still findable. For a local ingest the two are equal.
+    * name), so a partition's stage states are still findable. For a local ingest the two are equal.
+    *
+    * `sourceType` is empty when the host knows the ingest only as a partition it is not running.
     */
   final case class LocalIngest(
     namespace: NamespaceId,
-    memberIdx: Option[MemberIdx],
     displayName: String,
     metricsName: String,
-    info: V2IngestEntities.IngestStreamInfo,
+    sourceType: String,
+    status: V2AdministrationEndpointEntities.IngestSnapshotStatus,
+    rateLimit: Option[Int],
+    rate: Double,
+    totalCount: Long,
+    partition: Option[Int],
   )
+  object LocalIngest {
+    def sourceTypeOf(info: V2IngestEntities.IngestStreamInfo): String =
+      info.settings.source.getClass.getSimpleName.stripSuffix("$")
+
+    def of(namespace: NamespaceId, name: String, info: V2IngestEntities.IngestStreamInfo): LocalIngest =
+      LocalIngest(
+        namespace = namespace,
+        displayName = name,
+        metricsName = name,
+        sourceType = sourceTypeOf(info),
+        status = info.status match {
+          case V2IngestEntities.IngestStreamStatus.Running =>
+            V2AdministrationEndpointEntities.IngestSnapshotStatus.Running
+          case V2IngestEntities.IngestStreamStatus.Paused =>
+            V2AdministrationEndpointEntities.IngestSnapshotStatus.Paused
+          case V2IngestEntities.IngestStreamStatus.Restored =>
+            V2AdministrationEndpointEntities.IngestSnapshotStatus.Restored
+          case V2IngestEntities.IngestStreamStatus.Completed =>
+            V2AdministrationEndpointEntities.IngestSnapshotStatus.Completed
+          case V2IngestEntities.IngestStreamStatus.Terminated =>
+            V2AdministrationEndpointEntities.IngestSnapshotStatus.Terminated
+          case V2IngestEntities.IngestStreamStatus.Failed =>
+            V2AdministrationEndpointEntities.IngestSnapshotStatus.Failed
+        },
+        rateLimit = info.settings.maxPerSecond,
+        rate = info.stats.rates.oneMinute,
+        totalCount = info.stats.ingestedCount,
+        partition = None,
+      )
+  }
 
   /** Build a [[V2AdministrationEndpointEntities.BackpressureSnapshot]] for the local host from `graph`
     * alone, given a caller-supplied `hostInfo`/`persistorType` (these differ between a config-backed
@@ -146,17 +182,17 @@ object ApplicationApiMethods {
       case None => Future.successful(Seq.empty)
       case Some(listIngests) =>
         listIngests().map(_.map { entry =>
-          val info = entry.info
           val ns = entry.namespace.name
           IngestSnapshot(
             name = entry.displayName,
             namespace = ns,
-            sourceType = info.settings.source.getClass.getSimpleName.stripSuffix("$"),
-            status = info.status.toString.toUpperCase,
-            rateLimit = info.settings.maxPerSecond,
-            rate = info.stats.rates.oneMinute,
-            totalCount = info.stats.ingestedCount,
+            sourceType = entry.sourceType,
+            status = entry.status,
+            rateLimit = entry.rateLimit,
+            rate = entry.rate,
+            totalCount = entry.totalCount,
             stages = ingestStages(ns, entry.metricsName),
+            partition = entry.partition,
           )
         })(graph.nodeDispatcherEC)
     }
@@ -360,7 +396,7 @@ trait ApplicationApiMethods {
             .traverse(graph.getNamespaces.toSeq) { ns =>
               iss
                 .getV2IngestStreams(ns, None)
-                .map(_.map { case (idx, name, info) => ApplicationApiMethods.LocalIngest(ns, idx, name, name, info) })
+                .map(_.map { case (_, name, info) => ApplicationApiMethods.LocalIngest.of(ns, name, info) })
             }
             .map(_.flatten)
         }

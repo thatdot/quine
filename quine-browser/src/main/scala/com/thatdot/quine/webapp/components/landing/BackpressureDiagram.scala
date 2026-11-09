@@ -13,6 +13,7 @@ import com.thatdot.quine.webapp.dataservice.{
   HostRef,
   IngestView,
   MemberStatus,
+  PartitionEntry,
   PressureLevel,
   QueueView,
   SqOutputView,
@@ -169,11 +170,34 @@ object BackpressureDiagram {
   /** Tint for an ingest that is not actively running (shown as not flowing). `None` means running —
     * the card should use its live per-stage colors instead.
     */
-  private def ingestStatusTint(status: String): Option[String] =
-    if (status == "RUNNING") None
-    else if (status == "FAILED") Some(C.red)
-    else if (status == "RESTORED") Some(C.restored)
+  private def ingestStatusTint(status: IngestStatus): Option[String] =
+    if (status == IngestStatus.Running) None
+    else if (status == IngestStatus.Failed) Some(C.red)
+    else if (status == IngestStatus.Restored) Some(C.restored)
+    else if (StuckStatuses.contains(status)) Some(C.amber) // a cluster-ingest partition that should flow and does not
     else Some(C.gray) // PAUSED / Completed / Terminated — loaded but not flowing
+
+  private val StuckStatuses: Set[IngestStatus] =
+    Set(IngestStatus.Stalled, IngestStatus.Unavailable, IngestStatus.Blocked)
+
+  /** How a cluster ingest's partitions stand: how many are running, and the index of each one that
+    * is not, grouped by what it is doing instead. Empty for an ordinary ingest, which has none.
+    */
+  private def partitionsRow(partitions: Seq[PartitionEntry]): String =
+    if (partitions.isEmpty) ""
+    else {
+      val total = partitions.map(_.index).distinct.size
+      val running = partitions.filter(_.status == IngestStatus.Running).map(_.index).distinct.size
+      val others = partitions
+        .filterNot(_.status == IngestStatus.Running)
+        .groupBy(_.status)
+        .toSeq
+        .sortBy { case (status, _) => (!StuckStatuses.contains(status), status.wire) }
+        .map { case (status, ps) =>
+          s"${status.wire.toLowerCase}: ${ps.map(_.index).distinct.sorted.map(i => s"#$i").mkString(", ")}"
+        }
+      tipRow("Partitions", (s"$running of $total running" +: others).mkString("; "))
+    }
 
   // ── Layout constants (from prototype) ──
   private val W = 1320.0
@@ -2126,7 +2150,7 @@ object BackpressureDiagram {
           .attr("font-size", 15)
           .attr("font-weight", 700)
           .attr("letter-spacing", "0.03em")
-          .text(p.status)
+          .text(p.status.wire)
       } else {
         rateTextEl.append("tspan").attr("fill", rateColor).attr("font-size", 18).attr("font-weight", 700).text(rt)
         rateTextEl.append("tspan").attr("fill", C.muted).attr("font-size", 13).attr("font-weight", 500).text(" / s")
@@ -2150,18 +2174,19 @@ object BackpressureDiagram {
       // A non-running ingest isn't measuring per-stage backpressure (its stream is stopped or gated),
       // so its gauges are stale/absent — show the status in place of the stage state.
       def stageRow(label: String, raw: PressureLevel): String =
-        if (notFlowing) tipRow(label, p.status, statusTint)
+        if (notFlowing) tipRow(label, p.status.wire, statusTint)
         else tipRow(label, levelLabel(raw), Some(stateColor(raw)))
       tipOn(
         cardEl.node().asInstanceOf[dom.Element],
         () =>
           tipHeader(s"Ingest: ${p.name}") +
           tipKv(
-            tipRow("Status", p.status, statusTint) +
+            tipRow("Status", p.status.wire, statusTint) +
             graphRow(p.namespace) +
             // An ingest runs on exactly one member, so this is the whole of its attribution — there
             // is no reduction to see through, only a member to name.
             membersRow(p.members) +
+            partitionsRow(p.partitions) +
             stageRow(s"Source · ${p.sourceType}", srcState) +
             stageRow("pre-graph-write", p.preGraphWrite.combined) +
             p.postGraphWrite.map(st => stageRow("post-graph-write", st.combined)).getOrElse("") +
@@ -2172,12 +2197,20 @@ object BackpressureDiagram {
             tipRow("Total ingested", f"${p.totalCount}%,d"),
           ) +
           tipNote(
-            if (p.status == "PAUSED") "This ingest is paused. Resume it to begin processing."
-            else if (p.status == "FAILED") "This ingest has failed and is no longer processing."
-            else if (p.status == "RESTORED")
-              "This ingest was restored from a previous session and has not been started yet."
-            else if (notFlowing) s"This ingest is ${p.status.toLowerCase} and is not processing."
-            else s"Ingest ${p.name}. Each state is derived from a ring buffer of 5 samples taken every 500ms.",
+            p.status match {
+              case IngestStatus.Paused => "This ingest is paused. Resume it to begin processing."
+              case IngestStatus.Failed => "This ingest has failed and is no longer processing."
+              case IngestStatus.Restored =>
+                "This ingest was restored from a previous session and has not been started yet."
+              case IngestStatus.Stalled =>
+                "A partition of this ingest is reading records and finishing none. The others may still be flowing."
+              case IngestStatus.Unavailable =>
+                "A partition of this ingest is not running and is being retried. The others may still be flowing."
+              case IngestStatus.Blocked =>
+                "A partition of this ingest has its valve closed while the ingest is not paused."
+              case _ if notFlowing => s"This ingest is ${p.status.wire.toLowerCase} and is not processing."
+              case _ => s"Ingest ${p.name}. Each state is derived from a ring buffer of 5 samples taken every 500ms."
+            },
           ),
       )
     }
