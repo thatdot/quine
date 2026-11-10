@@ -6,8 +6,7 @@ import java.io.IOException
   *
   * Used when the input is already in memory — e.g. small uploads, content fetched
   * over HTTP, or test fixtures. Implements the random-access semantics that
-  * footer-indexed formats require without writing to disk or requiring a Hadoop
-  * filesystem.
+  * footer-indexed formats require without writing to disk.
   */
 final class BufferedSeekableInput(bytes: Array[Byte]) extends SeekableInput {
 

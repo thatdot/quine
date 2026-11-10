@@ -1,7 +1,5 @@
 package com.thatdot.quine.ingest2.sources
 
-import java.io.File
-import java.nio.file.Files
 import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 
 import scala.concurrent.duration._
@@ -14,8 +12,8 @@ import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 
-import com.github.mjakubowski84.parquet4s.{BinaryValue, LongValue, ParquetWriter, Path => Pq4sPath, RowParquetRecord}
-import org.apache.parquet.schema.MessageTypeParser
+import com.thatdot.quine.ingest2.TestParquetWriter
+import com.thatdot.quine.ingest2.TestParquetWriter.{Column, Int64, Utf8}
 
 /** A mock Delta Sharing server for testing the DeltaSharingCdfSource.
   *
@@ -34,7 +32,6 @@ class DeltaSharingMockServer(host: String = "127.0.0.1", port: Int = 18080)(impl
   implicit private val ec: ExecutionContext = system.dispatcher
 
   private val currentVersion = new AtomicLong(1L)
-  private val tempDir = Files.createTempDirectory("delta-sharing-mock").toFile
 
   // Pending CDF files: (version, filename, parquet bytes)
   private val pendingCdfFiles = new AtomicReference[Seq[(Long, String, Array[Byte])]](Seq.empty)
@@ -46,25 +43,17 @@ class DeltaSharingMockServer(host: String = "127.0.0.1", port: Int = 18080)(impl
 
   private val expectedToken = "test-bearer-token-12345"
 
-  private val parquetSchema = MessageTypeParser.parseMessageType(
-    """message user_delta {
-      |  required int64 id;
-      |  optional binary firstname (STRING);
-      |  optional binary lastname (STRING);
-      |  optional binary email (STRING);
-      |  optional binary _change_type (STRING);
-      |  optional int64 _commit_version;
-      |  optional int64 _commit_timestamp;
-      |}""".stripMargin,
+  private val snapshotColumns = Seq(
+    Column("id", Int64, optional = false),
+    Column("firstname", Utf8),
+    Column("lastname", Utf8),
+    Column("email", Utf8),
   )
 
-  private val snapshotParquetSchema = MessageTypeParser.parseMessageType(
-    """message user_delta {
-      |  required int64 id;
-      |  optional binary firstname (STRING);
-      |  optional binary lastname (STRING);
-      |  optional binary email (STRING);
-      |}""".stripMargin,
+  private val cdfColumns = snapshotColumns ++ Seq(
+    Column("_change_type", Utf8),
+    Column("_commit_version", Int64),
+    Column("_commit_timestamp", Int64),
   )
 
   private var bindingFuture: Option[Future[Http.ServerBinding]] = None
@@ -256,65 +245,16 @@ class DeltaSharingMockServer(host: String = "127.0.0.1", port: Int = 18080)(impl
   // ── Parquet writing ──
 
   private def writeCdfParquet(rows: Seq[UserRow], changeType: String, version: Long): Array[Byte] = {
-    val file = new File(tempDir, s"cdf-${System.nanoTime()}.parquet")
-    try {
-      val ts = System.currentTimeMillis()
-      val records = rows.map { row =>
-        RowParquetRecord
-          .emptyWithSchema(
-            "id",
-            "firstname",
-            "lastname",
-            "email",
-            "_change_type",
-            "_commit_version",
-            "_commit_timestamp",
-          )
-          .updated("id", LongValue(row.id))
-          .updated("firstname", BinaryValue(row.firstname))
-          .updated("lastname", BinaryValue(row.lastname))
-          .updated("email", BinaryValue(row.email))
-          .updated("_change_type", BinaryValue(changeType))
-          .updated("_commit_version", LongValue(version))
-          .updated("_commit_timestamp", LongValue(ts))
-      }
-
-      ParquetWriter
-        .generic(parquetSchema)
-        .writeAndClose(Pq4sPath(file.toPath.toString), records)
-
-      Files.readAllBytes(file.toPath)
-    } finally {
-      val _ = file.delete()
-    }
+    val ts = System.currentTimeMillis()
+    TestParquetWriter.write(
+      cdfColumns,
+      rows.map(row => Seq(row.id, row.firstname, row.lastname, row.email, changeType, version, ts)),
+    )
   }
 
-  private def writeSnapshotParquet(rows: Seq[UserRow]): Array[Byte] = {
-    val file = new File(tempDir, s"snapshot-${System.nanoTime()}.parquet")
-    try {
-      val records = rows.map { row =>
-        RowParquetRecord
-          .emptyWithSchema("id", "firstname", "lastname", "email")
-          .updated("id", LongValue(row.id))
-          .updated("firstname", BinaryValue(row.firstname))
-          .updated("lastname", BinaryValue(row.lastname))
-          .updated("email", BinaryValue(row.email))
-      }
+  private def writeSnapshotParquet(rows: Seq[UserRow]): Array[Byte] =
+    TestParquetWriter.write(snapshotColumns, rows.map(row => Seq(row.id, row.firstname, row.lastname, row.email)))
 
-      ParquetWriter
-        .generic(snapshotParquetSchema)
-        .writeAndClose(Pq4sPath(file.toPath.toString), records)
-
-      Files.readAllBytes(file.toPath)
-    } finally {
-      val _ = file.delete()
-    }
-  }
-
-  def cleanup(): Unit = {
-    tempDir.listFiles().foreach(_.delete())
-    val _ = tempDir.delete()
-  }
 }
 
 /** Simple row model for test data. */

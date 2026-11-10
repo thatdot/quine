@@ -27,10 +27,7 @@ trait SeekableInput {
   *
   * Implementations only need to provide `position`, `seek`, and the basic `read`
   * methods. Higher-level convenience methods (`readFully`, `ByteBuffer` reads, etc.)
-  * are layered on by callers that need them — for example,
-  * `org.apache.parquet.io.DelegatingSeekableInputStream` provides those defaults
-  * for parquet-mr's seek interface, given an underlying `InputStream` plus `getPos`
-  * and `seek`.
+  * are layered on by callers that need them.
   */
 trait SeekableInputStream extends InputStream {
 

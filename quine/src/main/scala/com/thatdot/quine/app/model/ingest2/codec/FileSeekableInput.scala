@@ -8,7 +8,7 @@ import java.io.{File, IOException, RandomAccessFile}
   * entire file into memory. Each `newStream()` call opens a fresh handle on the file,
   * positioned at 0; the caller closes it.
   */
-final class FileSeekableInput(file: File) extends SeekableInput {
+final class FileSeekableInput(val file: File) extends SeekableInput {
 
   override def length: Long = file.length()
 

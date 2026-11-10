@@ -4,6 +4,7 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 
 import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.Sink
 
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
@@ -11,7 +12,8 @@ import org.scalatest.wordspec.AnyWordSpec
 
 import com.thatdot.common.security.Secret
 import com.thatdot.quine.app.model.ingest2.BearerTokenAuth
-import com.thatdot.quine.app.model.ingest2.sources.{ByteArrayInputFile, DeltaSharingClient, DeltaSharingException}
+import com.thatdot.quine.app.model.ingest2.codec.{BufferedSeekableInput, ParquetDecoder}
+import com.thatdot.quine.app.model.ingest2.sources.{DeltaSharingClient, DeltaSharingException}
 
 /** Integration tests against the public Delta Sharing reference test server.
   *
@@ -194,27 +196,23 @@ class DeltaSharingReferenceServerSpec extends AnyWordSpec with Matchers with Bef
 
       parquetBytes.length shouldBe firstFile.size.toInt
 
-      // Deserialize using parquet4s — same library the ingest source uses
-      val inputFile = new ByteArrayInputFile(parquetBytes)
+      // Deserialize with the same decoder the ingest source uses
+      val rows = Await.result(
+        new ParquetDecoder().decode(new BufferedSeekableInput(parquetBytes)).map(_.get).runWith(Sink.seq),
+        30.seconds,
+      )
 
-      import com.github.mjakubowski84.parquet4s.ParquetReader
-      val iterable = ParquetReader.generic.read(inputFile)
-      try {
-        val rows = iterable.iterator.toSeq
+      // boston-housing has 506 rows
+      rows should have size 506
 
-        // boston-housing has 506 rows
-        rows should have size 506
+      // Check schema: should have ID, crim, zn, indus, etc.
+      val fieldNames = rows.head.fields.map(_._1).toSet
+      fieldNames should contain allOf ("ID", "crim", "zn", "indus", "rm", "age", "medv")
 
-        // Check schema: should have ID, crim, zn, indus, etc.
-        val firstRow = rows.head
-        val fieldNames = firstRow.iterator.map(_._1).toSet
-        fieldNames should contain allOf ("ID", "crim", "zn", "indus", "rm", "age", "medv")
-
-        // Snapshot rows should NOT have CDF metadata columns
-        fieldNames should not contain "_change_type"
-        fieldNames should not contain "_commit_version"
-        fieldNames should not contain "_commit_timestamp"
-      } finally iterable.close()
+      // Snapshot rows should NOT have CDF metadata columns
+      fieldNames should not contain "_change_type"
+      fieldNames should not contain "_commit_version"
+      fieldNames should not contain "_commit_timestamp"
     }
 
     "report CDF unavailable for non-CDF tables" in {

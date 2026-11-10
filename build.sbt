@@ -506,27 +506,19 @@ lazy val `quine`: Project = project
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
       "org.apache.commons" % "commons-csv" % apacheCommonsCsvV,
-      "com.github.mjakubowski84" %% "parquet4s-core" % parquet4sCoreV,
-      // We need both hadoop-client-api and hadoop-client-runtime because parquet4s declares the Hadoop client as a
-      // _provided_ (not _transitive_) dependency. If we don't want to depend on hadoop, then the alternative is to
-      // replace parquet4s with direct ParquetFileReader + PlainParquetConfiguration. This would mean reimplementing
-      // the record-to-RowParquetRecord conversion that parquet4s currently handles.
-      "org.apache.hadoop" % "hadoop-client-api" % hadoopV,
-      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopV
-      exclude ("org.apache.logging.log4j", "log4j-slf4j2-impl")
-      exclude ("org.slf4j", "slf4j-reload4j")
-      exclude ("commons-logging", "commons-logging"),
-      // Override transitive aircompressor to fix CVE-2025-67721 (Snappy/LZ4 decompressor info leak)
-      "io.airlift" % "aircompressor" % aircompressorV,
-      // Delta Kernel: used by the Delta Sharing ingest source to read tables with deletion vectors
-      // and column mapping (responseFormat=delta). The defaults module provides DefaultEngine with
-      // Parquet/Hadoop support. Exclude its Hadoop/Parquet transitive deps to use our aligned versions.
+      // Hardwood and its optional dependencies for supporting file compression.
+      // These optional dependencies are not used directly by Quine.
+      "dev.hardwood" % "hardwood-core" % hardwoodV,
+      "org.xerial.snappy" % "snappy-java" % snappyJavaV,
+      "com.github.luben" % "zstd-jni" % zstdJniV,
+      "at.yawk.lz4" % "lz4-java" % lz4JavaV,
+      // Delta Kernel: a library for reading Delta Lake tables, used for Quine's Delta Sharing ingest source.
+      // This normally uses Hadoop to read files, but we replace its file and Parquet readers with our own (see
+      // DeltaKernelReader) so that we can exclude Hadoop. DeltaKernelReaderSpec checks that this exclusion is safe.
       "io.delta" % "delta-kernel-api" % deltaKernelV,
-      "io.delta" % "delta-kernel-defaults" % deltaKernelV
-      exclude ("org.apache.hadoop", "hadoop-client-api")
-      exclude ("org.apache.hadoop", "hadoop-client-runtime")
-      exclude ("org.apache.hadoop", "hadoop-common")
-      exclude ("org.apache.parquet", "parquet-hadoop"),
+      ("io.delta" % "delta-kernel-defaults" % deltaKernelV)
+        .exclude("org.apache.hadoop", "hadoop-client-runtime")
+        .exclude("org.apache.parquet", "parquet-hadoop"),
       "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
       "org.apache.pekko" %% "pekko-connectors-csv" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,

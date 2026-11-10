@@ -154,7 +154,6 @@ object DeltaSharingMockServerApp extends App {
     println("\nShutting down...")
     Await.result(controlBinding.unbind(), 5.seconds)
     mockServer.stop()
-    mockServer.cleanup()
     Await.result(system.terminate(), 5.seconds)
     println("Done.")
   }))

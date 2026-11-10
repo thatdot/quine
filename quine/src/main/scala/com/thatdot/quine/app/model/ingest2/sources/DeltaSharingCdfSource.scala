@@ -12,14 +12,13 @@ import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.util.ByteString
 import org.apache.pekko.{Done, NotUsed}
 
-import com.github.mjakubowski84.parquet4s.{BinaryValue, ParquetIterable, ParquetReader, RowParquetRecord}
 import io.circe.Json
 
 import com.thatdot.common.logging.Log._
 import com.thatdot.data.DataFoldableFrom
 import com.thatdot.data.DataFoldableFrom.byteStringDataFoldable
 import com.thatdot.quine.app.ShutdownSwitch
-import com.thatdot.quine.app.model.ingest2.codec.{BufferedSeekableInput, ParquetDecoder, ParquetRecord}
+import com.thatdot.quine.app.model.ingest2.codec.{BufferedSeekableInput, ParquetDecoder, ParquetRecord, ParquetValue}
 import com.thatdot.quine.app.model.ingest2.source.DecodedSource
 import com.thatdot.quine.app.model.ingest2.{DeltaSharingAuth, OAuthCertificateAuth}
 import com.thatdot.quine.app.routes.IngestMeter
@@ -314,11 +313,8 @@ case class DeltaSharingCdfSource(
           case (action, Right(bytes)) =>
             // Read the Parquet file and inject _change_type="delete" into each row
             deserializeToElements(action, bytes, action.version).map { case (tryRecord, frame) =>
-              val withDeleteType: () => Try[ParquetRecord] = () =>
-                tryRecord().map { record =>
-                  val updatedRow = record.record.updated("_change_type", BinaryValue("delete"))
-                  record.copy(record = updatedRow)
-                }
+              val withDeleteType: () => Try[ParquetRecord] =
+                () => tryRecord().map(r => ParquetRecord(r.fields :+ ("_change_type" -> ParquetValue.Text("delete"))))
               (withDeleteType, frame)
             }
           case (action, Left(fetchError)) =>
@@ -415,50 +411,25 @@ case class DeltaSharingCdfSource(
       }
 
   /** Deserialize a Parquet file into stream elements, each tagged with
-    * the version they belong to.
+    * the version they belong to. A failure to read the file is handled by [[emitFileError]].
     */
   private def deserializeToElements(
     action: DeltaSharingFileAction,
     bytes: Array[Byte],
     version: Long,
-  ): Source[(() => Try[ParquetRecord], DeltaSharingFrame), NotUsed] = {
-    val rowSource: Source[(() => Try[ParquetRecord], DeltaSharingFrame), NotUsed] =
-      try {
-        val seekable = new BufferedSeekableInput(bytes)
-        val columnTypes = ParquetRecord.readColumnTypes(seekable)
-        val inputFile = ParquetDecoder.toParquetInputFile(seekable)
-
-        Source
-          .unfoldResource[ParquetRecord, (ParquetIterable[RowParquetRecord], Iterator[RowParquetRecord])](
-            create = () => {
-              val iterable = ParquetReader.generic.read(inputFile)
-              (iterable, iterable.iterator)
-            },
-            read = { case (_, iter) =>
-              if (iter.hasNext) Some(ParquetRecord(iter.next(), columnTypes))
-              else None
-            },
-            close = { case (iterable, _) => iterable.close() },
-          )
-          .map[(() => Try[ParquetRecord], DeltaSharingFrame)](record =>
-            (() => Success(record), DeltaSharingFrame(version, ByteString.empty)),
-          )
-      } catch {
-        case e: Exception =>
-          emitFileError(action, version, "deserialize", e)
+  ): Source[(() => Try[ParquetRecord], DeltaSharingFrame), NotUsed] =
+    new ParquetDecoder()
+      .decode(new BufferedSeekableInput(bytes))
+      .map[(() => Try[ParquetRecord], DeltaSharingFrame)] { row =>
+        val record = row.get
+        (() => Success(record), DeltaSharingFrame(version, ByteString.empty))
       }
-
-    if (skipUnreadableVersions) {
-      rowSource.recoverWithRetries(
+      .recoverWithRetries(
         1,
         { case e: Exception =>
-          emitFileError(action, version, "deserialize_mid_stream", e)
+          emitFileError(action, version, "deserialize", e)
         },
       )
-    } else {
-      rowSource
-    }
-  }
 
   /** Emit a single Failure record for a file-level error. The error detail
     * JSON is placed in the Frame so the DLQ receives full diagnostic context.
@@ -482,18 +453,20 @@ case class DeltaSharingCdfSource(
     if (skipUnreadableVersions) {
       Source.single(element)
     } else {
-      Source
-        .single(element)
-        .concat(
-          Source.failed(
-            new DeltaSharingException(
+      // The failure is raised only when the element after `element` is demanded. A failure raised sooner would overtake
+      // `element`, which would be discarded.
+      Source(
+        List[() => (() => Try[ParquetRecord], DeltaSharingFrame)](
+          () => element,
+          () =>
+            throw new DeltaSharingException(
               s"Failed to $errorPhase CDF file for version $version. " +
               s"Set 'skipUnreadableVersions' to true to skip and continue. " +
               s"Error: ${error.getMessage}",
               error,
             ),
-          ),
-        )
+        ),
+      ).map(_.apply())
     }
   }
 

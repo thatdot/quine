@@ -70,6 +70,7 @@ object QuineSettings {
     ),
     libraryDependencies ++= Seq(
       "org.slf4j" % "jcl-over-slf4j" % "2.0.20",
+      "org.slf4j" % "slf4j-jdk-platform-logging" % "2.0.20",
     ),
   )
 

@@ -4,14 +4,22 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 
 import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.Sink
 
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
 import com.thatdot.common.security.Secret
+import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.model.ingest2.BearerTokenAuth
-import com.thatdot.quine.app.model.ingest2.sources.{DeltaSharingClient, DeltaSharingException}
+import com.thatdot.quine.app.model.ingest2.codec.{BufferedSeekableInput, ParquetDecoder, ParquetRecord}
+import com.thatdot.quine.app.model.ingest2.source.DecodedSource
+import com.thatdot.quine.app.model.ingest2.sources.{DeltaSharingCdfSource, DeltaSharingClient, DeltaSharingException}
+import com.thatdot.quine.app.routes.IngestMetered
+import com.thatdot.quine.graph.defaultNamespaceId
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.ingest2.IngestSourceTestSupport.randomString
 
 class DeltaSharingCdfSourceSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll {
 
@@ -21,6 +29,12 @@ class DeltaSharingCdfSourceSpec extends AnyWordSpec with Matchers with BeforeAnd
 
   private val auth = BearerTokenAuth(Secret("test-bearer-token-12345"))
 
+  private def readParquet(bytes: Array[Byte]): Seq[ParquetRecord] =
+    Await.result(
+      new ParquetDecoder().decode(new BufferedSeekableInput(bytes)).map(_.get).runWith(Sink.seq),
+      5.seconds,
+    )
+
   override def beforeAll(): Unit = {
     super.beforeAll()
     mockServer.start()
@@ -28,7 +42,6 @@ class DeltaSharingCdfSourceSpec extends AnyWordSpec with Matchers with BeforeAnd
 
   override def afterAll(): Unit = {
     mockServer.stop()
-    mockServer.cleanup()
     Await.result(system.terminate(), 10.seconds)
     super.afterAll()
   }
@@ -101,15 +114,9 @@ class DeltaSharingCdfSourceSpec extends AnyWordSpec with Matchers with BeforeAnd
       )
       parquetBytes.length should be > 0
 
-      import com.thatdot.quine.app.model.ingest2.sources.ByteArrayInputFile
-      import com.github.mjakubowski84.parquet4s.ParquetReader
-      val inputFile = new ByteArrayInputFile(parquetBytes)
-      val iterable = ParquetReader.generic.read(inputFile)
-      try {
-        val rows = iterable.iterator.toSeq
-        rows should have size 2
-        rows.head.iterator.map(_._1).toSet should contain allOf ("firstname", "lastname", "_change_type")
-      } finally iterable.close()
+      val rows = readParquet(parquetBytes)
+      rows should have size 2
+      rows.head.fields.map(_._1).toSet should contain allOf ("firstname", "lastname", "_change_type")
     }
 
     "fetch snapshot data" in {
@@ -133,17 +140,11 @@ class DeltaSharingCdfSourceSpec extends AnyWordSpec with Matchers with BeforeAnd
         5.seconds,
       )
 
-      import com.thatdot.quine.app.model.ingest2.sources.ByteArrayInputFile
-      import com.github.mjakubowski84.parquet4s.ParquetReader
-      val inputFile = new ByteArrayInputFile(parquetBytes)
-      val iterable = ParquetReader.generic.read(inputFile)
-      try {
-        val rows = iterable.iterator.toSeq
-        rows should have size 2
-        val fieldNames = rows.head.iterator.map(_._1).toSet
-        fieldNames should contain allOf ("firstname", "lastname", "email")
-        fieldNames should not contain "_change_type"
-      } finally iterable.close()
+      val rows = readParquet(parquetBytes)
+      rows should have size 2
+      val fieldNames = rows.head.fields.map(_._1).toSet
+      fieldNames should contain allOf ("firstname", "lastname", "email")
+      fieldNames should not contain "_change_type"
     }
   }
 
@@ -276,13 +277,7 @@ class DeltaSharingCdfSourceSpec extends AnyWordSpec with Matchers with BeforeAnd
         )
         // Bytes should be the corrupted content, not empty
         // Trying to read them as Parquet should fail
-        import com.thatdot.quine.app.model.ingest2.sources.ByteArrayInputFile
-        import com.github.mjakubowski84.parquet4s.ParquetReader
-        an[Exception] shouldBe thrownBy {
-          val iterable = ParquetReader.generic.read(new ByteArrayInputFile(bytes))
-          try iterable.iterator.toSeq
-          finally iterable.close()
-        }
+        an[Exception] shouldBe thrownBy(readParquet(bytes))
       }
     }
 
@@ -300,6 +295,68 @@ class DeltaSharingCdfSourceSpec extends AnyWordSpec with Matchers with BeforeAnd
           5.seconds,
         )
       }
+    }
+  }
+
+  "DeltaSharingCdfSource reading an unreadable Parquet file" should {
+
+    def source(skipUnreadableVersions: Boolean, startingVersion: Long): DecodedSource =
+      DeltaSharingCdfSource(
+        ingestName = "unreadable-file-test",
+        endpoint = s"http://127.0.0.1:$mockPort",
+        auth = auth,
+        shareName = "test-share",
+        schemaName = "test-schema",
+        tableName = "test-table",
+        startingVersion = Some(startingVersion),
+        snapshotOnFirstRun = false,
+        pollIntervalMs = 50L,
+        maxVersionsPerPoll = 1,
+        serverRequestTimeoutMs = 5000L,
+        parquetFetchTimeoutMs = 5000L,
+        maxRetries = 0,
+        skipUnreadableVersions = skipUnreadableVersions,
+        parquetDownloadParallelism = 1,
+        meter = IngestMetered.ingestMeter(
+          defaultNamespaceId,
+          randomString(),
+          HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
+        ),
+      ).decodedSource
+
+    /** Returns the stream's elements as `Right`s of (decode failed, frame content), ending in a `Left` if it failed. */
+    def elements(decoded: DecodedSource, limit: Long): Seq[Either[Throwable, (Boolean, String)]] =
+      Await.result(
+        decoded.stream
+          .map { case (decode, frame) =>
+            Right((decode().isFailure, new String(decoded.content(frame), "UTF-8"))): Either[
+              Throwable,
+              (Boolean, String),
+            ]
+          }
+          .recover { case e: Throwable => Left(e) }
+          .take(limit)
+          .runWith(Sink.seq),
+        10.seconds,
+      )
+
+    "emit a dead-letter record and fail the stream when skipUnreadableVersions is false" in {
+      val version = mockServer.pushCorruptedFile(0L)
+      // The source reads the versions after its starting version.
+      val result = elements(source(skipUnreadableVersions = false, version - 1L), limit = 10L)
+      result should have size 2
+      result.head.toOption.get._1 shouldBe true
+      result.head.toOption.get._2 should include("\"_errorPhase\":\"deserialize\"")
+      result(1).left.toOption.get shouldBe a[DeltaSharingException]
+    }
+
+    "emit a dead-letter record and continue when skipUnreadableVersions is true" in {
+      val version = mockServer.pushCorruptedFile(0L)
+      // The source reads the versions after its starting version. It keeps polling, so only the first element is taken.
+      val result = elements(source(skipUnreadableVersions = true, version - 1L), limit = 1L)
+      result should have size 1
+      result.head.toOption.get._1 shouldBe true
+      result.head.toOption.get._2 should include("\"_errorPhase\":\"deserialize\"")
     }
   }
 

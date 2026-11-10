@@ -11,15 +11,6 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.ByteString
 
-import com.github.mjakubowski84.parquet4s.{
-  BinaryValue,
-  IntValue,
-  ParquetWriter,
-  Path => Parquet4sPath,
-  RowParquetRecord,
-}
-import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.{BINARY, INT32}
-import org.apache.parquet.schema.{MessageType, Types}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
@@ -33,6 +24,8 @@ import com.thatdot.quine.app.routes.IngestMetered
 import com.thatdot.quine.exceptions.IngestSourceFormatException
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.ingest2.TestParquetWriter
+import com.thatdot.quine.ingest2.TestParquetWriter.{Column, Int32, Utf8}
 
 class ParquetIngestSpec extends AnyFunSpec with Matchers with BeforeAndAfterAll {
 
@@ -50,26 +43,15 @@ class ParquetIngestSpec extends AnyFunSpec with Matchers with BeforeAndAfterAll 
       HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
     )
 
-  private val schema: MessageType =
-    Types
-      .buildMessage()
-      .addField(Types.required(INT32).named("id"))
-      .addField(Types.required(BINARY).as(org.apache.parquet.schema.LogicalTypeAnnotation.stringType()).named("name"))
-      .named("TestRecord")
-
   private def writeParquetFile(rows: Int): File = {
     val tmp = Files.createTempFile("parquet-ingest-test-", ".parquet").toFile
-    tmp.delete() // ParquetWriter wants the file not to exist yet
-    val writer = ParquetWriter.generic(schema).build(Parquet4sPath(tmp.getAbsolutePath))
-    try (1 to rows).foreach { i =>
-      val rec = RowParquetRecord(
-        Seq(
-          "id" -> IntValue(i),
-          "name" -> BinaryValue(s"row_$i".getBytes("UTF-8")),
-        ),
-      )
-      writer.write(rec)
-    } finally writer.close()
+    Files.write(
+      tmp.toPath,
+      TestParquetWriter.write(
+        Seq(Column("id", Int32, optional = false), Column("name", Utf8, optional = false)),
+        (1 to rows).map(i => Seq(i, s"row_$i")),
+      ),
+    )
     tmp
   }
 
