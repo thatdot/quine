@@ -8,6 +8,7 @@ import java.io.File
   *   - Uses "quine" as the default Cassandra keyspace name
   *   - Uses "quine.db" as the default RocksDB file path
   *   - ClickHouse throws an error (Enterprise-only feature)
+  *   - Cassandra OAuth (`oauth`) throws an error (Enterprise-only feature)
   */
 object QuinePersistenceBuilder {
 

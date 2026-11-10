@@ -175,10 +175,20 @@ object PersistenceBuilder {
     }
   }
 
-  /** Default builder for Cassandra persistence. */
+  /** Refuse a Cassandra config that sets `oauth`. Certificate-based OAuth for Cassandra is only available in
+    * Enterprise, whose Cassandra builder reads it; every other Cassandra builder calls this first.
+    */
+  def requireNoCassandraOAuth(c: Cassandra): Unit =
+    if (c.oauth.isDefined)
+      throw new IllegalArgumentException(
+        "Cassandra OAuth (`oauth`) is not available in this product. If you are interested in using it, please contact us.",
+      )
+
+  /** Default builder for Cassandra persistence. Refuses `oauth`; see [[requireNoCassandraOAuth]]. */
   val defaultBuildCassandra: CassandraBuilder = { (c, persistenceConfig, keyspace, system, logConfig) =>
     implicit val s: ActorSystem = system
     implicit val lc: LogConfig = logConfig
+    requireNoCassandraOAuth(c)
     Await.result(
       PrimeCassandraPersistor.create(
         persistenceConfig,
