@@ -77,6 +77,11 @@ module.exports = {
             // language registers. Aliasing to the file bypasses the exports map and keeps those
             // out of the bundle. Exact-match (`$`) so it can't shadow other specifiers.
             "monaco-lsp-client$": path.resolve(__dirname, "../../scalajs-bundler/main/node_modules/monaco-editor/esm/external/monaco-lsp-client/out/index.js"),
+            // Monaco imports its own bundled copy of DOMPurify through a relative path, so the
+            // `dompurify` yarn resolution (project/Dependencies.scala) cannot reach it. This alias
+            // replaces that copy with the resolved npm package. Remove it when the pinned Monaco
+            // bundles a DOMPurify with no known CVEs.
+            [path.resolve(__dirname, "../../scalajs-bundler/main/node_modules/monaco-editor/esm/vs/base/browser/dompurify/dompurify.js")]: "dompurify",
             // The query editor package: TypeScript source vendored in-tree at
             // public/query-editor. Webpack compiles it through the ts-loader rule above —
             // there is no separate build step and no node_modules copy. From this bundler

@@ -49,7 +49,7 @@ object Docker extends AutoPlugin {
       val temp = IO.createTemporaryDirectory
       val jmxPrometheusFile: sbt.File = temp / "jmx_prometheus_javaagent.jar"
       url(
-        "https://github.com/prometheus/jmx_exporter/releases/download/1.1.0/jmx_prometheus_javaagent-1.1.0.jar",
+        "https://github.com/prometheus/jmx_exporter/releases/download/1.7.0/jmx_prometheus_javaagent-1.7.0.jar",
       ) #> jmxPrometheusFile !
       val exporterYamlName = "exporter.yaml"
       val exporterYamlFile = temp / exporterYamlName
@@ -59,10 +59,13 @@ object Docker extends AutoPlugin {
         from(
           ImageName(
             repository = "eclipse-temurin",
-            tag = Some("21.0.11_10-jre-noble"),
+            tag = Some("21.0.13_9-jre-noble"),
           ),
         )
-        runRaw("apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*")
+        // The date changes this instruction's text daily, so the layer cache cannot serve stale package upgrades
+        runRaw(
+          s"echo apt-refresh=${java.time.LocalDate.now} && apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*",
+        )
         healthCheckShell(
           "curl --silent --fail http://localhost:8080/api/v2/system/liveness || exit 1".split(' '),
           interval = Some(10.seconds),

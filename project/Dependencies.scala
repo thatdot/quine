@@ -9,7 +9,6 @@ object Dependencies {
   val avroV = "1.12.2"
   // On update, check whether jacksonOverrideV override is removable
   val awsSdkV = "2.55.9"
-  // On update, check whether nettyOverrideV or wireOverrideV are removable
   val amazonGlueV = "2.0.1"
   val betterMonadicForV = "0.3.1"
   val boopickleV = "1.5.0"
@@ -48,13 +47,11 @@ object Dependencies {
   val jqueryV = "3.6.3"
   val jwtV = "0.13.0"
   val jwtScalaV = "11.0.4"
-  // On update, keep lz4JavaV in sync
   val kafkaClientsV = "4.4.0"
   val kindProjectorV = "0.13.4"
   val logbackV = "1.6.5"
   val laminarV = "17.2.1"
   val waypointV = "10.0.0-M7"
-  // Keep in sync with the version kafka-clients (kafkaClientsV) depends on
   val lz4JavaV = "1.11.4"
   // On update, check whether net.jpountz.lz4:lz4 exclusion in quine-mapdb-persistor is removable
   val mapDbV = "3.1.0"
@@ -82,7 +79,7 @@ object Dependencies {
   // in lockstep with antlr4RuntimeV (antlr4-c3-java 1.2.0 is built against ANTLR 4.13.2).
   val antlr4C3V = "1.2.0"
   val lsp4jV = "0.24.0"
-  val guavaV = "33.3.0-jre"
+  val guavaV = "33.8.0-jre"
   val memeid4sV = "0.8.0"
   val munitV = "1.3.6"
   val quineCommonV = "0.0.4"
@@ -159,6 +156,11 @@ object Dependencies {
   /** Parent: [[cassandraClientV]] */
   val hdrhistographOverrideV = "2.2.2"
 
+  /** Parent: scala-compiler, via the refined library (used by circe-refined and sttp-oauth2).
+    * Stay on 3.x: scala-compiler requests the jdk8 classifier, which jline 4.x does not publish.
+    */
+  val jlineOverrideV = "3.30.17" // CVE-2026-77420 & CVE-2026-77422
+
   // Parent: AWS SDK (awsSdkV). The AWS SDK is often slow to update its dependencies, and CVE reports for netty have
   // been frequent. So although this netty override is currently unnecessary, we'll keep it commented-out in the code.
 //  val nettyOverrideV = "4.1.135.Final"
@@ -175,6 +177,7 @@ object Dependencies {
     "com.squareup.okhttp3" % "okhttp" % okhttpOverrideV,
     "io.opentelemetry" % "opentelemetry-api" % opentelemetryOverrideV,
     "org.hdrhistogram" % "HdrHistogram" % hdrhistographOverrideV,
+    "org.jline" % "jline" % jlineOverrideV,
 //    "io.netty" % "netty-handler" % nettyOverrideV,
 //    "io.netty" % "netty-codec-http" % nettyOverrideV,
 //    "io.netty" % "netty-codec-http2" % nettyOverrideV,
@@ -185,10 +188,15 @@ object Dependencies {
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
   /** Parent: minimatch [[minimatchV]] */
-  val braceExpansionV = "5.0.9" // CVE-2026-14257
+  val braceExpansionV = "5.0.12" // CVE-2026-14257, CVE-2026-102277
 
-  /** Parent: monaco-editor [[monacoEditorV]] */
-  val dompurifyV = "3.4.13" // CVE-2026-65901
+  /** Parent: monaco-editor [[monacoEditorV]]
+    * CVE-2026-65901, CVE-2026-109344, CVE-2026-109345, CVE-2026-116802, CVE-2026-116803, CVE-2026-116804
+    * Monaco bundles its own DOMPurify, so this version ships only because of the alias in each browser
+    * project's common.webpack.config.js. On a Monaco update, check whether that alias and this override
+    * are removable.
+    */
+  val dompurifyV = "3.4.17"
 
   /** Parent: [[stoplightElementsV]]
     * Faker code never ends up in Quine, evidence being that this command prints 0:
