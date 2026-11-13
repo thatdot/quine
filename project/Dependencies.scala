@@ -161,6 +161,9 @@ object Dependencies {
     */
   val jlineOverrideV = "3.30.17" // CVE-2026-77420 & CVE-2026-77422
 
+  /** Parents: jjwt-orgjson via [[jwtV]], and everit-json-schema via schema-registry-serde ([[amazonGlueV]]) */
+  val orgJsonOverrideV = "20260814" // CVE-2026-59171
+
   // Parent: AWS SDK (awsSdkV). The AWS SDK is often slow to update its dependencies, and CVE reports for netty have
   // been frequent. So although this netty override is currently unnecessary, we'll keep it commented-out in the code.
 //  val nettyOverrideV = "4.1.135.Final"
@@ -178,6 +181,7 @@ object Dependencies {
     "io.opentelemetry" % "opentelemetry-api" % opentelemetryOverrideV,
     "org.hdrhistogram" % "HdrHistogram" % hdrhistographOverrideV,
     "org.jline" % "jline" % jlineOverrideV,
+    "org.json" % "json" % orgJsonOverrideV,
 //    "io.netty" % "netty-handler" % nettyOverrideV,
 //    "io.netty" % "netty-codec-http" % nettyOverrideV,
 //    "io.netty" % "netty-codec-http2" % nettyOverrideV,
