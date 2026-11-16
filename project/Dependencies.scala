@@ -26,7 +26,7 @@ object Dependencies {
   val circeYamlV = "0.16.1"
   val commonsCodecV = "1.23.0"
   val commonsTextV = "1.15.0"
-  val commonsIoV = "2.21.0"
+  val commonsIoV = "2.22.0"
   val cronUtilsV = "9.2.1"
   val dropwizardMetricsV = "4.2.40"
   val embeddedCassandraV = "5.0.4"
@@ -43,16 +43,16 @@ object Dependencies {
   val snappyJavaV = "1.1.10.12"
   val zstdJniV = "1.5.7-26"
   val ioniconsV = "2.0.1"
-  val jnrPosixV = "3.2.7"
-  val jqueryV = "3.6.3"
+  val jnrPosixV = "3.2.8"
+  val jqueryV = "3.6.4"
   val jwtV = "0.13.0"
   val jwtScalaV = "11.0.4"
   val kafkaClientsV = "4.4.0"
   val kindProjectorV = "0.13.4"
-  val logbackV = "1.6.5"
+  val logbackV = "1.6.6"
   val laminarV = "17.2.1"
   val waypointV = "10.0.0-M7"
-  val lz4JavaV = "1.11.4"
+  val lz4JavaV = "1.14.0"
   // On update, check whether net.jpountz.lz4:lz4 exclusion in quine-mapdb-persistor is removable
   val mapDbV = "3.1.0"
   val metricsInfluxdbV = "1.1.0"
@@ -87,7 +87,7 @@ object Dependencies {
   val rocksdbV = "10.10.1.1"
   val scaffeineV = "5.3.0"
   val scalaCheckV = "1.20.0"
-  val scalaJavaTimeV = "2.7.0"
+  val scalaJavaTimeV = "2.9.0"
   val scalaLoggingV = "3.9.6"
   val scalaParserCombinatorsV = "2.5.0"
   val scalaTestScalaCheckV = "3.2.20.0"
@@ -102,7 +102,7 @@ object Dependencies {
   // On update, check whether any NPM Override Versions (below) are removable
   val stoplightElementsV = "9.0.25"
   val sugarV = "2.0.6"
-  val tapirV = "1.13.32"
+  val tapirV = "1.13.33"
   val ujsonCirceV = "3.3.1"
   val circeV = "0.14.17"
   val circeGenericExtrasV = "0.14.4"
@@ -143,15 +143,15 @@ object Dependencies {
   // == Remove overrides when parents require fixed versions of the transitive dependency. ==
 
   /** Parent: [[awsSdkV]] */
-  val jacksonOverrideV = "2.22.4"
+  val jacksonOverrideV = "2.23.0"
 
 //  /** Parent: [[amazonGlueV]] */
 //  val wireOverrideV = "6.4.7"
 
-  val okhttpOverrideV = "5.3.2"
+  val okhttpOverrideV = "5.5.1"
 
   /** Parent: [[amazonKinesisClientV]] */
-  val opentelemetryOverrideV = "1.67.0"
+  val opentelemetryOverrideV = "1.68.0"
 
   /** Parent: [[cassandraClientV]] */
   val hdrhistographOverrideV = "2.2.2"
