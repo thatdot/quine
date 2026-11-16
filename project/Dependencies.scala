@@ -156,11 +156,6 @@ object Dependencies {
   /** Parent: [[cassandraClientV]] */
   val hdrhistographOverrideV = "2.2.2"
 
-  /** Parent: scala-compiler, via the refined library (used by circe-refined and sttp-oauth2).
-    * Stay on 3.x: scala-compiler requests the jdk8 classifier, which jline 4.x does not publish.
-    */
-  val jlineOverrideV = "3.30.17" // CVE-2026-77420 & CVE-2026-77422
-
   /** Parents: jjwt-orgjson via [[jwtV]], and everit-json-schema via schema-registry-serde ([[amazonGlueV]]) */
   val orgJsonOverrideV = "20260814" // CVE-2026-59171
 
@@ -180,7 +175,6 @@ object Dependencies {
     "com.squareup.okhttp3" % "okhttp" % okhttpOverrideV,
     "io.opentelemetry" % "opentelemetry-api" % opentelemetryOverrideV,
     "org.hdrhistogram" % "HdrHistogram" % hdrhistographOverrideV,
-    "org.jline" % "jline" % jlineOverrideV,
     "org.json" % "json" % orgJsonOverrideV,
 //    "io.netty" % "netty-handler" % nettyOverrideV,
 //    "io.netty" % "netty-codec-http" % nettyOverrideV,
