@@ -27,7 +27,7 @@ object Packaging extends AutoPlugin {
     case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.discard
     case PathList("META-INF", "proguard", _) => MergeStrategy.discard
     // Discard Kotlin Native metadata files that cause deduplication conflicts.
-    // These "nativeMain/default/manifest" and similar files from okio and wire
+    // These "nativeMain/default/manifest" and similar files from okio
     // libraries are only relevant for Kotlin Native targets, not JVM.
     case PathList("commonMain", "default", "manifest") => MergeStrategy.discard
     case PathList("nativeMain", "default", "manifest") => MergeStrategy.discard
@@ -39,8 +39,6 @@ object Packaging extends AutoPlugin {
     case PathList("META-INF", "kotlinx-serialization-core.kotlin_module") => MergeStrategy.first
     case PathList("META-INF", "okio-fakefilesystem.kotlin_module") => MergeStrategy.first
     case PathList("META-INF", "okio.kotlin_module") => MergeStrategy.first
-    case PathList("META-INF", "wire-runtime.kotlin_module") => MergeStrategy.first
-    case PathList("META-INF", "wire-schema.kotlin_module") => MergeStrategy.first
     case PathList("META-INF", "versions", "9", "OSGI-INF", "MANIFEST.MF") => MergeStrategy.first // from bouncycastle
     case PathList("META-INF", "FastDoubleParser-NOTICE") =>
       MergeStrategy.first // from fasterxml jackson core (and its awssdk shadow)

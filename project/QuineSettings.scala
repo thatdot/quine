@@ -67,6 +67,10 @@ object QuineSettings {
       ExclusionRule("commons-logging", "commons-logging"),
       // Exclude old lz4-java; we use at.yawk.lz4:lz4-java instead (CVE-2025-66566, CVE-2025-12183)
       ExclusionRule("org.lz4", "lz4-java"),
+      // We don't need schema-registry-serde because Quine doesn't currently support the Amazon Glue Schema Registry,
+      // and its transitive dependencies have had CVE trouble. The Kinesis Client `amazon-kinesis-client` is the only
+      // dependent; KinesisClientWithoutGlueSerdeSpec demonstrates that this exclusion is safe.
+      ExclusionRule("software.amazon.glue", "schema-registry-serde"),
     ),
     libraryDependencies ++= Seq(
       "org.slf4j" % "jcl-over-slf4j" % "2.0.20",

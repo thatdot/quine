@@ -407,18 +407,24 @@ object KinesisKclSrc {
       val builder = folder.mapBuilder()
       builder.add("data", folder.bytes(recordBufferToArray(value.record.data())))
       builder.add("sequenceNumber", folder.string(value.record.sequenceNumber()))
-      builder.add("approximateArrivalTimestamp", folder.string(value.record.approximateArrivalTimestamp().toString))
+      builder.add(
+        "approximateArrivalTimestamp",
+        Option(value.record.approximateArrivalTimestamp()).fold(folder.nullValue)(t => folder.string(t.toString)),
+      )
       builder.add("partitionKey", folder.string(value.record.partitionKey()))
       builder.add(
         "encryptionType",
         value.record.encryptionType() match {
           case EncryptionType.NONE => folder.string(EncryptionType.NONE.toString)
           case EncryptionType.KMS => folder.string(EncryptionType.KMS.toString)
-          case EncryptionType.UNKNOWN_TO_SDK_VERSION => folder.nullValue
+          case EncryptionType.UNKNOWN_TO_SDK_VERSION | null => folder.nullValue
         },
       )
       builder.add("subSequenceNumber", folder.integer(value.record.subSequenceNumber()))
-      builder.add("explicitHashKey", folder.string(value.record.explicitHashKey()))
+      builder.add(
+        "explicitHashKey",
+        Option(value.record.explicitHashKey()).fold(folder.nullValue)(folder.string),
+      )
       builder.add(
         "aggregated",
         value.record.aggregated() match {
@@ -427,12 +433,13 @@ object KinesisKclSrc {
         },
       )
 
-      val schemaBuilder = folder.mapBuilder()
-      schemaBuilder.add("schemaName", folder.string(value.record.schema().getSchemaName))
-      schemaBuilder.add("schemaDefinition", folder.string(value.record.schema().getSchemaDefinition))
-      schemaBuilder.add("dataFormat", folder.string(value.record.schema().getDataFormat))
-
-      builder.add("schema", schemaBuilder.finish())
+      Option(value.record.schema()).foreach { schema =>
+        val schemaBuilder = folder.mapBuilder()
+        schemaBuilder.add("schemaName", folder.string(schema.getSchemaName))
+        schemaBuilder.add("schemaDefinition", folder.string(schema.getSchemaDefinition))
+        schemaBuilder.add("dataFormat", folder.string(schema.getDataFormat))
+        builder.add("schema", schemaBuilder.finish())
+      }
 
       builder.finish()
     }

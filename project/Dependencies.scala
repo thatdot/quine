@@ -9,7 +9,6 @@ object Dependencies {
   val avroV = "1.12.2"
   // On update, check whether jacksonOverrideV override is removable
   val awsSdkV = "2.55.9"
-  val amazonGlueV = "2.0.1"
   val betterMonadicForV = "0.3.1"
   val boopickleV = "1.5.0"
   val bootstrapV = "5.3.6"
@@ -145,9 +144,6 @@ object Dependencies {
   /** Parent: [[awsSdkV]] */
   val jacksonOverrideV = "2.23.0"
 
-//  /** Parent: [[amazonGlueV]] */
-//  val wireOverrideV = "6.4.7"
-
   val okhttpOverrideV = "5.5.1"
 
   /** Parent: [[amazonKinesisClientV]] */
@@ -156,7 +152,7 @@ object Dependencies {
   /** Parent: [[cassandraClientV]] */
   val hdrhistographOverrideV = "2.2.2"
 
-  /** Parents: jjwt-orgjson via [[jwtV]], and everit-json-schema via schema-registry-serde ([[amazonGlueV]]) */
+  /** Parent: jjwt-orgjson via [[jwtV]] */
   val orgJsonOverrideV = "20260814" // CVE-2026-59171
 
   // Parent: AWS SDK (awsSdkV). The AWS SDK is often slow to update its dependencies, and CVE reports for netty have
@@ -165,13 +161,6 @@ object Dependencies {
 
   val jvmDependencyOverrides: Seq[ModuleID] = Seq(
     "com.fasterxml.jackson.core" % "jackson-databind" % jacksonOverrideV,
-    // Overriding only wire-compiler and wire-schema should be sufficient to transitively override
-    // the rest of the wire dependencies, but wire-runtime and wire-runtime-jvm are the specific
-    // projects with CVEs, so we'll list them too just to be explicit.
-//    "com.squareup.wire" % "wire-compiler" % wireOverrideV,
-//    "com.squareup.wire" % "wire-schema" % wireOverrideV,
-//    "com.squareup.wire" % "wire-runtime" % wireOverrideV,
-//    "com.squareup.wire" % "wire-runtime-jvm" % wireOverrideV,
     "com.squareup.okhttp3" % "okhttp" % okhttpOverrideV,
     "io.opentelemetry" % "opentelemetry-api" % opentelemetryOverrideV,
     "org.hdrhistogram" % "HdrHistogram" % hdrhistographOverrideV,

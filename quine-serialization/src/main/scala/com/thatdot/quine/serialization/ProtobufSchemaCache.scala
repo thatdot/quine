@@ -3,10 +3,8 @@ package com.thatdot.quine.serialization
 import java.net.URL
 
 import scala.concurrent.{ExecutionContext, Future, blocking}
-import scala.jdk.CollectionConverters._
 import scala.util.Using
 
-import com.amazonaws.services.schemaregistry.utils.apicurio.DynamicSchema
 import com.github.blemale.scaffeine.{AsyncLoadingCache, Scaffeine}
 import com.google.protobuf.Descriptors.{Descriptor, DescriptorValidationException}
 import com.google.protobuf.InvalidProtocolBufferException
@@ -29,7 +27,7 @@ trait ProtobufSchemaCache {
   /** Get a parser for the given schema and type name. Failures (exceptions of type [[ProtobufSchemaError]])
     * are returned as a Future.failed
     */
-  def getSchema(schemaUrl: URL): Future[DynamicSchema]
+  def getSchema(schemaUrl: URL): Future[ProtobufDescriptorSet]
 
   /** Get a parser for the given schema and type name. If the schema is unreachable or invalid, the
     * schema will not be cached. Similarly, when [[flushOnFail]] is true, if the type name is not found,
@@ -41,7 +39,7 @@ object ProtobufSchemaCache {
 
   @deprecated("For test/docs use only -- all Futures are blocking. Use LoadingCache instead.", "forever and always")
   object Blocking extends ProtobufSchemaCache {
-    def getSchema(schemaUrl: URL): Future[DynamicSchema] =
+    def getSchema(schemaUrl: URL): Future[ProtobufDescriptorSet] =
       resolveSchema(schemaUrl)(ExecutionContext.parasitic)
     def getMessageDescriptor(schemaUrl: URL, typeName: String, flushOnFail: Boolean): Future[Descriptor] =
       getSchema(schemaUrl)
@@ -53,7 +51,7 @@ object ProtobufSchemaCache {
   }
 
   class AsyncLoading(val ecs: ComputeAndBlockingExecutionContext) extends ProtobufSchemaCache {
-    private val parsedDescriptorCache: AsyncLoadingCache[URL, DynamicSchema] =
+    private val parsedDescriptorCache: AsyncLoadingCache[URL, ProtobufDescriptorSet] =
       Scaffeine()
         .maximumSize(5)
         .buildAsyncFuture { schemaUrl =>
@@ -69,7 +67,7 @@ object ProtobufSchemaCache {
     def flush(uri: URL): Unit =
       parsedDescriptorCache.put(uri, Future.successful(null))
 
-    def getSchema(schemaUrl: URL): Future[DynamicSchema] =
+    def getSchema(schemaUrl: URL): Future[ProtobufDescriptorSet] =
       parsedDescriptorCache.get(schemaUrl)
 
     def getMessageDescriptor(schemaUrl: URL, typeName: String, flushOnFail: Boolean): Future[Descriptor] =
@@ -83,11 +81,12 @@ object ProtobufSchemaCache {
         }(ecs.nodeDispatcherEC)
   }
 
-  private[this] def resolveSchema(uri: URL)(blockingEc: ExecutionContext): Future[DynamicSchema] =
+  private[this] def resolveSchema(uri: URL)(blockingEc: ExecutionContext): Future[ProtobufDescriptorSet] =
     Future(blocking {
-      Using.resource(uri.openStream())(DynamicSchema.parseFrom)
+      Using.resource(uri.openStream())(ProtobufDescriptorSet.parseFrom)
     })(blockingEc).recoverWith {
       case e: DescriptorValidationException => Future.failed(new InvalidProtobufSchema(uri, e))
+      case e: ProtobufDescriptorSet.InvalidDescriptorSet => Future.failed(new InvalidProtobufSchema(uri, e))
       case e: InvalidProtocolBufferException =>
         // InvalidProtocolBufferException <: java.io.IOException, so this case needs to come before the IOException one
         Future.failed(new InvalidProtobufSchema(uri, e))
@@ -99,11 +98,11 @@ object ProtobufSchemaCache {
     * already-populated map.
     */
   private[this] def resolveMessageType(messageType: String)(
-    schema: DynamicSchema,
+    schema: ProtobufDescriptorSet,
   ): Either[ProtobufSchemaMessageTypeException, Descriptor] =
-    Option(schema.getMessageDescriptor(messageType)).toRight {
+    schema.messageDescriptor(messageType).toRight {
       // failure cases: either the type doesn't exist, or it's ambiguous
-      val resolvedMessageTypes = schema.getMessageTypes.asScala.toSet
+      val resolvedMessageTypes = schema.messageTypes
       val messageFoundByFullName = resolvedMessageTypes.contains(messageType)
       val messagesFoundByShortName = resolvedMessageTypes.filter(_.split(raw"\.").contains(messageType))
 

@@ -122,7 +122,6 @@ lazy val `quine-serialization`: Project = project
     libraryDependencies ++= Seq(
       "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
-      "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
       "software.amazon.awssdk" % "netty-nio-client" % awsSdkV,
       "org.apache.avro" % "avro" % avroV,
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
