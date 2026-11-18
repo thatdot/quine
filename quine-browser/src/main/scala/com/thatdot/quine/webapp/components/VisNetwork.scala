@@ -89,6 +89,9 @@ object VisNetwork {
         // sets the view translation from the container size; if it fires
         // at 0x0 the coordinate origin lands at the upper-left instead of center.
         val _ = dom.window.requestAnimationFrame { (_: Double) =>
+          // Referencing the stylesheet keeps Scala.js from dropping its import; the
+          // stylesheet positions vis-network's node hover tooltip.
+          val _ = vis.VisNetworkStyles
           val network = new vis.Network(element, data.raw, options)
           networkOpt = Some(network)
           afterNetworkInit(network)

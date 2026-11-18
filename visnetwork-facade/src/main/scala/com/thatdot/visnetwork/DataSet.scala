@@ -17,4 +17,12 @@ class DataSet[T <: js.Object](elems: js.Array[T]) extends js.Object {
   def add(elems: js.Array[T]): js.Array[IdType] = js.native
   def remove(ids: IdType | js.Array[IdType]): js.Array[IdType] = js.native
   def update(elems: T | js.Array[T]): js.Array[IdType] = js.native
+
+  /** Calls `callback(eventName, properties, senderId)` after each `event` ("add", "update",
+    * "remove", or "*" for all three) on this data set.
+    */
+  def on(event: String, callback: js.Function3[String, js.Any, js.Any, Unit]): Unit = js.native
+
+  /** Stops calling a `callback` previously registered with [[on]]. */
+  def off(event: String, callback: js.Function3[String, js.Any, js.Any, Unit]): Unit = js.native
 }

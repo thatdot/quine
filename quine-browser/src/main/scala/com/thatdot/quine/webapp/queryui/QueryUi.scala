@@ -14,7 +14,6 @@ import org.scalajs.dom
 import org.scalajs.dom.{document, window}
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
-import com.thatdot.quine.Util.escapeHtml
 import com.thatdot.quine.openapi.ParsedSpec
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
@@ -172,6 +171,23 @@ object QueryUi {
     // for errors. Emitted when runTextQueryIntoCard / runNodeQueryOntoCanvas succeed.
     val resultCountBus = new EventBus[ResultCountEvent]
     val bookmarkDraftVar: Var[Option[SampleQueryDraft]] = Var(None)
+
+    // Canvas search (see CanvasSearch). The term is kept while the bar is closed, so reopening
+    // the bar restores it, but only an open bar's term is searched and highlighted.
+    val searchOpenVar = Var(false)
+    val searchTermVar = Var("")
+    val searchFocusBus = new EventBus[Unit]
+    // IDs of the matching nodes, in data-set order, and the ID of the result the view is on.
+    val searchResultsVar = Var(Vector.empty[String])
+    val searchCurrentIdVar = Var(Option.empty[String])
+    var searchRecomputeScheduled = false
+    val searchStatesByNamespace = mutable.Map.empty[String, (Boolean, String)]
+    def activeSearchTerm(): String = if (searchOpenVar.now()) searchTermVar.now() else ""
+    val activeSearchTermSignal: Signal[String] =
+      searchOpenVar.signal
+        .combineWith(searchTermVar.signal)
+        .map { case (open, term) => if (open) term else "" }
+        .distinct
 
     /** True while a namespace snapshot (initial-load or namespace-switch) is being applied to
       * the canvas, driving the loading spinner. Exactly one in-flight restore owns this flag at
@@ -1104,21 +1120,10 @@ object QueryUi {
           case None => js.undefined
         }
 
-        override val title = {
-          val idProp = s"<strong>ID : ${escapeHtml(node.id)}</strong>"
-          val hostProp = if (props.showHostInTooltip) {
-            List(s"<strong>Served from Host : ${node.hostIndex}</strong>")
-          } else {
-            Nil
-          }
-          val strProps = node.properties.toList
-            .sortBy(_._1)
-            .map { case (keyStr, valueJson) =>
-              s"${escapeHtml(keyStr)} : ${escapeHtml(valueJson.noSpaces)}"
-            }
-
-          (idProp :: hostProp ++ strProps).mkString("<br>")
-        }
+        override val title: js.UndefOr[js.|[String, dom.HTMLElement]] =
+          CanvasSearch.tooltip(node, props.showHostInTooltip, activeSearchTerm())
+        override val font: js.UndefOr[js.|[String, vis.Font]] =
+          searchLabelFont(CanvasSearch.matches(node, activeSearchTerm())): js.|[String, vis.Font]
       }
     }
 
@@ -1223,11 +1228,13 @@ object QueryUi {
           withPhysics() {
             collapseIntoCluster(nodes, clusterId, name)
           }
+          scheduleSearchRecompute()
 
         case Expand(_, clusterId, _) =>
           withPhysics() {
             network.get.openCluster(clusterId)
           }
+          scheduleSearchRecompute()
 
         case Checkpoint(_) =>
 
@@ -2231,6 +2238,14 @@ object QueryUi {
                   downloadSvgSnapshot()
                 },
               ),
+              MenuAction(
+                name = if (isMac) "Search nodes (⌘F)" else "Search nodes (Ctrl+F)",
+                action = () => {
+                  contextMenuVar.set(None)
+                  searchOpenVar.set(true)
+                  searchFocusBus.emit(())
+                },
+              ),
             ),
           )
         case Some(nodeId) =>
@@ -2263,6 +2278,142 @@ object QueryUi {
 
       val menu = buildContextMenu(clickedId, Seq.empty, event.pointer.DOM.x, event.pointer.DOM.y)
       menu.firstQueryAction.foreach(_.action())
+    }
+
+    // --- Canvas search ---
+
+    /** Returns the IDs of the nodes on the canvas that match `term`, in data-set order. */
+    def computeSearchResults(term: String): Vector[String] =
+      if (term.isEmpty) Vector.empty
+      else
+        props.graphData.nodeSet
+          .get()
+          .toVector
+          .map(_.asInstanceOf[QueryUiVisNodeExt].uiNode)
+          .filter(CanvasSearch.matches(_, term))
+          .map(_.id)
+          // Nodes hidden inside a collapsed cluster are left out: vis-network reports the
+          // path to such a node as [clusterId, ..., nodeId].
+          .filter(id => network.forall(_.findNode(id).length <= 1))
+
+    /** Returns the label font option for a node: a yellow label background when the node is a
+      * search result (`isResult`), and vis-network's default of no background otherwise. Node
+      * appearances never set the label font, so this doesn't override them.
+      */
+    def searchLabelFont(isResult: Boolean): vis.Font = new vis.Font {
+      override val background = if (isResult) "#ffe066" else "none"
+    }
+
+    /** Makes the result at `index` (wrapping around at either end) the current result: selects
+      * its node and pans the view to it. Does nothing when `results` is empty.
+      */
+    def goToSearchResult(results: Vector[String], index: Int): Unit =
+      if (results.nonEmpty) {
+        val id = results(Math.floorMod(index, results.length))
+        searchCurrentIdVar.set(Some(id))
+        network.foreach { net =>
+          net.selectNodes(js.Array[vis.IdType](id))
+          net.focus(
+            id,
+            new vis.FocusOptions {
+              override val animation = new vis.AnimationOptions {
+                val duration = 500d
+                val easingFunction = "easeInOutCubic"
+              }
+            },
+          )
+        }
+      }
+
+    /** Moves the current result forward (`delta` = 1) or backward (`delta` = -1). Without a
+      * current result, goes to the first or last result.
+      */
+    def stepSearchResult(delta: Int): Unit = {
+      val results = searchResultsVar.now()
+      val position = searchCurrentIdVar.now().map(results.indexOf).filter(_ >= 0)
+      goToSearchResult(results, position.fold(if (delta > 0) 0 else results.length - 1)(_ + delta))
+    }
+
+    /** Called when the active search term changes from `oldTerm` to `newTerm`. Recomputes the
+      * results and keeps the current result if it still matches, without selecting it again or
+      * panning to it; otherwise goes to the first result. Also rebuilds the tooltips and label
+      * backgrounds of the nodes whose highlights change.
+      */
+    def onActiveSearchTermChange(oldTerm: String, newTerm: String): Unit = {
+      val results = computeSearchResults(newTerm)
+      searchResultsVar.set(results)
+      if (!searchCurrentIdVar.now().exists(results.contains)) {
+        searchCurrentIdVar.set(None)
+        goToSearchResult(results, 0)
+      }
+
+      // vis-network keeps showing the tooltip element it opened with, so an open tooltip whose
+      // node is restyled here gets its contents swapped for the new tooltip element.
+      val openTooltips = dom.document.querySelectorAll("div.vis-tooltip").toSeq
+      val retitled = props.graphData.nodeSet.get().toVector.collect {
+        case visNode
+            if CanvasSearch.matches(visNode.asInstanceOf[QueryUiVisNodeExt].uiNode, oldTerm) ||
+              CanvasSearch.matches(visNode.asInstanceOf[QueryUiVisNodeExt].uiNode, newTerm) =>
+          val node = visNode.asInstanceOf[QueryUiVisNodeExt].uiNode
+          val newTooltip = CanvasSearch.tooltip(node, props.showHostInTooltip, newTerm)
+          for {
+            oldTooltip <- visNode.title.toOption.map(t => t: Any).collect { case el: dom.HTMLElement => el }
+            tooltip <- openTooltips.find(_.contains(oldTooltip))
+          } tooltip.replaceChildren(newTooltip)
+          new vis.Node {
+            override val id = node.id
+            override val title: js.UndefOr[js.|[String, dom.HTMLElement]] = newTooltip
+            override val font: js.UndefOr[js.|[String, vis.Font]] =
+              searchLabelFont(CanvasSearch.matches(node, newTerm)): js.|[String, vis.Font]
+          }: vis.Node
+      }
+      if (retitled.nonEmpty) { val _ = props.graphData.nodeSet.update(js.Array(retitled: _*)) }
+    }
+
+    /** Schedules a recomputation of the search results, which happens once at the end of the
+      * current browser task however many times this is called. The recomputation forgets the
+      * current result if it no longer matches. Called when nodes are added to, removed from, or
+      * updated on the canvas, and when nodes are collapsed into or expanded from a cluster.
+      */
+    def scheduleSearchRecompute(): Unit =
+      if (!searchRecomputeScheduled) {
+        searchRecomputeScheduled = true
+        val _ = dom.window.setTimeout(
+          () => {
+            searchRecomputeScheduled = false
+            val results = computeSearchResults(activeSearchTerm())
+            searchResultsVar.set(results)
+            if (!searchCurrentIdVar.now().exists(results.contains)) searchCurrentIdVar.set(None)
+          },
+          0,
+        )
+      }
+
+    lazy val onNodeSetChange: js.Function3[String, js.Any, js.Any, Unit] = (_, _, _) => scheduleSearchRecompute()
+
+    lazy val isMac: Boolean = dom.window.navigator.userAgent.contains("Mac")
+
+    /** Called on every key press in the document while the exploration UI is mounted, which
+      * includes while another page hides it. When `canvasRegion` (the element holding the graph
+      * canvas) is showing, Cmd+F (macOS) or Ctrl+F (elsewhere) opens the search bar and focuses
+      * its input, unless the input already has focus, in which case the browser's own Find runs.
+      */
+    def documentKeyDown(event: dom.KeyboardEvent, canvasRegion: dom.html.Element): Unit = {
+      val findModifier = if (isMac) event.metaKey && !event.ctrlKey else event.ctrlKey && !event.metaKey
+      // Hidden pages use `visibility: hidden` or a `display: none` ancestor (no client rects).
+      lazy val canvasShowing =
+        canvasRegion.getClientRects().length > 0 && dom.window.getComputedStyle(canvasRegion).visibility == "visible"
+      if (
+        findModifier && !event.altKey && !event.shiftKey && event.key.toLowerCase == "f" &&
+        !event.defaultPrevented && canvasShowing
+      ) {
+        val inputFocused = Option(dom.document.activeElement).exists(_.classList.contains(CanvasSearch.inputClass))
+        if (!(searchOpenVar.now() && inputFocused)) {
+          event.preventDefault()
+          searchOpenVar.set(true)
+          searchFocusBus.emit(())
+        }
+      }
     }
 
     def networkKeyDown(event: dom.KeyboardEvent): Unit =
@@ -2589,6 +2740,13 @@ object QueryUi {
         // Clear the graph and swap in the target namespace's saved view, if any
         props.graphData.nodeSet.remove(props.graphData.nodeSet.getIds())
         props.graphData.edgeSet.remove(props.graphData.edgeSet.getIds())
+
+        // Swap in the target namespace's search bar state.
+        searchStatesByNamespace(namespaceKeyFor(previous.namespace)) = (searchOpenVar.now(), searchTermVar.now())
+        val (targetSearchOpen, targetSearchTerm) =
+          searchStatesByNamespace.getOrElse(namespaceKeyFor(namespace), (false, ""))
+        Var.set(searchOpenVar -> targetSearchOpen, searchTermVar -> targetSearchTerm)
+
         resultsVar.set(None)
         contextMenuVar.set(None)
         setNamespaceVersion += 1
@@ -2735,6 +2893,7 @@ object QueryUi {
         .map(_ --> { ns =>
           val key = namespaceKeyFor(ns)
           namespaceSnapshots.remove(key)
+          searchStatesByNamespace.remove(key)
           ExplorerStore.remove(key)
           wsClients.remove(key).foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
           wsClientsV2.remove(key).foreach(_.value.flatMap(_.toOption).foreach(_.webSocket.close()))
@@ -3038,6 +3197,33 @@ object QueryUi {
         stateVar.signal.map(_.uiNodeAppearances).distinct.updates --> { _ =>
           reapplyAppearances()
         },
+        // Canvas search: the Cmd+F / Ctrl+F shortcut, keeping results current, and the bar
+        inContext(canvasRegion => documentEvents(_.onKeyDown) --> (e => documentKeyDown(e, canvasRegion.ref))),
+        onMountUnmountCallback(
+          mount = _ => props.graphData.nodeSet.on("*", onNodeSetChange),
+          unmount = _ => props.graphData.nodeSet.off("*", onNodeSetChange),
+        ), {
+          var lastActiveSearchTerm = ""
+          activeSearchTermSignal.updates --> { term =>
+            onActiveSearchTermChange(lastActiveSearchTerm, term)
+            lastActiveSearchTerm = term
+          }
+        },
+        child <-- searchOpenVar.signal.map {
+          case true =>
+            CanvasSearch.bar(
+              termVar = searchTermVar,
+              resultCount = searchResultsVar.signal.map(_.size),
+              currentPosition = searchResultsVar.signal.combineWith(searchCurrentIdVar.signal).map {
+                case (results, current) => current.map(results.indexOf).filter(_ >= 0)
+              },
+              focusRequests = searchFocusBus.events,
+              onNext = () => stepSearchResult(1),
+              onPrevious = () => stepSearchResult(-1),
+              onClose = () => searchOpenVar.set(false),
+            )
+          case false => emptyNode
+        },
         // Physics toggle
         // `.distinct` is essential: `Signal.map` does not dedupe, so without it this
         // subscriber fires on every unrelated `stateVar` update and overrides the
@@ -3059,6 +3245,7 @@ object QueryUi {
               onBack = (bx, by) => nodePopupBackVar.now().fold(nodePopupVar.set(None))(_(bx, by)),
               onRefreshProperties = (rx, ry) => nodePopupRefreshVar.now().foreach(_(rx, ry)),
               editDisabled = props.nodePropertiesEditDisabled,
+              searchTerm = activeSearchTermSignal,
             )
           case None => emptyNode
         },

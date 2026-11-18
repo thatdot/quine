@@ -9,7 +9,7 @@ import js.annotation._
 import js.|
 
 @js.native
-@JSImport("vis-network/dist/dist/vis-network.min.css", JSImport.Namespace)
+@JSImport("vis-network/styles/vis-network.min.css", JSImport.Namespace)
 object VisNetworkStyles extends js.Object
 
 /** See [[https://visjs.github.io/vis-network/docs/network/#methods]] */
@@ -347,7 +347,7 @@ trait NodeOptions extends js.Object {
   val shape: js.UndefOr[String] = js.undefined
   val shapeProperties: js.UndefOr[NodeOptions.ShapeProperties] = js.undefined
   val size: js.UndefOr[Double] = js.undefined
-  val title: js.UndefOr[String] = js.undefined
+  val title: js.UndefOr[String | dom.HTMLElement] = js.undefined
   val value: js.UndefOr[Double] = js.undefined
   val widthConstraint: js.UndefOr[Double | Boolean | NodeOptions.WidthConstraint] = js.undefined
   val x: js.UndefOr[Double] = js.undefined

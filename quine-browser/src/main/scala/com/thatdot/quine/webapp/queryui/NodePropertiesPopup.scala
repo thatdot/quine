@@ -128,6 +128,10 @@ object NodePropertiesPopup {
 
   private def icon(name: String): HtmlElement = htmlTag("i")(cls := name)
 
+  /** Displays `text` with each occurrence of the current canvas-search term highlighted. */
+  private def searchHighlighted(text: String, searchTerm: Signal[String]): Modifier[HtmlElement] =
+    children <-- searchTerm.map(CanvasSearch.highlighted(text, _))
+
   /* ------------------------------------------------------------------------
      Cypher serialization (unchanged behavior)
      ------------------------------------------------------------------------ */
@@ -179,7 +183,7 @@ object NodePropertiesPopup {
       span(cls := Styles.nodePropertiesNodeDot)
 
   /** Masked node id — head only until hover; full id on hover; click copies. */
-  private[queryui] def nodeIdValue(idStr: String): HtmlElement = {
+  private[queryui] def nodeIdValue(idStr: String, searchTerm: Signal[String] = Val("")): HtmlElement = {
     val hover = Var(false)
     val copied = Var(false)
     val masked = idStr.length > 10
@@ -196,12 +200,12 @@ object NodePropertiesPopup {
       onMouseEnter --> { _ => hover.set(true) },
       onMouseLeave --> { _ => hover.set(false) },
       // Collapsed, in-flow id: alone it sizes the box, so the popup never resizes.
-      span(cls := "np-id-text", head),
+      span(cls := "np-id-text", searchHighlighted(head, searchTerm)),
       // Full id overlay: absolutely positioned (out of flow) so it can overflow
       // the popup's right edge without contributing to layout width.
       span(
         cls := "np-id-full",
-        span(idStr),
+        span(searchHighlighted(idStr, searchTerm)),
       ),
     )
   }
@@ -215,7 +219,7 @@ object NodePropertiesPopup {
     * frozen at hover/click time, a `dismiss` tick (emitted when the popup scrolls
     * or is dragged) resets the Vars so the overlay hides rather than stranding.
     */
-  private def inlineValue(json: Json, dismiss: EventStream[Unit]): HtmlElement = {
+  private def inlineValue(json: Json, dismiss: EventStream[Unit], searchTerm: Signal[String]): HtmlElement = {
     val t = PropKind.of(json)
     val copyText = json.asString.getOrElse(noSpaces.print(json))
     val emptyString = t == PropKind.Txt && json.asString.contains("")
@@ -238,7 +242,7 @@ object NodePropertiesPopup {
     }
 
     def valText: HtmlElement =
-      if (emptyString) span(cls := "np-empty-string", "empty string") else span(shown)
+      if (emptyString) span(cls := "np-empty-string", "empty string") else span(searchHighlighted(shown, searchTerm))
 
     span(
       cls := s"${Styles.nodePropertiesVal} ${Styles.nodePropertiesVal}--${t.name}",
@@ -268,7 +272,7 @@ object NodePropertiesPopup {
     * Rendered in a wrapped box that clamps to a few lines, copies on click, and
     * expands via "Show all".
     */
-  private def multilineValue(json: Json): HtmlElement = {
+  private def multilineValue(json: Json, searchTerm: Signal[String]): HtmlElement = {
     val raw = json.asString.getOrElse(spaces2.print(json))
     val copied = Var(false)
     val expanded = Var(false)
@@ -284,7 +288,7 @@ object NodePropertiesPopup {
         tabIndex := 0,
         title := "Click to copy " ++ (if (json.isString) "text" else "JSON") ++ " value",
         onClick --> { _ => copyToClipboard(raw, copied) },
-        raw,
+        searchHighlighted(raw, searchTerm),
       ),
       if (clampable || json.isString)
         div(
@@ -309,7 +313,7 @@ object NodePropertiesPopup {
   }
 
   /** Copyable property key. */
-  private def propKey(key: String): HtmlElement = {
+  private def propKey(key: String, searchTerm: Signal[String]): HtmlElement = {
     val copied = Var(false)
     span(
       cls := Styles.nodePropertiesKey,
@@ -318,11 +322,11 @@ object NodePropertiesPopup {
       tabIndex := 0,
       title := "Copy key",
       onClick --> { _ => copyToClipboard(key, copied) },
-      span(cls := "np-key-text", key),
+      span(cls := "np-key-text", searchHighlighted(key, searchTerm)),
     )
   }
 
-  private def viewProps(data: NodePopupData, dismiss: EventStream[Unit]): HtmlElement =
+  private def viewProps(data: NodePopupData, dismiss: EventStream[Unit], searchTerm: Signal[String]): HtmlElement =
     if (data.props.isEmpty) p(cls := Styles.nodePropertiesEmpty, "no properties")
     else
       div(
@@ -331,23 +335,23 @@ object NodePropertiesPopup {
           if (shouldDisplayAsMultiline(v))
             div(
               cls := s"${Styles.nodePropertiesRow} ${Styles.nodePropertiesRow}--multiline",
-              propKey(k),
-              multilineValue(v),
+              propKey(k, searchTerm),
+              multilineValue(v, searchTerm),
             )
           else
             div(
               cls := Styles.nodePropertiesRow,
-              propKey(k),
-              div(cls := Styles.nodePropertiesValCell, inlineValue(v, dismiss)),
+              propKey(k, searchTerm),
+              div(cls := Styles.nodePropertiesValCell, inlineValue(v, dismiss, searchTerm)),
             )
         },
       )
 
-  private def viewLabels(data: NodePopupData): HtmlElement =
+  private def viewLabels(data: NodePopupData, searchTerm: Signal[String]): HtmlElement =
     div(
       cls := Styles.nodePropertiesLabels,
       if (data.labels.isEmpty) span(cls := Styles.nodePropertiesEmpty, "no labels")
-      else data.labels.map(l => span(cls := Styles.nodePropertiesLabel, s":$l")),
+      else data.labels.map(l => span(cls := Styles.nodePropertiesLabel, ":", searchHighlighted(l, searchTerm))),
     )
 
   /* ========================================================================
@@ -891,6 +895,7 @@ object NodePropertiesPopup {
     onBack: (Double, Double) => Unit,
     onRefreshProperties: (Double, Double) => Unit,
     editDisabled: Option[String],
+    searchTerm: Signal[String] = Val(""),
   ): HtmlElement = {
     var popupEl: Option[dom.html.Div] = None
     // Fires when the popup scrolls or is dragged; inline value overlays subscribe
@@ -1005,9 +1010,9 @@ object NodePropertiesPopup {
                   cls := Styles.nodePropertiesEyebrow,
                   child.text <-- editing.map(e => if (e) "Editing properties" else "Properties"),
                 ),
-                nodeIdValue(idStr),
+                nodeIdValue(idStr, searchTerm),
               ),
-              child <-- editing.map(e => if (e) editLabels(model) else viewLabels(data)),
+              child <-- editing.map(e => if (e) editLabels(model) else viewLabels(data, searchTerm)),
             ),
             div(
               cls := Styles.nodePropertiesHeaderActions,
@@ -1047,7 +1052,9 @@ object NodePropertiesPopup {
               cls := Styles.nodePropertiesBody,
               div(
                 cls := Styles.nodePropertiesField,
-                child <-- editing.map(e => if (e) editProps(model) else viewProps(data, dismissOverlays.events)),
+                child <-- editing.map(e =>
+                  if (e) editProps(model) else viewProps(data, dismissOverlays.events, searchTerm),
+                ),
               ),
             ),
           ),

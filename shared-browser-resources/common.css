@@ -2330,6 +2330,70 @@ div.vis-tooltip {
   max-width: 30%;
 }
 
+/* Exploration UI canvas search (Cmd+F / Ctrl+F). Top-center of the canvas, because the
+ * loader and the result-count indicator occupy the top-right corner. */
+.canvas-search-bar {
+  position: absolute;
+  top: .6em;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background-color: var(--cui-body-bg, #fff);
+  border: 1px solid var(--cui-border-color, #dbdfe6);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: .875rem;
+}
+.canvas-search-input {
+  width: 220px;
+  padding: 3px 6px;
+  border: 1px solid var(--cui-border-color, #dbdfe6);
+  border-radius: 4px;
+  font: inherit;
+  color: inherit;
+  background-color: #fff;
+}
+.canvas-search-input:focus {
+  outline: none;
+  border-color: var(--cui-primary, #5856d6);
+}
+.canvas-search-count {
+  min-width: 6em;
+  padding: 0 6px;
+  text-align: left;
+  white-space: nowrap;
+  font-family: var(--cui-font-sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--cui-secondary-color, #6b7785);
+}
+.canvas-search-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.canvas-search-btn:hover:not(:disabled) {
+  background-color: var(--cui-tertiary-bg, #f3f4f7);
+}
+.canvas-search-btn:disabled {
+  opacity: .35;
+  cursor: default;
+}
+mark.canvas-search-mark {
+  padding: 0;
+  border-radius: 2px;
+  background-color: #ffe066;
+  color: inherit;
+}
+
 @keyframes activequery {
   0% { background-color: color-mix(in srgb, var(--cui-success) 15%, white); }
   7% { background-color: color-mix(in srgb, var(--cui-success) 50%, white); }
