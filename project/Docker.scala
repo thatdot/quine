@@ -29,22 +29,23 @@ object Docker extends AutoPlugin {
   }
   import autoImport.*
 
-  // The image is a chiseled Ubuntu root filesystem plus the Temurin JRE. It contains only glibc, libstdc++ and
-  // libgcc_s, the en_US.UTF-8 and C.UTF-8 locales, /etc/passwd and /etc/group, bash (also linked as /bin/sh), a
-  // set of command-line tools (see `toolSlices`) and the JRE. There is no apt, dpkg or curl, so the image cannot
-  // install packages. curl and its libraries (OpenSSL, gnutls, krb5, sasl and others) brought every OS CVE that
-  // was left after chiseling. There is no system CA bundle either: Java uses the trust store of the JRE
-  // (lib/security/cacerts).
+  // The image is a chiseled Ubuntu root filesystem plus the Amazon Corretto Java runtime. It contains only glibc,
+  // libstdc++, libgcc_s and zlib, the en_US.UTF-8 and C.UTF-8 locales, /etc/passwd and /etc/group, bash (also
+  // linked as /bin/sh), a set of command-line tools (see `toolSlices`) and the Java runtime. There is no apt,
+  // dpkg or curl, so the image cannot install packages. curl and its libraries (OpenSSL, gnutls, krb5, sasl and
+  // others) brought every OS CVE that was left after chiseling. There is no system CA bundle either: Java uses
+  // the trust store of the Java runtime (lib/security/cacerts).
 
   // One value for the builder image and for the chisel release, so the packages always come from the Ubuntu
-  // release that cut them. It must also match the Ubuntu release in `temurinTag` (noble is 24.04).
+  // release that cut them. The Corretto runtime comes from an Amazon Linux image and needs only glibc and zlib.
   private val ubuntuRelease = "24.04"
-  private val temurinTag = "21.0.13_9-jre-noble"
+  // Amazon Corretto 21.0.13.1.2, which has the fix for CVE-2026-114938. The tag is mutable, the digest is the pin.
+  private val correttoTag = "21.0.13-al2023-headless"
 
   // Both digests are multi-arch index digests (linux/amd64 and linux/arm64), not per-architecture manifests.
   // Check a new digest with `docker buildx imagetools inspect <image>@<digest>` before pinning it.
   private val ubuntuDigest = "sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852"
-  private val temurinDigest = "sha256:0eda5830ed7b669abc246a8dc520ea8a23cab06f9a8d4b6964109e2f2394e46f"
+  private val correttoDigest = "sha256:71b005271e4df1a2fb44f6d261bad4318e66aff82ea7541b4d2968a9a31357d7"
 
   private val chiselVersion = "v1.5.1"
   private val chiselSha384Amd64 =
@@ -70,6 +71,8 @@ object Docker extends AutoPlugin {
     "libc-bin_locale",
     "libstdc++6_libs",
     "libgcc-s1_libs",
+    // Corretto links to the system zlib (libjli, libzip and libjava need libz.so.1). Temurin has its own copy.
+    "zlib1g_libs",
     "bash_bins",
   ) ++ toolSlices
 
@@ -120,9 +123,22 @@ object Docker extends AutoPlugin {
       |      arm64) sum="$CHISEL_SHA384_arm64" ;; \
       |      *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
       |    esac; \
-      |    curl -fsSL -o "/tmp/$archive" "https://github.com/canonical/chisel/releases/download/${CHISEL_VERSION}/$archive"; \
+      |    curl -fsSL --retry 3 -o "/tmp/$archive" "https://github.com/canonical/chisel/releases/download/${CHISEL_VERSION}/$archive"; \
       |    echo "$sum  /tmp/$archive" | sha384sum --check --strict; \
       |    tar -xzf "/tmp/$archive" -C /usr/local/bin chisel""".stripMargin
+
+  // Cuts the root filesystem. Chisel fetches the packages from the Ubuntu archive with a 30 s timeout and does
+  // not try again, so one slow answer from the archive would fail the whole image build. Each attempt starts
+  // with an empty /rootfs, because a cut that failed can leave files behind.
+  private val chiselCutAttempts = 3
+  private lazy val cutRootfs =
+    s"""{ attempt=1; \\
+       |    until rm -rf /rootfs && mkdir /rootfs && chisel cut --release ubuntu-$ubuntuRelease --root /rootfs ${chiselSlices
+      .mkString(" ")}; do \\
+       |      if [ "$$attempt" -ge $chiselCutAttempts ]; then echo "chisel cut failed $chiselCutAttempts times" >&2; exit 1; fi; \\
+       |      echo "chisel cut failed, attempt $$attempt of $chiselCutAttempts, next attempt in 10 s" >&2; \\
+       |      attempt=$$((attempt + 1)); sleep 10; \\
+       |    done; }""".stripMargin
 
   // Declares the installed packages to vulnerability scanners. Chisel records them only in its own manifest
   // (/var/lib/chisel/manifest.wall), which Trivy does not read: without these records a scan reports 0 OS
@@ -206,13 +222,13 @@ object Docker extends AutoPlugin {
         arg("CHISEL_SHA384_amd64", Some(chiselSha384Amd64))
         arg("CHISEL_SHA384_arm64", Some(chiselSha384Arm64))
         runRaw(
-          s"echo apt-refresh=$refreshDate && apt-get update" +
-          " && apt-get install -y --no-install-recommends ca-certificates curl jq locales zstd",
+          s"echo apt-refresh=$refreshDate && apt-get -o Acquire::Retries=3 update" +
+          " && apt-get -o Acquire::Retries=3 install -y --no-install-recommends ca-certificates curl jq locales zstd",
         )
         runRaw(installChisel)
         runRaw(
-          s"echo chisel-refresh=$refreshDate && mkdir /rootfs" +
-          s" && chisel cut --release ubuntu-$ubuntuRelease --root /rootfs ${chiselSlices.mkString(" ")}" +
+          s"echo chisel-refresh=$refreshDate" +
+          s" && $cutRootfs" +
           " && ln -s bash /rootfs/usr/bin/sh" +
           // The same link as in the Temurin image. Without it the default time zone of the JVM is GMT, not
           // Etc/UTC, and zoned datetimes print as "...Z[GMT]". The JVM reads only the name in the link, so the
@@ -226,8 +242,11 @@ object Docker extends AutoPlugin {
         )
         runRaw(writeDpkgRecords)
 
-        // Stage 2: the JRE. `cacerts` is a regular file in the JRE, so the copy below keeps TLS working.
-        from(s"eclipse-temurin:$temurinTag@$temurinDigest AS jre")
+        // Stage 2: the Java runtime. In the Corretto image JAVA_HOME is a symbolic link, and `cacerts` is a
+        // link to the trust store of Amazon Linux. `cp -rL` makes both regular files and directories, so the
+        // copy below keeps TLS and `keytool -cacerts` working.
+        from(s"amazoncorretto:$correttoTag@$correttoDigest AS jre")
+        runRaw(s"mkdir -p /opt/java && cp -rL /usr/lib/jvm/java-21-amazon-corretto $javaHome")
 
         // Stage 3: the runtime image
         from("scratch")
