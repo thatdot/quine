@@ -77,9 +77,10 @@ object Docker extends AutoPlugin {
   ) ++ toolSlices
 
   // Tools for scripts, probes and work in a running container. Each one is here because its package and the
-  // libraries it needs (acl, attr, libcap2, pcre2, libselinux) had no open CVE in a Trivy scan when it was added.
-  // Left out because they had open CVEs or bring them: procps (ps and top need libsystemd), tar, and
-  // coreutils_bins (cp, wc, tee and sort come only in that slice, and sort needs OpenSSL).
+  // libraries it needs (libcap2, pcre2, libselinux) had no open CVE in a Trivy scan when it was added.
+  // Left out because they had open CVEs or bring them: procps (ps and top need libsystemd), tar,
+  // coreutils_bins (cp, wc, tee and sort come only in that slice, and sort needs OpenSSL), and
+  // coreutils_mv-utility and sed_bins
   private lazy val toolSlices = Seq(
     "coreutils_directory-listing", // ls
     "coreutils_output-of-entire-files", // cat, base64
@@ -99,7 +100,6 @@ object Docker extends AutoPlugin {
     "coreutils_mkdir",
     "coreutils_mktemp",
     "coreutils_touch",
-    "coreutils_mv-utility",
     "coreutils_rm-utility",
     "coreutils_rmdir",
     "coreutils_ln-utility",
@@ -109,7 +109,6 @@ object Docker extends AutoPlugin {
     "coreutils_basename",
     "coreutils_dirname",
     "grep_bins",
-    "sed_bins",
     "findutils_bins", // find, xargs
   )
 
