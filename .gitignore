@@ -42,6 +42,11 @@ _apalache-out/
 
 # claude code local (machine-specific; the shared skill in .claude/skills IS committed)
 .claude/settings.local.json
+# /change workflow: per-change worktrees and work folders
+.claude/worktrees/
+.claude/change-work/
+# release-notes command: unpublished drafts
+.claude/docs/
 
 # sbt
 project/project/
